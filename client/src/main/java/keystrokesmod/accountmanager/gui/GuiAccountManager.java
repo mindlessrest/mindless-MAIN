@@ -19,6 +19,10 @@ import keystrokesmod.accountmanager.auth.SessionManager;
 import keystrokesmod.accountmanager.gui.GuiAddAccount;
 import keystrokesmod.accountmanager.gui.GuiChangeName;
 import keystrokesmod.accountmanager.gui.GuiChangeSkin;
+import keystrokesmod.accountmanager.gui.GuiLocaltsMenu;
+import keystrokesmod.accountmanager.gui.GuiLocaltsSetup;
+import keystrokesmod.accountmanager.gui.GuiNicealtsMenu;
+import keystrokesmod.accountmanager.gui.GuiNicealtsSetup;
 import keystrokesmod.accountmanager.utils.Notification;
 import keystrokesmod.accountmanager.utils.TextFormatting;
 import net.minecraft.client.Minecraft;
@@ -44,6 +48,8 @@ extends GuiScreen {
     private GuiButton skinButton = null;
     private GuiButton deleteInvalidButton = null;
     private GuiButton pasteTokenButton = null;
+    private GuiButton nicealtsButton = null;
+    private GuiButton localtsButton = null;
     private GuiAccountList guiAccountList = null;
     public static Notification notification = null;
     private int selectedAccount = -1;
@@ -79,8 +85,14 @@ extends GuiScreen {
         int col2 = col1 + colWidth + colGap;
         int col3 = col2 + colWidth + colGap;
         int totalRowWidth = colWidth * 3 + colGap * 2;
-        // New top row — two wider buttons spanning the same total width
         int wideWidth = (totalRowWidth - colGap) / 2;
+        // Services row — Localts | NiceAlts
+        int servRow = this.height - 100;
+        this.localtsButton  = new GuiButton(9,  col1,                    servRow, wideWidth, 20, "Localts");
+        this.nicealtsButton = new GuiButton(10, col1 + wideWidth + colGap, servRow, wideWidth, 20, "NiceAlts");
+        this.buttonList.add(this.localtsButton);
+        this.buttonList.add(this.nicealtsButton);
+        // Delete invalid | Paste token row
         int newRow = this.height - 76;
         this.deleteInvalidButton = new GuiButton(7, col1, newRow, wideWidth, 20, "Delete invalid");
         this.buttonList.add(this.deleteInvalidButton);
@@ -99,7 +111,7 @@ extends GuiScreen {
         this.buttonList.add(this.skinButton);
         this.cancelButton = new GuiButton(3, col3, row2, colWidth, 20, "Cancel");
         this.buttonList.add(this.cancelButton);
-        int listBottom = newRow - 8;
+        int listBottom = servRow - 8;
         this.guiAccountList = new GuiAccountList(this.mc, listBottom);
         this.guiAccountList.registerScrollButtons(11, 12);
         this.updateScreen();
@@ -134,6 +146,8 @@ extends GuiScreen {
         if (this.pasteTokenButton != null) {
             this.pasteTokenButton.enabled = (this.task == null || this.task.isDone()) && !checkingInvalid;
         }
+        if (this.nicealtsButton != null) this.nicealtsButton.enabled = true;
+        if (this.localtsButton  != null) this.localtsButton.enabled  = true;
         this.updateRestoreButtonState();
     }
 
@@ -259,6 +273,26 @@ extends GuiScreen {
                 case 6: {
                     if (this.selectedAccount <= -1 || this.selectedAccount >= AccountManager.accounts.size()) break;
                     this.mc.displayGuiScreen((GuiScreen)new GuiChangeSkin(this, AccountManager.accounts.get(this.selectedAccount)));
+                    break;
+                }
+                case 9: {
+                    // Localts
+                    String lkey = GuiLocaltsSetup.loadKey();
+                    if (lkey != null) {
+                        this.mc.displayGuiScreen(new GuiLocaltsMenu(this, lkey));
+                    } else {
+                        this.mc.displayGuiScreen(new GuiLocaltsSetup(this));
+                    }
+                    break;
+                }
+                case 10: {
+                    // NiceAlts
+                    String nkey = GuiNicealtsSetup.loadKey();
+                    if (nkey != null) {
+                        this.mc.displayGuiScreen(new GuiNicealtsMenu(this, nkey));
+                    } else {
+                        this.mc.displayGuiScreen(new GuiNicealtsSetup(this));
+                    }
                     break;
                 }
                 default: {
