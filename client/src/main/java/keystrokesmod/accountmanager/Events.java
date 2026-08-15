@@ -36,14 +36,11 @@ public class Events {
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
 
-        // Right Shift — open account manager from anywhere (in-game or any menu)
+        // Right Shift — open account manager only when already in a menu screen
+        // (currentScreen == null means the player is in-game with no GUI open)
         boolean shiftDown = Keyboard.isKeyDown(KEY_RSHIFT);
-        if (shiftDown && !prevShiftDown) {
-            // Don't steal keystrokes while typing in a text field
-            if (mc.currentScreen == null || !(mc.currentScreen.getClass().getName().contains("TextField"))) {
-                GuiScreen prev = mc.currentScreen;
-                mc.displayGuiScreen(new GuiAccountManager(prev));
-            }
+        if (shiftDown && !prevShiftDown && mc.currentScreen != null) {
+            mc.displayGuiScreen(new GuiAccountManager(mc.currentScreen));
         }
         prevShiftDown = shiftDown;
     }
