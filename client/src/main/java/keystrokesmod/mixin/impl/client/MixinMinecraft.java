@@ -1,15 +1,12 @@
 package keystrokesmod.mixin.impl.client;
 
 import keystrokesmod.event.*;
-import net.minecraft.util.MovingObjectPosition;
-import keystrokesmod.helper.RotationHelper;
 import keystrokesmod.module.ModuleManager;
 import keystrokesmod.module.impl.player.BedAura;
 import keystrokesmod.module.impl.render.Freelook;
 import keystrokesmod.module.impl.player.FastMine;
 import org.objectweb.asm.Opcodes;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.settings.GameSettings;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraftforge.common.MinecraftForge;
@@ -22,71 +19,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Minecraft.class)
 public class MixinMinecraft {
 
-    @Inject(method = "runTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/EntityRenderer;getMouseOver(F)V", shift = At.Shift.BEFORE))
-    public void onBeforeGetMouseOver(CallbackInfo ci) {
-        RotationHelper.get().updateServerRotations();
-    }
-
+    // PostMouseSelectionEvent — fires AFTER getMouseOver; transformer only fires BEFORE. Unique.
     @Inject(method = "runTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/EntityRenderer;getMouseOver(F)V", shift = At.Shift.AFTER))
     public void onRunTickMouseOver(CallbackInfo ci) {
         MinecraftForge.EVENT_BUS.post(new PostMouseSelectionEvent());
     }
 
-    @Inject(method = "runTick", at = @At(value = "FIELD", opcode = Opcodes.GETFIELD, target = "Lnet/minecraft/client/settings/GameSettings;chatVisibility:Lnet/minecraft/entity/player/EntityPlayer$EnumChatVisibility;"))
-    private void injectBeforeChatVisibility(CallbackInfo ci) {
-        MinecraftForge.EVENT_BUS.post(new PrePlayerInteractEvent());
-    }
-
-    @Inject(method = "runTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/profiler/Profiler;endStartSection(Ljava/lang/String;)V", ordinal = 2))
-    private void onRunTick(CallbackInfo ci) {
-        MinecraftForge.EVENT_BUS.post(new PreInputEvent());
-    }
-
+    // RunGameLoopEvent — targets runGameLoop, not runTick. Unique.
     @Inject(method = "runGameLoop", at = @At("HEAD"))
     public void onRunGameLoop(CallbackInfo ci) {
         MinecraftForge.EVENT_BUS.post(new RunGameLoopEvent());
     }
 
-    @Inject(method = "clickMouse", at = @At("HEAD"), cancellable = true)
-    public void injectClickMouse(CallbackInfo ci) {
-        Minecraft mc = (Minecraft) (Object) this;
-        MovingObjectPosition mop = mc.objectMouseOver;
-        PreAttackEvent preAttack = new PreAttackEvent(mop);
-        MinecraftForge.EVENT_BUS.post(preAttack);
-        if (preAttack.isCanceled()) {
-            ci.cancel();
-            return;
-        }
-        MinecraftForge.EVENT_BUS.post(new ClickMouseEvent());
-    }
-
-    @Inject(method = "rightClickMouse", at = @At("HEAD"), cancellable = true)
-    public void injectRightClickMouse(CallbackInfo ci) {
-        RightClickMouseEvent event = new RightClickMouseEvent();
-        MinecraftForge.EVENT_BUS.post(event);
-        if (event.isCanceled()) {
-            ci.cancel();
-        }
-    }
-
-    @Inject(method = "runTick", at = @At("HEAD"))
-    public void onRunTickStart(CallbackInfo ci) {
-        MinecraftForge.EVENT_BUS.post(new GameTickEvent());
-    }
-
-    @Inject(
-        method = "runTick",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/profiler/Profiler;startSection(Ljava/lang/String;)V",
-            ordinal = 0,
-            shift = At.Shift.BEFORE
-        )
-    )
-    public void onRunTickAfterRightClickDelay(CallbackInfo ci) {
-        MinecraftForge.EVENT_BUS.post(new RightClickDelayTickEvent());
-    }
-
+    // FastMine passive block hit decay — unique, no transformer equivalent.
     @Inject(
         method = "runTick",
         at = @At(
@@ -106,30 +51,7 @@ public class MixinMinecraft {
         }
     }
 
-    @Inject(method = "displayGuiScreen(Lnet/minecraft/client/gui/GuiScreen;)V", at = @At("HEAD"))
-    public void onDisplayGuiScreen(GuiScreen guiScreen, CallbackInfo ci) {
-        Minecraft mc = (Minecraft) (Object) this;
-        GuiScreen previousGui = mc.currentScreen;
-        GuiScreen setGui = guiScreen;
-        boolean opened = setGui != null;
-        if (!opened) {
-            setGui = previousGui;
-        }
-
-        GuiUpdateEvent event = new GuiUpdateEvent(setGui, opened);
-        MinecraftForge.EVENT_BUS.post(event);
-    }
-
-    @Redirect(method = "runTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/player/InventoryPlayer;changeCurrentItem(I)V"), require = 0)
-    public void changeCurrentItem(InventoryPlayer inventoryPlayer, int slot) {
-        PreSlotScrollEvent event = new PreSlotScrollEvent(slot, inventoryPlayer.currentItem);
-        MinecraftForge.EVENT_BUS.post(event);
-        if (event.isCanceled()) {
-            return;
-        }
-        inventoryPlayer.changeCurrentItem(slot);
-    }
-
+    // thirdPersonView PUTFIELD — CTarget has no opcode field, so transformer can't do this. Unique.
     @Redirect(method = "runTick", at = @At(value = "FIELD", target = "Lnet/minecraft/client/settings/GameSettings;thirdPersonView:I", opcode = Opcodes.PUTFIELD))
     private void onSetThirdPersonView(GameSettings gameSettings, int value) {
         if (ModuleManager.freelook != null && Freelook.perspectiveToggled) {
@@ -139,6 +61,7 @@ public class MixinMinecraft {
         }
     }
 
+    // SlotUpdateEvent on PUTFIELD currentItem — distinct from PreSlotScrollEvent on INVOKE changeCurrentItem. Unique.
     @Redirect(method = "runTick", at = @At(value = "FIELD", target = "Lnet/minecraft/entity/player/InventoryPlayer;currentItem:I", opcode = Opcodes.PUTFIELD))
     private void onSetCurrentItem(InventoryPlayer inventoryPlayer, int slot) {
         SlotUpdateEvent e = new SlotUpdateEvent(slot);
@@ -148,5 +71,17 @@ public class MixinMinecraft {
         }
         inventoryPlayer.currentItem = slot;
     }
+
+    // NOTE: The following were removed — TransformerMinecraft already handles them:
+    // onBeforeGetMouseOver      → transformer beforeMouseOver (RotationHelper.updateServerRotations)
+    // injectBeforeChatVisibility → transformer beforePlayerInteraction (PrePlayerInteractEvent)
+    // onRunTick                 → transformer onRunTick (PreInputEvent)
+    // injectClickMouse          → transformer onClickMouse (PreAttackEvent + ClickMouseEvent)
+    // injectRightClickMouse     → transformer onRightClickMouse (RightClickMouseEvent)
+    // onRunTickStart            → transformer onRunTickHead (GameTickEvent)
+    // onRunTickAfterRightClickDelay → transformer afterRightClickDelay (RightClickDelayTickEvent)
+    // onDisplayGuiScreen        → transformer onDisplayGuiScreen (GuiUpdateEvent)
+    // changeCurrentItem (INVOKE redirect) → transformer changeCurrentItem (PreSlotScrollEvent)
+    // Having both fire the same events caused every event to fire TWICE per tick.
 
 }
