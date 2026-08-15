@@ -46,9 +46,13 @@ public class Events {
         if (event.phase != TickEvent.Phase.END) return;
 
         boolean shiftDown = Keyboard.isKeyDown(KEY_RSHIFT);
-        // Only open if: screen has been open for at least 10 ticks (prevents accidental
-        // triggers from rapidly opening a GUI and immediately pressing shift in-game)
-        if (shiftDown && !prevShiftDown && mc.currentScreen != null && screenOpenTicks >= 10) {
+        // Only open from pre-game screens (main menu, multiplayer list, etc.)
+        // mc.theWorld != null means the player is in a game — never open there.
+        if (shiftDown && !prevShiftDown
+                && mc.theWorld == null
+                && mc.currentScreen != null
+                && !(mc.currentScreen instanceof GuiAccountManager)
+                && screenOpenTicks >= 10) {
             mc.displayGuiScreen(new GuiAccountManager(mc.currentScreen));
         }
         prevShiftDown = shiftDown;
