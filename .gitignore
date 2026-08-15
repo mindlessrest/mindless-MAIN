@@ -1,0 +1,88 @@
+# ---------------------------------------------------------------
+# Java / Gradle (client/)
+# ---------------------------------------------------------------
+*.class
+*.log
+hs_err_pid*
+replay_pid*
+
+client/.gradle/
+client/build/
+client/bin/
+client/run/
+client/.loom-cache/
+
+# ---------------------------------------------------------------
+# C++ / CMake / Ninja (loader/)
+# ---------------------------------------------------------------
+loader/out/
+loader/build/
+loader/cmake-build-*/
+loader/.vs/
+loader/.cache/
+loader/external/
+loader/CMakeCache.txt
+loader/CMakeFiles/
+loader/cmake_install.cmake
+loader/install_manifest.txt
+loader/CTestTestfile.cmake
+loader/_deps/
+loader/.ninja_deps
+loader/.ninja_log
+loader/build.ninja
+loader/build_log*.txt
+
+# Compiled binaries (anywhere)
+*.exe
+*.dll
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.idb
+*.ipdb
+*.iobj
+*.dSYM/
+*.d
+
+# Archives / fat outputs
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# ---------------------------------------------------------------
+# IDEs
+# ---------------------------------------------------------------
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+
+# ---------------------------------------------------------------
+# OS noise
+# ---------------------------------------------------------------
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# ---------------------------------------------------------------
+# Python bytecode
+# ---------------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+
+client/native_build/

@@ -1,0 +1,11 @@
+{
+  "experimental.glass": {
+    "category": "player",
+    "sounds": [
+      "keystrokesmod:experimental/glass1",
+      "keystrokesmod:experimental/glass2",
+      "keystrokesmod:experimental/glass3",
+      "keystrokesmod:experimental/glass4"
+    ]
+  }
+}
