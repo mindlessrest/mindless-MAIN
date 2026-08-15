@@ -24,11 +24,20 @@ public class Events {
     // Right Shift = LWJGL key 54
     private static final int KEY_RSHIFT = Keyboard.KEY_RSHIFT;
     private boolean prevShiftDown = false;
+    private GuiScreen lastScreen = null;
+    private int screenOpenTicks = 0;
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             SessionManager.captureLaunchSession();
+            // Track how long the current screen has been open
+            if (mc.currentScreen != lastScreen) {
+                lastScreen = mc.currentScreen;
+                screenOpenTicks = 0;
+            } else if (mc.currentScreen != null) {
+                screenOpenTicks++;
+            }
         }
     }
 
@@ -36,10 +45,10 @@ public class Events {
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
 
-        // Right Shift — open account manager only when already in a menu screen
-        // (currentScreen == null means the player is in-game with no GUI open)
         boolean shiftDown = Keyboard.isKeyDown(KEY_RSHIFT);
-        if (shiftDown && !prevShiftDown && mc.currentScreen != null) {
+        // Only open if: screen has been open for at least 10 ticks (prevents accidental
+        // triggers from rapidly opening a GUI and immediately pressing shift in-game)
+        if (shiftDown && !prevShiftDown && mc.currentScreen != null && screenOpenTicks >= 10) {
             mc.displayGuiScreen(new GuiAccountManager(mc.currentScreen));
         }
         prevShiftDown = shiftDown;
