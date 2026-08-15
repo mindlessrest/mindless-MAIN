@@ -233,14 +233,25 @@ extends GuiScreen {
                         boolean loginSuccess = CrackedAuth.login(account.getUsername());
                         account.authStatus = loginSuccess ? AccountAuthStatus.AUTHED : AccountAuthStatus.FAILED;
                         notification = loginSuccess ? new Notification(TextFormatting.translate(String.format("&aSuccessful login! (%s)&r", account.getUsername())), 5000L) : new Notification(TextFormatting.translate(String.format("&cFailed to log in! (%s)&r", account.getUsername())), 5000L);
-                        this.updateScreen();
+                        if (loginSuccess) {
+                            this.mc.displayGuiScreen(this.previousScreen);
+                        } else {
+                            this.updateScreen();
+                        }
                         return;
                     }
                     account.authStatus = AccountAuthStatus.WORKING;
                     notification = new Notification(TextFormatting.translate(String.format("&7Fetching your Minecraft profile... (%s)&r", username)), -1L);
                     Account loginAccount = account;
                     this.updateScreen();
-                    this.task = AccountLogin.login(loginAccount, this.executor).whenComplete((ignored, error) -> this.mc.addScheduledTask(this::updateScreen));
+                    this.task = AccountLogin.login(loginAccount, this.executor).whenComplete((ignored, error) ->
+                            this.mc.addScheduledTask(() -> {
+                                if (loginAccount.authStatus == AccountAuthStatus.AUTHED) {
+                                    this.mc.displayGuiScreen(this.previousScreen);
+                                } else {
+                                    this.updateScreen();
+                                }
+                            }));
                     break;
                 }
                 case 1: {
