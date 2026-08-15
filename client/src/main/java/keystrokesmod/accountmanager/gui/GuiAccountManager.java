@@ -1,11 +1,16 @@
 package keystrokesmod.accountmanager.gui;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import keystrokesmod.accountmanager.AccountAuthStatus;
 import keystrokesmod.accountmanager.AccountManager;
+import keystrokesmod.accountmanager.PlayerHeadCache;
 import keystrokesmod.accountmanager.auth.Account;
 import keystrokesmod.accountmanager.auth.AccountLogin;
 import keystrokesmod.accountmanager.auth.AccountType;
@@ -22,6 +27,9 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiSlot;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.Session;
 import org.apache.commons.lang3.StringUtils;
 import org.lwjgl.input.Keyboard;
 
@@ -34,11 +42,14 @@ extends GuiScreen {
     private GuiButton restoreButton = null;
     private GuiButton renameButton = null;
     private GuiButton skinButton = null;
+    private GuiButton deleteInvalidButton = null;
+    private GuiButton pasteTokenButton = null;
     private GuiAccountList guiAccountList = null;
     public static Notification notification = null;
     private int selectedAccount = -1;
     private ExecutorService executor = null;
     private CompletableFuture<Void> task = null;
+    private volatile boolean checkingInvalid = false;
 
     public GuiAccountManager(GuiScreen previousScreen) {
         this.previousScreen = previousScreen;
@@ -67,6 +78,14 @@ extends GuiScreen {
         int col1 = this.width / 2 - (colWidth * 3 + colGap * 2) / 2;
         int col2 = col1 + colWidth + colGap;
         int col3 = col2 + colWidth + colGap;
+        int totalRowWidth = colWidth * 3 + colGap * 2;
+        // New top row — two wider buttons spanning the same total width
+        int wideWidth = (totalRowWidth - colGap) / 2;
+        int newRow = this.height - 76;
+        this.deleteInvalidButton = new GuiButton(7, col1, newRow, wideWidth, 20, "Delete invalid");
+        this.buttonList.add(this.deleteInvalidButton);
+        this.pasteTokenButton = new GuiButton(8, col1 + wideWidth + colGap, newRow, wideWidth, 20, "Paste token");
+        this.buttonList.add(this.pasteTokenButton);
         int row1 = this.height - 52;
         int row2 = this.height - 28;
         this.loginButton = new GuiButton(0, col1, row1, colWidth, 20, "Login");
@@ -80,7 +99,8 @@ extends GuiScreen {
         this.buttonList.add(this.skinButton);
         this.cancelButton = new GuiButton(3, col3, row2, colWidth, 20, "Cancel");
         this.buttonList.add(this.cancelButton);
-        this.guiAccountList = new GuiAccountList(this.mc, row1 - 8);
+        int listBottom = newRow - 8;
+        this.guiAccountList = new GuiAccountList(this.mc, listBottom);
         this.guiAccountList.registerScrollButtons(11, 12);
         this.updateScreen();
     }
@@ -102,10 +122,17 @@ extends GuiScreen {
             }
         }
         if (this.renameButton != null) {
-            boolean bl = this.renameButton.enabled = this.selectedAccount >= 0 && (this.task == null || this.task.isDone());
+            this.renameButton.enabled = this.selectedAccount >= 0 && (this.task == null || this.task.isDone());
         }
         if (this.skinButton != null) {
             this.skinButton.enabled = this.selectedAccount >= 0 && (this.task == null || this.task.isDone());
+        }
+        if (this.deleteInvalidButton != null) {
+            this.deleteInvalidButton.enabled = !checkingInvalid && !AccountManager.accounts.isEmpty()
+                    && (this.task == null || this.task.isDone());
+        }
+        if (this.pasteTokenButton != null) {
+            this.pasteTokenButton.enabled = (this.task == null || this.task.isDone()) && !checkingInvalid;
         }
         this.updateRestoreButtonState();
     }
@@ -190,10 +217,12 @@ extends GuiScreen {
                     String string = username = StringUtils.isBlank((CharSequence)(account = AccountManager.accounts.get(this.selectedAccount)).getUsername()) ? "???" : account.getUsername();
                     if (account.getType() == AccountType.CRACKED) {
                         boolean loginSuccess = CrackedAuth.login(account.getUsername());
+                        account.authStatus = loginSuccess ? AccountAuthStatus.AUTHED : AccountAuthStatus.FAILED;
                         notification = loginSuccess ? new Notification(TextFormatting.translate(String.format("&aSuccessful login! (%s)&r", account.getUsername())), 5000L) : new Notification(TextFormatting.translate(String.format("&cFailed to log in! (%s)&r", account.getUsername())), 5000L);
                         this.updateScreen();
                         return;
                     }
+                    account.authStatus = AccountAuthStatus.WORKING;
                     notification = new Notification(TextFormatting.translate(String.format("&7Fetching your Minecraft profile... (%s)&r", username)), -1L);
                     Account loginAccount = account;
                     this.updateScreen();
@@ -235,6 +264,86 @@ extends GuiScreen {
                 default: {
                     this.guiAccountList.actionPerformed(button);
                 }
+                case 7: {
+                    // Delete invalid — check all non-cracked accounts, remove ones that fail auth
+                    if (AccountManager.accounts.isEmpty() || checkingInvalid) break;
+                    if (this.task != null && !this.task.isDone()) break;
+                    checkingInvalid = true;
+                    this.updateScreen();
+                    List<Account> snapshot = new ArrayList<>(AccountManager.accounts);
+                    Session savedSession = SessionManager.get();
+                    int total = snapshot.size();
+                    notification = new Notification(TextFormatting.translate("&7Checking accounts 0/" + total + "..."), -1L);
+                    new Thread(() -> {
+                        List<Account> invalid = new ArrayList<>();
+                        int checked = 0;
+                        for (Account acc : snapshot) {
+                            if (acc.getType() == AccountType.CRACKED) { checked++; continue; }
+                            acc.authStatus = AccountAuthStatus.WORKING;
+                            final int c = ++checked;
+                            this.mc.addScheduledTask(() -> notification = new Notification(
+                                    TextFormatting.translate("&7Checking " + c + "/" + total + "..."), -1L));
+                            ExecutorService checkExec = Executors.newSingleThreadExecutor();
+                            try {
+                                AccountLogin.login(acc, checkExec).get(20L, TimeUnit.SECONDS);
+                                if (acc.authStatus == AccountAuthStatus.FAILED
+                                        || StringUtils.isBlank(acc.getUsername())) {
+                                    invalid.add(acc);
+                                    acc.authStatus = AccountAuthStatus.FAILED;
+                                }
+                            } catch (Exception e) {
+                                invalid.add(acc);
+                                acc.authStatus = AccountAuthStatus.FAILED;
+                            } finally {
+                                checkExec.shutdownNow();
+                            }
+                            try { Thread.sleep(300L); } catch (InterruptedException ignored) { break; }
+                        }
+                        // Restore original session so we don't accidentally switch accounts
+                        if (savedSession != null) SessionManager.set(savedSession);
+                        AccountManager.accounts.removeAll(invalid);
+                        AccountManager.save();
+                        final int removed = invalid.size();
+                        this.mc.addScheduledTask(() -> {
+                            checkingInvalid = false;
+                            notification = new Notification(
+                                    TextFormatting.translate("&aRemoved " + removed + " invalid account(s)"), 5000L);
+                            this.updateScreen();
+                        });
+                    }, "raven-delete-invalid").start();
+                    break;
+                }
+                case 8: {
+                    // Paste token from clipboard — auto-detect refresh vs access token
+                    String clipboard = GuiScreen.getClipboardString().trim();
+                    if (clipboard.isEmpty()) {
+                        notification = new Notification(TextFormatting.translate("&cClipboard is empty"), 3000L);
+                        break;
+                    }
+                    if (this.task != null && !this.task.isDone()) break;
+                    if (this.executor == null) this.executor = Executors.newSingleThreadExecutor();
+                    // Refresh tokens start with 'M' and are long; everything else treat as access token
+                    boolean isRefresh = clipboard.startsWith("M") && clipboard.length() > 20;
+                    Account newAcc = isRefresh
+                            ? new Account(clipboard, "", "", "", 0L, AccountType.REFRESH)
+                            : new Account("", clipboard, "", "", 0L, AccountType.TOKEN);
+                    newAcc.authStatus = AccountAuthStatus.WORKING;
+                    notification = new Notification(TextFormatting.translate("&7Verifying token..."), -1L);
+                    AccountManager.accounts.add(newAcc);
+                    this.updateScreen();
+                    this.task = AccountLogin.login(newAcc, this.executor).whenComplete((v, err) ->
+                            this.mc.addScheduledTask(() -> {
+                                if (StringUtils.isBlank(newAcc.getUsername())) {
+                                    AccountManager.accounts.remove(newAcc);
+                                    notification = new Notification(
+                                            TextFormatting.translate("&cToken invalid or expired"), 5000L);
+                                } else {
+                                    AccountManager.save();
+                                }
+                                this.updateScreen();
+                            }));
+                    break;
+                }
             }
         }
     }
@@ -242,7 +351,7 @@ extends GuiScreen {
     class GuiAccountList
     extends GuiSlot {
         public GuiAccountList(Minecraft mc, int listBottom) {
-            super(mc, GuiAccountManager.this.width, GuiAccountManager.this.height, 32, listBottom, 16);
+            super(mc, GuiAccountManager.this.width, GuiAccountManager.this.height, 32, listBottom, 36);
         }
 
         protected int getSize() {
@@ -262,7 +371,7 @@ extends GuiScreen {
         }
 
         protected int getContentHeight() {
-            return AccountManager.accounts.size() * 16;
+            return AccountManager.accounts.size() * 36;
         }
 
         protected void elementClicked(int slotIndex, boolean isDoubleClick, int mouseX, int mouseY) {
@@ -277,49 +386,61 @@ extends GuiScreen {
             GuiAccountManager.this.drawDefaultBackground();
         }
 
-        protected void drawSlot(int entryID, int x, int int_4, int k, int mouseXIn, int mouseYIn) {
-            String unban;
-            String accountTypeSuffix;
+        protected void drawSlot(int entryID, int x, int y, int k, int mouseXIn, int mouseYIn) {
             FontRenderer fr = GuiAccountManager.this.fontRendererObj;
             Account account = AccountManager.accounts.get(entryID);
-            String username = account.getUsername();
-            if (StringUtils.isBlank((CharSequence)username)) {
-                username = "&7&l?";
+            String rawUsername = account.getUsername();
+
+            // ── Player head ───────────────────────────────────────────────
+            ResourceLocation head = PlayerHeadCache.get(StringUtils.isBlank(rawUsername) ? null : rawUsername);
+            if (head != null) {
+                GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+                GuiAccountManager.this.mc.getTextureManager().bindTexture(head);
+                Gui.drawScaledCustomSizeModalRect(x + 2, y + 2, 0, 0, 32, 32, 32, 32, 32.0f, 32.0f);
+                GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+            } else {
+                drawRect(x + 2, y + 2, x + 34, y + 34, 0xFF333333);
             }
-            if (SessionManager.get() != null) {
-                if (account.getType() == AccountType.CRACKED && username.equals(SessionManager.get().getUsername())) {
-                    username = String.format("&a&l%s", username);
-                } else if (account.getType() != AccountType.CRACKED && account.getUsername().equals(SessionManager.get().getUsername())) {
-                    username = String.format("&a&l%s", username);
-                }
+
+            int textX = x + 38;
+
+            // ── Username + type ───────────────────────────────────────────
+            String username = StringUtils.isBlank(rawUsername) ? "&7&l?" : rawUsername;
+            if (SessionManager.get() != null && !StringUtils.isBlank(rawUsername)
+                    && rawUsername.equals(SessionManager.get().getUsername())) {
+                username = "&a&l" + rawUsername;
             }
+            String accountTypeSuffix;
             switch (account.getType()) {
-                case CRACKED: {
-                    accountTypeSuffix = " &7(Cracked)";
-                    break;
-                }
-                case COOKIE: {
-                    accountTypeSuffix = " &7(Cookie)";
-                    break;
-                }
-                case REFRESH: {
-                    accountTypeSuffix = " &7(Refresh)";
-                    break;
-                }
-                case TOKEN: {
-                    accountTypeSuffix = " &7(Token)";
-                    break;
-                }
-                default: {
-                    accountTypeSuffix = " &7(Premium)";
-                }
+                case CRACKED:  accountTypeSuffix = " &7(Cracked)";  break;
+                case COOKIE:   accountTypeSuffix = " &7(Cookie)";   break;
+                case REFRESH:  accountTypeSuffix = " &7(Refresh)";  break;
+                case TOKEN:    accountTypeSuffix = " &7(Token)";    break;
+                default:       accountTypeSuffix = " &7(Premium)";  break;
             }
             String translatedUsername = TextFormatting.translate(String.format("&r%s", username));
-            String translatedSuffix = TextFormatting.translate(accountTypeSuffix);
-            GuiAccountManager.this.drawString(fr, translatedUsername, x + 2, int_4 + 2, -1);
-            GuiAccountManager.this.drawString(fr, translatedSuffix, x + 2 + fr.getStringWidth(translatedUsername), int_4 + 2, -1);
+            String translatedSuffix   = TextFormatting.translate(accountTypeSuffix);
+            GuiAccountManager.this.drawString(fr, translatedUsername, textX, y + 3, -1);
+            GuiAccountManager.this.drawString(fr, translatedSuffix, textX + fr.getStringWidth(translatedUsername), y + 3, -1);
+
+            // ── Auth status (second line) ─────────────────────────────────
+            AccountAuthStatus status = account.authStatus;
+            String statusText = null;
+            if (status == AccountAuthStatus.WORKING) {
+                statusText = TextFormatting.translate("&6Logging in...");
+            } else if (status == AccountAuthStatus.FAILED) {
+                statusText = TextFormatting.translate("&cInvalid / Expired");
+            } else if (status == AccountAuthStatus.AUTHED) {
+                statusText = TextFormatting.translate("&aLogged in");
+            }
+            if (statusText != null) {
+                GuiAccountManager.this.drawString(fr, statusText, textX, y + 14, -1);
+            }
+
+            // ── Ban indicator (bottom-right) ──────────────────────────────
             long currentTime = System.currentTimeMillis();
             long unbanTime = account.getUnban();
+            String unban;
             if (unbanTime < 0L) {
                 unban = "&4&l\u26a0";
             } else if (unbanTime <= currentTime) {
@@ -330,12 +451,12 @@ extends GuiScreen {
                 long m = diff / 60000L % 60L;
                 long h = diff / 3600000L % 24L;
                 long d = diff / 86400000L;
-                unban = String.format("%s%s%s%s", d > 0L ? String.format("%dd", d) : "", h > 0L ? String.format(" %dh", h) : "", m > 0L ? String.format(" %dm", m) : "", s > 0L ? String.format(" %ds", s) : "");
-                unban = unban.trim();
-                unban = String.format("%s &c&l\u26a0", unban);
+                String banStr = (d > 0 ? d + "d " : "") + (h > 0 ? h + "h " : "") + (m > 0 ? m + "m " : "") + (s > 0 ? s + "s" : "");
+                unban = banStr.trim() + " &c&l\u26a0";
             }
-            unban = TextFormatting.translate(String.format("&r%s&r", unban));
-            GuiAccountManager.this.drawString(fr, unban, x + this.getListWidth() - 5 - fr.getStringWidth(unban), int_4 + 2, -1);
+            String unbanText = TextFormatting.translate(String.format("&r%s&r", unban));
+            GuiAccountManager.this.drawString(fr, unbanText,
+                    x + getListWidth() - 5 - fr.getStringWidth(unbanText), y + 25, -1);
         }
     }
 }

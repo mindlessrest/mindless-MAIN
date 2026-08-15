@@ -3,6 +3,7 @@ package keystrokesmod.accountmanager.auth;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import keystrokesmod.accountmanager.AccountAuthStatus;
 import keystrokesmod.accountmanager.AccountManager;
 import keystrokesmod.accountmanager.auth.Account;
 import keystrokesmod.accountmanager.auth.AccountType;
@@ -40,6 +41,7 @@ public final class AccountLogin {
         return handledFuture.thenComposeAsync(f -> f, executor)
                 .exceptionally((Throwable error) -> {
                     String message = error.getCause() != null ? error.getCause().getMessage() : error.getMessage();
+                    account.authStatus = AccountAuthStatus.FAILED;
                     GuiAccountManager.notification = new Notification(
                             TextFormatting.translate(String.format("&c%s (%s)&r", message, username)), 5000L);
                     return null;
@@ -125,6 +127,7 @@ public final class AccountLogin {
         account.setUsername(refreshed.getUsername());
         account.setUuid(refreshed.getUuid());
         account.setType(refreshed.getType());
+        account.authStatus = AccountAuthStatus.AUTHED;
         Session session = new Session(refreshed.getUsername(), refreshed.getUuid(), refreshed.getAccessToken(), "mojang");
         SessionManager.set(session);
         AccountManager.save();
@@ -136,6 +139,7 @@ public final class AccountLogin {
         account.setUsername(session.getUsername());
         account.setUuid(session.getPlayerID());
         account.setAccessToken(session.getToken());
+        account.authStatus = AccountAuthStatus.AUTHED;
         SessionManager.set(session);
         AccountManager.save();
     }

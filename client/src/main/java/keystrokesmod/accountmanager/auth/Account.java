@@ -3,6 +3,7 @@ package keystrokesmod.accountmanager.auth;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.Optional;
+import keystrokesmod.accountmanager.AccountAuthStatus;
 import keystrokesmod.accountmanager.auth.AccountType;
 
 public class Account {
@@ -12,6 +13,9 @@ public class Account {
     private String uuid;
     private long unban;
     private AccountType type;
+
+    /** Transient — not persisted. Tracks live login state in the GUI. */
+    public transient AccountAuthStatus authStatus = AccountAuthStatus.NOT_AUTHED;
 
     public Account(String refreshToken, String accessToken, String username, String uuid) {
         this(refreshToken, accessToken, username, uuid, 0L, AccountType.PREMIUM);
