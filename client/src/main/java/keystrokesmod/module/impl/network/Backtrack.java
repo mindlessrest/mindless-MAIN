@@ -46,6 +46,13 @@ public class Backtrack extends Module {
     private long lastDeactivationTime = 0;
     private boolean wasActive = false;
 
+    // Server-position interpolation
+    private static final long POSITION_INTERP_MS = 80L;
+    private static final double POS_EPS = 1.0e-6;
+    private Vec3 positionInterpFrom;
+    private Vec3 positionInterpTo;
+    private long positionInterpStartMs;
+
     public Backtrack() {
         super("Backtrack", category.network);
         this.registerSetting(minDelay = new SliderSetting("Delay min", "ms", 150.0, 0.0, 500.0, 10.0));
@@ -85,6 +92,7 @@ public class Backtrack extends Module {
         target = null;
         targetPos = null;
         currentDelay = 0;
+        clearPositionInterp();
     }
 
     @Override
@@ -101,7 +109,8 @@ public class Backtrack extends Module {
                 if (wasActive) {
                     releaseAll();
                     lastDeactivationTime = System.currentTimeMillis();
-                    wasActive = false;
+        wasActive = false;
+        clearPositionInterp();
                 }
             }
         }
@@ -117,12 +126,29 @@ public class Backtrack extends Module {
         if (mc.isSingleplayer() || !showServerPosition.isToggled()) return;
         if (target == null || targetPos == null || target.isDead || currentDelay <= 0) return;
 
+        long nowMs = System.currentTimeMillis();
+        if (positionInterpTo == null) {
+            positionInterpFrom = targetPos;
+            positionInterpTo = targetPos;
+            positionInterpStartMs = nowMs;
+        } else if (positionChanged(targetPos, positionInterpTo)) {
+            double elapsedProgress = Math.min(1.0D,
+                    (nowMs - positionInterpStartMs) / (double) POSITION_INTERP_MS);
+            positionInterpFrom = lerpVec3(positionInterpFrom, positionInterpTo, elapsedProgress);
+            positionInterpTo = targetPos;
+            positionInterpStartMs = nowMs;
+        }
+
+        double progress = Math.min(1.0D,
+                (nowMs - positionInterpStartMs) / (double) POSITION_INTERP_MS);
+        Vec3 drawPos = lerpVec3(positionInterpFrom, positionInterpTo, progress);
+
         int color = positionColor.getColor();
         TargetHUD targetHUD = ModuleManager.targetHUD;
         if (targetHUD != null && targetHUD.isEspActiveFor(target))
             color = targetHUD.getCurrentEspColor(positionColor.getAlpha()).getRGB();
 
-        RenderUtils.drawPlayerBoundingBox(targetPos, color);
+        RenderUtils.drawPlayerBoundingBox(drawPos, color);
     }
 
     @SubscribeEvent
@@ -216,6 +242,29 @@ public class Backtrack extends Module {
     private void resetWithoutProcessingPackets() {
         packetQueue.clear(); target = null; targetPos = null;
         currentDelay = 0; lastDeactivationTime = 0; wasActive = false;
+        clearPositionInterp();
+    }
+
+    private void clearPositionInterp() {
+        positionInterpFrom = null;
+        positionInterpTo = null;
+        positionInterpStartMs = 0L;
+    }
+
+    private static boolean positionChanged(Vec3 a, Vec3 b) {
+        return Math.abs(a.xCoord - b.xCoord) > POS_EPS
+                || Math.abs(a.yCoord - b.yCoord) > POS_EPS
+                || Math.abs(a.zCoord - b.zCoord) > POS_EPS;
+    }
+
+    private static Vec3 lerpVec3(Vec3 from, Vec3 to, double t) {
+        if (t <= 0.0D) return from;
+        if (t >= 1.0D) return to;
+        return new Vec3(
+                from.xCoord + (to.xCoord - from.xCoord) * t,
+                from.yCoord + (to.yCoord - from.yCoord) * t,
+                from.zCoord + (to.zCoord - from.zCoord) * t
+        );
     }
 
     @SuppressWarnings("unchecked")
