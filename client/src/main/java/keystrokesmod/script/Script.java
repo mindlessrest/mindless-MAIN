@@ -19,6 +19,7 @@ public class Script {
     public String scriptName;
     public String codeStr;
     public boolean error = false;
+    public boolean usesLoadString = false;
     public int STARTING_LINE;
     public ScriptEvents event;
     public File file;

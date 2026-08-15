@@ -1453,9 +1453,19 @@ public class BedESP extends Module {
             case 2: // Rainbow
                 return Utils.mergeAlpha(Utils.getChroma(2L, 0L), color.getAlpha());
             case 3: // Theme
-                return keystrokesmod.utility.Theme.getGradient((int) theme.getInput(), 0);
+                return Utils.mergeAlpha(
+                        Theme.getGradient(getSelectedThemeIndex(), 0.0),
+                        THEME_ALPHA
+                );
             default:
                 return color.getColor();
         }
+    }
+
+    private int getSelectedThemeIndex() {
+        if (theme == null || theme.getOptions().length == 0) {
+            return DEFAULT_THEME_INDEX;
+        }
+        return (int) Math.max(0, Math.min(theme.getOptions().length - 1, theme.getInput()));
     }
 }

@@ -199,10 +199,18 @@ public class ScriptManager {
 
         String source = normalizeLineSeparators(scriptContents.toString());
         List<String> topLevelLines = Utils.getTopLevelLines(source);
+        boolean usesLoadString = false;
         for (String line : topLevelLines) {
             if (line.startsWith("load - \"") && line.endsWith("\"")) {
+                usesLoadString = true;
+                int loadIndex = source.indexOf(line);
+                if (loadIndex != -1) {
+                    source = source.substring(0, loadIndex)
+                            + source.substring(loadIndex + line.length());
+                }
+
                 if (!Manager.enableHttpRequests.isToggled()) {
-                    Utils.sendMessage("&cFailed to load string, http requests are not enabled.");
+                    Utils.sendMessage("&7Blocked &cload string&7 in &b" + scriptName + "&7, http requests are not enabled.");
                     continue;
                 }
                 String url = line.substring("load - \"".length(), line.length() - 1);
@@ -212,17 +220,18 @@ public class ScriptManager {
                 if (externalContents.isEmpty()) {
                     break;
                 }
-                int loadIndex = source.indexOf(line);
+
                 if (loadIndex != -1) {
                     source = source.substring(0, loadIndex)
                             + externalContents
-                            + source.substring(loadIndex + line.length());
+                            + source.substring(loadIndex);
                 }
             }
         }
 
         Script script = new Script(scriptName);
         script.file = file;
+        script.usesLoadString = usesLoadString;
         script.setCode(source);
         script.run();
         Module module = new Module(script);
