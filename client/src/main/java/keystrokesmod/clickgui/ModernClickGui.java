@@ -868,9 +868,17 @@ public final class ModernClickGui extends ClickGui {
             if (inside(mx, my, centerX + 14, y, centerX + centerW - 14, y + MODULE_ROW_HEIGHT)) {
                 float x2 = centerX + centerW - 14;
                 if (module instanceof ProfileModule) {
-                    if (mouseButton == 1) openModule(module);
-                    else if (mx >= x2 - 55 && mx <= x2 - 16) binding = module;
-                    else activateProfile((ProfileModule) module);
+                    if (mouseButton == 1) {
+                        // Right-click = instant update (save current settings to this profile)
+                        updateProfile((ProfileModule) module);
+                    } else if (mx >= x2 - 55 && mx <= x2 - 16) {
+                        binding = module;
+                    } else if (mx >= x2 - 14) {
+                        // > arrow = open settings panel (rename / delete)
+                        openModule(module);
+                    } else {
+                        activateProfile((ProfileModule) module);
+                    }
                 } else if (module instanceof Manager) {
                     openModule(module);
                 } else if (mx >= x2 - 55 && mx <= x2 - 16) {

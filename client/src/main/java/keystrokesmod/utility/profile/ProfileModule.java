@@ -18,18 +18,19 @@ public class ProfileModule extends Module {
         super(name, category.profiles, bind);
         this.profile = profile;
         this.displayName = name;
-        this.registerSetting(profileNameSetting = new TextSetting("Profile name", name, "Type a new profile name...", 32, this::renameProfile));
-        this.registerSetting(new ButtonSetting("Save profile", () -> {
-            Utils.sendMessage("&7Saved profile: &b" + getName());
+        this.registerSetting(new ButtonSetting("Update profile", () -> {
             Raven.profileManager.saveProfile(this.profile);
             saved = true;
+            Utils.sendMessage("&7Updated profile: &b" + getName());
         }));
-        this.registerSetting(new ButtonSetting("Remove profile", () -> {
+        this.registerSetting(profileNameSetting = new TextSetting("Profile name", name, "Type a new name...", 32, this::renameProfile));
+        this.registerSetting(new ButtonSetting("Delete profile", () -> {
             String profileName = getName();
             if (Raven.profileManager.deleteProfile(profileName)) {
-                Utils.sendMessage("&7Removed profile: &b" + profileName);
+                Utils.sendMessage("&7Deleted profile: &b" + profileName);
             }
         }));
+        ignoreOnSave = true;
     }
 
     @Override
