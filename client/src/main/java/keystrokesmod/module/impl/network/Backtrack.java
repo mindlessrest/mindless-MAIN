@@ -49,9 +49,14 @@ public class Backtrack extends Module {
     // Server-position interpolation
     private static final long POSITION_INTERP_MS = 80L;
     private static final double POS_EPS = 1.0e-6;
+    private static final double MOVEMENT_DISTANCE_EPS = 0.001D;
     private Vec3 positionInterpFrom;
     private Vec3 positionInterpTo;
     private long positionInterpStartMs;
+
+    // Direction tracking
+    private Vec3 lastTargetSnapshot = null;
+    private boolean delayingPackets = false;
 
     public Backtrack() {
         super("Backtrack", category.network);
@@ -110,6 +115,8 @@ public class Backtrack extends Module {
                     releaseAll();
                     lastDeactivationTime = System.currentTimeMillis();
         wasActive = false;
+        lastTargetSnapshot = null;
+        delayingPackets = false;
         clearPositionInterp();
                 }
             }
@@ -199,25 +206,45 @@ public class Backtrack extends Module {
 
         if (currentDelay <= 0) return;
 
-        boolean isTargetMove = false;
+        Vec3 nextTargetSnapshot = null;
         if (packet instanceof S14PacketEntity) {
             S14PacketEntity mp = (S14PacketEntity) packet;
             if (AccessorBridge.S14PacketEntity_getEntityId(mp) == target.getEntityId()) {
-                isTargetMove = true;
-                if (targetPos != null) targetPos = targetPos.addVector(mp.func_149062_c() / 32.0D, mp.func_149061_d() / 32.0D, mp.func_149064_e() / 32.0D);
+                Vec3 base = targetPos != null ? targetPos : target.getPositionVector();
+                nextTargetSnapshot = base.addVector(
+                        mp.func_149062_c() / 32.0D,
+                        mp.func_149061_d() / 32.0D,
+                        mp.func_149064_e() / 32.0D
+                );
             }
         }
         if (packet instanceof S18PacketEntityTeleport) {
             S18PacketEntityTeleport tp = (S18PacketEntityTeleport) packet;
             if (tp.getEntityId() == target.getEntityId()) {
-                isTargetMove = true;
-                targetPos = new Vec3(tp.getX() / 32.0D, tp.getY() / 32.0D, tp.getZ() / 32.0D);
+                nextTargetSnapshot = new Vec3(
+                        tp.getX() / 32.0D,
+                        tp.getY() / 32.0D,
+                        tp.getZ() / 32.0D
+                );
             }
         }
 
-        if (!isTargetMove) return;
-        packetQueue.add(new TimedPacket(packet, System.currentTimeMillis()));
-        e.setCanceled(true);
+        if (nextTargetSnapshot == null) return;
+
+        delayingPackets = isMovingAway(lastTargetSnapshot, nextTargetSnapshot);
+        targetPos = nextTargetSnapshot;
+        lastTargetSnapshot = nextTargetSnapshot;
+
+        if (delayingPackets) {
+            packetQueue.add(new TimedPacket(packet, System.currentTimeMillis()));
+            e.setCanceled(true);
+        } else if (!packetQueue.isEmpty()) {
+            // Enemy approaching — flush queued packets immediately
+            while (!packetQueue.isEmpty()) {
+                TimedPacket tp = packetQueue.poll();
+                if (tp != null) processPacket(tp.packet);
+            }
+        }
     }
 
     private void processDelayedPackets() {
@@ -237,6 +264,16 @@ public class Backtrack extends Module {
             if (tp != null) processPacket(tp.packet);
         }
         currentDelay = 0;
+        lastTargetSnapshot = null;
+        delayingPackets = false;
+        clearPositionInterp();
+    }
+
+    private boolean isMovingAway(Vec3 previousSnapshot, Vec3 newSnapshot) {
+        if (previousSnapshot == null || newSnapshot == null || target == null) return false;
+        double prevDist = RotationUtils.distanceFromEyeToClosestOnAABB(target, previousSnapshot);
+        double newDist  = RotationUtils.distanceFromEyeToClosestOnAABB(target, newSnapshot);
+        return newDist > prevDist + MOVEMENT_DISTANCE_EPS;
     }
 
     private void resetWithoutProcessingPackets() {

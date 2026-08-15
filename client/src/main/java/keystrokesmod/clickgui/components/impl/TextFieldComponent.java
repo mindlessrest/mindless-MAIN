@@ -44,7 +44,7 @@ public class TextFieldComponent extends AbstractTextInputComponent {
         }
 
         if (isTextFieldFocused()) {
-            revertToSaved();
+            valueWhenFocused = null;
             setTextFieldFocused(false);
         }
         return false;
