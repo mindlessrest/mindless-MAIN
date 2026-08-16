@@ -91,7 +91,7 @@ public class Scaffold extends Module {
     private int prevHurtTime = -1;
 
     public Scaffold() {
-        super("Scaffold", category.player);
+        super("Clutch", category.player);
         this.registerSetting(reach = new SliderSetting("Reach", " blocks", 4.5, 0.5, 4.5, 0.1));
         this.registerSetting(speed = new SliderSetting("Speed", 8, 0, 100, 1));
         this.registerSetting(snapbackSpeed = new SliderSetting("Snapback Speed", 12, 0, 100, 1));
