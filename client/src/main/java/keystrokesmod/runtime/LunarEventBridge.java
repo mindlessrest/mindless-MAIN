@@ -105,8 +105,8 @@ public final class LunarEventBridge {
     }
 
     /**
-     * Scaffold's block counter historically uses the FML tick bus. Direct
-     * Lunar has no initialized FMLCommonHandler, so share Raven's event bus.
+     * Listeners that want the FML tick bus. Direct Lunar has no initialized
+     * FMLCommonHandler, so share Raven's event bus instead.
      */
     public static void registerTickListener(Object listener) {
         if (DIRECT_LUNAR) MinecraftForge.EVENT_BUS.register(listener);

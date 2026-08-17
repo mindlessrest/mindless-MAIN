@@ -88,6 +88,11 @@ public class ModuleManager {
     public static NoHurtCam noHurtCam;
     public static AutoTool autoTool;
     public static AutoSwap autoSwap;
+    public static Scaffold scaffold;
+    public static TestScaffold testScaffold;
+    public static LBScaffold lbScaffold;
+    public static SpeedScaf speedScaf;
+    public static Tower tower;
     public static Sprint sprint;
     public static Weather weather;
     public static Ambience ambience;
@@ -118,6 +123,7 @@ public class ModuleManager {
 
         this.addModule(new AimAssist());
         this.addModule(antiKnockback = new AntiKnockback());
+        this.addModule(new AutoBow());
         this.addModule(autoClicker = new AutoClicker());
         this.addModule(autoBlock = new Autoblock());
         this.addModule(blockIn = new BlockIn());
@@ -194,7 +200,11 @@ public class ModuleManager {
         this.addModule(new AutoJump());
         this.addModule(autoSwap = new AutoSwap());
         this.addModule(new BridgeAssist());
-        this.addModule(new Scaffold());
+        this.addModule(tower = new Tower());
+        this.addModule(scaffold = new Scaffold());
+        this.addModule(testScaffold = new TestScaffold());
+        this.addModule(lbScaffold = new LBScaffold());
+        this.addModule(speedScaf = new SpeedScaf());
         this.addModule(autoTool = new AutoTool());
         this.addModule(bedAura = new BedAura());
         this.addModule(blink = new Blink());

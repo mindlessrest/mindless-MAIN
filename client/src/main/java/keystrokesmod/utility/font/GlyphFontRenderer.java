@@ -69,7 +69,7 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
 
         int width = 0;
         if (shadow) {
-            width = drawInternal(text, x + 0.5f, y + 0.5f, color, true);
+            width = drawInternal(text, x + 1.0f, y + 1.0f, color, true);
         }
 
         return Math.max(width, drawInternal(text, x, y, color, false));
@@ -83,7 +83,7 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
 
         int width = 0;
         if (shadow) {
-            width = drawGlyphInternal(text, x + 0.5f, y + 0.5f, colorProvider, true);
+            width = drawGlyphInternal(text, x + 1.0f, y + 1.0f, colorProvider, true);
         }
 
         return Math.max(width, drawGlyphInternal(text, x, y, colorProvider, false));

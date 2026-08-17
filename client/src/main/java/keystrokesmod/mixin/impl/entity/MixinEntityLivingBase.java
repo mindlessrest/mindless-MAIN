@@ -67,7 +67,7 @@ public abstract class MixinEntityLivingBase extends Entity {
         float f = MathHelper.wrapAngleTo180_float(p_110146_1_ - this.renderYawOffset);
         this.renderYawOffset += f * 0.3F;
         float f1 = MathHelper.wrapAngleTo180_float(rotationYaw - this.renderYawOffset);
-        boolean flag = f1 < 90.0F || f1 >= 90.0F;
+        boolean flag = f1 < -90.0F || f1 >= 90.0F;
 
         if (f1 < -75.0F) {
             f1 = -75.0F;

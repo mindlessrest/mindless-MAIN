@@ -741,7 +741,7 @@ public class HUD extends Module {
         return Math.max(1, Math.round(basePixels * getSelectedFontScale()));
     }
 
-    private static boolean shouldDrawTextShadow() {
+    public static boolean shouldDrawTextShadow() {
         return textShadow == null || textShadow.isToggled();
     }
 

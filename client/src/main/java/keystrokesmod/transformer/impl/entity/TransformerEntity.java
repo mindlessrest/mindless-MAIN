@@ -61,5 +61,20 @@ public abstract class TransformerEntity {
         return stepHeightEvent.stepHeight;
     }
 
-
+    /**
+     * Lunar-side SafeWalk. MixinEntity gets this with a @ModifyVariable on the
+     * {@code flag} STORE in moveEntity, which classtransform cannot target
+     * reliably. moveEntity computes that flag as
+     * {@code onGround && isSneaking() && this instanceof EntityPlayer} and calls
+     * isSneaking exactly once, so redirecting that single call is equivalent and
+     * does not depend on a local variable slot. The body must not call
+     * isSneaking itself — this method is inlined into moveEntity — so
+     * SafeWalkState reads the sneak flag off the DataWatcher instead.
+     */
+    @CInline
+    @CRedirect(method = "moveEntity",
+            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;isSneaking()Z"))
+    private boolean redirectSafeWalkSneak(Entity instance) {
+        return SafeWalkState.shouldSafeWalk(instance);
+    }
 }

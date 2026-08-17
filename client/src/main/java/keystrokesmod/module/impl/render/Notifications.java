@@ -198,11 +198,23 @@ public class Notifications extends Module {
                     (iconSz - 4) * 0.5f, new Color(dotCol, true));
         }
 
-        // Text
-        float textX = iconX + iconSz + 6.0f;
+        // The card is drawn through the Kawase blur and the SDF rounded-rect shaders, and
+        // neither unbinds its program on the way out. Any shader still bound here would be
+        // applied to every glyph quad, which garbles the text. Drop back to fixed-function
+        // and a known colour before drawing.
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(org.lwjgl.opengl.GL11.GL_SRC_ALPHA, org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+
+        // Text. Snap to whole pixels — the card slides in on a fractional X and the vertical
+        // centering lands on a half pixel, which samples the glyph atlas between texels and
+        // renders the text doubled/smeared. Rounding both axes keeps glyphs on the grid.
         float fontH = font.getFontHeight();
         float block = fontH * 2 + 2.0f;
-        float textY = y + (H - block) * 0.5f;
+        float textX = Math.round(iconX + iconSz + 6.0f);
+        float textY = Math.round(y + (H - block) * 0.5f);
 
         font.drawString(c.title, textX, textY, new Color(230, 230, 235, a).getRGB(), true);
 
@@ -210,7 +222,7 @@ public class Notifications extends Module {
         int statusCol = c.enabled
                 ? new Color(80, 200, 100, (int)(175 * alpha)).getRGB()
                 : new Color(200, 70, 70, (int)(175 * alpha)).getRGB();
-        font.drawString(statusStr, textX, textY + fontH + 2.0f, statusCol, false);
+        font.drawString(statusStr, textX, Math.round(textY + fontH + 2.0f), statusCol, false);
 
         // Progress bar - fully rounded, theme gradient
         long age = now - c.birthMs;

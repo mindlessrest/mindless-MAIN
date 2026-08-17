@@ -107,6 +107,10 @@ public class Raven {
         playerRelationsManager = new PlayerRelationsManager();
         playerRelationsManager.load();
         moduleManager.register();
+        // Scaffold is alwaysOn and Tower is never user-toggleable, so neither is
+        // registered by Module#enable. Both listen on the Forge bus only.
+        MinecraftForge.EVENT_BUS.register(ModuleManager.scaffold);
+        MinecraftForge.EVENT_BUS.register(ModuleManager.tower);
         BlockHighlightSharedHandler blockHighlightHandler = new BlockHighlightSharedHandler();
         MinecraftForge.EVENT_BUS.register(blockHighlightHandler);
         if (!LunarEventBridge.isDirectLunar()) {

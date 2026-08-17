@@ -836,7 +836,7 @@ public class ScriptDefaults {
         }
 
         public boolean isScaffolding() {
-            return false;
+            return ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled();
         }
 
         public boolean isTowering() {

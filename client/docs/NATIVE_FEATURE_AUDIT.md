@@ -67,7 +67,7 @@ paths are present.
 
 ### Player
 
-AntiAFK, AntiFireball, AutoJump, AutoSwap, BridgeAssist, Clutch, AutoTool,
+AntiAFK, AntiFireball, AutoJump, AutoSwap, BridgeAssist, Scaffold, Tower, AutoTool,
 BedAura, Blink, DelayRemover, FastMine, FastPlace, FakeLag, Freecam,
 HideWindow, InvManager, NoFall, NoRotate, SafeWalk, and WaterBucket. Slot
 changes, inventory close/open, block hardness/delay, right click, mouse-over,

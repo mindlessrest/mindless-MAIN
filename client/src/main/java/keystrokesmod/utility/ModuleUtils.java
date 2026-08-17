@@ -27,8 +27,6 @@ public class ModuleUtils implements IMinecraftInstance {
     private long FIREBALL_TIMEOUT = 500L, fireballTime = 0;
     public static int inAirTicks, groundTicks, stillTicks;
     public static int fadeEdge;
-    public static int lastFaceDifference;
-    private int lastFace;
     public static double offsetValue = 0.0000000000201;
     public static boolean isAttacking;
     private int attackingTicks;
@@ -69,19 +67,6 @@ public class ModuleUtils implements IMinecraftInstance {
             }
         }
 
-        if (e.getPacket() instanceof C08PacketPlayerBlockPlacement && Utils.scaffoldDiagonal(false)) {
-            if (((C08PacketPlayerBlockPlacement) e.getPacket()).getPlacedBlockDirection() != 1) {
-                int currentFace = ((C08PacketPlayerBlockPlacement) e.getPacket()).getPlacedBlockDirection();
-
-                if (currentFace == lastFace) {
-                    lastFaceDifference++;
-                }
-                else {
-                    lastFaceDifference = 0;
-                }
-                lastFace = currentFace;
-            }
-        }
     }
 
     @SubscribeEvent
@@ -324,6 +309,5 @@ public class ModuleUtils implements IMinecraftInstance {
             mc.thePlayer.prevRenderArmYaw = mc.thePlayer.rotationYaw;
             mc.thePlayer.renderArmYaw = mc.thePlayer.rotationYaw;
         }
-        // Scaffold fading highlight removed.
     }
 }
