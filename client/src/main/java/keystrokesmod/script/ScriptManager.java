@@ -32,7 +32,7 @@ public class ScriptManager {
     private static final char[] INVALID_SCRIPT_NAME_CHARS = new char[]{'\\', '/', ':', '*', '?', '"', '<', '>', '|'};
     private Minecraft mc = Minecraft.getMinecraft();
     public LinkedHashMap<Script, Module> scripts = new LinkedHashMap<>();
-    public JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+    public JavaCompiler compiler = createCompiler();
     public boolean deleteTempFiles = true;
     public File directory;
     public List<String> imports = Arrays.asList(Color.class.getName(), Collections.class.getName(), List.class.getName(), ArrayList.class.getName(), Arrays.class.getName(), Map.class.getName(), Set.class.getName(), HashMap.class.getName(), HashSet.class.getName(), ConcurrentHashMap.class.getName(), LinkedHashMap.class.getName(), LinkedHashSet.class.getName(), Iterator.class.getName(), Comparator.class.getName(), AtomicInteger.class.getName(), AtomicLong.class.getName(), AtomicBoolean.class.getName(), Random.class.getName(), Matcher.class.getName());
@@ -42,6 +42,19 @@ public class ScriptManager {
 
     public ScriptManager() {
         directory = new File(mc.mcDataDir + File.separator + "keystrokes", "scripts");
+    }
+
+    private static JavaCompiler createCompiler() {
+        JavaCompiler systemCompiler = ToolProvider.getSystemJavaCompiler();
+        if (systemCompiler != null) {
+            return systemCompiler;
+        }
+        try {
+            return new org.eclipse.jdt.internal.compiler.tool.EclipseCompiler();
+        }
+        catch (Throwable ignored) {
+            return null;
+        }
     }
 
     public void onEnable(Script script) {

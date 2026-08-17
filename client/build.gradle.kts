@@ -116,6 +116,9 @@ dependencies {
     }
     shadowImpl("org.java-websocket:Java-WebSocket:1.6.0")
     shadowImpl("net.java.dev.jna:jna:5.14.0")
+    // Lunar may run on a JRE without javax.tools' system compiler. Keep script
+    // compilation available inside the payload instead of requiring launcher Java configuration.
+    shadowImpl("org.eclipse.jdt:ecj:3.24.0")
 
     compileOnly("org.spongepowered:mixin:0.7.11-SNAPSHOT") {
         isTransitive = false

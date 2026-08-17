@@ -216,7 +216,7 @@ public class Notifications extends Module {
         float textX = Math.round(iconX + iconSz + 6.0f);
         float textY = Math.round(y + (H - block) * 0.5f);
 
-        font.drawString(c.title, textX, textY, new Color(230, 230, 235, a).getRGB(), true);
+        font.drawString(c.title, textX, textY, new Color(230, 230, 235, a).getRGB(), false);
 
         String statusStr = c.enabled ? "Enabled" : "Disabled";
         int statusCol = c.enabled

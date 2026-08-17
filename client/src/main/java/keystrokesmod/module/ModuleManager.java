@@ -90,8 +90,6 @@ public class ModuleManager {
     public static AutoSwap autoSwap;
     public static Scaffold scaffold;
     public static TestScaffold testScaffold;
-    public static LBScaffold lbScaffold;
-    public static SpeedScaf speedScaf;
     public static Tower tower;
     public static Sprint sprint;
     public static Weather weather;
@@ -203,8 +201,6 @@ public class ModuleManager {
         this.addModule(tower = new Tower());
         this.addModule(scaffold = new Scaffold());
         this.addModule(testScaffold = new TestScaffold());
-        this.addModule(lbScaffold = new LBScaffold());
-        this.addModule(speedScaf = new SpeedScaf());
         this.addModule(autoTool = new AutoTool());
         this.addModule(bedAura = new BedAura());
         this.addModule(blink = new Blink());
@@ -346,5 +342,4 @@ public class ModuleManager {
         return chatCommands != null && chatCommands.isEnabled();
     }
 }
-
 

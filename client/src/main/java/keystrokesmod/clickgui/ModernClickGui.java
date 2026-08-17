@@ -525,7 +525,7 @@ public final class ModernClickGui extends ClickGui {
         if (open < 0.01f) return;
 
         float x2 = detailX + detailW - 15;
-        float dx1 = x2 - 101, dx2 = x2;
+        float dx1 = x2 - 128, dx2 = x2;
         float rowTop = dropdownAnchorY + 30f; // just below the control
         int n = openDropdown.getOptions().length;
         float fullH = n * 21f + 4f;
@@ -546,6 +546,7 @@ public final class ModernClickGui extends ClickGui {
         // Background
         rounded(dx1, rowTop, dx2, rowTop + fullH, 5f, withAlpha(argb(255, 22, 25, 28), (int)(255 * open)));
         outline(dx1, rowTop, dx2, rowTop + fullH, 5f, withAlpha(BORDER, (int)(255 * open)));
+        resetTextRenderState();
 
         // Options
         float oy = rowTop + 2f;
@@ -557,18 +558,20 @@ public final class ModernClickGui extends ClickGui {
             // Selected row: solid accent bg; hover row: subtle tint
             if (sel) {
                 rounded(dx1 + 2, oy, dx2 - 2, oy + 19, 3f,
-                        withAlpha(ACCENT, (int)(80 * open)));
+                         withAlpha(ACCENT, (int)(80 * open)));
             } else if (rowHp > 0.01f) {
                 rounded(dx1 + 2, oy, dx2 - 2, oy + 19, 3f,
                         withAlpha(ACCENT, (int)(30 * rowHp * open)));
             }
-            int textColor = sel ? ACCENT : mixColor(MUTED, TEXT, rowHp);
-            drawTextVCentered(trim(openDropdown.getOptions()[i], 86, .65f, sel),
+            int textColor = sel ? TEXT : mixColor(MUTED, TEXT, rowHp);
+            resetTextRenderState();
+            drawTextVCentered(trim(openDropdown.getOptions()[i], 112, .68f, sel),
                     dx1 + 10, oy, oy + 19,
                     withAlpha(textColor, (int)(255 * open)),
-                    .65f, sel);
+                    .68f, sel);
             oy += 21f;
         }
+        resetTextRenderState();
         scissor(0, 0, 0, 0, false);
     }
 
@@ -604,14 +607,15 @@ public final class ModernClickGui extends ClickGui {
             SliderSetting slider = (SliderSetting) setting;
             if (slider.isString) {
                 drawTextVCentered(trim(slider.getName(), detailW - 110, .75f, false), x1 + 2, y, y + 30, fa(TEXT, alpha), .75f, false);
-                float dx1 = x2 - 101, dx2 = x2;
+                 float dx1 = x2 - 128, dx2 = x2;
                 float open = animate(dropdownAnimation, slider, openDropdown == slider ? 1f : 0f, 20f);
                 boolean over = inside(mx, my, dx1, y + 3, dx2, y + 27);
                 float hp = animate(hoverAnimation, slider, over ? 1f : 0f, 16f);
-                rounded(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, Math.max(hp * .65f, open * .7f)), alpha));
-                outline(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(BORDER, GOLD, open), alpha));
-                drawTextVCentered(trim(sliderValue(slider), 76, .68f, false), dx1 + 8, y + 3, y + 27, fa(mixColor(MUTED, GOLD, open), alpha), .68f, false);
-                drawChevron(dx2 - 10, y + 15, open, fa(mixColor(MUTED, GOLD, open), alpha));
+                 rounded(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, Math.max(hp * .65f, open * .7f)), alpha));
+                 outline(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(BORDER, GOLD, open), alpha));
+                 resetTextRenderState();
+                 drawTextVCentered(trim(sliderValue(slider), 76, .68f, false), dx1 + 8, y + 3, y + 27, fa(mixColor(MUTED, GOLD, open), alpha), .68f, false);
+                 drawChevron(dx2 - 10, y + 15, open, fa(mixColor(MUTED, GOLD, open), alpha));
                 // Options drawn as floating overlay in drawDropdownOverlay()
                 return;
             }
@@ -905,7 +909,7 @@ public final class ModernClickGui extends ClickGui {
             // Dropdown overlay eats clicks first
             if (openDropdown != null && openDropdown.getOptions() != null) {
                 float x2 = detailX + detailW - 15;
-                float dx1 = x2 - 101, dx2 = x2;
+                float dx1 = x2 - 128, dx2 = x2;
                 float overlayTop = dropdownAnchorY + 30f;
                 float overlayBot = overlayTop + openDropdown.getOptions().length * 21f + 4f;
                 if (inside(mx, my, dx1, overlayTop, dx2, overlayBot)) {
@@ -1789,6 +1793,14 @@ public final class ModernClickGui extends ClickGui {
         RavenFontRenderer renderer = uiFont(bold);
         GL11.glPushMatrix(); GL11.glTranslatef(x, y, 0); GL11.glScalef(scale, scale, 1);
         renderer.drawString(text == null ? "" : text, 0, 0, color, false); GL11.glPopMatrix();
+    }
+
+    private void resetTextRenderState() {
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private float textWidth(String text, float scale, boolean bold) { return uiFont(bold).getStringWidth(text == null ? "" : text) * scale * TEXT_SCALE; }

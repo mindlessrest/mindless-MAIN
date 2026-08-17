@@ -10,6 +10,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLDecoder;
+import java.net.URLClassLoader;
 import java.util.*;
 
 public class Script {
@@ -46,8 +47,14 @@ public class Script {
             final ArrayList<String> compilationOptions = new ArrayList<>();
             compilationOptions.add("-d");
             compilationOptions.add(Raven.scriptManager.COMPILED_DIR);
-            compilationOptions.add("-XDuseUnsharedTable");
-            if (!(boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
+            if (!(Raven.scriptManager.compiler instanceof org.eclipse.jdt.internal.compiler.tool.EclipseCompiler)) {
+                compilationOptions.add("-XDuseUnsharedTable");
+            }
+            if (Raven.scriptManager.compiler instanceof org.eclipse.jdt.internal.compiler.tool.EclipseCompiler) {
+                compilationOptions.add("-classpath");
+                compilationOptions.add(buildRuntimeClasspath());
+            }
+            else if (!(boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
                 compilationOptions.add("-classpath");
                 String s = Raven.scriptManager.jarPath;
                 try {
@@ -81,6 +88,26 @@ public class Script {
             this.error = true;
             return !error;
         }
+    }
+
+    private static String buildRuntimeClasspath() {
+        LinkedHashSet<String> entries = new LinkedHashSet<>();
+        try {
+            if (Launch.classLoader instanceof URLClassLoader) {
+                for (URL url : ((URLClassLoader) Launch.classLoader).getURLs()) {
+                    if ("file".equalsIgnoreCase(url.getProtocol())) {
+                        entries.add(new File(url.toURI()).getAbsolutePath());
+                    }
+                }
+            }
+        }
+        catch (Throwable ignored) {
+        }
+
+        if (Raven.scriptManager.jarPath != null && !Raven.scriptManager.jarPath.isEmpty()) {
+            entries.add(Raven.scriptManager.jarPath);
+        }
+        return String.join(File.pathSeparator, entries);
     }
 
     public int getBoolean(final String s, final Object... array) {

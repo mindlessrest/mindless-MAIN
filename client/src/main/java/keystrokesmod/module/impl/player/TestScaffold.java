@@ -40,6 +40,9 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -100,6 +103,7 @@ public class TestScaffold extends Module {
     private final SliderSetting blocksPerSneak;
     private final ButtonSetting espOutline;
     private final SliderSetting espColor;
+    private final ButtonSetting debugLog;
 
     private final String[] rotationModes = new String[]{
             "None", "Default", "Backwards", "Sideways", "Godbridge", "Smooth", "Hypixel", "Snap", "3FMC", "Snap2"
@@ -173,6 +177,9 @@ public class TestScaffold extends Module {
     private boolean pendSnap = false;
     private boolean pendMulti = false;
     private boolean pendPlace = false;
+    private PrintWriter debugWriter;
+    private int debugTick;
+    private BlockPos lastPlacedBlock;
 
     public TestScaffold() {
         super("TestScaffold", category.player);
@@ -208,6 +215,7 @@ public class TestScaffold extends Module {
         this.registerSetting(blocksPerSneak = new SliderSetting("Blocks per sneak", 1, 1, 5, 1));
         this.registerSetting(espOutline = new ButtonSetting("Outline ESP", false));
         this.registerSetting(espColor = new SliderSetting("Outline color", 0, espColorModes));
+        this.registerSetting(debugLog = new ButtonSetting("Debug log", true));
     }
 
     // ───────────────────────────── lifecycle ─────────────────────────────
@@ -218,10 +226,6 @@ public class TestScaffold extends Module {
         if (ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled()) {
             ModuleManager.scaffold.disable();
             Utils.sendMessage("&eScaffold disabled &7(TestScaffold took over)");
-        }
-        if (ModuleManager.lbScaffold != null && ModuleManager.lbScaffold.isEnabled()) {
-            ModuleManager.lbScaffold.disable();
-            Utils.sendMessage("&eLBScaffold disabled &7(TestScaffold took over)");
         }
         this.lastSlot = mc.thePlayer != null ? mc.thePlayer.inventory.currentItem : -1;
         // Seed the rotation state from where the player is actually looking, otherwise the
@@ -254,6 +258,9 @@ public class TestScaffold extends Module {
         this.lastSnapPlacePitch = Float.NaN;
         this.clearPending();
         this.espHighlight.clear();
+        this.debugTick = 0;
+        this.lastPlacedBlock = null;
+        this.openDebugLog();
     }
 
     @Override
@@ -282,6 +289,16 @@ public class TestScaffold extends Module {
         this.rotatingThisTick = false;
         this.clearPending();
         this.espHighlight.clear();
+        this.closeDebugLog();
+        this.lastPlacedBlock = null;
+    }
+
+    @Override
+    public void guiButtonToggled(ButtonSetting buttonSetting) {
+        if (buttonSetting == debugLog) {
+            if (debugLog.isToggled()) openDebugLog();
+            else closeDebugLog();
+        }
     }
 
     @Override
@@ -313,6 +330,11 @@ public class TestScaffold extends Module {
         if (!Utils.nullCheck()) {
             return;
         }
+        this.debugTick++;
+        this.debug("PRE_MOTION view=" + event.getYaw() + "," + event.getPitch() + " target=" + this.yaw + "," + this.pitch
+                + " sent=" + this.sentYaw + "," + this.sentPitch + " canRotate=" + this.canRotate
+                + " pending=" + this.pendPlace + " ground=" + mc.thePlayer.onGround
+                + " input=" + mc.thePlayer.moveForward + "," + mc.thePlayer.moveStrafing);
         // placedThisTick is reset in onPreUpdate, which owns the placement pass.
         this.rotatingThisTick = false;
         if (this.isClientRotation()) {
@@ -928,6 +950,9 @@ public class TestScaffold extends Module {
         if (!Utils.nullCheck()) {
             return;
         }
+        this.debug("PRE_UPDATE pending=" + this.pendPlace + " target=" + this.pendPos + " face=" + this.pendFacing
+                + " blockCount=" + this.blockCount + " slot=" + mc.thePlayer.inventory.currentItem
+                + " view=" + this.sentYaw + "," + this.sentPitch);
         this.placedThisTick = false;
         this.flushPendingPlacement();
         if (this.safeStuckTicks > 0) {
@@ -1052,12 +1077,23 @@ public class TestScaffold extends Module {
             return;
         }
         if (isHoldingBlock() && this.blockCount > 0) {
-            if (mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld,
-                    mc.thePlayer.inventory.getCurrentItem(), blockPos, enumFacing, vec3)) {
+            BlockPos placedBlock = blockPos.offset(enumFacing);
+            if (this.lastPlacedBlock != null && !BlockUtils.replaceable(this.lastPlacedBlock)) {
+                this.lastPlacedBlock = null;
+            }
+            if (placedBlock.equals(this.lastPlacedBlock)) {
+                this.debug("PLACE_SKIP duplicate target=" + placedBlock);
+                return;
+            }
+            boolean placed = mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld,
+                    mc.thePlayer.inventory.getCurrentItem(), blockPos, enumFacing, vec3);
+            this.debug("PLACE support=" + blockPos + " face=" + enumFacing + " hit=" + vec3 + " result=" + placed);
+            if (placed) {
                 if (mc.playerController.getCurrentGameType() != WorldSettings.GameType.CREATIVE) {
                     this.blockCount--;
                 }
                 this.placedThisTick = true;
+                this.lastPlacedBlock = placedBlock;
                 if (this.isThreeFmcMode()) {
                     this.threeFmcPlaceCooldown = 1;
                 }
@@ -1111,7 +1147,7 @@ public class TestScaffold extends Module {
     }
 
     private EnumFacing getBestFacing(BlockPos blockPos1, BlockPos blockPos3) {
-        double offset = 0.0;
+        double offset = Double.MAX_VALUE;
         EnumFacing enumFacing = null;
         for (EnumFacing facing : EnumFacing.VALUES) {
             if (facing != EnumFacing.DOWN) {
@@ -1478,6 +1514,33 @@ public class TestScaffold extends Module {
 
     private static boolean isHoldingBlock() {
         return isBlock(mc.thePlayer.getHeldItem());
+    }
+
+    private void openDebugLog() {
+        closeDebugLog();
+        if (!debugLog.isToggled()) return;
+        try {
+            File dir = new File(System.getProperty("java.io.tmpdir"), "Mindless");
+            if (!dir.exists()) dir.mkdirs();
+            debugWriter = new PrintWriter(new FileWriter(new File(dir, "testscaffold-debug.log"), false), true);
+            debugWriter.println("=== TestScaffold debug " + new java.util.Date() + " ===");
+        }
+        catch (Exception ignored) {
+            debugWriter = null;
+        }
+    }
+
+    private void closeDebugLog() {
+        if (debugWriter != null) {
+            debugWriter.close();
+            debugWriter = null;
+        }
+    }
+
+    private void debug(String message) {
+        if (debugWriter != null && (debugTick % 5 == 0 || message.startsWith("PLACE"))) {
+            debugWriter.println(System.currentTimeMillis() + " " + message);
+        }
     }
 
     public static class BlockData {
