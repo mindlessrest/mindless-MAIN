@@ -543,10 +543,10 @@ public final class ModernClickGui extends ClickGui {
         // Shadow behind dropdown
         RoundedUtils.drawRoundShadow(dx1 - 1, rowTop, dx2 - dx1 + 2, fullH, 5f, 6f, argb((int)(80 * open), 0, 0, 0));
 
-        // Background — use drawRect to avoid shader coordinate issues with nested GL matrices
+        // Keep dropdown surface aligned with rest of dark ClickGUI palette.
         int bgAlpha = (int)(255 * open);
         net.minecraft.client.gui.Gui.drawRect((int) dx1, (int) rowTop, (int) dx2, (int)(rowTop + fullH),
-                withAlpha(argb(255, 18, 21, 24), bgAlpha));
+                withAlpha(PANEL_ALT, bgAlpha));
         outline(dx1, rowTop, dx2, rowTop + fullH, 5f, withAlpha(BORDER, bgAlpha));
         resetTextRenderState();
 

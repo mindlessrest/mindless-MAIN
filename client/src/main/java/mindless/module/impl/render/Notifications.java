@@ -34,6 +34,8 @@ public class Notifications extends Module {
 
     private final Map<String, Boolean> moduleStates = new HashMap<>();
     private final List<Card> cards = new ArrayList<>();
+    private static final Set<String> SUPPRESSED_SCRIPT_CHANGES = new HashSet<>();
+    private static Notifications instance;
     private long lastCheck = 0L;
 
     public static volatile boolean pendingStartupAlert = false;
@@ -76,13 +78,23 @@ public class Notifications extends Module {
 
     public Notifications() {
         super("Notifications", category.render);
+        instance = this;
         this.registerSetting(duration     = new SliderSetting("Duration", "s", 3.0, 0.5, 8.0, 0.1));
         this.registerSetting(showEnabled  = new ButtonSetting("Show enabled",  true));
         this.registerSetting(showDisabled = new ButtonSetting("Show disabled", true));
     }
 
-    @Override public void onEnable()  { moduleStates.clear(); cards.clear(); for (Module m : ModuleManager.modules) moduleStates.put(m.getName(), m.isEnabled()); }
-    @Override public void onDisable() { moduleStates.clear(); cards.clear(); }
+    @Override public void onEnable()  {
+        moduleStates.clear();
+        cards.clear();
+        synchronized (SUPPRESSED_SCRIPT_CHANGES) { SUPPRESSED_SCRIPT_CHANGES.clear(); }
+        for (Module m : ModuleManager.modules) moduleStates.put(m.getName(), m.isEnabled());
+    }
+    @Override public void onDisable() {
+        moduleStates.clear();
+        cards.clear();
+        synchronized (SUPPRESSED_SCRIPT_CHANGES) { SUPPRESSED_SCRIPT_CHANGES.clear(); }
+    }
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent e) {
@@ -106,9 +118,17 @@ public class Notifications extends Module {
             if (prev == null) { moduleStates.put(name, cur); continue; }
             if (cur != prev) {
                 boolean suppressed = startupFiredAt > 0 && now - startupFiredAt < STARTUP_SUPPRESS_MS;
-                if (!suppressed && ((cur && showEnabled.isToggled()) || (!cur && showDisabled.isToggled())))
+                boolean scriptChange;
+                synchronized (SUPPRESSED_SCRIPT_CHANGES) {
+                    scriptChange = SUPPRESSED_SCRIPT_CHANGES.remove(name);
+                }
+                if (!suppressed && !scriptChange && ((cur && showEnabled.isToggled()) || (!cur && showDisabled.isToggled())))
                     push(name, cur, dur, now);
                 moduleStates.put(name, cur);
+            } else {
+                synchronized (SUPPRESSED_SCRIPT_CHANGES) {
+                    SUPPRESSED_SCRIPT_CHANGES.remove(name);
+                }
             }
         }
 
@@ -122,6 +142,22 @@ public class Notifications extends Module {
         float baseY = sr.getScaledHeight() - MARGIN - H;
         float startY = baseY - cards.size() * (H + GAP);
         cards.add(new Card(title, enabled, now, dur, startY));
+    }
+
+    /** Suppresses one automatic alert caused by a script-controlled module toggle. */
+    public static void suppressScriptChange(String moduleName) {
+        if (moduleName == null) return;
+        synchronized (SUPPRESSED_SCRIPT_CHANGES) {
+            SUPPRESSED_SCRIPT_CHANGES.add(moduleName);
+        }
+    }
+
+    /** Adds an intentional script notification without changing module state. */
+    public static void notifyScript(String title, boolean enabled) {
+        Notifications notifications = instance;
+        if (notifications == null || !notifications.isEnabled() || title == null || title.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        notifications.push(title, enabled, (long) (notifications.duration.getInput() * 1000.0), now);
     }
 
     @SubscribeEvent

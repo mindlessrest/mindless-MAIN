@@ -10,6 +10,7 @@ import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.combat.KillAura;
+import mindless.module.impl.render.Notifications;
 import mindless.module.setting.Setting;
 import mindless.module.setting.impl.*;
 import mindless.script.model.*;
@@ -757,17 +758,21 @@ public class ScriptDefaults {
         }
 
         public void enable(String moduleName) {
-            if (getModule(moduleName) == null) {
+            Module module = getModule(moduleName);
+            if (module == null) {
                 return;
             }
-            getModule(moduleName).enable();
+            if (!module.isEnabled()) Notifications.suppressScriptChange(moduleName);
+            module.enable();
         }
 
         public void disable(String moduleName) {
-            if (getModule(moduleName) == null) {
+            Module module = getModule(moduleName);
+            if (module == null) {
                 return;
             }
-            getModule(moduleName).disable();
+            if (module.isEnabled()) Notifications.suppressScriptChange(moduleName);
+            module.disable();
         }
 
         public boolean isEnabled(String moduleName) {
@@ -1290,6 +1295,34 @@ public class ScriptDefaults {
             }
             catch (IOException ex) {}
             return null;
+        }
+    }
+
+    public static class notifications {
+        private static Module getModule() {
+            return ModuleManager.getModule("Notifications");
+        }
+
+        /** Enables automatic module alerts. */
+        public static void enable() {
+            Module module = getModule();
+            if (module != null) module.enable();
+        }
+
+        /** Disables automatic and manual notification rendering. */
+        public static void disable() {
+            Module module = getModule();
+            if (module != null) module.disable();
+        }
+
+        /** Shows an intentional enabled-style script alert. */
+        public static void notify(String title) {
+            notify(title, true);
+        }
+
+        /** Shows an intentional script alert with enabled/disabled styling. */
+        public static void notify(String title, boolean enabled) {
+            Notifications.notifyScript(title, enabled);
         }
     }
 
