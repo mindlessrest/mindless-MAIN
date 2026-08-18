@@ -26,6 +26,7 @@ public class AutoTool extends Module {
     private final GroupSetting timingGroup;
     private final SliderSetting activationTime;
     private final SliderSetting hoverDelay;
+    private final SliderSetting nextHoverDelay;
 
     private final ButtonSetting ignoredHeldItemsToggle;
     private final ItemListSetting ignoredHeldItems;
@@ -49,6 +50,8 @@ public class AutoTool extends Module {
     private int tickCounter;
     private int leftMouseDownSinceTick = -1;
     private int hoverStartTick = -1;
+    private int nextHoverStartTick = -1;
+    private int nextHoverSlot = -1;
 
     public AutoTool() {
         super("Auto Tool", category.player);
@@ -56,6 +59,7 @@ public class AutoTool extends Module {
         this.registerSetting(timingGroup = new GroupSetting("Timing"));
         this.registerSetting(activationTime = new SliderSetting(timingGroup, "Activation time", "ms", 0.0, 0.0, 1000.0, 25.0));
         this.registerSetting(hoverDelay = new SliderSetting(timingGroup, "Hover delay", "ms", 0.0, 0.0, 1000.0, 25.0));
+        this.registerSetting(nextHoverDelay = new SliderSetting(timingGroup, "Next hover delay", "ms", 0.0, 0.0, 1000.0, 25.0));
 
         this.registerSetting(conditionsGroup = new GroupSetting("Conditions"));
         this.registerSetting(onlyWhileCrouching = new ButtonSetting(conditionsGroup, "Only while crouching", false));
@@ -210,11 +214,22 @@ public class AutoTool extends Module {
 
         if (!hasSwapped) {
             setSlot(slot);
+            resetNextHover();
             return;
         }
 
-        if (slot != mc.thePlayer.inventory.currentItem) {
+        if (slot == mc.thePlayer.inventory.currentItem) {
+            resetNextHover();
+            return;
+        }
+
+        if (nextHoverSlot != slot) {
+            nextHoverSlot = slot;
+            nextHoverStartTick = currentTick;
+        }
+        if (hasElapsed(nextHoverStartTick, nextHoverDelay.getInput(), currentTick)) {
             setSlot(slot);
+            resetNextHover();
         }
     }
 
@@ -231,7 +246,9 @@ public class AutoTool extends Module {
 
     private void updateHoverState(BlockPos hoverPos, int currentTick) {
         if (hoverPos == null) {
-            hoverStartTick = -1;
+        hoverStartTick = -1;
+        nextHoverStartTick = -1;
+        nextHoverSlot = -1;
             return;
         }
 
@@ -315,6 +332,7 @@ public class AutoTool extends Module {
         }
         previousSlot = -1;
         hasSwapped = false;
+        resetNextHover();
     }
 
     private void setSlot(int currentItem) {
@@ -324,5 +342,10 @@ public class AutoTool extends Module {
         mc.thePlayer.inventory.currentItem = currentItem;
         hasSwapped = true;
         AccessorBridge.PlayerControllerMP_callSyncCurrentPlayItem(mc.playerController);
+    }
+
+    private void resetNextHover() {
+        nextHoverStartTick = -1;
+        nextHoverSlot = -1;
     }
 }

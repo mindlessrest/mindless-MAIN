@@ -16,6 +16,8 @@ public class Settings extends Module {
     public static ButtonSetting showHeartSymbol;
 
     public static ButtonSetting weaponAxe;
+    public static ButtonSetting weaponEnchanted;
+    public static ButtonSetting weaponFist;
     public static ButtonSetting weaponHoe;
     public static ButtonSetting weaponRod;
     public static ButtonSetting weaponShovel;
@@ -62,6 +64,8 @@ public class Settings extends Module {
         this.registerSetting(showHeartSymbol = new ButtonSetting("Show heart symbol", false));
         this.registerSetting(new DescriptionSetting("Extra weapons"));
         this.registerSetting(weaponAxe = new ButtonSetting("Axe", false));
+        this.registerSetting(weaponEnchanted = new ButtonSetting("Enchanted", false));
+        this.registerSetting(weaponFist = new ButtonSetting("Fist", false));
         this.registerSetting(weaponHoe = new ButtonSetting("Hoe", false));
         this.registerSetting(weaponRod = new ButtonSetting("Rod", false));
         this.registerSetting(weaponShovel = new ButtonSetting("Shovel", false));

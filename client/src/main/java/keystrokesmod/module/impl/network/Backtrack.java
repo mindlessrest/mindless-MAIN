@@ -167,7 +167,7 @@ public class Backtrack extends Module {
         if (!(e.target instanceof EntityPlayer)) return;
 
         EntityPlayer attacked = (EntityPlayer) e.target;
-        if (AntiBot.isBot(attacked) || (Utils.isTeammate(attacked) && ignoreTeammates.isToggled())) return;
+        if (AntiBot.isBot(attacked) || (Utils.isTeammate(attacked) && ignoreTeammates.isToggled()) || Utils.isFriended(attacked)) return;
 
         double distance = mc.thePlayer.getDistanceToEntity(attacked);
         if (distance > maxDistance.getInput() || distance < minDistance.getInput()) return;

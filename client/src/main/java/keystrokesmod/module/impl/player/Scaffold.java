@@ -132,6 +132,10 @@ public class Scaffold extends Module {
             ModuleManager.testScaffold.disable();
             Utils.sendMessage("&eTestScaffold disabled &7(Scaffold took over)");
         }
+        if (ModuleManager.myauScaff != null && ModuleManager.myauScaff.isEnabled()) {
+            ModuleManager.myauScaff.disable();
+            Utils.sendMessage("&eMyauScaff disabled &7(Scaffold took over)");
+        }
         lastSlot.set(mc.thePlayer == null ? -1 : mc.thePlayer.inventory.currentItem);
         silentReturnSlot = -1;
         blockCount = -1;

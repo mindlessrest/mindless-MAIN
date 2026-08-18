@@ -1509,10 +1509,10 @@ public class Utils implements IMinecraftInstance {
 
     public static boolean holdingWeapon(EntityLivingBase entityLivingBase) {
         if (entityLivingBase.getHeldItem() == null) {
-            return false;
+            return Settings.weaponFist.isToggled();
         }
         Item getItem = entityLivingBase.getHeldItem().getItem();
-        return getItem instanceof ItemSword || (Settings.weaponAxe.isToggled() && getItem instanceof ItemAxe) || (Settings.weaponRod.isToggled() && getItem instanceof ItemFishingRod) || (Settings.weaponStick.isToggled() && getItem == Items.stick) || (Settings.weaponHoe.isToggled() && getItem instanceof ItemHoe) || (Settings.weaponShovel.isToggled() && getItem instanceof ItemSpade);
+        return getItem instanceof ItemSword || (Settings.weaponAxe.isToggled() && getItem instanceof ItemAxe) || (Settings.weaponRod.isToggled() && getItem instanceof ItemFishingRod) || (Settings.weaponStick.isToggled() && getItem == Items.stick) || (Settings.weaponHoe.isToggled() && getItem instanceof ItemHoe) || (Settings.weaponShovel.isToggled() && getItem instanceof ItemSpade) || (Settings.weaponEnchanted.isToggled() && entityLivingBase.getHeldItem().isItemEnchanted());
     }
 
     public static boolean holdingSword() {
