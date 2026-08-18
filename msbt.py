@@ -186,6 +186,19 @@ def install_script(jar_path, script_directory):
     shutil.copy2(jar_path, destination)
     return destination
 
+def cleanup_script_files(java_file, jar_path, installed_path):
+    """Remove source/build staging files without deleting installed script jar."""
+    installed_abs = os.path.abspath(installed_path)
+    for path in (java_file, jar_path):
+        if not path or os.path.abspath(path) == installed_abs:
+            continue
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+                log_ok(f"cleaned: {G}{path}{RST}")
+        except OSError as exc:
+            log_warn(f"could not clean {path}: {exc}")
+
 def compile_script(java_file, jdk_path, msa_path):
     script_name = os.path.splitext(os.path.basename(java_file))[0]
     log_step(f"Compiling: {C}{script_name}.java{RST}")
@@ -323,6 +336,7 @@ def main():
             try:
                 installed = install_script(jar, script_directory)
                 log_ok(f"installed: {G}{installed}{RST}")
+                cleanup_script_files(java_file, jar, installed)
             except OSError as exc:
                 log_fail(f"could not install {os.path.basename(jar)}: {exc}")
                 jar = None
