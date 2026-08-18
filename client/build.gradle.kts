@@ -267,12 +267,10 @@ val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
     from(sourceSets.main.get().output) {
         include("keystrokesmod/script/**")
         include("keystrokesmod/module/Module.class")
+        include("keystrokesmod/module/Module\$*.class")
         include("keystrokesmod/module/ModuleManager.class")
         include("keystrokesmod/module/setting/**")
-        include("keystrokesmod/utility/Utils.class")
-        include("keystrokesmod/utility/RotationUtils.class")
-        include("keystrokesmod/utility/BlockUtils.class")
-        include("keystrokesmod/utility/RenderUtils.class")
+        include("keystrokesmod/utility/**")
         include("keystrokesmod/event/**")
         include("keystrokesmod/Raven.class")
     }
