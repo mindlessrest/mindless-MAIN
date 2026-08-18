@@ -12,7 +12,7 @@ import keystrokesmod.module.setting.impl.SliderSetting;
 import keystrokesmod.runtime.ItemRendererState;
 import keystrokesmod.runtime.LunarEventBridge;
 import keystrokesmod.script.ScriptDefaults;
-import keystrokesmod.script.model.SimulatedPlayer;
+import keystrokesmod.script.model.Simulation;
 import keystrokesmod.utility.BlockUtils;
 import keystrokesmod.utility.ScaffoldBlockCount;
 import keystrokesmod.utility.Utils;
@@ -93,6 +93,7 @@ public class Scaffold extends Module {
     private int rotationTick;
     private int startY;
     private boolean keepYLocked;
+    private boolean forcedSneak;
     private boolean rotationInitialized;
     private boolean canRotate;
     private boolean legitSneaking;
@@ -138,6 +139,7 @@ public class Scaffold extends Module {
         rotationTick = 3;
         startY = 256;
         keepYLocked = false;
+        forcedSneak = false;
         rotationInitialized = false;
         canRotate = false;
         currentYaw = 0.0F;
@@ -181,12 +183,14 @@ public class Scaffold extends Module {
         if (mc.thePlayer != null) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), false);
             mc.thePlayer.setSneaking(false);
+            mc.thePlayer.movementInput.sneak = false;
             mc.thePlayer.setSprinting(false);
         }
         silentReturnSlot = -1;
         canRotate = false;
         rotationInitialized = false;
         keepYLocked = false;
+        forcedSneak = false;
         legitSneaking = false;
         legitUnsneakAt = 0L;
         hasSwapped = false;
@@ -209,25 +213,35 @@ public class Scaffold extends Module {
         updateKeepY();
         updateBlockCount();
         debugTick++;
-        debug("PRE_UPDATE engage=" + shouldEngage() + " input=" + mc.thePlayer.moveForward + "," + mc.thePlayer.moveStrafing
+        debug("PRE_UPDATE input=" + mc.thePlayer.moveForward + "," + mc.thePlayer.moveStrafing
                 + " pos=" + mc.thePlayer.posX + "," + mc.thePlayer.posY + "," + mc.thePlayer.posZ
                 + " ground=" + mc.thePlayer.onGround + " slot=" + mc.thePlayer.inventory.currentItem
                 + " blocks=" + blockCount + " rotTick=" + rotationTick);
-        ScriptDefaults.bridge.add("ScaffoldRunning", getName());
-        if (!shouldEngage()) {
-            hasSwapped = false;
+        if (mc.currentScreen != null) {
+            setForcedSneak(false);
             canRotate = false;
             rotationInitialized = false;
-            disableMovementFix();
+            returnSilentSlot();
+            ScriptDefaults.bridge.add("ScaffoldRunning", getName());
             return;
         }
+        blockCount = isBlockStack(mc.thePlayer.getHeldItem()) ? mc.thePlayer.getHeldItem().stackSize : 0;
+        ScriptDefaults.bridge.add("ScaffoldRunning", getName());
         if (!selectBlock()) return;
         hasSwapped = true;
+        updateRotation();
+        setForcedSneak(!isLegitMode() && safeWalk.isToggled() && mc.thePlayer.onGround
+                && !mc.gameSettings.keyBindSprint.isKeyDown());
     }
 
     @SubscribeEvent
     public void onPostMotion(PostMotionEvent event) {
-        if (!moduleEnabled || !Utils.nullCheck() || !hasSwapped) return;
+        if (!moduleEnabled || !Utils.nullCheck()) return;
+        if (mc.currentScreen != null) {
+            returnSilentSlot();
+            return;
+        }
+        if (!hasSwapped) return;
         if (rotationTick <= 0 && KillAuraFree()) {
             placeBlocks();
         }
@@ -240,12 +254,6 @@ public class Scaffold extends Module {
     @SubscribeEvent
     public void onPreMotion(PreMotionEvent event) {
         if (!moduleEnabled || !Utils.nullCheck()) return;
-        if (!shouldEngage()) {
-            canRotate = false;
-            rotationInitialized = false;
-            disableMovementFix();
-            return;
-        }
         if (isHoldBlocksMode() && !hasHeldBlocks()) {
             canRotate = false;
             rotationInitialized = false;
@@ -253,7 +261,6 @@ public class Scaffold extends Module {
             disableMovementFix();
             return;
         }
-        updateRotation();
         debug("PRE_MOTION view=" + event.getYaw() + "," + event.getPitch() + " spoof=" + currentYaw + "," + currentPitch
                 + " canRotate=" + canRotate + " applied=" + (canRotate && rotationTick <= 0));
         if (!moveFix.isToggled()) disableMovementFix();
@@ -268,7 +275,10 @@ public class Scaffold extends Module {
         if (isTellyMode() && mc.thePlayer.onGround && (Math.abs(event.getForward()) > 0.01F || Math.abs(event.getStrafe()) > 0.01F)) {
             event.setJump(true);
         }
-        if (isLegitMode()) updateEagle(event);
+        if (isLegitMode()) {
+            setForcedSneak(false);
+            updateEagle(event);
+        }
     }
 
     @SubscribeEvent
@@ -285,6 +295,7 @@ public class Scaffold extends Module {
             legitSneaking = false;
             legitUnsneakAt = 0L;
             disableMovementFix();
+            setForcedSneak(false);
         }
     }
 
@@ -300,6 +311,7 @@ public class Scaffold extends Module {
         legitSneaking = false;
         legitUnsneakAt = 0L;
         disableMovementFix();
+        setForcedSneak(false);
         ScriptDefaults.bridge.remove("ScaffoldRunning");
     }
 
@@ -373,7 +385,8 @@ public class Scaffold extends Module {
             legitYawOffset = legitPitchOffset = 0.0F;
         }
 
-        float targetYaw = quantize(getMovementTargetYaw() + (isLegitMode() ? legitYawSide * 45.0F + legitYawOffset : 0.0F));
+        float targetYaw = quantize(mc.thePlayer.rotationYaw + 180.0F
+                + (isLegitMode() ? legitYawSide * 45.0F + legitYawOffset : 0.0F));
         float targetPitch = isLegitMode() ? clamp(78.0F + legitPitchOffset, 70.0F, 84.0F) : 85.0F;
         canRotate = true;
         if (!rotationInitialized) {
@@ -399,27 +412,36 @@ public class Scaffold extends Module {
             event.setSneak(false);
             return;
         }
-        net.minecraft.util.MovementInput input = new net.minecraft.util.MovementInput();
-        input.moveForward = event.getForward();
-        input.moveStrafe = event.getStrafe();
-        input.jump = event.isJump();
-        input.sneak = event.isSneak();
-        SimulatedPlayer simulation = SimulatedPlayer.fromClientPlayer(input);
-        simulation.tick();
-        keystrokesmod.script.model.Vec3 simulatedPos = simulation.getPos();
-        double edgeOffset = computeEagleEdgeOffset(new Vec3(simulatedPos.x, simulatedPos.y, simulatedPos.z),
-                new Vec3(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ));
-        boolean shouldSneak = !Double.isNaN(edgeOffset) && edgeOffset > 0.0D;
+        Simulation simulation;
+        try {
+            simulation = Simulation.create();
+            if (mc.thePlayer.movementInput.sneak) {
+                simulation.setForward(event.getForward() / 0.3F);
+                simulation.setStrafe(event.getStrafe() / 0.3F);
+                simulation.setSneak(false);
+            }
+            else {
+                simulation.setForward(event.getForward());
+                simulation.setStrafe(event.getStrafe());
+            }
+            simulation.tick();
+        }
+        catch (Exception ignored) {
+            legitSneaking = false;
+            legitUnsneakAt = 0L;
+            event.setSneak(false);
+            return;
+        }
+        keystrokesmod.script.model.Vec3 simulatedPos = simulation.getPosition();
+        boolean shouldSneak = predictedFootprintHasGap(simulatedPos);
         if (shouldSneak) {
             legitSneaking = true;
             legitUnsneakAt = 0L;
             event.setSneak(true);
-            event.setSneakSlowDownMultiplier(1.0D);
         } else if (legitSneaking) {
             if (legitUnsneakAt == 0L) legitUnsneakAt = System.currentTimeMillis() + (long) legitSneakDelay.getInput();
             if (System.currentTimeMillis() < legitUnsneakAt) {
                 event.setSneak(true);
-                event.setSneakSlowDownMultiplier(1.0D);
             }
             else {
                 legitSneaking = false;
@@ -431,23 +453,17 @@ public class Scaffold extends Module {
         }
     }
 
-    private double computeEagleEdgeOffset(Vec3 predicted, Vec3 current) {
-        double best = Double.NaN;
+    private boolean predictedFootprintHasGap(keystrokesmod.script.model.Vec3 predicted) {
+        int floorY = MathHelper.floor_double(predicted.y - 0.01D);
         double[][] corners = {{-0.3D, -0.3D}, {0.3D, -0.3D}, {-0.3D, 0.3D}, {0.3D, 0.3D}};
-        int floorY = MathHelper.floor_double(predicted.yCoord - 0.01D);
         for (double[] corner : corners) {
-            int blockX = MathHelper.floor_double(current.xCoord + corner[0]);
-            int blockZ = MathHelper.floor_double(current.zCoord + corner[1]);
-            if (isSourceReplaceable(new BlockPos(blockX, floorY, blockZ))) continue;
-
-            double edgeX = Math.abs(predicted.xCoord - (blockX + (predicted.xCoord < blockX + 0.5D ? 0.0D : 1.0D)));
-            double edgeZ = Math.abs(predicted.zCoord - (blockZ + (predicted.zCoord < blockZ + 0.5D ? 0.0D : 1.0D)));
-            boolean xDiff = MathHelper.floor_double(predicted.xCoord) != blockX;
-            boolean zDiff = MathHelper.floor_double(predicted.zCoord) != blockZ;
-            double cornerDistance = xDiff ? (zDiff ? Math.max(edgeX, edgeZ) : edgeX) : (zDiff ? edgeZ : 0.0D);
-            best = Double.isNaN(best) ? cornerDistance : Math.min(best, cornerDistance);
+            if (isSourceReplaceable(new BlockPos(
+                    MathHelper.floor_double(predicted.x + corner[0]), floorY,
+                    MathHelper.floor_double(predicted.z + corner[1])))) {
+                return true;
+            }
         }
-        return best;
+        return false;
     }
 
     private void placeBlocks() {
@@ -602,25 +618,28 @@ public class Scaffold extends Module {
     private boolean isLegitMode() { return ((int) mode.getInput()) == 2; }
     private boolean isHoldBlocksMode() { return ((int) itemSwitch.getInput()) == 3; }
 
-    private boolean shouldEngage() {
-        if (!Utils.nullCheck() || mc.currentScreen != null) return false;
-        return Utils.isMoving() || !mc.thePlayer.onGround && mc.thePlayer.motionY <= 0.2D || Utils.isEdgeOfBlock();
-    }
-
-    private float getMovementTargetYaw() {
-        float movementYaw = mc.thePlayer.rotationYaw;
-        if (mc.thePlayer.moveForward != 0.0F || mc.thePlayer.moveStrafing != 0.0F) {
-            movementYaw += (float) Math.toDegrees(Math.atan2(-mc.thePlayer.moveStrafing, mc.thePlayer.moveForward));
-        }
-        return movementYaw + 180.0F;
-    }
-
     private void enableMovementFix() {
         if (ModuleManager.movementFix != null && !ModuleManager.movementFix.isEnabled()) ModuleManager.movementFix.enable();
     }
 
     private void disableMovementFix() {
         // Movement Fix is shared and enabled by ModuleManager for all silent rotations.
+    }
+
+    private void setForcedSneak(boolean enabled) {
+        if (forcedSneak == enabled) return;
+        if (mc.thePlayer != null && mc.thePlayer.movementInput != null) {
+            mc.thePlayer.movementInput.sneak = enabled;
+        }
+        forcedSneak = enabled;
+    }
+
+    private void returnSilentSlot() {
+        if (silentReturnSlot == -1) return;
+        if (mc.thePlayer != null) {
+            mc.thePlayer.inventory.currentItem = silentReturnSlot;
+        }
+        silentReturnSlot = -1;
     }
 
     private void openDebugLog() {
