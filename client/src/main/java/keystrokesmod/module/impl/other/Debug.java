@@ -96,7 +96,8 @@ public class Debug extends Module {
         IBlockState state = mc.theWorld.getBlockState(pos);
         mc.fontRendererObj.drawStringWithShadow("\u00a77BlockPos: \u00a7b" + pos.getX() + "\u00a77, \u00a7b" + pos.getY() + "\u00a77, \u00a7b" + pos.getZ(), 30, 20, -1);
         mc.fontRendererObj.drawStringWithShadow("\u00a77Unlocalized Name: \u00a7b" + block.getUnlocalizedName(), 30, 30, -1);
-        mc.fontRendererObj.drawStringWithShadow("\u00a77Registry Name: \u00a7b" + block.getRegistryName(), 30, 40, -1);
+        net.minecraft.util.ResourceLocation regLoc = (net.minecraft.util.ResourceLocation) net.minecraft.block.Block.blockRegistry.getNameForObject(block);
+        mc.fontRendererObj.drawStringWithShadow("\u00a77Registry Name: \u00a7b" + (regLoc != null ? regLoc.toString() : "unknown"), 30, 40, -1);
 
         int y = 50;
         for (IProperty<?> property : block.getBlockState().getProperties()) {

@@ -15,6 +15,10 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public class ViewPackets extends Module {
+    private static String getItemRegName(net.minecraft.item.Item item) {
+        net.minecraft.util.ResourceLocation loc = (net.minecraft.util.ResourceLocation) net.minecraft.item.Item.itemRegistry.getNameForObject(item);
+        return loc != null ? loc.getResourcePath() : "unknown";
+    }
     private ButtonSetting includeCancelled;
     private ButtonSetting singlePlayer;
     private ButtonSetting sent;
@@ -134,7 +138,7 @@ public class ViewPackets extends Module {
         }
         else if (packet instanceof C08PacketPlayerBlockPlacement) {
             C08PacketPlayerBlockPlacement c08PacketPlayerBlockPlacement = (C08PacketPlayerBlockPlacement)packet;
-            String string2 = s + "\n&7Item: &b" + ((c08PacketPlayerBlockPlacement.getStack() == null) ? "null" : c08PacketPlayerBlockPlacement.getStack().getItem().getRegistryName().replace("minecraft:", "")) + "\n&7Direction: &b" + c08PacketPlayerBlockPlacement.getPlacedBlockDirection();
+            String string2 = s + "\n&7Item: &b" + ((c08PacketPlayerBlockPlacement.getStack() == null) ? "null" : getItemRegName(c08PacketPlayerBlockPlacement.getStack().getItem())) + "\n&7Direction: &b" + c08PacketPlayerBlockPlacement.getPlacedBlockDirection();
             BlockPos getPosition = c08PacketPlayerBlockPlacement.getPosition();
             s = string2 + "\n&7Position: &b" + getPosition.getX() + "&7, &b" + getPosition.getY() + "&7, &b" + getPosition.getZ() + "\n&7Offset: &b" + round((double)c08PacketPlayerBlockPlacement.getPlacedBlockOffsetX()) + "&7, &b" + round((double)c08PacketPlayerBlockPlacement.getPlacedBlockOffsetY()) + "&7, &b" + round(c08PacketPlayerBlockPlacement.getPlacedBlockOffsetZ());
         }
@@ -167,11 +171,11 @@ public class ViewPackets extends Module {
             s = s + "\n&7Status: &b" + ((C16PacketClientStatus)packet).getStatus().name();
         }
         else if (packet instanceof C10PacketCreativeInventoryAction) {
-            s = s + "\n&7Slot: &b" + ((C10PacketCreativeInventoryAction)packet).getSlotId() + "\n&7Item: &b" + ((((C10PacketCreativeInventoryAction)packet).getStack() == null) ? "null" : ((C10PacketCreativeInventoryAction)packet).getStack().getItem().getRegistryName().replace("minecraft:", ""));
+            s = s + "\n&7Slot: &b" + ((C10PacketCreativeInventoryAction)packet).getSlotId() + "\n&7Item: &b" + ((((C10PacketCreativeInventoryAction)packet).getStack() == null) ? "null" : getItemRegName(((C10PacketCreativeInventoryAction)packet).getStack().getItem()));
         }
         else if (packet instanceof C0EPacketClickWindow) {
             C0EPacketClickWindow c0EPacketClickWindow = (C0EPacketClickWindow)packet;
-            s = s + "\n&7Window: &b" + c0EPacketClickWindow.getWindowId() + "\n&7Slot: &b" + c0EPacketClickWindow.getSlotId() + "\n&7Button: &b" + c0EPacketClickWindow.getUsedButton() + "\n&7Action: &b" + c0EPacketClickWindow.getActionNumber() + "\n&7Mode: &b" + c0EPacketClickWindow.getMode() + "\n&7Item: &b" + ((c0EPacketClickWindow.getClickedItem() == null) ? "null" : c0EPacketClickWindow.getClickedItem().getItem().getRegistryName().replace("minecraft:", ""));
+            s = s + "\n&7Window: &b" + c0EPacketClickWindow.getWindowId() + "\n&7Slot: &b" + c0EPacketClickWindow.getSlotId() + "\n&7Button: &b" + c0EPacketClickWindow.getUsedButton() + "\n&7Action: &b" + c0EPacketClickWindow.getActionNumber() + "\n&7Mode: &b" + c0EPacketClickWindow.getMode() + "\n&7Item: &b" + ((c0EPacketClickWindow.getClickedItem() == null) ? "null" : getItemRegName(c0EPacketClickWindow.getClickedItem().getItem()));
         }
         else if (packet instanceof C0FPacketConfirmTransaction) {
             s = s + "\n&7Window: &b" + ((C0FPacketConfirmTransaction)packet).getWindowId() + "\n&7Uid: &b" + ((C0FPacketConfirmTransaction)packet).getUid();

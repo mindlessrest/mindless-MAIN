@@ -230,7 +230,8 @@ public class Entity {
 
     public String getName() {
         if (entity instanceof EntityItem) {
-            return ((EntityItem) entity).getEntityItem().getItem().getRegistryName().substring(10);
+            net.minecraft.util.ResourceLocation loc = (net.minecraft.util.ResourceLocation) net.minecraft.item.Item.itemRegistry.getNameForObject(((EntityItem) entity).getEntityItem().getItem());
+            return loc != null ? loc.getResourcePath() : "unknown";
         }
         return entity.getName();
     }

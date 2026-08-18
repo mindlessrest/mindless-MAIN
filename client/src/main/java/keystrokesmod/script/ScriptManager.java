@@ -42,7 +42,6 @@ public class ScriptManager {
 
     public ScriptManager() {
         directory = new File(mc.mcDataDir + File.separator + "keystrokes", "scripts");
-        dumpMinecraftClassesJar();
     }
 
     /** Path to dumped MC classes jar for ECJ classpath */
