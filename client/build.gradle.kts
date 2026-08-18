@@ -247,6 +247,53 @@ val lunarPayloadJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
 
 tasks.assemble.get().dependsOn(tasks.remapJar)
 
+// ---------------------------------------------------------------------------
+// MSA (Mindless Scripting API) — stub jar for offline script compilation.
+// Contains all net.minecraft.*, net.minecraftforge.*, and keystrokesmod.script.*
+// classes so scripts can compile without the game running.
+// ---------------------------------------------------------------------------
+
+val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
+    group = "build"
+    description = "Builds msa.jar (Mindless Scripting API) for offline script compilation."
+    dependsOn(tasks.named("compileJava"))
+    archiveBaseName.set("msa")
+    archiveVersion.set("")
+    archiveClassifier.set("")
+    destinationDirectory.set(layout.buildDirectory.dir("libs"))
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    // Our scripting API classes
+    from(sourceSets.main.get().output) {
+        include("keystrokesmod/script/**")
+        include("keystrokesmod/module/Module.class")
+        include("keystrokesmod/module/ModuleManager.class")
+        include("keystrokesmod/module/setting/**")
+        include("keystrokesmod/utility/Utils.class")
+        include("keystrokesmod/utility/RotationUtils.class")
+        include("keystrokesmod/utility/BlockUtils.class")
+        include("keystrokesmod/utility/RenderUtils.class")
+        include("keystrokesmod/event/**")
+        include("keystrokesmod/Raven.class")
+    }
+
+    // Minecraft + Forge classes from loom's mapped jar
+    from({ zipTree(forgeMappedJar.get()) }) {
+        include("net/minecraft/**")
+        include("net/minecraftforge/**")
+    }
+
+    // Minecraft mapped classes from the actual MC jar on compileClasspath
+    from({
+        val mcJar = configurations.named("minecraftNamed").get().files.firstOrNull()
+        if (mcJar != null) zipTree(mcJar) else files()
+    }) {
+        include("net/minecraft/**")
+    }
+}
+
+tasks.assemble.get().dependsOn(msaJar)
+
 tasks.withType(JavaCompile::class) {
     options.encoding = "UTF-8"
 }

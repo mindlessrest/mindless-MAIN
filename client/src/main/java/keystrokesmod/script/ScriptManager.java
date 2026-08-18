@@ -697,6 +697,17 @@ public class ScriptManager {
                         parseFile(scriptFile);
                         loadedHashes.put(scriptFile.getName(), hash);
                     }
+                    else if (scriptFile.isFile() && scriptFile.getName().endsWith(".jar")) {
+                        String fileName = scriptFile.getName();
+                        String hash = calculateHash(scriptFile);
+
+                        String cachedHash = loadedHashes.get(fileName);
+                        if (cachedHash != null && cachedHash.equals(hash)) {
+                            continue;
+                        }
+                        loadJarScript(scriptFile);
+                        loadedHashes.put(fileName, hash);
+                    }
                 }
             }
         }
@@ -730,6 +741,53 @@ public class ScriptManager {
                     }
                 }
             }
+        }
+    }
+
+    private boolean loadJarScript(File jarFile) {
+        String scriptName = jarFile.getName().replace(".jar", "");
+        if (scriptName.isEmpty() || scriptName.startsWith("_")) return false;
+
+        System.out.println("[Scripts] Loading pre-compiled script jar: " + scriptName);
+        try {
+            java.net.URL jarUrl = jarFile.toURI().toURL();
+            java.net.URLClassLoader jarLoader = new java.net.URLClassLoader(
+                    new java.net.URL[]{jarUrl}, ScriptManager.class.getClassLoader()
+            );
+
+            String className = "sc_" + scriptName;
+            String[] candidates = null;
+            try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jarFile)) {
+                candidates = jf.stream()
+                        .filter(e -> e.getName().endsWith(".class") && e.getName().startsWith("sc_"))
+                        .map(e -> e.getName().replace("/", ".").replace(".class", ""))
+                        .toArray(String[]::new);
+            }
+
+            Class<?> scriptClass = null;
+            if (candidates != null && candidates.length > 0) {
+                scriptClass = jarLoader.loadClass(candidates[0]);
+                className = candidates[0];
+            } else {
+                scriptClass = jarLoader.loadClass(className);
+            }
+
+            Script script = new Script(scriptName);
+            script.file = jarFile;
+            script.clazz = scriptClass;
+            script.instance = scriptClass.newInstance();
+
+            Module module = new Module(script);
+            attachManagerSettings(script, module);
+            Raven.scriptManager.scripts.put(script, module);
+            ScriptDefaults.reloadModules();
+            Raven.scriptManager.invoke("onLoad", module);
+            System.out.println("[Scripts] Loaded jar script: " + scriptName);
+            return true;
+        } catch (Throwable t) {
+            System.err.println("[Scripts] Failed to load jar script " + scriptName + ": " + t.getMessage());
+            t.printStackTrace();
+            return false;
         }
     }
 
