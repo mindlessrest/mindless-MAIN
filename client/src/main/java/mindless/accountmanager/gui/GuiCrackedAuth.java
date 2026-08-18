@@ -5,7 +5,7 @@ import java.util.concurrent.CompletableFuture;
 import javax.swing.SwingUtilities;
 import mindless.accountmanager.auth.CrackedAuth;
 import mindless.accountmanager.utils.UsernameGenerator;
-import mindless.utility.font.FontManager;
+import mindless.utility.font.MinecraftFontAdapter;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.GuiButton;
@@ -43,9 +43,9 @@ public class GuiCrackedAuth extends GuiScreen {
     @Override
     public void drawScreen(int mx, int my, float pt) {
         drawRect(0, 0, width, height, GuiAccountManager.C_BG);
-        RavenFontRenderer sfBold = FontManager.getClickGuiHeaderRenderer("Sf-Bold");
-        RavenFontRenderer sfReg  = FontManager.getClickGuiSettingRenderer("Sf-Regular");
-        RavenFontRenderer sfSm   = FontManager.getClickGuiSmallRenderer("Sf-Regular");
+        RavenFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
+        RavenFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
+        RavenFontRenderer sfSm   = new MinecraftFontAdapter(fontRendererObj);
 
         int cardW = 240, cardH = 170;
         int cardX = width/2 - cardW/2, cardY = height/2 - cardH/2 - 20;

@@ -18,7 +18,7 @@ import mindless.accountmanager.auth.CrackedAuth;
 import mindless.accountmanager.auth.SessionManager;
 import mindless.accountmanager.utils.Notification;
 import mindless.accountmanager.utils.TextFormatting;
-import mindless.utility.font.FontManager;
+import mindless.utility.font.MinecraftFontAdapter;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.Minecraft;
@@ -219,8 +219,8 @@ public class GuiAccountManager extends GuiScreen {
 
     @Override
     public void drawScreen(int mx, int my, float pt) {
-        RavenFontRenderer sfReg  = FontManager.getClickGuiSettingRenderer("Sf-Regular");
-        RavenFontRenderer sfBold = FontManager.getClickGuiHeaderRenderer("Sf-Bold");
+        RavenFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
+        RavenFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
 
         // Full-screen background
         drawRect(0, 0, width, height, C_BG);
@@ -505,8 +505,8 @@ public class GuiAccountManager extends GuiScreen {
         protected void drawSlot(int id, int x, int y, int h, int mx, int my) {
             if (id < 0 || id >= filteredList.size()) return;
             Account account = filteredList.get(id);
-            RavenFontRenderer sfReg  = FontManager.getClickGuiSmallRenderer("Sf-Regular");
-            RavenFontRenderer sfBold = FontManager.getClickGuiSettingRenderer("Sf-Regular");
+            RavenFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
+            RavenFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
 
             boolean hov = mx >= x && mx <= x + getListWidth() && my >= y && my <= y + h;
             if (isSelected(id)) {

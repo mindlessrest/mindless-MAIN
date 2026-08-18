@@ -1,6 +1,6 @@
 package mindless.accountmanager.gui;
 
-import mindless.utility.font.FontManager;
+import mindless.utility.font.MinecraftFontAdapter;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.GuiButton;
@@ -29,8 +29,8 @@ public class GuiAddAccount extends GuiScreen {
     @Override
     public void drawScreen(int mx, int my, float pt) {
         drawRect(0, 0, width, height, GuiAccountManager.C_BG);
-        RavenFontRenderer sfBold = FontManager.getClickGuiHeaderRenderer("Sf-Bold");
-        RavenFontRenderer sfReg  = FontManager.getClickGuiSmallRenderer("Sf-Regular");
+        RavenFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
+        RavenFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
 
         int cardW = 240, cardH = height / 2 + 20;
         int cardX = width / 2 - cardW / 2, cardY = height / 2 - cardH / 2;
@@ -48,7 +48,7 @@ public class GuiAddAccount extends GuiScreen {
             int bgH = isBack ? GuiAccountManager.C_ROW_HOV : 0xCC1E2035;
             int fg  = isBack ? GuiAccountManager.C_MUTED : GuiAccountManager.C_ACCENT;
             RoundedUtils.drawRound(b.xPosition, b.yPosition, b.width, b.height, 4f, hov ? bgH : bg);
-            RavenFontRenderer fr = FontManager.getClickGuiSettingRenderer("Sf-Regular");
+                RavenFontRenderer fr = new MinecraftFontAdapter(fontRendererObj);
             float tw = fr.getStringWidth(b.displayString);
             fr.drawString(b.displayString, b.xPosition + b.width/2f - tw/2f,
                     b.yPosition + b.height/2f - fr.getFontHeight()/2f, fg, false);

@@ -11,7 +11,7 @@ import mindless.accountmanager.auth.MicrosoftAuth;
 import mindless.accountmanager.auth.SessionManager;
 import mindless.accountmanager.utils.Notification;
 import mindless.accountmanager.utils.TextFormatting;
-import mindless.utility.font.FontManager;
+import mindless.utility.font.MinecraftFontAdapter;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.GuiButton;
@@ -70,9 +70,9 @@ public class GuiChangeName extends GuiScreen {
     @Override
     public void drawScreen(int mx, int my, float pt) {
         drawRect(0, 0, width, height, GuiAccountManager.C_BG);
-        RavenFontRenderer sfBold = FontManager.getClickGuiHeaderRenderer("Sf-Bold");
-        RavenFontRenderer sfReg  = FontManager.getClickGuiSettingRenderer("Sf-Regular");
-        RavenFontRenderer sfSm   = FontManager.getClickGuiSmallRenderer("Sf-Regular");
+        RavenFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
+        RavenFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
+        RavenFontRenderer sfSm   = new MinecraftFontAdapter(fontRendererObj);
 
         int cardW = 240, cardH = 140;
         int cardX = width/2 - cardW/2, cardY = height/2 - cardH/2 - 20;
