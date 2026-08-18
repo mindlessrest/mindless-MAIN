@@ -125,6 +125,31 @@ def find_msa_jar():
             return os.path.abspath(c)
     return None
 
+def find_script_directory():
+    override = os.environ.get("MINDLESS_SCRIPT_DIR")
+    if override:
+        return os.path.abspath(os.path.expandvars(os.path.expanduser(override)))
+
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        minecraft = os.path.join(appdata, ".minecraft")
+        legacy = os.path.join(minecraft, "keystrokes", "scripts")
+        if os.path.isdir(legacy):
+            return legacy
+        return os.path.join(minecraft, "mindless", "scripts")
+
+    minecraft = os.path.join(os.path.expanduser("~"), ".minecraft")
+    legacy = os.path.join(minecraft, "keystrokes", "scripts")
+    if os.path.isdir(legacy):
+        return legacy
+    return os.path.join(minecraft, "mindless", "scripts")
+
+def install_script(jar_path, script_directory):
+    os.makedirs(script_directory, exist_ok=True)
+    destination = os.path.join(script_directory, os.path.basename(jar_path))
+    shutil.copy2(jar_path, destination)
+    return destination
+
 def compile_script(java_file, jdk_path, msa_path):
     script_name = os.path.splitext(os.path.basename(java_file))[0]
     log_step(f"Compiling: {C}{script_name}.java{RST}")
@@ -248,6 +273,9 @@ def main():
         sys.exit(1)
     log_ok(f"msa.jar: {C}{msa_path}{RST}")
 
+    script_directory = find_script_directory()
+    log_info(f"script folder: {DIM}{script_directory}{RST}")
+
     results = []
     for java_file in java_files:
         if not os.path.isfile(java_file):
@@ -255,6 +283,13 @@ def main():
             results.append(None)
             continue
         jar = compile_script(java_file, jdk_path, msa_path)
+        if jar:
+            try:
+                installed = install_script(jar, script_directory)
+                log_ok(f"installed: {G}{installed}{RST}")
+            except OSError as exc:
+                log_fail(f"could not install {os.path.basename(jar)}: {exc}")
+                jar = None
         results.append(jar)
 
     print()

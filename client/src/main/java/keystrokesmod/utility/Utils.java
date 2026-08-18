@@ -398,10 +398,18 @@ public class Utils implements IMinecraftInstance {
         return false;
     }
 
+    public static File getScriptDirectory() {
+        File legacy = new File(mc.mcDataDir, "keystrokes" + File.separator + "scripts");
+        if (legacy.isDirectory()) {
+            return legacy;
+        }
+        return new File(mc.mcDataDir, "mindless" + File.separator + "scripts");
+    }
+
     public static String getCompilerDirectory() {
         String tempDirStr = System.getProperty("java.io.tmpdir") + "cmF2ZW5fc2NyaXB0cw";
         if (System.getProperty("os.name").toLowerCase().contains("linux")) {
-            File tempDir = new File(mc.mcDataDir + File.separator + "mindless" + File.separator + "scripts", "compiler_temp");
+            File tempDir = new File(getScriptDirectory(), "compiler_temp");
             if (!tempDir.exists()) {
                 if (!tempDir.mkdirs()) {
                     return tempDirStr;
