@@ -139,7 +139,7 @@ def compile_script(java_file, jdk_path, msa_path):
     out_dir = os.path.join(tmp_dir, "classes")
     os.makedirs(out_dir)
 
-    wrapped_name = f"sc_{script_name}"
+    wrapped_name = f"sc_{script_name.replace(' ', '').replace('(', '_').replace(')', '_')}"
     wrapped_source = source
 
     imports = [

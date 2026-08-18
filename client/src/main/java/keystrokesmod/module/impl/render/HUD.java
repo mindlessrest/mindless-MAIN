@@ -794,7 +794,7 @@ public class HUD extends Module {
      */
     public static int getHudColor(double gradientOffset) {
         if (colorMode == null || hudColor == null) {
-            return 0xFFFFFF;
+            return 0xFFFFFFFF;
         }
         int mode = (int) colorMode.getInput();
         if (mode == 2) {
@@ -805,18 +805,18 @@ public class HUD extends Module {
             java.awt.Color c2 = new java.awt.Color(hudColor2.getRed(), hudColor2.getGreen(), hudColor2.getBlue());
             return getGradientWaveColor(c1, c2, gradientOffset);
         }
-        return hudColor.getRGB();
+        return hudColor.getRGB() | 0xFF000000;
     }
 
     private static int getGradientWaveColor(java.awt.Color c1, java.awt.Color c2, double gradientOffset) {
         double animationProgress = (Math.sin(getAnimatedWaveAngle(gradientOffset)) + 1.0) * 0.5;
-        return Theme.convert(c1, c2, animationProgress).getRGB();
+        return Theme.convert(c1, c2, animationProgress).getRGB() | 0xFF000000;
     }
 
     private static int getRainbowWaveColor(double gradientOffset) {
         double hue = getAnimatedWaveAngle(gradientOffset) / (Math.PI * 2.0);
         hue -= Math.floor(hue);
-        return Color.getHSBColor((float) hue, 1.0F, 1.0F).getRGB();
+        return Color.getHSBColor((float) hue, 1.0F, 1.0F).getRGB() | 0xFF000000;
     }
 
     private static double getAnimatedWaveAngle(double gradientOffset) {

@@ -34,6 +34,8 @@ public class RotationHelper {
 
     private boolean needsArmYawUpdate = false;
 
+    public boolean forceMovementFix = false;
+
     private Minecraft mc = Minecraft.getMinecraft();
 
     /**
