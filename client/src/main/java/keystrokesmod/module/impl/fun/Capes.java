@@ -50,7 +50,7 @@ public class Capes extends Module {
     public Capes() {
         super("Capes", category.fun);
         instance = this;
-        capeDir = new File(mc.mcDataDir + File.separator + "keystrokes", "capes");
+        capeDir = new File(mc.mcDataDir + File.separator + "mindless", "capes");
         extractBundledCapes();
         List<String> names = buildCapeList();
         this.registerSetting(selectedCape = new SliderSetting("Cape", 0, names.toArray(new String[0])));

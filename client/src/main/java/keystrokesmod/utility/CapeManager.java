@@ -23,7 +23,7 @@ public final class CapeManager {
             new BundledCape("Yellow", "rvn_yellow.png")
     };
     private static final File CAPE_DIRECTORY = new File(
-            new File(Minecraft.getMinecraft().mcDataDir, "keystrokes"), "capes");
+            new File(Minecraft.getMinecraft().mcDataDir, "mindless"), "capes");
     private static volatile List<ResourceLocation> capeTextures = Collections.emptyList();
     private static volatile List<ResourceLocation> customCapeTextures = Collections.emptyList();
     private static volatile String[] capeOptions = new String[]{"None"};

@@ -401,7 +401,7 @@ public class Utils implements IMinecraftInstance {
     public static String getCompilerDirectory() {
         String tempDirStr = System.getProperty("java.io.tmpdir") + "cmF2ZW5fc2NyaXB0cw";
         if (System.getProperty("os.name").toLowerCase().contains("linux")) {
-            File tempDir = new File(mc.mcDataDir + File.separator + "keystrokes" + File.separator + "scripts", "compiler_temp");
+            File tempDir = new File(mc.mcDataDir + File.separator + "mindless" + File.separator + "scripts", "compiler_temp");
             if (!tempDir.exists()) {
                 if (!tempDir.mkdirs()) {
                     return tempDirStr;
@@ -508,14 +508,14 @@ public class Utils implements IMinecraftInstance {
 
     public static void sendMessage(String txt) {
         if (nullCheck()) {
-            String m = formatColor("&7[&dR&7]&r " + txt);
+            String m = formatColor("&dMindless &8» &r" + txt);
             mc.thePlayer.addChatMessage(new ChatComponentText(m));
         }
     }
 
     public static void sendMessageStr(String txt) {
         if (nullCheck()) {
-            String m = formatColor("&7[&dR&7]&r " + txt);
+            String m = formatColor("&dMindless &8» &r" + txt);
             mc.thePlayer.addChatMessage(new ChatComponentText(m));
         }
     }
@@ -527,7 +527,7 @@ public class Utils implements IMinecraftInstance {
 
     public static void sendDebugMessage(String message) {
         if (nullCheck()) {
-            mc.thePlayer.addChatMessage(new ChatComponentText("§7[§dR§7]§r " + message));
+            mc.thePlayer.addChatMessage(new ChatComponentText("§dMindless §8» §r" + message));
         }
     }
 

@@ -64,7 +64,7 @@ public class ProfileManager implements IMinecraftInstance {
     public List<Profile> profiles = new ArrayList<>();
 
     public ProfileManager() {
-        directory = new File(mc.mcDataDir + File.separator + "keystrokes", "profiles");
+        directory = new File(mc.mcDataDir + File.separator + "mindless", "profiles");
         if (!directory.exists()) {
             boolean success = directory.mkdirs();
             if (!success) {

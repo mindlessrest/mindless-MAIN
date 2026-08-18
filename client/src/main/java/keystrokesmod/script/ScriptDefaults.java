@@ -1232,7 +1232,7 @@ public class ScriptDefaults {
     }
 
     public static class config {
-        private static String CONFIG_DIR = mc.mcDataDir + File.separator + "keystrokes" + File.separator + "script_config.txt";
+        private static String CONFIG_DIR = mc.mcDataDir + File.separator + "mindless" + File.separator + "script_config.txt";
         private static String SEPARATOR = ":";
         private static String SEPARATOR_FULL = SEPARATOR + " ";
 

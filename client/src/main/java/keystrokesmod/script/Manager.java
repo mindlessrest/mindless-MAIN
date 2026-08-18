@@ -27,7 +27,7 @@ public class Manager extends Module {
     private final TextSetting createScriptName;
 
     public final String DOCUMENTATION_URL = "https://blowsy.gitbook.io/raven";
-    private final String CONFIG_DIR = mc.mcDataDir + File.separator + "keystrokes" + File.separator + "settings.txt";
+    private final String CONFIG_DIR = mc.mcDataDir + File.separator + "mindless" + File.separator + "settings.txt";
     private final String SEPARATOR = ":";
     private final String SEPARATOR_FULL = SEPARATOR + " ";
 

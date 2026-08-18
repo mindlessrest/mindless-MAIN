@@ -41,7 +41,7 @@ public class ScriptManager {
     private Map<String, String> loadedHashes = new HashMap<>();
 
     public ScriptManager() {
-        directory = new File(mc.mcDataDir + File.separator + "keystrokes", "scripts");
+        directory = new File(mc.mcDataDir + File.separator + "mindless", "scripts");
     }
 
     /** Path to dumped MC classes jar for ECJ classpath */

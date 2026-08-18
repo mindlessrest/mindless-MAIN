@@ -66,7 +66,7 @@ public class PlayerRelationsManager implements IMinecraftInstance {
     private boolean middleClickFriends;
 
     public PlayerRelationsManager() {
-        File directory = new File(mc.mcDataDir, "keystrokes");
+        File directory = new File(mc.mcDataDir, "mindless");
         if (!directory.exists()) {
             directory.mkdirs();
         }
