@@ -7,7 +7,6 @@ import keystrokesmod.module.setting.impl.TextSetting;
 import keystrokesmod.utility.NetworkUtils;
 import keystrokesmod.utility.Utils;
 import net.minecraft.client.Minecraft;
-import net.minecraft.launchwrapper.Launch;
 import net.minecraftforge.common.MinecraftForge;
 
 import javax.tools.JavaCompiler;
@@ -58,7 +57,7 @@ public class ScriptManager {
             File tempDir = new File(COMPILED_DIR);
             if (!tempDir.exists()) tempDir.mkdirs();
             mcClassesJar = new File(tempDir, "_minecraft_classes.jar");
-            if (mcClassesJar.exists() && mcClassesJar.length() > 100000) {
+            if (isUsableMcClassesJar(mcClassesJar)) {
                 System.out.println("[Scripts] Using cached MC classes jar: " + mcClassesJar.getAbsolutePath());
                 return;
             }
@@ -158,34 +157,251 @@ public class ScriptManager {
 
             System.out.println("[Scripts] Found " + classNames.size() + " classes to dump");
 
-            // Write them to a jar using whatever classloader can provide the bytes
-            ClassLoader cl = ScriptManager.class.getClassLoader();
+            // Write them to a jar. Under Lunar/Genesis the Minecraft classes are materialised
+            // through the transformer chain and are NOT reachable as resources, so a plain
+            // getResourceAsStream finds only a small fraction of them. Each name is resolved
+            // through a fallback chain, and every class we emit has its own references queued
+            // so ECJ never hits "indirectly referenced from required .class files".
             try (java.util.jar.JarOutputStream jos = new java.util.jar.JarOutputStream(new java.io.FileOutputStream(mcClassesJar))) {
-                int dumped = 0;
-                for (String className : classNames) {
-                    String resourcePath = className.replace('.', '/') + ".class";
-                    java.io.InputStream is = cl.getResourceAsStream(resourcePath);
-                    if (is == null) {
-                        is = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourcePath);
+                java.util.Deque<String> pending = new java.util.ArrayDeque<>(classNames);
+                java.util.Set<String> seen = new java.util.HashSet<>(classNames);
+                java.util.Set<String> written = new java.util.HashSet<>();
+
+                int fromResource = 0, fromClassBytes = 0, fromStub = 0, missing = 0;
+
+                while (!pending.isEmpty()) {
+                    String className = pending.poll();
+                    if (!written.add(className)) continue;
+
+                    java.util.Set<String> referenced = new java.util.LinkedHashSet<>();
+                    byte[] bytes = resolveClassBytes(className, referenced);
+                    if (bytes == null) {
+                        missing++;
+                        continue;
                     }
-                    if (is == null) continue;
-                    try {
-                        byte[] bytes = readAllBytes(is);
-                        jos.putNextEntry(new java.util.jar.JarEntry(resourcePath));
-                        jos.write(bytes);
-                        jos.closeEntry();
-                        dumped++;
-                    } finally {
-                        is.close();
+                    switch (lastResolveSource) {
+                        case 0: fromResource++; break;
+                        case 1: fromClassBytes++; break;
+                        default: fromStub++; break;
+                    }
+
+                    jos.putNextEntry(new java.util.jar.JarEntry(className.replace('.', '/') + ".class"));
+                    jos.write(bytes);
+                    jos.closeEntry();
+
+                    // Real class files carry their references in the constant pool; synthesised
+                    // stubs report theirs through the out-param, since descriptors never become
+                    // CONSTANT_Class entries.
+                    scanConstantPoolForClasses(bytes, referenced);
+                    for (String ref : referenced) {
+                        if (seen.add(ref)) pending.add(ref);
                     }
                 }
-                System.out.println("[Scripts] Dumped " + dumped + " classes to " + mcClassesJar.getAbsolutePath() +
-                        " (" + mcClassesJar.length() / 1024 + " KB) in " + (System.currentTimeMillis() - start) + "ms");
+
+                System.out.println("[Scripts] Dumped " + written.size() + " classes to " + mcClassesJar.getAbsolutePath()
+                        + " (resource=" + fromResource + " classBytes=" + fromClassBytes + " stub=" + fromStub
+                        + " missing=" + missing + ") in " + (System.currentTimeMillis() - start) + "ms");
             }
+            System.out.println("[Scripts] MC classes jar is " + (mcClassesJar.length() / 1024) + " KB");
         } catch (Throwable t) {
             System.err.println("[Scripts] Failed to dump MC classes: " + t.getMessage());
             t.printStackTrace();
             mcClassesJar = null;
+        }
+    }
+
+    /**
+     * The Minecraft LaunchWrapper class loader, or null when it is unavailable.
+     *
+     * Lunar/Genesis ships a {@code net.minecraft.launchwrapper.Launch} that has no
+     * {@code classLoader} field, so touching it directly raises NoSuchFieldError at link time
+     * rather than a catchable ClassNotFoundException. Everything goes through here instead.
+     */
+    public static ClassLoader launchClassLoader() {
+        try {
+            Class<?> launch = Class.forName("net.minecraft.launchwrapper.Launch", false,
+                    ScriptManager.class.getClassLoader());
+            Object value = launch.getField("classLoader").get(null);
+            if (value instanceof ClassLoader) return (ClassLoader) value;
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    /**
+     * Whether we are in a deobfuscated (dev) environment, per LaunchWrapper's blackboard.
+     * Read reflectively for the same reason as {@link #launchClassLoader()}: on Lunar the
+     * Launch class exists but carries neither field, so a direct read is a hard link error.
+     * Defaults to false (obfuscated/production) when the blackboard cannot be reached.
+     */
+    public static boolean isDeobfuscatedEnvironment() {
+        try {
+            Class<?> launch = Class.forName("net.minecraft.launchwrapper.Launch", false,
+                    ScriptManager.class.getClassLoader());
+            Object blackboard = launch.getField("blackboard").get(null);
+            if (blackboard instanceof java.util.Map) {
+                Object value = ((java.util.Map<?, ?>) blackboard).get("fml.deobfuscatedEnvironment");
+                return value instanceof Boolean && (Boolean) value;
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    /** Loader that scripts are defined against: LaunchWrapper's when present, ours otherwise. */
+    public static ClassLoader scriptParentClassLoader() {
+        ClassLoader launch = launchClassLoader();
+        return launch != null ? launch : ScriptManager.class.getClassLoader();
+    }
+
+    /** 0 = resource stream, 1 = LaunchClassLoader.getClassBytes, 2 = synthesised stub. */
+    private int lastResolveSource = 0;
+
+    /**
+     * Best-effort class bytes for {@code className}, for feeding to ECJ as a classpath entry.
+     * When no real class file can be found the class is synthesised from its runtime
+     * {@link Class} -- superclass, interfaces, fields and method signatures, no bodies. That is
+     * everything the compiler needs to resolve references against it. Types named by a
+     * synthesised stub are added to {@code referencedOut} so the caller can queue them.
+     */
+    private byte[] resolveClassBytes(String className, java.util.Set<String> referencedOut) {
+        String resourcePath = className.replace('.', '/') + ".class";
+
+        // 1. Ordinary resource lookup, across every loader that might hold it.
+        java.util.List<ClassLoader> loaders = new java.util.ArrayList<>();
+        loaders.add(ScriptManager.class.getClassLoader());
+        loaders.add(Thread.currentThread().getContextClassLoader());
+        ClassLoader launch = launchClassLoader();
+        if (launch != null) loaders.add(launch);
+
+        for (ClassLoader cl : loaders) {
+            if (cl == null) continue;
+            try (java.io.InputStream is = cl.getResourceAsStream(resourcePath)) {
+                if (is != null) {
+                    byte[] bytes = readAllBytes(is);
+                    if (bytes.length > 0) {
+                        lastResolveSource = 0;
+                        return bytes;
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // 2. LaunchClassLoader exposes transformed bytes that are not resources.
+        if (launch != null) {
+            try {
+                java.lang.reflect.Method getClassBytes =
+                        launch.getClass().getMethod("getClassBytes", String.class);
+                byte[] bytes = (byte[]) getClassBytes.invoke(launch, className);
+                if (bytes != null && bytes.length > 0) {
+                    lastResolveSource = 1;
+                    return bytes;
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // 3. Synthesise from the loaded Class. This is the path that carries Lunar.
+        for (ClassLoader cl : loaders) {
+            if (cl == null) continue;
+            try {
+                Class<?> klass = Class.forName(className, false, cl);
+                byte[] stub = synthesizeClassStub(klass, referencedOut);
+                if (stub != null) {
+                    lastResolveSource = 2;
+                    return stub;
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        return null;
+    }
+
+    /** Signature-only class file built from reflection. Mirrors LaunchClassProvider's approach. */
+    private static byte[] synthesizeClassStub(Class<?> klass, java.util.Set<String> referencedOut) {
+        try {
+            org.objectweb.asm.ClassWriter writer = new org.objectweb.asm.ClassWriter(0);
+
+            String internal = klass.getName().replace('.', '/');
+            Class<?> superClass = klass.getSuperclass();
+            String superInternal = (klass.isInterface() || superClass == null)
+                    ? "java/lang/Object" : superClass.getName().replace('.', '/');
+            if (superClass != null) collectType(superClass, referencedOut);
+
+            Class<?>[] ifaces = klass.getInterfaces();
+            String[] interfaceInternals = new String[ifaces.length];
+            for (int i = 0; i < ifaces.length; i++) {
+                interfaceInternals[i] = ifaces[i].getName().replace('.', '/');
+                collectType(ifaces[i], referencedOut);
+            }
+
+            int access = klass.getModifiers() & 0xFFFF;
+            if (klass.isInterface()) access |= org.objectweb.asm.Opcodes.ACC_INTERFACE;
+            writer.visit(org.objectweb.asm.Opcodes.V1_8, access, internal, null,
+                    superInternal, interfaceInternals);
+
+            for (java.lang.reflect.Field f : klass.getDeclaredFields()) {
+                collectType(f.getType(), referencedOut);
+                writer.visitField(f.getModifiers() & 0xFFFF, f.getName(),
+                        typeDescriptor(f.getType()), null, null).visitEnd();
+            }
+            for (java.lang.reflect.Constructor<?> c : klass.getDeclaredConstructors()) {
+                for (Class<?> pt : c.getParameterTypes()) collectType(pt, referencedOut);
+                writer.visitMethod(c.getModifiers() & 0xFFFF, "<init>",
+                        methodDescriptor(c.getParameterTypes(), void.class), null, null).visitEnd();
+            }
+            for (java.lang.reflect.Method m : klass.getDeclaredMethods()) {
+                for (Class<?> pt : m.getParameterTypes()) collectType(pt, referencedOut);
+                collectType(m.getReturnType(), referencedOut);
+                writer.visitMethod(m.getModifiers() & 0xFFFF, m.getName(),
+                        methodDescriptor(m.getParameterTypes(), m.getReturnType()), null, null).visitEnd();
+            }
+
+            writer.visitEnd();
+            return writer.toByteArray();
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** Queues Minecraft/Forge types a stub mentions, so they get dumped too. */
+    private static void collectType(Class<?> type, java.util.Set<String> out) {
+        if (type == null || out == null) return;
+        while (type.isArray()) type = type.getComponentType();
+        if (type.isPrimitive()) return;
+        String name = type.getName();
+        if (name.startsWith("net.minecraft.") || name.startsWith("net.minecraftforge.")) out.add(name);
+    }
+
+    private static String typeDescriptor(Class<?> c) {
+        if (c == void.class) return "V";
+        if (c == boolean.class) return "Z";
+        if (c == byte.class) return "B";
+        if (c == char.class) return "C";
+        if (c == short.class) return "S";
+        if (c == int.class) return "I";
+        if (c == long.class) return "J";
+        if (c == float.class) return "F";
+        if (c == double.class) return "D";
+        if (c.isArray()) return "[" + typeDescriptor(c.getComponentType());
+        return "L" + c.getName().replace('.', '/') + ";";
+    }
+
+    private static String methodDescriptor(Class<?>[] params, Class<?> ret) {
+        StringBuilder sb = new StringBuilder("(");
+        for (Class<?> p : params) sb.append(typeDescriptor(p));
+        return sb.append(')').append(typeDescriptor(ret)).toString();
+    }
+
+    /**
+     * A cached jar is only reusable if it actually carries the core Minecraft types. Size alone
+     * cannot tell a complete dump from one where every net.minecraft lookup silently missed.
+     */
+    private static boolean isUsableMcClassesJar(File jar) {
+        if (jar == null || !jar.exists() || jar.length() < 1024) return false;
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar)) {
+            return zf.getEntry("net/minecraft/util/Vec3.class") != null
+                    && zf.getEntry("net/minecraft/util/BlockPos.class") != null
+                    && zf.getEntry("net/minecraft/client/Minecraft.class") != null;
+        } catch (Throwable t) {
+            return false;
         }
     }
 
@@ -433,6 +649,9 @@ public class ScriptManager {
                 File[] tempFiles = tempDirectory.listFiles();
                 if (tempFiles != null) {
                     for (File tempFile : tempFiles) {
+                        if (mcClassesJar != null && tempFile.equals(mcClassesJar)) {
+                            continue;
+                        }
                         if (!tempFile.delete()) {
                             System.err.println("Failed to delete temp file: " + tempFile.getAbsolutePath());
                         }
@@ -503,6 +722,9 @@ public class ScriptManager {
             File[] tempFiles = tempDirectory.listFiles();
             if (tempFiles != null) {
                 for (File tempFile : tempFiles) {
+                    if (mcClassesJar != null && tempFile.equals(mcClassesJar)) {
+                        continue;
+                    }
                     if (!tempFile.delete()) {
                         System.err.println("Failed to delete temp file: " + tempFile.getAbsolutePath());
                     }

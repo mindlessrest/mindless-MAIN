@@ -2,7 +2,6 @@ package keystrokesmod.script;
 
 import keystrokesmod.Raven;
 import keystrokesmod.utility.Utils;
-import net.minecraft.launchwrapper.Launch;
 
 import javax.tools.StandardJavaFileManager;
 import java.io.File;
@@ -72,7 +71,7 @@ public class Script {
                 compilationOptions.add(cp);
                 System.out.println("[Scripts] ECJ classpath entries: " + cp.split(File.pathSeparator).length);
             }
-            else if (!(boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
+            else if (!ScriptManager.isDeobfuscatedEnvironment()) {
                 compilationOptions.add("-classpath");
                 String s = Raven.scriptManager.jarPath;
                 try {
@@ -107,7 +106,7 @@ public class Script {
                 return false;
             }
             System.out.println("[Scripts] Compilation SUCCESS: " + this.name);
-            try (SecureClassLoader secureClassLoader = new SecureClassLoader(new URL[]{file.toURI().toURL()}, Launch.classLoader)) {
+            try (SecureClassLoader secureClassLoader = new SecureClassLoader(new URL[]{file.toURI().toURL()}, ScriptManager.scriptParentClassLoader())) {
                 this.clazz = secureClassLoader.loadClass(this.scriptName);
                 this.instance = this.clazz.newInstance();
             }
@@ -207,10 +206,11 @@ public class Script {
             } catch (Throwable ignored) {}
         }
 
-        // Gather URLs from Launch.classLoader
+        // Gather URLs from the LaunchWrapper loader (absent on Lunar, hence the null check)
+        ClassLoader launchLoader = ScriptManager.launchClassLoader();
         try {
-            if (Launch.classLoader instanceof URLClassLoader) {
-                for (URL url : ((URLClassLoader) Launch.classLoader).getURLs()) {
+            if (launchLoader instanceof URLClassLoader) {
+                for (URL url : ((URLClassLoader) launchLoader).getURLs()) {
                     if ("file".equalsIgnoreCase(url.getProtocol())) {
                         entries.add(new File(url.toURI()).getAbsolutePath());
                     }
@@ -220,14 +220,16 @@ public class Script {
         catch (Throwable ignored) {
         }
 
-        // Reflective getURLs on Launch.classLoader
+        // Reflective getURLs on the LaunchWrapper loader
         try {
-            java.lang.reflect.Method getURLs = Launch.classLoader.getClass().getMethod("getURLs");
-            URL[] urls = (URL[]) getURLs.invoke(Launch.classLoader);
-            if (urls != null) {
-                for (URL url : urls) {
-                    if ("file".equalsIgnoreCase(url.getProtocol())) {
-                        entries.add(new File(url.toURI()).getAbsolutePath());
+            if (launchLoader != null) {
+                java.lang.reflect.Method getURLs = launchLoader.getClass().getMethod("getURLs");
+                URL[] urls = (URL[]) getURLs.invoke(launchLoader);
+                if (urls != null) {
+                    for (URL url : urls) {
+                        if ("file".equalsIgnoreCase(url.getProtocol())) {
+                            entries.add(new File(url.toURI()).getAbsolutePath());
+                        }
                     }
                 }
             }

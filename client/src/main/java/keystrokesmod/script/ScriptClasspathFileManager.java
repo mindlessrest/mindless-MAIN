@@ -1,6 +1,5 @@
 package keystrokesmod.script;
 
-import net.minecraft.launchwrapper.Launch;
 
 import javax.tools.*;
 import java.io.*;
@@ -55,17 +54,23 @@ public class ScriptClasspathFileManager extends ForwardingJavaFileManager<Standa
     }
 
     private static byte[] loadClassBytes(String className) {
+        // May be null: Lunar/Genesis has no LaunchWrapper class loader.
+        ClassLoader launchLoader = ScriptManager.launchClassLoader();
+
         try {
-            // Try Launch.classLoader.getClassBytes() — available on LaunchClassLoader
-            java.lang.reflect.Method getClassBytes = Launch.classLoader.getClass().getMethod("getClassBytes", String.class);
-            byte[] bytes = (byte[]) getClassBytes.invoke(Launch.classLoader, className.replace('/', '.'));
-            if (bytes != null) return bytes;
+            // Try LaunchClassLoader.getClassBytes() — transformed bytes, not resources
+            if (launchLoader != null) {
+                java.lang.reflect.Method getClassBytes = launchLoader.getClass().getMethod("getClassBytes", String.class);
+                byte[] bytes = (byte[]) getClassBytes.invoke(launchLoader, className.replace('/', '.'));
+                if (bytes != null) return bytes;
+            }
         } catch (Throwable ignored) {}
 
         // Fallback: try getResourceAsStream
         try {
             String resourcePath = className.replace('.', '/') + ".class";
-            InputStream is = Launch.classLoader.getResourceAsStream(resourcePath);
+            ClassLoader resourceLoader = launchLoader != null ? launchLoader : ScriptManager.scriptParentClassLoader();
+            InputStream is = resourceLoader.getResourceAsStream(resourcePath);
             if (is != null) {
                 try {
                     ByteArrayOutputStream bos = new ByteArrayOutputStream();
