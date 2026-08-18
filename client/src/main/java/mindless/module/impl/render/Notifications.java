@@ -1,5 +1,6 @@
 package mindless.module.impl.render;
 
+import mindless.Raven;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.Settings;
@@ -111,29 +112,37 @@ public class Notifications extends Module {
             push("Mindless", true, dur, now);
         }
 
-        for (Module m : ModuleManager.modules) {
-            String name = m.getName();
-            boolean cur = m.isEnabled();
-            Boolean prev = moduleStates.get(name);
-            if (prev == null) { moduleStates.put(name, cur); continue; }
-            if (cur != prev) {
-                boolean suppressed = startupFiredAt > 0 && now - startupFiredAt < STARTUP_SUPPRESS_MS;
-                boolean scriptChange;
-                synchronized (SUPPRESSED_SCRIPT_CHANGES) {
-                    scriptChange = SUPPRESSED_SCRIPT_CHANGES.remove(name);
-                }
-                if (!suppressed && !scriptChange && ((cur && showEnabled.isToggled()) || (!cur && showDisabled.isToggled())))
-                    push(name, cur, dur, now);
-                moduleStates.put(name, cur);
-            } else {
-                synchronized (SUPPRESSED_SCRIPT_CHANGES) {
-                    SUPPRESSED_SCRIPT_CHANGES.remove(name);
-                }
-            }
+        for (Module m : ModuleManager.modules) checkModuleState(m, now, dur);
+        if (Raven.scriptManager != null) {
+            for (Module m : Raven.scriptManager.scripts.values()) checkModuleState(m, now, dur);
         }
 
         long keep = SLIDE + FADE + 200;
         cards.removeIf(c -> now > c.birthMs + c.durationMs + keep);
+    }
+
+    private void checkModuleState(Module module, long now, long dur) {
+        String name = module.getName();
+        boolean cur = module.isEnabled();
+        Boolean prev = moduleStates.get(name);
+        if (prev == null) {
+            moduleStates.put(name, cur);
+            return;
+        }
+        if (cur != prev) {
+            boolean suppressed = startupFiredAt > 0 && now - startupFiredAt < STARTUP_SUPPRESS_MS;
+            boolean scriptChange;
+            synchronized (SUPPRESSED_SCRIPT_CHANGES) {
+                scriptChange = SUPPRESSED_SCRIPT_CHANGES.remove(name);
+            }
+            if (!suppressed && !scriptChange && ((cur && showEnabled.isToggled()) || (!cur && showDisabled.isToggled())))
+                push(name, cur, dur, now);
+            moduleStates.put(name, cur);
+        } else {
+            synchronized (SUPPRESSED_SCRIPT_CHANGES) {
+                SUPPRESSED_SCRIPT_CHANGES.remove(name);
+            }
+        }
     }
 
     private void push(String title, boolean enabled, long dur, long now) {
