@@ -11,4 +11,9 @@ public class PreEntityVelocityEvent extends Event {
     public PreEntityVelocityEvent(S12PacketEntityVelocity packet) {
         this.packet = packet;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

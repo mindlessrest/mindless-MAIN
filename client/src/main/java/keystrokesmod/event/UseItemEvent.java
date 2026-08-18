@@ -15,4 +15,9 @@ public class UseItemEvent extends Event {
     public UseItemEvent(ItemStack usedItemStack) {
         this.usedItemStack = usedItemStack;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

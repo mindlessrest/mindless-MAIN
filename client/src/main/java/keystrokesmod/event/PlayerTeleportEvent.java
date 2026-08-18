@@ -11,4 +11,9 @@ public class PlayerTeleportEvent extends Event {
     public PlayerTeleportEvent(S08PacketPlayerPosLook packet) {
         this.packet = packet;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

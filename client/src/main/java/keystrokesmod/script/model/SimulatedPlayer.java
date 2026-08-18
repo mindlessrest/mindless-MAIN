@@ -467,7 +467,7 @@ public class SimulatedPlayer {
     }
 
     private boolean isOpenBlockSpace(BlockPos pos) {
-        return getBlockState(pos).getBlock().isNormalCube();
+        return !getBlockState(pos).getBlock().isNormalCube();
     }
 
     private void playerSideMoveEntityWithHeading(float moveStrafing, float moveForward) {

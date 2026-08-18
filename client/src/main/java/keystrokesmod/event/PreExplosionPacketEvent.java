@@ -12,4 +12,8 @@ public class PreExplosionPacketEvent extends Event {
         this.packet = packet;
     }
 
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

@@ -19,4 +19,9 @@ public class ReceivePacketEvent extends Event {
     public Packet<?> getPacket() {
         return packet;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

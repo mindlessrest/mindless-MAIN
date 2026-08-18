@@ -7,6 +7,7 @@ import keystrokesmod.module.setting.impl.TextSetting;
 import keystrokesmod.utility.NetworkUtils;
 import keystrokesmod.utility.Utils;
 import net.minecraft.client.Minecraft;
+import net.minecraft.launchwrapper.Launch;
 import net.minecraftforge.common.MinecraftForge;
 
 import javax.tools.JavaCompiler;
@@ -42,17 +43,338 @@ public class ScriptManager {
 
     public ScriptManager() {
         directory = new File(mc.mcDataDir + File.separator + "keystrokes", "scripts");
+        dumpMinecraftClassesJar();
+    }
+
+    /** Path to dumped MC classes jar for ECJ classpath */
+    public File mcClassesJar;
+
+    /**
+     * Dumps Minecraft classes from the classloader to a jar file so ECJ can compile against them.
+     * On Lunar, MC classes only exist in memory — not in any jar on disk.
+     */
+    private void dumpMinecraftClassesJar() {
+        try {
+            File tempDir = new File(COMPILED_DIR);
+            if (!tempDir.exists()) tempDir.mkdirs();
+            mcClassesJar = new File(tempDir, "_minecraft_classes.jar");
+            if (mcClassesJar.exists() && mcClassesJar.length() > 100000) {
+                System.out.println("[Scripts] Using cached MC classes jar: " + mcClassesJar.getAbsolutePath());
+                return;
+            }
+
+            System.out.println("[Scripts] Dumping Minecraft classes from classloader to jar...");
+            long start = System.currentTimeMillis();
+
+            // Get all class names referenced by our payload jar
+            java.security.CodeSource cs = ScriptManager.class.getProtectionDomain().getCodeSource();
+            if (cs == null || cs.getLocation() == null) {
+                System.err.println("[Scripts] Cannot dump MC classes: no CodeSource");
+                mcClassesJar = null;
+                return;
+            }
+
+            // Collect MC class names by scanning our own jar's constant pool references
+            java.util.Set<String> classNames = new java.util.LinkedHashSet<>();
+
+            // Add known essential packages that scripts use
+            String[] essentialClasses = {
+                "net.minecraft.util.Vec3",
+                "net.minecraft.util.BlockPos",
+                "net.minecraft.util.MathHelper",
+                "net.minecraft.util.AxisAlignedBB",
+                "net.minecraft.util.EnumFacing",
+                "net.minecraft.util.MovingObjectPosition",
+                "net.minecraft.util.ChatComponentText",
+                "net.minecraft.util.IChatComponent",
+                "net.minecraft.util.MovementInput",
+                "net.minecraft.util.MovementInputFromOptions",
+                "net.minecraft.util.Vec3i",
+                "net.minecraft.client.Minecraft",
+                "net.minecraft.client.entity.EntityPlayerSP",
+                "net.minecraft.client.entity.AbstractClientPlayer",
+                "net.minecraft.client.multiplayer.WorldClient",
+                "net.minecraft.client.multiplayer.PlayerControllerMP",
+                "net.minecraft.client.settings.GameSettings",
+                "net.minecraft.client.settings.KeyBinding",
+                "net.minecraft.client.gui.FontRenderer",
+                "net.minecraft.client.gui.ScaledResolution",
+                "net.minecraft.client.renderer.GlStateManager",
+                "net.minecraft.client.network.NetHandlerPlayClient",
+                "net.minecraft.entity.Entity",
+                "net.minecraft.entity.EntityLivingBase",
+                "net.minecraft.entity.player.EntityPlayer",
+                "net.minecraft.entity.player.InventoryPlayer",
+                "net.minecraft.entity.SharedMonsterAttributes",
+                "net.minecraft.entity.ai.attributes.IAttributeInstance",
+                "net.minecraft.item.ItemStack",
+                "net.minecraft.item.Item",
+                "net.minecraft.item.ItemBlock",
+                "net.minecraft.item.ItemSword",
+                "net.minecraft.item.ItemTool",
+                "net.minecraft.item.ItemArmor",
+                "net.minecraft.item.ItemBow",
+                "net.minecraft.item.ItemPotion",
+                "net.minecraft.block.Block",
+                "net.minecraft.block.state.IBlockState",
+                "net.minecraft.block.material.Material",
+                "net.minecraft.world.World",
+                "net.minecraft.network.Packet",
+                "net.minecraft.network.play.client.C01PacketChatMessage",
+                "net.minecraft.network.play.client.C02PacketUseEntity",
+                "net.minecraft.network.play.client.C03PacketPlayer",
+                "net.minecraft.network.play.client.C08PacketPlayerBlockPlacement",
+                "net.minecraft.network.play.client.C0APacketAnimation",
+                "net.minecraft.network.play.client.C0BPacketEntityAction",
+                "net.minecraft.network.play.server.S12PacketEntityVelocity",
+                "net.minecraft.network.play.server.S08PacketPlayerPosLook",
+                "net.minecraft.potion.Potion",
+                "net.minecraft.potion.PotionEffect",
+                "net.minecraft.enchantment.Enchantment",
+                "net.minecraft.enchantment.EnchantmentHelper",
+                "net.minecraft.init.Blocks",
+                "net.minecraft.init.Items",
+                "net.minecraftforge.fml.common.eventhandler.SubscribeEvent",
+                "net.minecraftforge.fml.common.eventhandler.Event",
+                "net.minecraftforge.common.MinecraftForge",
+                "net.minecraftforge.client.event.RenderWorldLastEvent",
+            };
+
+            for (String cn : essentialClasses) classNames.add(cn);
+
+            // Also scan the payload jar for all referenced net.minecraft.* classes
+            try (java.util.jar.JarInputStream jis = new java.util.jar.JarInputStream(cs.getLocation().openStream())) {
+                java.util.jar.JarEntry entry;
+                while ((entry = jis.getNextJarEntry()) != null) {
+                    if (entry.getName().endsWith(".class") && entry.getName().startsWith("keystrokesmod/")) {
+                        // Read class bytes and scan for MC class references
+                        byte[] classBytes = readAllBytes(jis);
+                        scanConstantPoolForClasses(classBytes, classNames);
+                    }
+                }
+            } catch (Throwable t) {
+                System.err.println("[Scripts] Error scanning payload jar: " + t.getMessage());
+            }
+
+            System.out.println("[Scripts] Found " + classNames.size() + " classes to dump");
+
+            // Write them to a jar using whatever classloader can provide the bytes
+            ClassLoader cl = ScriptManager.class.getClassLoader();
+            try (java.util.jar.JarOutputStream jos = new java.util.jar.JarOutputStream(new java.io.FileOutputStream(mcClassesJar))) {
+                int dumped = 0;
+                for (String className : classNames) {
+                    String resourcePath = className.replace('.', '/') + ".class";
+                    java.io.InputStream is = cl.getResourceAsStream(resourcePath);
+                    if (is == null) {
+                        is = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourcePath);
+                    }
+                    if (is == null) continue;
+                    try {
+                        byte[] bytes = readAllBytes(is);
+                        jos.putNextEntry(new java.util.jar.JarEntry(resourcePath));
+                        jos.write(bytes);
+                        jos.closeEntry();
+                        dumped++;
+                    } finally {
+                        is.close();
+                    }
+                }
+                System.out.println("[Scripts] Dumped " + dumped + " classes to " + mcClassesJar.getAbsolutePath() +
+                        " (" + mcClassesJar.length() / 1024 + " KB) in " + (System.currentTimeMillis() - start) + "ms");
+            }
+        } catch (Throwable t) {
+            System.err.println("[Scripts] Failed to dump MC classes: " + t.getMessage());
+            t.printStackTrace();
+            mcClassesJar = null;
+        }
+    }
+
+    private static byte[] readAllBytes(java.io.InputStream is) throws java.io.IOException {
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        int n;
+        while ((n = is.read(buf)) != -1) bos.write(buf, 0, n);
+        return bos.toByteArray();
+    }
+
+    /** Simple constant pool scanner — extracts class name references starting with net/minecraft or net/minecraftforge */
+    private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<String> out) {
+        try {
+            java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(classBytes));
+            int magic = dis.readInt();
+            if (magic != 0xCAFEBABE) return;
+            dis.readUnsignedShort(); // minor
+            dis.readUnsignedShort(); // major
+            int cpCount = dis.readUnsignedShort();
+            String[] utf8s = new String[cpCount];
+            int[] classRefs = new int[cpCount];
+            for (int i = 1; i < cpCount; i++) {
+                int tag = dis.readUnsignedByte();
+                switch (tag) {
+                    case 1: // UTF8
+                        utf8s[i] = dis.readUTF();
+                        break;
+                    case 7: // Class
+                        classRefs[i] = dis.readUnsignedShort();
+                        break;
+                    case 8: // String
+                        dis.readUnsignedShort();
+                        break;
+                    case 3: case 4: // Int, Float
+                        dis.readInt();
+                        break;
+                    case 5: case 6: // Long, Double
+                        dis.readLong();
+                        i++; // takes two slots
+                        break;
+                    case 9: case 10: case 11: case 12: // Field, Method, InterfaceMethod, NameAndType
+                        dis.readUnsignedShort();
+                        dis.readUnsignedShort();
+                        break;
+                    case 15: // MethodHandle
+                        dis.readUnsignedByte();
+                        dis.readUnsignedShort();
+                        break;
+                    case 16: // MethodType
+                        dis.readUnsignedShort();
+                        break;
+                    case 18: // InvokeDynamic
+                        dis.readUnsignedShort();
+                        dis.readUnsignedShort();
+                        break;
+                    default:
+                        return; // unknown tag, bail
+                }
+            }
+            for (int i = 1; i < cpCount; i++) {
+                if (classRefs[i] != 0 && classRefs[i] < cpCount && utf8s[classRefs[i]] != null) {
+                    String name = utf8s[classRefs[i]];
+                    if ((name.startsWith("net/minecraft/") || name.startsWith("net/minecraftforge/")) && !name.contains("[")) {
+                        out.add(name.replace('/', '.'));
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     private static JavaCompiler createCompiler() {
+        System.out.println("[Scripts] Searching for Java compiler...");
+        System.out.println("[Scripts] Running on: " + System.getProperty("java.version") + " (" + System.getProperty("java.home") + ")");
         JavaCompiler systemCompiler = ToolProvider.getSystemJavaCompiler();
         if (systemCompiler != null) {
+            System.out.println("[Scripts] Found system JavaCompiler (JDK detected).");
             return systemCompiler;
         }
-        try {
-            return new org.eclipse.jdt.internal.compiler.tool.EclipseCompiler();
+        System.out.println("[Scripts] No system compiler (running on JRE/modular runtime).");
+
+        // Only try external tools.jar if current runtime is Java 8 (major version 52).
+        // On JDK 9+, tools.jar from an external JDK 8 can't resolve the runtime classpath.
+        int javaVersion = getJavaMajorVersion();
+        if (javaVersion <= 8) {
+            System.out.println("[Scripts] Java 8 runtime detected. Searching for external JDK tools.jar...");
+            JavaCompiler found = findJdkCompiler();
+            if (found != null) {
+                System.out.println("[Scripts] Found JDK compiler from tools.jar.");
+                return found;
+            }
+        } else {
+            System.out.println("[Scripts] Java " + javaVersion + " runtime — skipping tools.jar search (incompatible).");
         }
-        catch (Throwable ignored) {
+
+        System.out.println("[Scripts] Falling back to bundled Eclipse ECJ compiler...");
+        try {
+            JavaCompiler ecj = new org.eclipse.jdt.internal.compiler.tool.EclipseCompiler();
+            System.out.println("[Scripts] ECJ compiler loaded successfully.");
+            return ecj;
+        }
+        catch (Throwable t) {
+            System.err.println("[Scripts] FAILED to load ECJ compiler: " + t.getMessage());
+            t.printStackTrace();
+            return null;
+        }
+    }
+
+    private static int getJavaMajorVersion() {
+        String version = System.getProperty("java.specification.version", "1.8");
+        if (version.startsWith("1.")) {
+            return Integer.parseInt(version.substring(2));
+        }
+        try {
+            return Integer.parseInt(version.split("\\.")[0]);
+        } catch (NumberFormatException e) {
+            return 8;
+        }
+    }
+
+    private static JavaCompiler findJdkCompiler() {
+        String userHome = System.getProperty("user.home");
+        String[] searchRoots = {
+                System.getenv("JAVA_HOME"),
+                "C:\\Program Files\\Java",
+                "C:\\Program Files\\Eclipse Adoptium",
+                "C:\\Program Files\\AdoptOpenJDK",
+                "C:\\Program Files\\Zulu",
+                "C:\\Program Files\\Microsoft\\jdk",
+                "C:\\Program Files\\Amazon Corretto",
+                userHome != null ? userHome + "\\.jdks" : null,
+                userHome != null ? userHome + "\\scoop\\apps\\temurin21-jdk\\current" : null,
+                userHome != null ? userHome + "\\scoop\\apps\\temurin25-jdk\\current" : null,
+                userHome != null ? userHome + "\\scoop\\apps\\temurin17-jdk\\current" : null
+        };
+        for (String root : searchRoots) {
+            if (root == null || root.isEmpty()) continue;
+            java.io.File rootDir = new java.io.File(root);
+            // If root itself is a JDK (e.g. JAVA_HOME)
+            JavaCompiler c = tryLoadFromJdk(rootDir);
+            if (c != null) return c;
+            // Search subdirectories (e.g. C:\Program Files\Java\jdk1.8.0_xxx)
+            if (rootDir.isDirectory()) {
+                java.io.File[] children = rootDir.listFiles();
+                if (children != null) {
+                    for (java.io.File child : children) {
+                        if (!child.isDirectory()) continue;
+                        c = tryLoadFromJdk(child);
+                        if (c != null) return c;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static JavaCompiler tryLoadFromJdk(java.io.File jdkDir) {
+        // JDK 8: tools.jar
+        java.io.File toolsJar = new java.io.File(jdkDir, "lib" + java.io.File.separator + "tools.jar");
+        if (toolsJar.exists()) {
+            JavaCompiler c = loadCompilerFromToolsJar(toolsJar);
+            if (c != null) return c;
+        }
+        // JDK 9+: javac in jmods or as a module — try loading via process fork
+        java.io.File javacBin = new java.io.File(jdkDir, "bin" + java.io.File.separator + "javac.exe");
+        if (!javacBin.exists()) {
+            javacBin = new java.io.File(jdkDir, "bin" + java.io.File.separator + "javac");
+        }
+        if (javacBin.exists()) {
+            // For JDK 9+, attempt to load compiler via the jmod-based approach
+            java.io.File compilerModule = new java.io.File(jdkDir, "lib" + java.io.File.separator + "jrt-fs.jar");
+            if (compilerModule.exists()) {
+                // Modern JDK detected — the bundled ECJ is more reliable here, so return null
+                // to fall through to ECJ which already works for source-level 8
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static JavaCompiler loadCompilerFromToolsJar(java.io.File toolsJar) {
+        try {
+            java.net.URLClassLoader cl = new java.net.URLClassLoader(
+                    new java.net.URL[]{toolsJar.toURI().toURL()},
+                    ScriptManager.class.getClassLoader()
+            );
+            Class<?> javacToolClass = cl.loadClass("com.sun.tools.javac.api.JavacTool");
+            return (JavaCompiler) javacToolClass.getMethod("create").invoke(null);
+        } catch (Throwable ignored) {
             return null;
         }
     }

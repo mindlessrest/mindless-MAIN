@@ -9,17 +9,18 @@ import keystrokesmod.accountmanager.auth.Account;
 import keystrokesmod.accountmanager.auth.AccountType;
 import keystrokesmod.accountmanager.auth.MicrosoftAuth;
 import keystrokesmod.accountmanager.auth.SessionManager;
-import keystrokesmod.accountmanager.gui.GuiAccountManager;
 import keystrokesmod.accountmanager.utils.Notification;
 import keystrokesmod.accountmanager.utils.TextFormatting;
+import keystrokesmod.utility.font.FontManager;
+import keystrokesmod.utility.font.RavenFontRenderer;
+import keystrokesmod.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.util.Session;
 import org.lwjgl.input.Keyboard;
 
-public class GuiChangeName
-extends GuiScreen {
+public class GuiChangeName extends GuiScreen {
     private final GuiScreen previousScreen;
     private final Account account;
     private GuiTextField nameField;
@@ -32,111 +33,120 @@ extends GuiScreen {
     public GuiChangeName(GuiScreen previousScreen, Account account) {
         this.previousScreen = previousScreen;
         this.account = account;
-        this.status = TextFormatting.translate("&7Enter the new username&r");
+        this.status = "Enter the new username";
     }
 
+    @Override
     public void initGui() {
-        Keyboard.enableRepeatEvents((boolean)true);
-        this.buttonList.clear();
-        this.nameField = new GuiTextField(0, this.fontRendererObj, this.width / 2 - 100, this.height / 2 - 30, 200, 20);
-        this.nameField.setMaxStringLength(16);
-        this.nameField.setText(this.account.getUsername());
-        this.nameField.setFocused(true);
-        this.changeButton = new GuiButton(0, this.width / 2 - 100, this.height / 2, 200, 20, "Change Name");
-        this.buttonList.add(this.changeButton);
-        this.cancelButton = new GuiButton(1, this.width / 2 - 100, this.height / 2 + 25, 200, 20, "Cancel");
-        this.buttonList.add(this.cancelButton);
-        if (this.account.getType() == AccountType.CRACKED) {
-            this.status = TextFormatting.translate("&cCracked (offline) accounts don't have a real Mojang profile to rename&r");
-            this.changeButton.enabled = false;
+        Keyboard.enableRepeatEvents(true);
+        buttonList.clear();
+        int cx = width/2, bw = 200, bh = 20;
+        nameField = new GuiTextField(0, fontRendererObj, cx - bw/2, height/2 - 22, bw, 18);
+        nameField.setMaxStringLength(16);
+        nameField.setText(account.getUsername());
+        nameField.setFocused(true);
+        nameField.setEnableBackgroundDrawing(false);
+
+        changeButton = new GuiButton(0, cx - bw/2, height/2 + 4,  bw, bh, "Change Name");
+        cancelButton = new GuiButton(1, cx - bw/2, height/2 + 28, bw, bh, "Cancel");
+        buttonList.add(changeButton);
+        buttonList.add(cancelButton);
+
+        if (account.getType() == AccountType.CRACKED) {
+            status = "Cracked accounts can't be renamed";
+            changeButton.enabled = false;
         }
     }
 
+    @Override
     public void onGuiClosed() {
-        Keyboard.enableRepeatEvents((boolean)false);
-        if (this.task != null && !this.task.isDone()) {
-            this.task.cancel(true);
-            this.executor.shutdownNow();
+        Keyboard.enableRepeatEvents(false);
+        if (task != null && !task.isDone()) { task.cancel(true); executor.shutdownNow(); }
+    }
+
+    @Override
+    public void updateScreen() { nameField.updateCursorCounter(); }
+
+    @Override
+    public void drawScreen(int mx, int my, float pt) {
+        drawRect(0, 0, width, height, GuiAccountManager.C_BG);
+        RavenFontRenderer sfBold = FontManager.getClickGuiHeaderRenderer("Sf-Bold");
+        RavenFontRenderer sfReg  = FontManager.getClickGuiSettingRenderer("Sf-Regular");
+        RavenFontRenderer sfSm   = FontManager.getClickGuiSmallRenderer("Sf-Regular");
+
+        int cardW = 240, cardH = 140;
+        int cardX = width/2 - cardW/2, cardY = height/2 - cardH/2 - 20;
+        RoundedUtils.drawRound(cardX, cardY, cardW, cardH, 6f, GuiAccountManager.C_PANEL);
+        drawRect(cardX, cardY, cardX + cardW, cardY + 1, GuiAccountManager.C_ACCENT_DIM);
+        sfBold.drawString("Change Username", width/2f - sfBold.getStringWidth("Change Username")/2f, cardY + 10f, GuiAccountManager.C_TEXT, false);
+        sfSm.drawString(status, width/2f - sfSm.getStringWidth(status)/2f, cardY + 24f, GuiAccountManager.C_DIM, false);
+
+        int fw = 200, fh = 22, fx = width/2 - fw/2, fy = height/2 - 26;
+        RoundedUtils.drawRound(fx, fy, fw, fh, 4f, GuiAccountManager.C_ROW);
+        drawRect(fx, fy + fh - 1, fx + fw, fy + fh, GuiAccountManager.C_ACCENT_DIM);
+        if (nameField.getText().isEmpty() && !nameField.isFocused())
+            sfReg.drawString("Username...", fx + 6f, fy + 5f, GuiAccountManager.C_DIM, false);
+        nameField.drawTextBox();
+
+        for (GuiButton b : buttonList) {
+            boolean isCancel = b.id == 1;
+            boolean hov = b.enabled && mx >= b.xPosition && mx < b.xPosition + b.width
+                    && my >= b.yPosition && my < b.yPosition + b.height;
+            int bg  = isCancel ? GuiAccountManager.C_ROW : 0xCC181A2A;
+            int bgH = isCancel ? GuiAccountManager.C_ROW_HOV : 0xCC1E2035;
+            int fg  = !b.enabled ? GuiAccountManager.C_DIM : (isCancel ? GuiAccountManager.C_MUTED : GuiAccountManager.C_ACCENT);
+            RoundedUtils.drawRound(b.xPosition, b.yPosition, b.width, b.height, 4f, hov ? bgH : bg);
+            float tw = sfReg.getStringWidth(b.displayString);
+            sfReg.drawString(b.displayString, b.xPosition + b.width/2f - tw/2f,
+                    b.yPosition + b.height/2f - sfReg.getFontHeight()/2f, fg, false);
         }
     }
 
-    public void updateScreen() {
-        this.nameField.updateCursorCounter();
-    }
-
-    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-        this.drawDefaultBackground();
-        this.drawCenteredString(this.fontRendererObj, "Change Username", this.width / 2, this.height / 2 - 60, 0xFFFFFF);
-        this.drawCenteredString(this.fontRendererObj, this.status, this.width / 2, this.height / 2 - 45, 0xAAAAAA);
-        this.nameField.drawTextBox();
-        super.drawScreen(mouseX, mouseY, partialTicks);
-    }
-
+    @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
-        if (keyCode == 1) {
-            this.actionPerformed(this.cancelButton);
-            return;
-        }
-        this.nameField.textboxKeyTyped(typedChar, keyCode);
-        if (keyCode == 28 && this.changeButton.enabled) {
-            this.actionPerformed(this.changeButton);
-        }
+        if (keyCode == 1) { actionPerformed(cancelButton); return; }
+        nameField.textboxKeyTyped(typedChar, keyCode);
+        if (keyCode == 28 && changeButton.enabled) actionPerformed(changeButton);
     }
 
-    protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
-        this.nameField.mouseClicked(mouseX, mouseY, mouseButton);
-        super.mouseClicked(mouseX, mouseY, mouseButton);
+    @Override
+    protected void mouseClicked(int mx, int my, int btn) throws IOException {
+        nameField.mouseClicked(mx, my, btn);
+        super.mouseClicked(mx, my, btn);
     }
 
+    @Override
     protected void actionPerformed(GuiButton button) {
-        if (button == null || !button.enabled) {
-            return;
-        }
-        switch (button.id) {
-            case 0: {
-                this.handleChangeName();
-                break;
-            }
-            case 1: {
-                this.mc.displayGuiScreen(this.previousScreen);
-            }
-        }
+        if (button == null || !button.enabled) return;
+        if (button.id == 0) handleChangeName();
+        else mc.displayGuiScreen(previousScreen);
     }
 
     private void handleChangeName() {
-        if (this.task != null && !this.task.isDone()) {
-            return;
-        }
-        String newName = this.nameField.getText().trim();
-        if (newName.isEmpty()) {
-            this.status = TextFormatting.translate("&cPlease enter a username&r");
-            return;
-        }
-        if (newName.equalsIgnoreCase(this.account.getUsername())) {
-            this.status = TextFormatting.translate("&cThat's already this account's name&r");
-            return;
-        }
-        if (this.executor == null || this.executor.isShutdown()) {
-            this.executor = Executors.newSingleThreadExecutor();
-        }
-        this.changeButton.enabled = false;
-        this.status = TextFormatting.translate(String.format("&7Requesting name change to %s...&r", newName));
-        this.task = MicrosoftAuth.changeName(this.account.getAccessToken(), newName, this.executor).whenCompleteAsync((confirmedName, error) -> {
+        if (task != null && !task.isDone()) return;
+        String newName = nameField.getText().trim();
+        if (newName.isEmpty()) { status = "Please enter a username"; return; }
+        if (newName.equalsIgnoreCase(account.getUsername())) { status = "That's already this account's name"; return; }
+        if (executor == null || executor.isShutdown()) executor = Executors.newSingleThreadExecutor();
+        changeButton.enabled = false;
+        status = "Requesting name change to " + newName + "...";
+        task = MicrosoftAuth.changeName(account.getAccessToken(), newName, executor).whenCompleteAsync((confirmedName, error) -> {
             if (error != null) {
                 Throwable cause = error.getCause() != null ? error.getCause() : error;
-                this.status = TextFormatting.translate(String.format("&c%s&r", cause.getMessage()));
-                this.changeButton.enabled = true;
+                status = cause.getMessage();
+                changeButton.enabled = true;
                 return;
             }
-            String oldUsername = this.account.getUsername();
-            this.account.setUsername((String)confirmedName);
-            if (SessionManager.get() != null && SessionManager.get().getUsername().equals(oldUsername) && SessionManager.get().getPlayerID().equals(this.account.getUuid())) {
-                SessionManager.set(new Session(confirmedName, this.account.getUuid(), this.account.getAccessToken(), "mojang"));
+            String oldUsername = account.getUsername();
+            account.setUsername(confirmedName);
+            if (SessionManager.get() != null && SessionManager.get().getUsername().equals(oldUsername)
+                    && SessionManager.get().getPlayerID().equals(account.getUuid())) {
+                SessionManager.set(new Session(confirmedName, account.getUuid(), account.getAccessToken(), "mojang"));
             }
             AccountManager.save();
-            GuiAccountManager.notification = new Notification(TextFormatting.translate(String.format("&aName changed to %s!&r", confirmedName)), 5000L);
-            this.mc.displayGuiScreen(this.previousScreen);
-        }, runnable -> this.mc.addScheduledTask(runnable));
+            GuiAccountManager.notification = new Notification(TextFormatting.translate(
+                    String.format("&aName changed to %s!&r", confirmedName)), 5000L);
+            mc.displayGuiScreen(previousScreen);
+        }, r -> mc.addScheduledTask(r));
     }
 }
-

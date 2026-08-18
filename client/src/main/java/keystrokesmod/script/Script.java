@@ -40,19 +40,37 @@ public class Script {
                 file.mkdir();
             }
             if (Raven.scriptManager.compiler == null) {
+                System.err.println("[Scripts] Cannot compile " + this.name + ": no compiler available!");
                 return false;
             }
+            System.out.println("[Scripts] Compiling script: " + this.name + " (using " + Raven.scriptManager.compiler.getClass().getSimpleName() + ")");
             final ScriptDiagnosticListener bp = new ScriptDiagnosticListener();
-            final StandardJavaFileManager fileManager = Raven.scriptManager.compiler.getStandardFileManager(bp, null, null);
+            final boolean isEcj = Raven.scriptManager.compiler instanceof org.eclipse.jdt.internal.compiler.tool.EclipseCompiler;
+            final StandardJavaFileManager stdFileManager = Raven.scriptManager.compiler.getStandardFileManager(bp, null, null);
+            // Wrap with classloader-backed file manager so ECJ can resolve MC classes from memory
+            final javax.tools.JavaFileManager fileManager = isEcj ? new ScriptClasspathFileManager(stdFileManager) : stdFileManager;
             final ArrayList<String> compilationOptions = new ArrayList<>();
             compilationOptions.add("-d");
             compilationOptions.add(Raven.scriptManager.COMPILED_DIR);
-            if (!(Raven.scriptManager.compiler instanceof org.eclipse.jdt.internal.compiler.tool.EclipseCompiler)) {
+            if (!isEcj) {
                 compilationOptions.add("-XDuseUnsharedTable");
             }
-            if (Raven.scriptManager.compiler instanceof org.eclipse.jdt.internal.compiler.tool.EclipseCompiler) {
+            if (isEcj) {
+                compilationOptions.add("-source");
+                compilationOptions.add("1.8");
+                compilationOptions.add("-target");
+                compilationOptions.add("1.8");
+                // Tell ECJ where to find java.lang.Object etc on JDK 9+
+                String javaHome = System.getProperty("java.home");
+                File jrtFs = new File(javaHome, "lib" + File.separator + "jrt-fs.jar");
+                if (jrtFs.exists()) {
+                    compilationOptions.add("--system");
+                    compilationOptions.add(javaHome);
+                }
                 compilationOptions.add("-classpath");
-                compilationOptions.add(buildRuntimeClasspath());
+                String cp = buildRuntimeClasspath();
+                compilationOptions.add(cp);
+                System.out.println("[Scripts] ECJ classpath entries: " + cp.split(File.pathSeparator).length);
             }
             else if (!(boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
                 compilationOptions.add("-classpath");
@@ -63,12 +81,32 @@ public class Script {
                 catch (UnsupportedOperationException ex2) {}
                 compilationOptions.add(s);
             }
-            boolean success = Raven.scriptManager.compiler.getTask(null, fileManager, bp, compilationOptions, null, Arrays.asList(new JavaSourceFromString(this.scriptName, this.codeStr, this.STARTING_LINE))).call();
+
+            // ECJ cannot compile from in-memory JavaSourceFromString — write to temp file
+            File tempSourceFile = null;
+            Iterable<? extends javax.tools.JavaFileObject> compilationUnits;
+            if (isEcj) {
+                tempSourceFile = new File(Raven.scriptManager.COMPILED_DIR, this.scriptName + ".java");
+                java.nio.file.Files.write(tempSourceFile.toPath(), this.codeStr.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                compilationUnits = stdFileManager.getJavaFileObjects(tempSourceFile);
+            } else {
+                compilationUnits = Arrays.asList(new JavaSourceFromString(this.scriptName, this.codeStr, this.STARTING_LINE));
+            }
+
+            boolean success = Raven.scriptManager.compiler.getTask(null, fileManager, bp, compilationOptions, null, compilationUnits).call();
+
+            // Clean up temp source
+            if (tempSourceFile != null && tempSourceFile.exists()) {
+                tempSourceFile.delete();
+            }
+
             if (!success) {
+                System.err.println("[Scripts] Compilation FAILED for: " + this.name);
                 this.error = true;
-                fileManager.close();
+                stdFileManager.close();
                 return false;
             }
+            System.out.println("[Scripts] Compilation SUCCESS: " + this.name);
             try (SecureClassLoader secureClassLoader = new SecureClassLoader(new URL[]{file.toURI().toURL()}, Launch.classLoader)) {
                 this.clazz = secureClassLoader.loadClass(this.scriptName);
                 this.instance = this.clazz.newInstance();
@@ -80,7 +118,7 @@ public class Script {
                 return false;
             }
             finally {
-                fileManager.close();
+                stdFileManager.close();
             }
             return true;
         }
@@ -92,6 +130,84 @@ public class Script {
 
     private static String buildRuntimeClasspath() {
         LinkedHashSet<String> entries = new LinkedHashSet<>();
+
+        // JDK 9+: add --system-style jars for platform classes
+        String bootCp = System.getProperty("sun.boot.class.path");
+        if (bootCp != null && !bootCp.isEmpty()) {
+            for (String entry : bootCp.split(File.pathSeparator)) {
+                if (new File(entry).exists()) {
+                    entries.add(entry);
+                }
+            }
+        } else {
+            File rtJar = new File(System.getProperty("java.home"), "lib" + File.separator + "rt.jar");
+            if (rtJar.exists()) {
+                entries.add(rtJar.getAbsolutePath());
+            }
+        }
+
+        // The mod jar (contains scripting API). On Lunar it's embedded in memory —
+        // extract it to a temp file so ECJ can read it.
+        try {
+            java.security.CodeSource cs = ScriptManager.class.getProtectionDomain().getCodeSource();
+            if (cs != null && cs.getLocation() != null) {
+                URL jarUrl = cs.getLocation();
+                String protocol = jarUrl.getProtocol();
+                if ("file".equalsIgnoreCase(protocol)) {
+                    File jarFile = new File(jarUrl.toURI());
+                    if (jarFile.exists()) {
+                        entries.add(jarFile.getAbsolutePath());
+                        System.out.println("[Scripts] Classpath: mod jar from CodeSource: " + jarFile.getAbsolutePath());
+                    }
+                } else {
+                    // Not a file — embedded. Dump the jar to temp.
+                    File tempJar = new File(Raven.scriptManager.COMPILED_DIR, "_raven_classes.jar");
+                    try (java.io.InputStream is = jarUrl.openStream();
+                         java.io.FileOutputStream fos = new java.io.FileOutputStream(tempJar)) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
+                        entries.add(tempJar.getAbsolutePath());
+                        System.out.println("[Scripts] Classpath: dumped embedded jar to " + tempJar.getAbsolutePath());
+                    } catch (Throwable t) {
+                        System.err.println("[Scripts] Failed to dump embedded jar: " + t.getMessage());
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            System.err.println("[Scripts] Failed to resolve CodeSource: " + t.getMessage());
+        }
+
+        // If CodeSource didn't work, try to find the jar via the classloader's loaded class bytes.
+        // Fallback: locate the jar by scanning known paths where the native injector places it.
+        if (entries.stream().noneMatch(e -> e.contains("raven") || e.contains("Raven") || e.contains("mindless") || e.contains("Mindless"))) {
+            // Try getting class file location directly
+            try {
+                URL classUrl = ScriptManager.class.getResource("ScriptManager.class");
+                if (classUrl != null) {
+                    String path = classUrl.toString();
+                    // jar:file:/path/to/mod.jar!/keystrokesmod/script/ScriptManager.class
+                    if (path.startsWith("jar:file:")) {
+                        String jarPath = path.substring("jar:file:".length(), path.indexOf("!"));
+                        File jarFile = new File(java.net.URLDecoder.decode(jarPath, "UTF-8"));
+                        if (jarFile.exists()) {
+                            entries.add(jarFile.getAbsolutePath());
+                            System.out.println("[Scripts] Classpath: mod jar from class URL: " + jarFile.getAbsolutePath());
+                        }
+                    } else if (path.startsWith("file:")) {
+                        // Classes are in a directory (dev env)
+                        String classesPath = path.substring("file:".length(), path.indexOf("keystrokesmod"));
+                        File classesDir = new File(java.net.URLDecoder.decode(classesPath, "UTF-8"));
+                        if (classesDir.exists()) {
+                            entries.add(classesDir.getAbsolutePath());
+                            System.out.println("[Scripts] Classpath: classes dir: " + classesDir.getAbsolutePath());
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // Gather URLs from Launch.classLoader
         try {
             if (Launch.classLoader instanceof URLClassLoader) {
                 for (URL url : ((URLClassLoader) Launch.classLoader).getURLs()) {
@@ -104,8 +220,60 @@ public class Script {
         catch (Throwable ignored) {
         }
 
+        // Reflective getURLs on Launch.classLoader
+        try {
+            java.lang.reflect.Method getURLs = Launch.classLoader.getClass().getMethod("getURLs");
+            URL[] urls = (URL[]) getURLs.invoke(Launch.classLoader);
+            if (urls != null) {
+                for (URL url : urls) {
+                    if ("file".equalsIgnoreCase(url.getProtocol())) {
+                        entries.add(new File(url.toURI()).getAbsolutePath());
+                    }
+                }
+            }
+        }
+        catch (Throwable ignored) {
+        }
+
+        // java.class.path
+        String cpProp = System.getProperty("java.class.path");
+        if (cpProp != null && !cpProp.isEmpty()) {
+            for (String entry : cpProp.split(File.pathSeparator)) {
+                if (new File(entry).exists()) {
+                    entries.add(entry);
+                }
+            }
+        }
+
+        // Lunar: scan the classpath dir for all jars (includes Forge, OptiFine, Minecraft classes)
+        if (cpProp != null && !cpProp.isEmpty()) {
+            String firstEntry = cpProp.split(File.pathSeparator)[0];
+            File cpDir = new File(firstEntry).getParentFile();
+            if (cpDir != null && cpDir.isDirectory()) {
+                File[] allJars = cpDir.listFiles((dir, name) -> name.endsWith(".jar"));
+                if (allJars != null) {
+                    for (File jar : allJars) {
+                        entries.add(jar.getAbsolutePath());
+                    }
+                }
+            }
+        }
+
         if (Raven.scriptManager.jarPath != null && !Raven.scriptManager.jarPath.isEmpty()) {
-            entries.add(Raven.scriptManager.jarPath);
+            File jp = new File(Raven.scriptManager.jarPath);
+            if (jp.exists()) {
+                entries.add(jp.getAbsolutePath());
+            }
+        }
+
+        // Add dumped MC classes jar (Lunar: MC classes only exist in memory)
+        if (Raven.scriptManager.mcClassesJar != null && Raven.scriptManager.mcClassesJar.exists()) {
+            entries.add(Raven.scriptManager.mcClassesJar.getAbsolutePath());
+        }
+
+        System.out.println("[Scripts] Classpath has " + entries.size() + " entries");
+        for (String e : entries) {
+            System.out.println("[Scripts]   " + e);
         }
         return String.join(File.pathSeparator, entries);
     }

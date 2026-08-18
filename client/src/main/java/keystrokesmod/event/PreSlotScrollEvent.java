@@ -16,4 +16,9 @@ public class PreSlotScrollEvent extends Event {
         this.slot = slot;
         this.previousSlot = previousSlot;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

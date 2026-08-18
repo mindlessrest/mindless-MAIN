@@ -16,4 +16,9 @@ public class AttackEvent extends Event {
         this.attacker = attacker;
         this.swing = swing;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

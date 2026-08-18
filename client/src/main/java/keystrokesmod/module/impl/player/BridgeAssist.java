@@ -45,7 +45,6 @@ public class BridgeAssist extends Module {
     private int sneakJumpStartTick = -1;
     private int unsneakDelayTicks = -1;
     private int unsneakStartTick = -1;
-    private double trembleOffset = 0;
 
     public BridgeAssist() {
         super("Bridge Assist", category.player);
@@ -55,8 +54,8 @@ public class BridgeAssist extends Module {
         GroupSetting sneakingGroup = new GroupSetting("Sneaking");
         this.registerSetting(sneakingGroup);
         this.registerSetting(edgeOffset = new SliderSetting(sneakingGroup, "Edge offset", " blocks", 0, 0, 0.3, 0.01));
-        this.registerSetting(unsneakDelayMin = new SliderSetting(sneakingGroup, "Delay min", "ms", 125, 50, 300, 5));
-        this.registerSetting(unsneakDelayMax = new SliderSetting(sneakingGroup, "Delay max", "ms", 175, 50, 300, 5));
+        this.registerSetting(unsneakDelayMin = new SliderSetting(sneakingGroup, "Sneak delay min", "ms", 50, 50, 300, 5));
+        this.registerSetting(unsneakDelayMax = new SliderSetting(sneakingGroup, "Sneak delay max", "ms", 100, 50, 300, 5));
         this.registerSetting(sneakOnJump = new SliderSetting(sneakingGroup, "Sneak on jump", "ms", 0, 0, 500, 5));
 
         GroupSetting conditionsGroup = new GroupSetting("Conditions");
@@ -78,7 +77,6 @@ public class BridgeAssist extends Module {
     @Override
     public void onDisable() {
         sneakingFromModule = false;
-        trembleOffset = 0;
         resetUnsneak();
     }
 
@@ -183,12 +181,8 @@ public class BridgeAssist extends Module {
         float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
         float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, target.yaw, target.pitch, 15, 20f);
 
-        trembleOffset += (Math.random() - 0.5) * 0.8 - trembleOffset * 0.1;
-        if (trembleOffset > 1.5) trembleOffset = 1.5;
-        if (trembleOffset < -1.5) trembleOffset = -1.5;
-
         e.setYaw(sm[0]);
-        e.setPitch(RotationUtils.clampPitch(sm[1] + (float) trembleOffset));
+        e.setPitch(sm[1]);
     }
 
     private void pressSneak(PrePlayerInputEvent e, boolean resetDelay) {
@@ -204,9 +198,7 @@ public class BridgeAssist extends Module {
             unsneakStartTick = existed;
             double fromMs = Math.min(unsneakDelayMin.getInput(), unsneakDelayMax.getInput());
             double toMs = Math.max(unsneakDelayMin.getInput(), unsneakDelayMax.getInput());
-            if (toMs <= fromMs) {
-                toMs = fromMs + 1;
-            }
+            if (toMs <= fromMs) toMs = fromMs + 1;
             unsneakDelayTicks = (int) Math.floor((fromMs + Math.random() * (toMs - fromMs)) / 50.0);
         }
 

@@ -161,18 +161,18 @@ public class SpotifyMiniPlayer extends Module {
         private boolean dragging;
         private float dragOffsetX;
         private float dragOffsetY;
-        private float actualX;
-        private float actualY;
 
         @Override
         public void initGui() {
             super.initGui();
             this.buttonList.add(this.resetPosition = new GuiButtonExt(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
-            float[] bounds = SpotifyMiniPlayerRenderer.getCurrentBounds();
-            if (bounds != null) {
-                this.actualX = bounds[0];
-                this.actualY = bounds[1];
-                SpotifyMiniPlayer.setCustomPositionFromAbsolute(actualX, actualY, bounds[2], bounds[3], new ScaledResolution(this.mc));
+            // Force a preview render so panelVisible/bounds are populated immediately
+            // even though onRenderTick skips rendering while a GUI screen is open.
+            float[] bounds = SpotifyMiniPlayerRenderer.renderPreview();
+            if (bounds != null && !SpotifyMiniPlayer.hasCustomPosition()) {
+                ScaledResolution sr = new ScaledResolution(this.mc);
+                float w = bounds[2] - bounds[0], h = bounds[3] - bounds[1];
+                SpotifyMiniPlayer.setCustomPositionFromAbsolute(bounds[0], bounds[1], w, h, sr);
             }
         }
 
@@ -180,27 +180,24 @@ public class SpotifyMiniPlayer extends Module {
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
             drawRect(0, 0, this.width, this.height, 0x7A000000);
 
-            float[] bounds = SpotifyMiniPlayerRenderer.getCurrentBounds();
-            if (bounds != null) {
-                if (!dragging) {
-                    actualX = bounds[0];
-                    actualY = bounds[1];
-                }
-                else {
-                    ScaledResolution resolution = new ScaledResolution(this.mc);
-                    float clampedX = Math.max(0.0F, Math.min(resolution.getScaledWidth() - bounds[2], mouseX - dragOffsetX));
-                    float clampedY = Math.max(0.0F, Math.min(resolution.getScaledHeight() - bounds[3], mouseY - dragOffsetY));
-                    actualX = clampedX;
-                    actualY = clampedY;
-                    SpotifyMiniPlayer.setCustomPositionFromAbsolute(actualX, actualY, bounds[2], bounds[3], resolution);
-                    bounds = SpotifyMiniPlayerRenderer.getCurrentBounds();
-                    if (bounds != null) {
-                        actualX = bounds[0];
-                        actualY = bounds[1];
-                    }
+            // renderPreview() drives the renderer so panelX/Y/W/H are always fresh.
+            float[] rect = SpotifyMiniPlayerRenderer.renderPreview();
+
+            if (rect != null) {
+                float px = rect[0], py = rect[1];
+                float pw = rect[2] - rect[0], ph = rect[3] - rect[1];
+
+                if (dragging) {
+                    ScaledResolution sr = new ScaledResolution(this.mc);
+                    float nx = Math.max(0.0F, Math.min(sr.getScaledWidth() - pw, mouseX - dragOffsetX));
+                    float ny = Math.max(0.0F, Math.min(sr.getScaledHeight() - ph, mouseY - dragOffsetY));
+                    SpotifyMiniPlayer.setCustomPositionFromAbsolute(nx, ny, pw, ph, sr);
+                    // Re-render with updated position so outline matches
+                    rect = SpotifyMiniPlayerRenderer.renderPreview();
+                    if (rect != null) { px = rect[0]; py = rect[1]; pw = rect[2]-rect[0]; ph = rect[3]-rect[1]; }
                 }
 
-                drawOutline(bounds[0], bounds[1], bounds[2], bounds[3]);
+                drawOutline(px, py, pw, ph);
             }
 
             drawCenteredString(this.fontRendererObj, "Drag the Spotify mini player to move it.", this.width / 2, 18, Color.white.getRGB());
@@ -209,32 +206,29 @@ public class SpotifyMiniPlayer extends Module {
         }
 
         @Override
+        protected void mouseClicked(int mouseX, int mouseY, int button) throws java.io.IOException {
+            super.mouseClicked(mouseX, mouseY, button);
+            if (button != 0) return;
+            float[] rect = SpotifyMiniPlayerRenderer.renderPreview();
+            if (rect == null) return;
+            float px = rect[0], py = rect[1], pw = rect[2]-rect[0], ph = rect[3]-rect[1];
+            if (mouseX >= px && mouseX <= px + pw && mouseY >= py && mouseY <= py + ph) {
+                dragging = true;
+                dragOffsetX = mouseX - px;
+                dragOffsetY = mouseY - py;
+            }
+        }
+
+        @Override
         protected void mouseClickMove(int mouseX, int mouseY, int button, long timeSinceLastClick) {
             super.mouseClickMove(mouseX, mouseY, button, timeSinceLastClick);
-            if (button != 0) {
-                return;
-            }
-
-            float[] bounds = SpotifyMiniPlayerRenderer.getCurrentBounds();
-            if (bounds == null) {
-                return;
-            }
-
-            if (!dragging) {
-                if (mouseX >= bounds[0] && mouseX <= bounds[0] + bounds[2] && mouseY >= bounds[1] && mouseY <= bounds[1] + bounds[3]) {
-                    dragging = true;
-                    dragOffsetX = mouseX - bounds[0];
-                    dragOffsetY = mouseY - bounds[1];
-                }
-            }
+            // Dragging state is set in mouseClicked; movement handled in drawScreen.
         }
 
         @Override
         protected void mouseReleased(int mouseX, int mouseY, int state) {
             super.mouseReleased(mouseX, mouseY, state);
-            if (state == 0) {
-                dragging = false;
-            }
+            if (state == 0) dragging = false;
         }
 
         @Override

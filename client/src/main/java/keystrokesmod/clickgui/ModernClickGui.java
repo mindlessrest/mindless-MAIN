@@ -543,9 +543,11 @@ public final class ModernClickGui extends ClickGui {
         // Shadow behind dropdown
         RoundedUtils.drawRoundShadow(dx1 - 1, rowTop, dx2 - dx1 + 2, fullH, 5f, 6f, argb((int)(80 * open), 0, 0, 0));
 
-        // Background
-        rounded(dx1, rowTop, dx2, rowTop + fullH, 5f, withAlpha(argb(255, 22, 25, 28), (int)(255 * open)));
-        outline(dx1, rowTop, dx2, rowTop + fullH, 5f, withAlpha(BORDER, (int)(255 * open)));
+        // Background — use drawRect to avoid shader coordinate issues with nested GL matrices
+        int bgAlpha = (int)(255 * open);
+        net.minecraft.client.gui.Gui.drawRect((int) dx1, (int) rowTop, (int) dx2, (int)(rowTop + fullH),
+                withAlpha(argb(255, 18, 21, 24), bgAlpha));
+        outline(dx1, rowTop, dx2, rowTop + fullH, 5f, withAlpha(BORDER, bgAlpha));
         resetTextRenderState();
 
         // Options
@@ -557,10 +559,10 @@ public final class ModernClickGui extends ClickGui {
             float rowHp = animate(hoverAnimation, rowKey, hov ? 1f : 0f, 16f);
             // Selected row: solid accent bg; hover row: subtle tint
             if (sel) {
-                rounded(dx1 + 2, oy, dx2 - 2, oy + 19, 3f,
-                         withAlpha(ACCENT, (int)(80 * open)));
+                net.minecraft.client.gui.Gui.drawRect((int)(dx1 + 2), (int) oy, (int)(dx2 - 2), (int)(oy + 19),
+                        withAlpha(ACCENT, (int)(80 * open)));
             } else if (rowHp > 0.01f) {
-                rounded(dx1 + 2, oy, dx2 - 2, oy + 19, 3f,
+                net.minecraft.client.gui.Gui.drawRect((int)(dx1 + 2), (int) oy, (int)(dx2 - 2), (int)(oy + 19),
                         withAlpha(ACCENT, (int)(30 * rowHp * open)));
             }
             int textColor = sel ? TEXT : mixColor(MUTED, TEXT, rowHp);
@@ -921,9 +923,9 @@ public final class ModernClickGui extends ClickGui {
                     openDropdown = null;
                     return;
                 }
-                // Click outside overlay → close it
+                // Click outside overlay → close it and consume the click
                 openDropdown = null;
-                // fall through so the click still registers on whatever's below
+                return;
             }
             clickSetting(mx, my, mouseButton);
         }

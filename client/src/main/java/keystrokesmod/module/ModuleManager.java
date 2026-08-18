@@ -89,8 +89,7 @@ public class ModuleManager {
     public static AutoTool autoTool;
     public static AutoSwap autoSwap;
     public static Scaffold scaffold;
-    public static TestScaffold testScaffold;
-    public static MyauScaff myauScaff;
+    public static Clutch clutch;
     public static Tower tower;
     public static Sprint sprint;
     public static Weather weather;
@@ -201,8 +200,7 @@ public class ModuleManager {
         this.addModule(new BridgeAssist());
         this.addModule(tower = new Tower());
         this.addModule(scaffold = new Scaffold());
-        this.addModule(testScaffold = new TestScaffold());
-        this.addModule(myauScaff = new MyauScaff());
+        this.addModule(clutch = new Clutch());
         this.addModule(autoTool = new AutoTool());
         this.addModule(bedAura = new BedAura());
         this.addModule(blink = new Blink());

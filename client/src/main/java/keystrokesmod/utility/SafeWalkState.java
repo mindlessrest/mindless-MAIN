@@ -42,8 +42,7 @@ public final class SafeWalkState {
             return sneaking;
         }
         boolean safeWalk = SafeWalk.canSafeWalk()
-                || (ModuleManager.scaffold != null && ModuleManager.scaffold.safewalk())
-                || (ModuleManager.testScaffold != null && ModuleManager.testScaffold.canSafeWalk());
+                || (ModuleManager.scaffold != null && ModuleManager.scaffold.safewalk());
         enable(safeWalk);
         return sneaking || safeWalk;
     }

@@ -40,4 +40,9 @@ public class JumpEvent extends Event {
     public void setSprint(boolean applySprint) {
         this.applySprint = applySprint;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

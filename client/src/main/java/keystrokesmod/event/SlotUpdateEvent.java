@@ -14,4 +14,9 @@ public class SlotUpdateEvent extends Event {
     public SlotUpdateEvent(int slot) {
         this.slot = slot;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

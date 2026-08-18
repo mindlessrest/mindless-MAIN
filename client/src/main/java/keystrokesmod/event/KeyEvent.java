@@ -16,4 +16,9 @@ public class KeyEvent extends Event {
         this.state = state;
         this.inGui = inGui;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

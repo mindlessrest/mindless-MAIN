@@ -11,10 +11,10 @@
                 "strategy": "external"
             },
             "cacheVariables": {
-                "CMAKE_C_COMPILER": "C:/Users/anthony/Tools/LLVM/bin/clang-cl.exe",
-                "CMAKE_CXX_COMPILER": "C:/Users/anthony/Tools/LLVM/bin/clang-cl.exe",
-                "CMAKE_LINKER": "C:/Users/anthony/Tools/LLVM/bin/lld-link.exe",
-                "CMAKE_MAKE_PROGRAM": "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe",
+                "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
+                "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
+                "CMAKE_LINKER": "C:/Program Files/LLVM/bin/lld-link.exe",
+                "CMAKE_MAKE_PROGRAM": "C:/Users/qxod/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/ninja.EXE",
                 "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
                 "VCPKG_TARGET_TRIPLET": "x64-windows-static"
             },

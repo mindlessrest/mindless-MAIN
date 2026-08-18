@@ -58,10 +58,20 @@ public class ScaffoldBlockCount {
             }
             previousAlpha = alpha;
             int colorAlpha = Utils.mergeAlpha(-1, (int) previousAlpha);
+            float renderY = scaledResolution.getScaledHeight() / 2 + 4;
+
+            // Stack below FastPlace block count if it's also rendering
+            if (ModuleManager.fastPlace != null
+                    && ModuleManager.fastPlace.isEnabled()
+                    && ModuleManager.fastPlace.showBlockCount.isToggled()) {
+                renderY += mc.fontRendererObj.FONT_HEIGHT + 2;
+            }
+
             GL11.glPushMatrix();
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-            mc.fontRendererObj.drawStringWithShadow(color + blocks + " §rblock" + (blocks == 1 ? "" : "s"), scaledResolution.getScaledWidth() / 2 + 8, scaledResolution.getScaledHeight() / 2 + 4, colorAlpha);
+            String text = "§7Scaffold §8| " + color + blocks + " §7block" + (blocks == 1 ? "" : "s");
+            mc.fontRendererObj.drawStringWithShadow(text, scaledResolution.getScaledWidth() / 2 + 8, renderY, colorAlpha);
             GL11.glDisable(GL11.GL_BLEND);
             GL11.glPopMatrix();
         }

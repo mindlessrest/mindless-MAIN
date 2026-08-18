@@ -16,4 +16,9 @@ public class KeyPressEvent extends Event {
         this.typedChar = typedChar;
         this.keyCode = keyCode;
     }
+
+    @Override
+    public boolean isCancelable() {
+        return true;
+    }
 }

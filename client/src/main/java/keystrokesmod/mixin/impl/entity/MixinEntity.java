@@ -38,8 +38,7 @@ public abstract class MixinEntity {
 
         if (entity != null && entity == mc.thePlayer && entity.onGround) {
             if (SafeWalk.canSafeWalk()
-                    || (ModuleManager.scaffold != null && ModuleManager.scaffold.safewalk())
-                    || (ModuleManager.testScaffold != null && ModuleManager.testScaffold.canSafeWalk())) {
+                    || (ModuleManager.scaffold != null && ModuleManager.scaffold.safewalk())) {
                 return true;
             }
         }

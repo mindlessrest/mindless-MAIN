@@ -16,18 +16,12 @@ import keystrokesmod.accountmanager.auth.AccountLogin;
 import keystrokesmod.accountmanager.auth.AccountType;
 import keystrokesmod.accountmanager.auth.CrackedAuth;
 import keystrokesmod.accountmanager.auth.SessionManager;
-import keystrokesmod.accountmanager.gui.GuiAddAccount;
-import keystrokesmod.accountmanager.gui.GuiChangeName;
-import keystrokesmod.accountmanager.gui.GuiChangeSkin;
-import keystrokesmod.accountmanager.gui.GuiLocaltsMenu;
-import keystrokesmod.accountmanager.gui.GuiLocaltsSetup;
-import keystrokesmod.accountmanager.gui.GuiNicealtsMenu;
-import keystrokesmod.accountmanager.gui.GuiNicealtsSetup;
 import keystrokesmod.accountmanager.utils.Notification;
 import keystrokesmod.accountmanager.utils.TextFormatting;
+import keystrokesmod.utility.font.FontManager;
+import keystrokesmod.utility.font.RavenFontRenderer;
 import keystrokesmod.utility.shader.RoundedUtils;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
@@ -58,32 +52,38 @@ public class GuiAccountManager extends GuiScreen {
     private GuiAccountList guiAccountList = null;
     public static Notification notification = null;
 
-    /** Index into {@link #filteredList}, -1 if nothing selected. */
     private int selectedAccount = -1;
 
     private ExecutorService executor = null;
     private CompletableFuture<Void> task = null;
     private volatile boolean checkingInvalid = false;
 
-    // ── Search / filtering ─────────────────────────────────────────────────────
+    // ── Search ─────────────────────────────────────────────────────────────────
     private GuiTextField searchField;
     private final List<Account> filteredList = new ArrayList<>();
     private String lastSearch = "";
 
-    // ── Layout constants ───────────────────────────────────────────────────────
-    private static final int HEADER_H    = 30;   // top header bar height
-    private static final int SEARCH_TOP  = HEADER_H + 4;
-    private static final int SEARCH_H    = 20;
-    private static final int LIST_TOP    = SEARCH_TOP + SEARCH_H + 4; // ≈58
+    // ── Palette ────────────────────────────────────────────────────────────────
+    static final int C_BG       = 0xF0080A0C;
+    static final int C_PANEL    = 0xEE0D1012;
+    static final int C_ROW      = 0xE0181B1C;
+    static final int C_ROW_HOV  = 0xEC1F2223;
+    static final int C_SEL      = 0x339F8FD2;
+    static final int C_ACCENT   = 0xFF9F8FD2;
+    static final int C_ACCENT_DIM = 0x559F8FD2;
+    static final int C_TEXT     = 0xFFEBEAE6;
+    static final int C_MUTED    = 0xFF9D9E9C;
+    static final int C_DIM      = 0xFF696C6C;
+    static final int C_BORDER   = 0x34D2D2CC;
+    static final int C_DANGER   = 0xFFDB6864;
+    static final int C_SUCCESS  = 0xFF6EBF7A;
 
-    // ── Colours ────────────────────────────────────────────────────────────────
-    private static final int COL_HEADER_BG  = 0xFF0C0C12;
-    private static final int COL_SEP        = 0x40FFFFFF;
-    private static final int COL_SEL        = 0x3346A0FF;
-    private static final int COL_HOVER      = 0x12FFFFFF;
-    private static final int COL_ACCENT     = 0xFF5E9BF5;
-    private static final int COL_SEARCH_BG  = 0xAA0A0A10;
-    private static final int COL_TOAST_BG   = 0xCC0C0C14;
+    // ── Layout ─────────────────────────────────────────────────────────────────
+    private static final int HEADER_H   = 32;
+    private static final int SEARCH_TOP = HEADER_H + 6;
+    private static final int SEARCH_H   = 20;
+    private static final int LIST_TOP   = SEARCH_TOP + SEARCH_H + 6;
+    private static final int FOOTER_H   = 108;
 
     public GuiAccountManager(GuiScreen previousScreen) {
         this.previousScreen = previousScreen;
@@ -104,59 +104,55 @@ public class GuiAccountManager extends GuiScreen {
         Keyboard.enableRepeatEvents(true);
         buttonList.clear();
 
-        // Restore-session button (top-right)
         if (SessionManager.getLaunchSession() != null) {
             String launchName = SessionManager.getLaunchSession().getUsername();
             String label = "Restore: " + launchName;
             int rw = Math.min(220, fontRendererObj.getStringWidth(label) + 12);
-            restoreButton = new GuiButton(4, width - rw - 6, 5, rw, 20, label);
+            restoreButton = new GuiButton(4, width - rw - 8, 6, rw, 20, label);
             buttonList.add(restoreButton);
         } else {
             restoreButton = null;
         }
 
-        // Search field
-        int sfW = 300;
+        int sfW = Math.min(340, width - 20);
         int sfX = width / 2 - sfW / 2;
-        searchField = new GuiTextField(0, fontRendererObj, sfX, SEARCH_TOP, sfW, SEARCH_H);
+        searchField = new GuiTextField(0, fontRendererObj, sfX + 8, SEARCH_TOP + 4, sfW - 16, SEARCH_H - 8);
         searchField.setMaxStringLength(64);
         searchField.setCanLoseFocus(true);
+        searchField.setEnableBackgroundDrawing(false);
 
-        // Button geometry
-        int colW = 98, gap = 4;
-        int col1 = width / 2 - (colW * 3 + gap * 2) / 2;
+        int bFooterTop = height - FOOTER_H + 4;
+        int colW = 96, gap = 4;
+        int totalW = colW * 3 + gap * 2;
+        int col1 = width / 2 - totalW / 2;
         int col2 = col1 + colW + gap;
         int col3 = col2 + colW + gap;
-        int totalW = colW * 3 + gap * 2;
-        int wideW  = (totalW - gap) / 2;
+        int wideW = (totalW - gap) / 2;
 
-        int servRow = height - 100;
-        localtsButton  = new GuiButton(9,  col1,           servRow, wideW, 20, "Localts");
-        nicealtsButton = new GuiButton(10, col1 + wideW + gap, servRow, wideW, 20, "NiceAlts");
+        localtsButton  = new GuiButton(9,  col1,             bFooterTop,      wideW, 20, "Localts");
+        nicealtsButton = new GuiButton(10, col1 + wideW + gap, bFooterTop,    wideW, 20, "NiceAlts");
         buttonList.add(localtsButton);
         buttonList.add(nicealtsButton);
 
-        int delRow = height - 76;
-        deleteInvalidButton = new GuiButton(7, col1,           delRow, wideW, 20, "Delete invalid");
-        pasteTokenButton    = new GuiButton(8, col1 + wideW + gap, delRow, wideW, 20, "Paste token");
+        deleteInvalidButton = new GuiButton(7, col1,             bFooterTop + 26, wideW, 20, "Delete invalid");
+        pasteTokenButton    = new GuiButton(8, col1 + wideW + gap, bFooterTop + 26, wideW, 20, "Paste token");
         buttonList.add(deleteInvalidButton);
         buttonList.add(pasteTokenButton);
 
-        int row1 = height - 52, row2 = height - 28;
-        loginButton  = new GuiButton(0, col1, row1, colW, 20, "Login");
-        renameButton = new GuiButton(5, col2, row1, colW, 20, "Rename");
+        loginButton  = new GuiButton(0, col1, bFooterTop + 52, colW, 20, "Login");
+        renameButton = new GuiButton(5, col2, bFooterTop + 52, colW, 20, "Rename");
         buttonList.add(loginButton);
         buttonList.add(renameButton);
-        buttonList.add(new GuiButton(1, col3, row1, colW, 20, "Add"));
+        buttonList.add(new GuiButton(1, col3, bFooterTop + 52, colW, 20, "Add"));
 
-        deleteButton = new GuiButton(2, col1, row2, colW, 20, "Delete");
-        skinButton   = new GuiButton(6, col2, row2, colW, 20, "Skin");
-        cancelButton = new GuiButton(3, col3, row2, colW, 20, "Cancel");
+        deleteButton = new GuiButton(2, col1, bFooterTop + 76, colW, 20, "Delete");
+        skinButton   = new GuiButton(6, col2, bFooterTop + 76, colW, 20, "Skin");
+        cancelButton = new GuiButton(3, col3, bFooterTop + 76, colW, 20, "Cancel");
         buttonList.add(deleteButton);
         buttonList.add(skinButton);
         buttonList.add(cancelButton);
 
-        int listBottom = servRow - 6;
+        int listBottom = bFooterTop - 6;
         guiAccountList = new GuiAccountList(mc, listBottom);
         guiAccountList.registerScrollButtons(11, 12);
 
@@ -174,61 +170,47 @@ public class GuiAccountManager extends GuiScreen {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // Filter
+    // Filter / update
     // ══════════════════════════════════════════════════════════════════════════
 
     private void updateFilter() {
         String q = searchField != null ? searchField.getText().toLowerCase().trim() : "";
         Account wasSelected = (selectedAccount >= 0 && selectedAccount < filteredList.size())
                 ? filteredList.get(selectedAccount) : null;
-
         filteredList.clear();
         for (Account acc : AccountManager.accounts) {
-            if (q.isEmpty() || !StringUtils.isBlank(acc.getUsername())
-                    && acc.getUsername().toLowerCase().contains(q)) {
+            if (q.isEmpty() || (!StringUtils.isBlank(acc.getUsername())
+                    && acc.getUsername().toLowerCase().contains(q))) {
                 filteredList.add(acc);
             }
         }
-
-        // Try to keep the same account selected after a filter change
         if (wasSelected != null) {
             int newIdx = filteredList.indexOf(wasSelected);
-            selectedAccount = newIdx; // -1 if filtered out
+            selectedAccount = newIdx;
         } else if (selectedAccount >= filteredList.size()) {
             selectedAccount = -1;
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // Update / state
-    // ══════════════════════════════════════════════════════════════════════════
-
     @Override
     public void updateScreen() {
         if (searchField != null) searchField.updateCursorCounter();
-
         String cur = searchField != null ? searchField.getText() : "";
-        if (!cur.equals(lastSearch)) {
-            lastSearch = cur;
-            updateFilter();
-        }
+        if (!cur.equals(lastSearch)) { lastSearch = cur; updateFilter(); }
 
-        boolean hasSelection = selectedAccount >= 0 && selectedAccount < filteredList.size();
+        boolean has = selectedAccount >= 0 && selectedAccount < filteredList.size();
         boolean busy = task != null && !task.isDone();
 
-        if (deleteButton  != null) deleteButton.enabled  = hasSelection;
-        if (loginButton   != null) loginButton.enabled   = hasSelection && !busy;
-        if (renameButton  != null) renameButton.enabled  = hasSelection && !busy;
-        if (skinButton    != null) skinButton.enabled    = hasSelection && !busy;
+        if (deleteButton  != null) deleteButton.enabled  = has;
+        if (loginButton   != null) loginButton.enabled   = has && !busy;
+        if (renameButton  != null) renameButton.enabled  = has && !busy;
+        if (skinButton    != null) skinButton.enabled    = has && !busy;
         if (deleteInvalidButton != null)
             deleteInvalidButton.enabled = !checkingInvalid && !AccountManager.accounts.isEmpty() && !busy;
-        if (pasteTokenButton != null)
-            pasteTokenButton.enabled = !busy && !checkingInvalid;
+        if (pasteTokenButton != null) pasteTokenButton.enabled = !busy && !checkingInvalid;
         if (nicealtsButton != null) nicealtsButton.enabled = true;
         if (localtsButton  != null) localtsButton.enabled  = true;
-
-        if (restoreButton != null)
-            restoreButton.enabled = !SessionManager.isUsingLaunchSession() && !busy;
+        if (restoreButton  != null) restoreButton.enabled = !SessionManager.isUsingLaunchSession() && !busy;
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -237,57 +219,85 @@ public class GuiAccountManager extends GuiScreen {
 
     @Override
     public void drawScreen(int mx, int my, float pt) {
-        // ── Full-screen dark backdrop ────────────────────────────────────────
-        drawDefaultBackground();
-        drawRect(0, 0, width, height, 0xBB000000);
+        RavenFontRenderer sfReg  = FontManager.getClickGuiSettingRenderer("Sf-Regular");
+        RavenFontRenderer sfBold = FontManager.getClickGuiHeaderRenderer("Sf-Bold");
+
+        // Full-screen background
+        drawRect(0, 0, width, height, C_BG);
+
+        // ── Header ───────────────────────────────────────────────────────────
+        RoundedUtils.drawRound(0, 0, width, HEADER_H, 0f, C_PANEL);
+        drawRect(0, HEADER_H - 1, width, HEADER_H, C_BORDER);
+
+        sfBold.drawString("Account Manager", width / 2f - sfBold.getStringWidth("Account Manager") / 2f, 10f, C_TEXT, false);
+
+        Session sess = SessionManager.get();
+        if (sess != null) {
+            sfReg.drawString("\u00a77" + sess.getUsername(), 8f, 12f, C_MUTED, false);
+        }
+        String countStr = AccountManager.accounts.size() + " accounts";
+        sfReg.drawString(countStr, width - sfReg.getStringWidth(countStr) - 8f, 12f, C_DIM, false);
+
+        // ── Search field background ───────────────────────────────────────────
+        int sfW = Math.min(340, width - 20);
+        int sfX = width / 2 - sfW / 2;
+        RoundedUtils.drawRound(sfX, SEARCH_TOP, sfW, SEARCH_H, 4f, C_ROW);
+        drawRect(sfX, SEARCH_TOP + SEARCH_H - 1, sfX + sfW, SEARCH_TOP + SEARCH_H, C_ACCENT_DIM);
+        searchField.drawTextBox();
+        if (searchField.getText().isEmpty() && !searchField.isFocused()) {
+            sfReg.drawString("Search accounts...", sfX + 9f, SEARCH_TOP + 5f, C_DIM, false);
+        }
 
         // ── Account list ─────────────────────────────────────────────────────
         if (guiAccountList != null) guiAccountList.drawScreen(mx, my, pt);
 
+        // ── Footer background ─────────────────────────────────────────────────
+        int footerTop = height - FOOTER_H;
+        drawRect(0, footerTop, width, footerTop + 1, C_BORDER);
+        drawRect(0, footerTop, width, height, C_PANEL);
+
         // ── Buttons ──────────────────────────────────────────────────────────
-        super.drawScreen(mx, my, pt);
+        drawStyledButtons(mx, my, sfReg);
 
-        // ── Header bar ───────────────────────────────────────────────────────
-        drawRect(0, 0, width, HEADER_H, COL_HEADER_BG);
-        drawRect(0, HEADER_H - 1, width, HEADER_H, COL_SEP);
-
-        drawCenteredString(fontRendererObj, "\u00a7fAccount Manager", width / 2, 10, -1);
-
-        Session sess = SessionManager.get();
-        if (sess != null) {
-            String loggedIn = "\u00a77Logged in: \u00a7f" + sess.getUsername();
-            drawString(fontRendererObj, loggedIn, 5, 10, -1);
-        }
-        String countStr = "\u00a77" + AccountManager.accounts.size() + " accounts";
-        drawString(fontRendererObj, countStr,
-                width - fontRendererObj.getStringWidth(countStr) - 5, 10, -1);
-
-        // ── Search field ─────────────────────────────────────────────────────
-        drawRect(searchField.xPosition - 2,
-                searchField.yPosition - 2,
-                searchField.xPosition + searchField.width + 2,
-                searchField.yPosition + searchField.height + 2,
-                COL_SEARCH_BG);
-        searchField.drawTextBox();
-        if (searchField.getText().isEmpty() && !searchField.isFocused()) {
-            drawString(fontRendererObj, "\u00a77Search accounts...",
-                    searchField.xPosition + 3,
-                    searchField.yPosition + (SEARCH_H - fontRendererObj.FONT_HEIGHT) / 2,
-                    -1);
-        }
-
-        // ── Bottom toast notification ─────────────────────────────────────────
+        // ── Toast ─────────────────────────────────────────────────────────────
         if (notification != null && !notification.isExpired()) {
             String msg = notification.getMessage();
             int msgW = fontRendererObj.getStringWidth(msg);
-            int pw = msgW + 14, ph = fontRendererObj.FONT_HEIGHT + 6;
+            int pw = msgW + 16, ph = fontRendererObj.FONT_HEIGHT + 8;
             int px = width / 2 - pw / 2;
-            int py = height - 14 - ph;
-            drawRect(px, py, px + pw, py + ph, COL_TOAST_BG);
-            drawRect(px, py, px + pw, py + 1, COL_SEP);
-            drawRect(px, py + ph - 1, px + pw, py + ph, COL_SEP);
-            drawCenteredString(fontRendererObj, msg, width / 2, py + 3, -1);
+            int py = height - FOOTER_H - ph - 6;
+            RoundedUtils.drawRound(px, py, pw, ph, 4f, 0xDD0D1012);
+            drawRect(px, py, px + pw, py + 1, C_ACCENT);
+            drawCenteredString(fontRendererObj, msg, width / 2, py + 4, C_TEXT);
         }
+
+        // ── Restore button on top ─────────────────────────────────────────────
+        if (restoreButton != null) {
+            drawStyledButton(restoreButton, mx, my, sfReg, C_ROW, C_ROW_HOV, C_TEXT);
+        }
+    }
+
+    private void drawStyledButtons(int mx, int my, RavenFontRenderer fr) {
+        for (GuiButton b : buttonList) {
+            if (b == restoreButton) continue;
+            int bg   = b.id == 2 ? (b.enabled ? 0xCC2A1212 : C_ROW) : C_ROW;
+            int bgH  = b.id == 2 ? (b.enabled ? 0xCC3D1A1A : C_ROW_HOV) : C_ROW_HOV;
+            int fg   = b.enabled ? (b.id == 2 ? C_DANGER : (b.id == 0 ? C_ACCENT : C_TEXT)) : C_DIM;
+            drawStyledButton(b, mx, my, fr, bg, bgH, fg);
+        }
+    }
+
+    private void drawStyledButton(GuiButton b, int mx, int my, RavenFontRenderer fr,
+                                   int bg, int bgHover, int fg) {
+        boolean hov = b.enabled && mx >= b.xPosition && mx < b.xPosition + b.width
+                && my >= b.yPosition && my < b.yPosition + b.height;
+        RoundedUtils.drawRound(b.xPosition, b.yPosition, b.width, b.height, 4f, hov ? bgHover : bg);
+        if (b.enabled && b.id == 0) { // Login button gets accent left bar
+            drawRect(b.xPosition, b.yPosition + 4, b.xPosition + 2, b.yPosition + b.height - 4, C_ACCENT);
+        }
+        float tw = fr.getStringWidth(b.displayString);
+        fr.drawString(b.displayString, b.xPosition + b.width / 2f - tw / 2f,
+                b.yPosition + b.height / 2f - fr.getFontHeight() / 2f, fg, false);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -310,51 +320,34 @@ public class GuiAccountManager extends GuiScreen {
     protected void keyTyped(char typedChar, int keyCode) {
         if (searchField != null && searchField.isFocused()) {
             searchField.textboxKeyTyped(typedChar, keyCode);
-            return; // consume input while searching
+            return;
         }
-
         switch (keyCode) {
-            case 200: // up
+            case 200:
                 if (selectedAccount <= 0) break;
                 --selectedAccount;
                 if (GuiScreen.isCtrlKeyDown() && searchField.getText().isEmpty()) {
                     Account a = filteredList.get(selectedAccount);
                     Account b = filteredList.get(selectedAccount + 1);
-                    int ai = AccountManager.accounts.indexOf(a);
-                    int bi = AccountManager.accounts.indexOf(b);
-                    Collections.swap(AccountManager.accounts, ai, bi);
-                    AccountManager.save();
-                    updateFilter();
+                    Collections.swap(AccountManager.accounts, AccountManager.accounts.indexOf(a), AccountManager.accounts.indexOf(b));
+                    AccountManager.save(); updateFilter();
                 }
-                updateScreen();
-                break;
-            case 208: // down
+                updateScreen(); break;
+            case 208:
                 if (selectedAccount >= filteredList.size() - 1) break;
                 ++selectedAccount;
                 if (GuiScreen.isCtrlKeyDown() && searchField.getText().isEmpty()) {
                     Account a = filteredList.get(selectedAccount);
                     Account b = filteredList.get(selectedAccount - 1);
-                    int ai = AccountManager.accounts.indexOf(a);
-                    int bi = AccountManager.accounts.indexOf(b);
-                    Collections.swap(AccountManager.accounts, ai, bi);
-                    AccountManager.save();
-                    updateFilter();
+                    Collections.swap(AccountManager.accounts, AccountManager.accounts.indexOf(a), AccountManager.accounts.indexOf(b));
+                    AccountManager.save(); updateFilter();
                 }
-                updateScreen();
-                break;
-            case 28: // enter
-                actionPerformed(loginButton);
-                break;
-            case 211: // delete
-                actionPerformed(deleteButton);
-                break;
-            case 1: // escape
-                actionPerformed(cancelButton);
-                break;
+                updateScreen(); break;
+            case 28: actionPerformed(loginButton);  break;
+            case 211: actionPerformed(deleteButton); break;
+            case 1:   actionPerformed(cancelButton); break;
         }
-
-        if (GuiScreen.isKeyComboCtrlC(keyCode) && selectedAccount >= 0
-                && selectedAccount < filteredList.size()) {
+        if (GuiScreen.isKeyComboCtrlC(keyCode) && selectedAccount >= 0 && selectedAccount < filteredList.size()) {
             GuiScreen.setClipboardString(filteredList.get(selectedAccount).getUsername());
         }
     }
@@ -367,15 +360,12 @@ public class GuiAccountManager extends GuiScreen {
     protected void actionPerformed(GuiButton button) {
         if (button == null || !button.enabled) return;
         switch (button.id) {
-
-            case 0: { // Login
+            case 0: {
                 if (task != null && !task.isDone()) break;
                 if (selectedAccount < 0 || selectedAccount >= filteredList.size()) break;
                 if (executor == null) executor = Executors.newSingleThreadExecutor();
-
                 Account account = filteredList.get(selectedAccount);
                 String username = StringUtils.isBlank(account.getUsername()) ? "???" : account.getUsername();
-
                 if (account.getType() == AccountType.CRACKED) {
                     boolean ok = CrackedAuth.login(account.getUsername());
                     account.authStatus = ok ? AccountAuthStatus.AUTHED : AccountAuthStatus.FAILED;
@@ -385,62 +375,37 @@ public class GuiAccountManager extends GuiScreen {
                     if (ok) mc.displayGuiScreen(previousScreen); else updateScreen();
                     return;
                 }
-
                 account.authStatus = AccountAuthStatus.WORKING;
-                notification = new Notification(TextFormatting.translate(
-                        String.format("&7Fetching profile... (%s)&r", username)), -1L);
+                notification = new Notification(TextFormatting.translate(String.format("&7Fetching profile... (%s)&r", username)), -1L);
                 updateScreen();
                 task = AccountLogin.login(account, executor).whenComplete((v, err) ->
                         mc.addScheduledTask(() -> {
-                            if (account.authStatus == AccountAuthStatus.AUTHED) {
-                                mc.displayGuiScreen(previousScreen);
-                            } else {
-                                updateScreen();
-                            }
+                            if (account.authStatus == AccountAuthStatus.AUTHED) mc.displayGuiScreen(previousScreen);
+                            else updateScreen();
                         }));
                 break;
             }
-
-            case 1: // Add
-                mc.displayGuiScreen(new GuiAddAccount(previousScreen));
-                break;
-
-            case 2: // Delete
+            case 1: mc.displayGuiScreen(new GuiAddAccount(previousScreen)); break;
+            case 2:
                 if (selectedAccount < 0 || selectedAccount >= filteredList.size()) break;
-                Account toRemove = filteredList.get(selectedAccount);
-                AccountManager.accounts.remove(toRemove);
-                AccountManager.save();
-                selectedAccount = -1;
-                updateFilter();
-                updateScreen();
-                break;
-
-            case 3: // Cancel
-                mc.displayGuiScreen(previousScreen);
-                break;
-
-            case 4: // Restore session
+                AccountManager.accounts.remove(filteredList.get(selectedAccount));
+                AccountManager.save(); selectedAccount = -1; updateFilter(); updateScreen(); break;
+            case 3: mc.displayGuiScreen(previousScreen); break;
+            case 4:
                 SessionManager.restoreLaunchSession();
                 notification = new Notification(TextFormatting.translate(
                         String.format("&aRestored session (%s)&r", SessionManager.get().getUsername())), 5000L);
-                updateScreen();
-                break;
-
-            case 5: // Rename
+                updateScreen(); break;
+            case 5:
                 if (selectedAccount < 0 || selectedAccount >= filteredList.size()) break;
-                mc.displayGuiScreen(new GuiChangeName(this, filteredList.get(selectedAccount)));
-                break;
-
-            case 6: // Skin
+                mc.displayGuiScreen(new GuiChangeName(this, filteredList.get(selectedAccount))); break;
+            case 6:
                 if (selectedAccount < 0 || selectedAccount >= filteredList.size()) break;
-                mc.displayGuiScreen(new GuiChangeSkin(this, filteredList.get(selectedAccount)));
-                break;
-
-            case 7: { // Delete invalid
+                mc.displayGuiScreen(new GuiChangeSkin(this, filteredList.get(selectedAccount))); break;
+            case 7: {
                 if (AccountManager.accounts.isEmpty() || checkingInvalid) break;
                 if (task != null && !task.isDone()) break;
-                checkingInvalid = true;
-                updateScreen();
+                checkingInvalid = true; updateScreen();
                 List<Account> snapshot = new ArrayList<>(AccountManager.accounts);
                 Session saved = SessionManager.get();
                 int total = snapshot.size();
@@ -452,18 +417,13 @@ public class GuiAccountManager extends GuiScreen {
                         if (acc.getType() == AccountType.CRACKED) { checked++; continue; }
                         acc.authStatus = AccountAuthStatus.WORKING;
                         final int c = ++checked;
-                        mc.addScheduledTask(() -> notification = new Notification(
-                                TextFormatting.translate("&7Checking " + c + "/" + total + "..."), -1L));
+                        mc.addScheduledTask(() -> notification = new Notification(TextFormatting.translate("&7Checking " + c + "/" + total + "..."), -1L));
                         ExecutorService ex = Executors.newSingleThreadExecutor();
                         try {
                             AccountLogin.login(acc, ex).get(20L, TimeUnit.SECONDS);
-                            if (acc.authStatus == AccountAuthStatus.FAILED
-                                    || StringUtils.isBlank(acc.getUsername()))
-                                invalid.add(acc);
-                        } catch (Exception e) {
-                            invalid.add(acc);
-                            acc.authStatus = AccountAuthStatus.FAILED;
-                        } finally { ex.shutdownNow(); }
+                            if (acc.authStatus == AccountAuthStatus.FAILED || StringUtils.isBlank(acc.getUsername())) invalid.add(acc);
+                        } catch (Exception e) { invalid.add(acc); acc.authStatus = AccountAuthStatus.FAILED; }
+                        finally { ex.shutdownNow(); }
                         try { Thread.sleep(300); } catch (InterruptedException ignored) { break; }
                     }
                     if (saved != null) SessionManager.set(saved);
@@ -471,23 +431,16 @@ public class GuiAccountManager extends GuiScreen {
                     AccountManager.save();
                     final int removed = invalid.size();
                     mc.addScheduledTask(() -> {
-                        checkingInvalid = false;
-                        selectedAccount = -1;
-                        updateFilter();
-                        notification = new Notification(
-                                TextFormatting.translate("&aRemoved " + removed + " invalid account(s)"), 5000L);
+                        checkingInvalid = false; selectedAccount = -1; updateFilter();
+                        notification = new Notification(TextFormatting.translate("&aRemoved " + removed + " invalid account(s)"), 5000L);
                         updateScreen();
                     });
                 }, "raven-delete-invalid").start();
                 break;
             }
-
-            case 8: { // Paste token
+            case 8: {
                 String clip = GuiScreen.getClipboardString().trim();
-                if (clip.isEmpty()) {
-                    notification = new Notification(TextFormatting.translate("&cClipboard is empty"), 3000L);
-                    break;
-                }
+                if (clip.isEmpty()) { notification = new Notification(TextFormatting.translate("&cClipboard is empty"), 3000L); break; }
                 if (task != null && !task.isDone()) break;
                 if (executor == null) executor = Executors.newSingleThreadExecutor();
                 boolean isRefresh = clip.startsWith("M") && clip.length() > 20;
@@ -496,30 +449,23 @@ public class GuiAccountManager extends GuiScreen {
                         : new Account("", clip, "", "", 0L, AccountType.TOKEN);
                 newAcc.authStatus = AccountAuthStatus.WORKING;
                 notification = new Notification(TextFormatting.translate("&7Verifying token..."), -1L);
-                AccountManager.accounts.add(newAcc);
-                updateFilter();
-                updateScreen();
+                AccountManager.accounts.add(newAcc); updateFilter(); updateScreen();
                 task = AccountLogin.login(newAcc, executor).whenComplete((v, err) ->
                         mc.addScheduledTask(() -> {
                             if (StringUtils.isBlank(newAcc.getUsername())) {
                                 AccountManager.accounts.remove(newAcc);
-                                notification = new Notification(
-                                        TextFormatting.translate("&cToken invalid or expired"), 5000L);
-                            } else {
-                                AccountManager.save();
-                            }
-                            updateFilter();
-                            updateScreen();
+                                notification = new Notification(TextFormatting.translate("&cToken invalid or expired"), 5000L);
+                            } else { AccountManager.save(); }
+                            updateFilter(); updateScreen();
                         }));
                 break;
             }
-
-            case 9: { // Localts
+            case 9: {
                 String lk = GuiLocaltsSetup.loadKey();
                 mc.displayGuiScreen(lk != null ? new GuiLocaltsMenu(this, lk) : new GuiLocaltsSetup(this));
                 break;
             }
-            case 10: { // NiceAlts
+            case 10: {
                 String nk = GuiNicealtsSetup.loadKey();
                 mc.displayGuiScreen(nk != null ? new GuiNicealtsMenu(this, nk) : new GuiNicealtsSetup(this));
                 break;
@@ -532,19 +478,19 @@ public class GuiAccountManager extends GuiScreen {
     // ══════════════════════════════════════════════════════════════════════════
 
     class GuiAccountList extends GuiSlot {
-        private static final int SLOT_H   = 36;
-        private static final int HEAD_SZ  = 32;
+        private static final int SLOT_H  = 36;
+        private static final int HEAD_SZ = 28;
 
         GuiAccountList(Minecraft mc, int listBottom) {
             super(mc, GuiAccountManager.this.width, GuiAccountManager.this.height,
                     LIST_TOP, listBottom, SLOT_H);
         }
 
-        @Override protected int getSize()            { return filteredList.size(); }
-        @Override protected boolean isSelected(int i){ return i == selectedAccount; }
-        @Override public int getListWidth()          { return 310; }
-        @Override protected int getContentHeight()   { return filteredList.size() * SLOT_H; }
-        @Override protected int getScrollBarX()      { return (width + getListWidth()) / 2 + 2; }
+        @Override protected int getSize()             { return filteredList.size(); }
+        @Override protected boolean isSelected(int i) { return i == selectedAccount; }
+        @Override public int getListWidth()           { return Math.min(380, width - 20); }
+        @Override protected int getContentHeight()    { return filteredList.size() * SLOT_H; }
+        @Override protected int getScrollBarX()       { return (width + getListWidth()) / 2 + 2; }
 
         @Override
         protected void elementClicked(int idx, boolean dbl, int mx, int my) {
@@ -553,92 +499,78 @@ public class GuiAccountManager extends GuiScreen {
             if (dbl) GuiAccountManager.this.actionPerformed(loginButton);
         }
 
-        /** No-op — GuiAccountManager.drawScreen handles the background. */
-        @Override
-        protected void drawBackground() {}
+        @Override protected void drawBackground() {}
 
         @Override
-        protected void drawSlot(int entryID, int x, int y, int k, int mx, int my) {
-            if (entryID < 0 || entryID >= filteredList.size()) return;
-            Account account = filteredList.get(entryID);
+        protected void drawSlot(int id, int x, int y, int h, int mx, int my) {
+            if (id < 0 || id >= filteredList.size()) return;
+            Account account = filteredList.get(id);
+            RavenFontRenderer sfReg  = FontManager.getClickGuiSmallRenderer("Sf-Regular");
+            RavenFontRenderer sfBold = FontManager.getClickGuiSettingRenderer("Sf-Regular");
 
-            // ── Row highlight (selection / hover) ─────────────────────────────
-            if (isSelected(entryID)) {
-                // Blue tinted selection
-                RoundedUtils.drawRound(x, y + 1, getListWidth(), k - 2, 3f, COL_SEL);
-                // Left accent bar
-                Gui.drawRect(x, y + 3, x + 2, y + k - 3, COL_ACCENT);
-            } else {
-                boolean hovered = mx >= x && mx <= x + getListWidth() && my >= y && my <= y + k;
-                if (hovered) RoundedUtils.drawRound(x, y + 1, getListWidth(), k - 2, 3f, COL_HOVER);
+            boolean hov = mx >= x && mx <= x + getListWidth() && my >= y && my <= y + h;
+            if (isSelected(id)) {
+                RoundedUtils.drawRound(x, y + 1, getListWidth(), h - 2, 4f, C_SEL);
+                drawRect(x, y + 5, x + 2, y + h - 5, C_ACCENT);
+            } else if (hov) {
+                RoundedUtils.drawRound(x, y + 1, getListWidth(), h - 2, 4f, C_ROW_HOV);
             }
 
-            FontRenderer fr = GuiAccountManager.this.fontRendererObj;
             String rawName = account.getUsername();
-
-            // ── Player head ───────────────────────────────────────────────────
             ResourceLocation head = PlayerHeadCache.get(StringUtils.isBlank(rawName) ? null : rawName);
+            int headX = x + 4;
             if (head != null) {
                 GlStateManager.color(1f, 1f, 1f, 1f);
                 GuiAccountManager.this.mc.getTextureManager().bindTexture(head);
-                Gui.drawScaledCustomSizeModalRect(x + 3, y + 2, 0, 0, 32, 32, HEAD_SZ, HEAD_SZ, 32f, 32f);
+                Gui.drawScaledCustomSizeModalRect(headX, y + 4, 0, 0, 32, 32, HEAD_SZ, HEAD_SZ, 32f, 32f);
                 GlStateManager.color(1f, 1f, 1f, 1f);
             } else {
-                RoundedUtils.drawRound(x + 3, y + 2, HEAD_SZ, HEAD_SZ, 3f, 0xFF1A1A22);
+                RoundedUtils.drawRound(headX, y + 4, HEAD_SZ, HEAD_SZ, 3f, 0xFF1A1A22);
             }
 
-            int tx = x + HEAD_SZ + 8;
+            int tx = headX + HEAD_SZ + 7;
 
-            // ── Username + type ───────────────────────────────────────────────
-            String dispName = StringUtils.isBlank(rawName) ? "\u00a77\u00a7l?" : rawName;
             Session sess = SessionManager.get();
-            boolean active = sess != null && !StringUtils.isBlank(rawName)
-                    && rawName.equals(sess.getUsername());
-            if (active) dispName = "\u00a7a\u00a7l" + rawName;
+            boolean active = sess != null && !StringUtils.isBlank(rawName) && rawName.equals(sess.getUsername());
+            String dispName = StringUtils.isBlank(rawName) ? "???" : rawName;
+            int nameColor = active ? C_SUCCESS : C_TEXT;
+            sfBold.drawString(dispName, tx, y + 5f, nameColor, false);
 
             String typeSuffix;
             switch (account.getType()) {
-                case CRACKED:  typeSuffix = " \u00a77(Cracked)";  break;
-                case COOKIE:   typeSuffix = " \u00a77(Cookie)";   break;
-                case REFRESH:  typeSuffix = " \u00a77(Refresh)";  break;
-                case TOKEN:    typeSuffix = " \u00a77(Token)";    break;
-                default:       typeSuffix = " \u00a77(Premium)";  break;
+                case CRACKED: typeSuffix = "Cracked"; break;
+                case COOKIE:  typeSuffix = "Cookie";  break;
+                case REFRESH: typeSuffix = "Refresh"; break;
+                case TOKEN:   typeSuffix = "Token";   break;
+                default:      typeSuffix = "Premium"; break;
             }
-            String tName   = TextFormatting.translate("\u00a7r" + dispName);
-            String tSuffix = TextFormatting.translate(typeSuffix);
-            GuiAccountManager.this.drawString(fr, tName,   tx, y + 4,  -1);
-            GuiAccountManager.this.drawString(fr, tSuffix, tx + fr.getStringWidth(tName), y + 4, -1);
+            float typeX = tx + sfBold.getStringWidth(dispName) + 5f;
+            sfReg.drawString(typeSuffix, typeX, y + 6f, C_DIM, false);
 
-            // ── Auth status (line 2) ──────────────────────────────────────────
             String statusTxt = null;
+            int statusColor = C_MUTED;
             switch (account.authStatus) {
-                case WORKING: statusTxt = "\u00a76Logging in...";     break;
-                case FAILED:  statusTxt = "\u00a7cInvalid / Expired"; break;
-                case AUTHED:  statusTxt = "\u00a7aLogged in";         break;
+                case WORKING: statusTxt = "Logging in...";     statusColor = 0xFFE8C87A; break;
+                case FAILED:  statusTxt = "Invalid / Expired"; statusColor = C_DANGER;   break;
+                case AUTHED:  statusTxt = "Logged in";         statusColor = C_SUCCESS;  break;
                 default: break;
             }
-            if (statusTxt != null)
-                GuiAccountManager.this.drawString(fr, statusTxt, tx, y + 15, -1);
+            if (statusTxt != null) sfReg.drawString(statusTxt, tx, y + 18f, statusColor, false);
 
-            // ── Ban indicator (bottom-right) ──────────────────────────────────
-            long now   = System.currentTimeMillis();
-            long unban = account.getUnban();
+            // Ban indicator
+            long now = System.currentTimeMillis(), unban = account.getUnban();
             String banTxt;
-            if (unban < 0L) {
-                banTxt = "\u00a74\u00a7l\u26a0";
-            } else if (unban <= now) {
-                banTxt = "\u00a72\u00a7l\u2714";
-            } else {
+            int banColor;
+            if (unban < 0L) { banTxt = "\u26a0"; banColor = C_DANGER; }
+            else if (unban <= now) { banTxt = "\u2714"; banColor = C_SUCCESS; }
+            else {
                 long diff = unban - now;
-                long d = diff / 86400000L, h = diff / 3600000L % 24,
-                     m = diff / 60000L % 60,  s = diff / 1000L % 60;
-                String t = (d > 0 ? d + "d " : "") + (h > 0 ? h + "h " : "")
-                         + (m > 0 ? m + "m " : "") + (s > 0 ? s + "s" : "");
-                banTxt = t.trim() + " \u00a7c\u00a7l\u26a0";
+                long d = diff/86400000L, hh = diff/3600000L%24, m = diff/60000L%60, s = diff/1000L%60;
+                banTxt = ((d>0?d+"d ":"")+(hh>0?hh+"h ":"")+(m>0?m+"m ":"")+(s>0?s+"s":"")).trim();
+                banColor = 0xFFE8C87A;
             }
-            String tBan = TextFormatting.translate("\u00a7r" + banTxt + "\u00a7r");
-            GuiAccountManager.this.drawString(fr, tBan,
-                    x + getListWidth() - 5 - fr.getStringWidth(tBan), y + 26, -1);
+            float banW = sfReg.getStringWidth(banTxt);
+            sfReg.drawString(banTxt, x + getListWidth() - banW - 5f, y + 20f, banColor, false);
         }
     }
 }

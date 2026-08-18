@@ -132,7 +132,9 @@ public class FastPlace extends Module {
         }
 
         if (Math.random() < 0.7) {
-            e.setCanceled(true);
+            if (e.isCancelable()) {
+                e.setCanceled(true);
+            }
         }
     }
 

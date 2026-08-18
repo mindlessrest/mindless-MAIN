@@ -1479,6 +1479,11 @@ public class ScriptDefaults {
             GlStateManager.popMatrix();
         }
 
+        /** Alias for text2d — legacy script compatibility. */
+        public static void text(String text, float x, float y, int scale, int color, boolean shadow) {
+            text2d(text, x, y, (float) scale, color, shadow);
+        }
+
         public static void text3d(String text, Vec3 position, float scale, boolean shadow, boolean depth, boolean background, int color) {
             AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks, 0);
             GlStateManager.pushMatrix();
