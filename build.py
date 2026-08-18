@@ -16,8 +16,8 @@ PRESET_FILE = LOADER_DIR / "CMakePresets.json"
 BUILD_DIR   = LOADER_DIR / "out" / "build" / "windows-clang"
 OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
 
-FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "raven-bS-16.jar"
-LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "raven-bS-16-lunar-mcp-with-forge.jar"
+FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
+LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
 NATIVE_BUILD_DIR = CLIENT_DIR / "native_build"
 NATIVE_DLL_OUT   = NATIVE_BUILD_DIR / "dist" / "RavenNative.dll"
 

@@ -1699,6 +1699,17 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     }
     send_progress(1.0f, "Ready");
     vape_log(L"NativeBootstrap.start completed; Raven is active");
+    /* Try to delete payload from disk. URLClassLoader holds the jar open via a
+     * ZipFile handle, so DeleteFile will fail — but the FILE_DISPOSITION_INFO
+     * trick marks it for deletion when the last handle closes (process exit). */
+    {
+        HANDLE h = CreateFileW(jar_path, DELETE, FILE_SHARE_READ | FILE_SHARE_DELETE,
+                NULL, OPEN_EXISTING, FILE_FLAG_DELETE_ON_CLOSE, NULL);
+        if (h != INVALID_HANDLE_VALUE) {
+            CloseHandle(h);
+            vape_log(L"payload jar marked for deletion on process exit");
+        }
+    }
     exit_code = 0;
 
 cleanup:

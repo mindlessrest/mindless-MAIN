@@ -840,9 +840,8 @@ public final class ModernClickGui extends ClickGui {
             if (inside(mx, my, ax, ay, ax + aw, ay + fullH)) return;
         }
 
-        // Mindless logo/title click → toggle about dropdown
+        // Mindless logo/title area (no action)
         if (inside(mx, my, baseX + 10, baseY + 8, baseX + sideW - 10, baseY + 40)) {
-            aboutOpen = !aboutOpen;
             return;
         }
 
