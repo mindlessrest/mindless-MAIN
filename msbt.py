@@ -173,20 +173,16 @@ def find_script_directory():
     appdata = os.environ.get("APPDATA")
     if appdata:
         minecraft = os.path.join(appdata, ".minecraft")
-        legacy = os.path.join(minecraft, "keystrokes", "scripts")
-        if os.path.isdir(legacy):
-            return legacy
         return os.path.join(minecraft, "mindless", "scripts")
 
     minecraft = os.path.join(os.path.expanduser("~"), ".minecraft")
-    legacy = os.path.join(minecraft, "keystrokes", "scripts")
-    if os.path.isdir(legacy):
-        return legacy
     return os.path.join(minecraft, "mindless", "scripts")
 
 def install_script(jar_path, script_directory):
     os.makedirs(script_directory, exist_ok=True)
     destination = os.path.join(script_directory, os.path.basename(jar_path))
+    if os.path.abspath(jar_path) == os.path.abspath(destination):
+        return destination
     shutil.copy2(jar_path, destination)
     return destination
 
@@ -222,11 +218,11 @@ def compile_script(java_file, jdk_path, msa_path):
     header = ""
     for imp in imports:
         header += f"import {imp};\n"
-    header += "import keystrokesmod.script.model.*;\n"
-    header += "import keystrokesmod.script.packet.clientbound.*;\n"
-    header += "import keystrokesmod.script.packet.serverbound.*;\n"
-    header += f"public class {wrapped_name} extends keystrokesmod.script.ScriptDefaults {{\n"
-    header += f"public static final keystrokesmod.script.ScriptDefaults.modules modules = new keystrokesmod.script.ScriptDefaults.modules(\"{script_name}\");\n"
+    header += "import mindless.script.model.*;\n"
+    header += "import mindless.script.packet.clientbound.*;\n"
+    header += "import mindless.script.packet.serverbound.*;\n"
+    header += f"public class {wrapped_name} extends mindless.script.ScriptDefaults {{\n"
+    header += f"public static final mindless.script.ScriptDefaults.modules modules = new mindless.script.ScriptDefaults.modules(\"{script_name}\");\n"
     header += f"public static final String scriptName = \"{script_name}\";\n"
 
     wrapped_source = header + wrapped_source + "\n}"

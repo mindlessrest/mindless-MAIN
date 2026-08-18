@@ -10,7 +10,7 @@
  * Minecraft 1.8.9 Forge and Forge-enabled Lunar. Loaded into javaw.exe via
  * CreateRemoteThread + LoadLibraryW by RavenInjector.exe. Waits for the client
  * JVM, selects the SRG or MCP payload, appends it to the Minecraft class
- * loader, and invokes keystrokesmod.runtime.NativeBootstrap.start().
+ * loader, and invokes mindless.runtime.NativeBootstrap.start().
  *
  * Raven uses ClassTransform plus JVMTI: already-loaded targets are
  * retransformed immediately and targets loaded later pass through the same
@@ -48,7 +48,7 @@ typedef enum raven_runtime_namespace {
 } raven_runtime_namespace;
 
 /* ClassFileLoadHook plumbing */
-static jclass    g_hooks_class = NULL;      /* keystrokesmod.runtime.TransformerHooks */
+static jclass    g_hooks_class = NULL;      /* mindless.runtime.TransformerHooks */
 static jmethodID g_hooks_transform = NULL;  /* static byte[] transform(String, byte[]) */
 static jobject   g_game_loader = NULL;      /* global ref; filters duplicate class names */
 static volatile LONG g_hook_registered = 0;
@@ -674,11 +674,11 @@ static jclass load_bootstrap_class(JNIEnv *env, jobject loader) {
     if (loader_class == NULL) return NULL;
     load_class = (*env)->GetMethodID(env, loader_class,
             "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    name = (*env)->NewStringUTF(env, "keystrokesmod.runtime.NativeBootstrap");
+    name = (*env)->NewStringUTF(env, "mindless.runtime.NativeBootstrap");
     if (load_class == NULL || name == NULL) return NULL;
     result = (jclass)(*env)->CallObjectMethod(env, loader, load_class, name);
     if (result == NULL || (*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"load keystrokesmod.runtime.NativeBootstrap");
+        vape_log_pending_exception(env, L"load mindless.runtime.NativeBootstrap");
         return NULL;
     }
     return result;
@@ -794,7 +794,7 @@ static int verify_bootstrap_code_source(JNIEnv *env, jobject expected_loader,
     log_java_string(env, L"NativeBootstrap raw CodeSource", location_text);
 
     /* LaunchClassLoader commonly records the class-entry URL as the
-     * CodeSource (jar:file:/payload.jar!/keystrokesmod/...). Such a jar: URI
+     * CodeSource (jar:file:/payload.jar!/mindless/...). Such a jar: URI
      * is opaque, so File(URI) rejects it as non-hierarchical. Peel every
      * standard JarURLConnection layer until the underlying file: URL remains. */
     normalized_location = (*env)->NewLocalRef(env, location);
@@ -925,7 +925,7 @@ static int pin_native_module(void) {
 /* -------------------------------------------------------------------------
  * ClassTransform bridge:
  *   1) Install a ClassFileLoadHook that routes every retransform through
- *      keystrokesmod.runtime.TransformerHooks.transform(String, byte[]).
+ *      mindless.runtime.TransformerHooks.transform(String, byte[]).
  *   2) Enumerate JVMTI GetLoadedClasses, filter to targets, RetransformClasses.
  * ------------------------------------------------------------------------- */
 
@@ -1009,7 +1009,7 @@ static int resolve_transformer_hooks(JNIEnv *env, jobject class_loader) {
     if (local_loader_class == NULL) return 0;
     load_class = (*env)->GetMethodID(env, local_loader_class,
             "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    hooks_name = (*env)->NewStringUTF(env, "keystrokesmod.runtime.TransformerHooks");
+    hooks_name = (*env)->NewStringUTF(env, "mindless.runtime.TransformerHooks");
     if (load_class == NULL || hooks_name == NULL) return 0;
     local_hooks = (jclass)(*env)->CallObjectMethod(env, class_loader, load_class, hooks_name);
     if (local_hooks == NULL || (*env)->ExceptionCheck(env)) {
@@ -1209,13 +1209,13 @@ static int collect_loaded_registered_targets(JNIEnv *env, jobject class_loader,
     }
 
     manager_class = load_class_via_loader(env, class_loader, load_class,
-            "keystrokesmod.runtime.RavenTransformerManager");
+            "mindless.runtime.RavenTransformerManager");
     if (manager_class == NULL) {
         vape_log(L"RavenTransformerManager not visible via LaunchClassLoader");
         goto cleanup;
     }
     get_instance = (*env)->GetStaticMethodID(env, manager_class,
-            "get", "()Lkeystrokesmod/runtime/RavenTransformerManager;");
+            "get", "()Lmindless/runtime/RavenTransformerManager;");
     target_names = (*env)->GetMethodID(env, manager_class,
             "targetInternalNames", "()Ljava/util/Set;");
     if (get_instance == NULL || target_names == NULL) {
@@ -1461,13 +1461,13 @@ static int prime_transformer_manager(JNIEnv *env, jobject class_loader,
     jmethodID get_instance;
     jobject manager;
     manager_class = load_class_via_loader(env, class_loader, load_class,
-            "keystrokesmod.runtime.RavenTransformerManager");
+            "mindless.runtime.RavenTransformerManager");
     if (manager_class == NULL) {
         vape_log(L"prime: RavenTransformerManager not visible via loader");
         return 0;
     }
     get_instance = (*env)->GetStaticMethodID(env, manager_class,
-            "get", "()Lkeystrokesmod/runtime/RavenTransformerManager;");
+            "get", "()Lmindless/runtime/RavenTransformerManager;");
     if (get_instance == NULL) {
         vape_log_pending_exception(env, L"prime: resolve RavenTransformerManager.get");
         return 0;

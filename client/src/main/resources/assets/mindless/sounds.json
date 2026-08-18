@@ -1,0 +1,11 @@
+{
+  "experimental.glass": {
+    "category": "player",
+    "sounds": [
+      "mindless:experimental/glass1",
+      "mindless:experimental/glass2",
+      "mindless:experimental/glass3",
+      "mindless:experimental/glass4"
+    ]
+  }
+}

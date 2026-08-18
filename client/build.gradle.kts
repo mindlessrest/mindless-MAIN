@@ -219,7 +219,7 @@ tasks.shadowJar {
     }
 
     if (ravenBuildType != "forge") {
-        relocate("org.objectweb.asm", "keystrokesmod.deps.org.objectweb.asm")
+        relocate("org.objectweb.asm", "mindless.deps.org.objectweb.asm")
     }
 }
 
@@ -251,7 +251,7 @@ tasks.assemble.get().dependsOn(tasks.remapJar)
 
 // ---------------------------------------------------------------------------
 // MSA (Mindless Scripting API) — stub jar for offline script compilation.
-// Contains all net.minecraft.*, net.minecraftforge.*, and keystrokesmod.script.*
+// Contains all net.minecraft.*, net.minecraftforge.*, and mindless.script.*
 // classes so scripts can compile without the game running.
 // ---------------------------------------------------------------------------
 
@@ -267,14 +267,14 @@ val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
 
     // Our scripting API classes
     from(sourceSets.main.get().output) {
-        include("keystrokesmod/script/**")
-        include("keystrokesmod/module/Module.class")
-        include("keystrokesmod/module/Module\$*.class")
-        include("keystrokesmod/module/ModuleManager.class")
-        include("keystrokesmod/module/setting/**")
-        include("keystrokesmod/utility/**")
-        include("keystrokesmod/event/**")
-        include("keystrokesmod/Raven.class")
+        include("mindless/script/**")
+        include("mindless/module/Module.class")
+        include("mindless/module/Module\$*.class")
+        include("mindless/module/ModuleManager.class")
+        include("mindless/module/setting/**")
+        include("mindless/utility/**")
+        include("mindless/event/**")
+        include("mindless/Raven.class")
     }
 
     // Minecraft + Forge classes from loom's mapped jar

@@ -110,7 +110,7 @@ DLL bootstrap thread:
 | 8    | Minecraft class loader / `Client thread` not found within 60 seconds |
 | 9    | Game class loader is not URLClassLoader (unexpected on 1.8.9) |
 | 10   | Could not set the worker thread's context class loader |
-| 11   | `keystrokesmod.runtime.NativeBootstrap` failed to load |
+| 11   | `mindless.runtime.NativeBootstrap` failed to load |
 | 12   | Native module could not be pinned for callback safety |
 | 13   | `NativeBootstrap.start` threw |
 | 14   | One or more ClassTransform/JVMTI hooks failed to install |

@@ -1,7 +1,7 @@
 {
   "required": true,
   "minVersion": "0.7.11",
-  "package": "keystrokesmod.mixin.impl",
+  "package": "mindless.mixin.impl",
   "refmap": "mixins.raven.refmap.json",
   "compatibilityLevel": "JAVA_8",
   "mixins": [
