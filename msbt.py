@@ -63,10 +63,24 @@ def log_fail(msg):
 def log_step(msg):
     print(f"\n{BOLD}{W}{msg}{RST}")
 
-def find_jdk():
+def java_major(jdk_path):
+    java_name = "java.exe" if platform.system() == "Windows" else "java"
+    java_path = os.path.join(jdk_path, "bin", java_name)
+    try:
+        result = subprocess.run([java_path, "-version"], capture_output=True, text=True)
+        output = (result.stdout or "") + (result.stderr or "")
+        version = output.split('version "', 1)[1].split('"', 1)[0]
+        major = version.split(".")[0]
+        return int(version.split(".")[1]) if major == "1" else int(major)
+    except (IndexError, ValueError, OSError):
+        return 0
+
+def find_jdk(minimum_major=8):
     javac = shutil.which("javac")
     if javac:
-        return os.path.dirname(os.path.dirname(os.path.realpath(javac)))
+        path = os.path.dirname(os.path.dirname(os.path.realpath(javac)))
+        if java_major(path) >= minimum_major:
+            return path
 
     search_paths = []
     home = os.path.expanduser("~")
@@ -99,21 +113,22 @@ def find_jdk():
             if not os.path.isdir(candidate):
                 continue
             javac_path = os.path.join(candidate, "bin", javac_name)
-            if os.path.isfile(javac_path):
+            if os.path.isfile(javac_path) and java_major(candidate) >= minimum_major:
                 return candidate
             for sub in sorted(os.listdir(candidate), reverse=True) if os.path.isdir(candidate) else []:
                 sub_path = os.path.join(candidate, sub)
                 javac_path = os.path.join(sub_path, "bin", javac_name)
-                if os.path.isfile(javac_path):
+                if os.path.isfile(javac_path) and java_major(sub_path) >= minimum_major:
                     return sub_path
 
     java_home = os.environ.get("JAVA_HOME")
-    if java_home and os.path.isfile(os.path.join(java_home, "bin", javac_name)):
+    if (java_home and os.path.isfile(os.path.join(java_home, "bin", javac_name))
+            and java_major(java_home) >= minimum_major):
         return java_home
 
     return None
 
-def find_msa_jar():
+def find_msa_jar(jdk_path):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
         os.path.join(script_dir, "msa.jar"),
@@ -123,6 +138,31 @@ def find_msa_jar():
     for c in candidates:
         if os.path.isfile(c):
             return os.path.abspath(c)
+
+    client_dir = os.path.join(script_dir, "client")
+    gradlew = os.path.join(client_dir, "gradlew.bat" if platform.system() == "Windows" else "gradlew")
+    build_jdk = jdk_path if java_major(jdk_path) >= 17 else find_jdk(17)
+    if not os.path.isfile(gradlew) or not build_jdk:
+        return None
+
+    log_step("Building scripting API")
+    env = os.environ.copy()
+    env["JAVA_HOME"] = build_jdk
+    result = subprocess.run(
+        [gradlew, "msaJar", "-x", "test", "-x", "compileTestJava"],
+        cwd=client_dir,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        log_fail("could not build scripting API")
+        print(result.stderr.strip() or result.stdout.strip())
+        return None
+
+    generated = os.path.join(client_dir, "build", "libs", "msa.jar")
+    if os.path.isfile(generated):
+        return generated
     return None
 
 def find_script_directory():
@@ -265,7 +305,7 @@ def main():
     log_ok(f"JDK: {C}{jdk_path}{RST}")
 
     log_step("Finding msa.jar")
-    msa_path = find_msa_jar()
+    msa_path = find_msa_jar(jdk_path)
     if not msa_path:
         log_fail("msa.jar not found")
         log_warn("place msa.jar next to msbt.py")

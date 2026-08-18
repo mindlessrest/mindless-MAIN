@@ -285,7 +285,9 @@ val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
 
     // Minecraft mapped classes from the actual MC jar on compileClasspath
     from({
-        val mcJar = configurations.named("minecraftNamed").get().files.firstOrNull()
+        val mcJar = configurations.named("minecraftNamed").get().files.firstOrNull {
+            it.name == "minecraft-mapped.jar" || it.name.contains("minecraft-mapped")
+        }
         if (mcJar != null) zipTree(mcJar) else files()
     }) {
         include("net/minecraft/**")
