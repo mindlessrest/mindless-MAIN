@@ -48,168 +48,6 @@ public class ScriptManager {
     public File mcClassesJar;
 
     /**
-     * Dumps Minecraft classes from the classloader to a jar file so ECJ can compile against them.
-     * On Lunar, MC classes only exist in memory — not in any jar on disk.
-     */
-    private void dumpMinecraftClassesJar() {
-        try {
-            File tempDir = new File(COMPILED_DIR);
-            if (!tempDir.exists()) tempDir.mkdirs();
-            mcClassesJar = new File(tempDir, "_minecraft_classes.jar");
-            if (isUsableMcClassesJar(mcClassesJar)) {
-                System.out.println("[Scripts] Using cached MC classes jar: " + mcClassesJar.getAbsolutePath());
-                return;
-            }
-
-            System.out.println("[Scripts] Dumping Minecraft classes from classloader to jar...");
-            long start = System.currentTimeMillis();
-
-            // Get all class names referenced by our payload jar
-            java.security.CodeSource cs = ScriptManager.class.getProtectionDomain().getCodeSource();
-            if (cs == null || cs.getLocation() == null) {
-                System.err.println("[Scripts] Cannot dump MC classes: no CodeSource");
-                mcClassesJar = null;
-                return;
-            }
-
-            // Collect MC class names by scanning our own jar's constant pool references
-            java.util.Set<String> classNames = new java.util.LinkedHashSet<>();
-
-            // Add known essential packages that scripts use
-            String[] essentialClasses = {
-                "net.minecraft.util.Vec3",
-                "net.minecraft.util.BlockPos",
-                "net.minecraft.util.MathHelper",
-                "net.minecraft.util.AxisAlignedBB",
-                "net.minecraft.util.EnumFacing",
-                "net.minecraft.util.MovingObjectPosition",
-                "net.minecraft.util.ChatComponentText",
-                "net.minecraft.util.IChatComponent",
-                "net.minecraft.util.MovementInput",
-                "net.minecraft.util.MovementInputFromOptions",
-                "net.minecraft.util.Vec3i",
-                "net.minecraft.client.Minecraft",
-                "net.minecraft.client.entity.EntityPlayerSP",
-                "net.minecraft.client.entity.AbstractClientPlayer",
-                "net.minecraft.client.multiplayer.WorldClient",
-                "net.minecraft.client.multiplayer.PlayerControllerMP",
-                "net.minecraft.client.settings.GameSettings",
-                "net.minecraft.client.settings.KeyBinding",
-                "net.minecraft.client.gui.FontRenderer",
-                "net.minecraft.client.gui.ScaledResolution",
-                "net.minecraft.client.renderer.GlStateManager",
-                "net.minecraft.client.network.NetHandlerPlayClient",
-                "net.minecraft.entity.Entity",
-                "net.minecraft.entity.EntityLivingBase",
-                "net.minecraft.entity.player.EntityPlayer",
-                "net.minecraft.entity.player.InventoryPlayer",
-                "net.minecraft.entity.SharedMonsterAttributes",
-                "net.minecraft.entity.ai.attributes.IAttributeInstance",
-                "net.minecraft.item.ItemStack",
-                "net.minecraft.item.Item",
-                "net.minecraft.item.ItemBlock",
-                "net.minecraft.item.ItemSword",
-                "net.minecraft.item.ItemTool",
-                "net.minecraft.item.ItemArmor",
-                "net.minecraft.item.ItemBow",
-                "net.minecraft.item.ItemPotion",
-                "net.minecraft.block.Block",
-                "net.minecraft.block.state.IBlockState",
-                "net.minecraft.block.material.Material",
-                "net.minecraft.world.World",
-                "net.minecraft.network.Packet",
-                "net.minecraft.network.play.client.C01PacketChatMessage",
-                "net.minecraft.network.play.client.C02PacketUseEntity",
-                "net.minecraft.network.play.client.C03PacketPlayer",
-                "net.minecraft.network.play.client.C08PacketPlayerBlockPlacement",
-                "net.minecraft.network.play.client.C0APacketAnimation",
-                "net.minecraft.network.play.client.C0BPacketEntityAction",
-                "net.minecraft.network.play.server.S12PacketEntityVelocity",
-                "net.minecraft.network.play.server.S08PacketPlayerPosLook",
-                "net.minecraft.potion.Potion",
-                "net.minecraft.potion.PotionEffect",
-                "net.minecraft.enchantment.Enchantment",
-                "net.minecraft.enchantment.EnchantmentHelper",
-                "net.minecraft.init.Blocks",
-                "net.minecraft.init.Items",
-                "net.minecraftforge.fml.common.eventhandler.SubscribeEvent",
-                "net.minecraftforge.fml.common.eventhandler.Event",
-                "net.minecraftforge.common.MinecraftForge",
-                "net.minecraftforge.client.event.RenderWorldLastEvent",
-            };
-
-            for (String cn : essentialClasses) classNames.add(cn);
-
-            // Also scan the payload jar for all referenced net.minecraft.* classes
-            try (java.util.jar.JarInputStream jis = new java.util.jar.JarInputStream(cs.getLocation().openStream())) {
-                java.util.jar.JarEntry entry;
-                while ((entry = jis.getNextJarEntry()) != null) {
-                    if (entry.getName().endsWith(".class") && entry.getName().startsWith("keystrokesmod/")) {
-                        // Read class bytes and scan for MC class references
-                        byte[] classBytes = readAllBytes(jis);
-                        scanConstantPoolForClasses(classBytes, classNames);
-                    }
-                }
-            } catch (Throwable t) {
-                System.err.println("[Scripts] Error scanning payload jar: " + t.getMessage());
-            }
-
-            System.out.println("[Scripts] Found " + classNames.size() + " classes to dump");
-
-            // Write them to a jar. Under Lunar/Genesis the Minecraft classes are materialised
-            // through the transformer chain and are NOT reachable as resources, so a plain
-            // getResourceAsStream finds only a small fraction of them. Each name is resolved
-            // through a fallback chain, and every class we emit has its own references queued
-            // so ECJ never hits "indirectly referenced from required .class files".
-            try (java.util.jar.JarOutputStream jos = new java.util.jar.JarOutputStream(new java.io.FileOutputStream(mcClassesJar))) {
-                java.util.Deque<String> pending = new java.util.ArrayDeque<>(classNames);
-                java.util.Set<String> seen = new java.util.HashSet<>(classNames);
-                java.util.Set<String> written = new java.util.HashSet<>();
-
-                int fromResource = 0, fromClassBytes = 0, fromStub = 0, missing = 0;
-
-                while (!pending.isEmpty()) {
-                    String className = pending.poll();
-                    if (!written.add(className)) continue;
-
-                    java.util.Set<String> referenced = new java.util.LinkedHashSet<>();
-                    byte[] bytes = resolveClassBytes(className, referenced);
-                    if (bytes == null) {
-                        missing++;
-                        continue;
-                    }
-                    switch (lastResolveSource) {
-                        case 0: fromResource++; break;
-                        case 1: fromClassBytes++; break;
-                        default: fromStub++; break;
-                    }
-
-                    jos.putNextEntry(new java.util.jar.JarEntry(className.replace('.', '/') + ".class"));
-                    jos.write(bytes);
-                    jos.closeEntry();
-
-                    // Real class files carry their references in the constant pool; synthesised
-                    // stubs report theirs through the out-param, since descriptors never become
-                    // CONSTANT_Class entries.
-                    scanConstantPoolForClasses(bytes, referenced);
-                    for (String ref : referenced) {
-                        if (seen.add(ref)) pending.add(ref);
-                    }
-                }
-
-                System.out.println("[Scripts] Dumped " + written.size() + " classes to " + mcClassesJar.getAbsolutePath()
-                        + " (resource=" + fromResource + " classBytes=" + fromClassBytes + " stub=" + fromStub
-                        + " missing=" + missing + ") in " + (System.currentTimeMillis() - start) + "ms");
-            }
-            System.out.println("[Scripts] MC classes jar is " + (mcClassesJar.length() / 1024) + " KB");
-        } catch (Throwable t) {
-            System.err.println("[Scripts] Failed to dump MC classes: " + t.getMessage());
-            t.printStackTrace();
-            mcClassesJar = null;
-        }
-    }
-
-    /**
      * The Minecraft LaunchWrapper class loader, or null when it is unavailable.
      *
      * Lunar/Genesis ships a {@code net.minecraft.launchwrapper.Launch} that has no
@@ -222,7 +60,8 @@ public class ScriptManager {
                     ScriptManager.class.getClassLoader());
             Object value = launch.getField("classLoader").get(null);
             if (value instanceof ClassLoader) return (ClassLoader) value;
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
         return null;
     }
 
@@ -685,18 +524,7 @@ public class ScriptManager {
             File[] scriptFiles = scriptDirectory.listFiles();
             if (scriptFiles != null) {
                 for (File scriptFile : scriptFiles) {
-                    if (scriptFile.isFile() && scriptFile.getName().endsWith(".java")) {
-                        String fileName = scriptFile.getName();
-                        String hash = calculateHash(scriptFile);
-
-                        String cachedHash = loadedHashes.get(fileName);
-                        if (cachedHash != null && cachedHash.equals(hash)) {
-                            continue; // No changes detected, skip parsing
-                        }
-                        parseFile(scriptFile);
-                        loadedHashes.put(scriptFile.getName(), hash);
-                    }
-                    else if (scriptFile.isFile() && scriptFile.getName().endsWith(".jar")) {
+                    if (scriptFile.isFile() && scriptFile.getName().endsWith(".jar")) {
                         String fileName = scriptFile.getName();
                         String hash = calculateHash(scriptFile);
 
@@ -747,7 +575,7 @@ public class ScriptManager {
         String scriptName = jarFile.getName().replace(".jar", "");
         if (scriptName.isEmpty() || scriptName.startsWith("_")) return false;
 
-        System.out.println("[Scripts] Loading pre-compiled script jar: " + scriptName);
+        //System.out.println("[Scripts] Loading pre-compiled script jar: " + scriptName);
         try {
             java.net.URL jarUrl = jarFile.toURI().toURL();
             java.net.URLClassLoader jarLoader = new java.net.URLClassLoader(
@@ -781,7 +609,7 @@ public class ScriptManager {
             Raven.scriptManager.scripts.put(script, module);
             ScriptDefaults.reloadModules();
             Raven.scriptManager.invoke("onLoad", module);
-            System.out.println("[Scripts] Loaded jar script: " + scriptName);
+           // System.out.println("[Scripts] Loaded jar script: " + scriptName);
             return true;
         } catch (Throwable t) {
             System.err.println("[Scripts] Failed to load jar script " + scriptName + ": " + t.getMessage());

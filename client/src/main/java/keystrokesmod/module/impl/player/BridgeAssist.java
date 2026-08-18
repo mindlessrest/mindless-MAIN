@@ -193,13 +193,18 @@ public class BridgeAssist extends Module {
     }
 
     private void tryReleaseSneak(PrePlayerInputEvent e, boolean resetDelay) {
+        if (!mc.thePlayer.onGround) {
+            pressSneak(e, false);
+            return;
+        }
+
         int existed = mc.thePlayer.ticksExisted;
         if (unsneakStartTick == -1 && sneakJumpStartTick == -1) {
             unsneakStartTick = existed;
             double fromMs = Math.min(unsneakDelayMin.getInput(), unsneakDelayMax.getInput());
             double toMs = Math.max(unsneakDelayMin.getInput(), unsneakDelayMax.getInput());
             if (toMs <= fromMs) toMs = fromMs + 1;
-            unsneakDelayTicks = (int) Math.floor((fromMs + Math.random() * (toMs - fromMs)) / 50.0);
+            unsneakDelayTicks = Math.max(1, (int) Math.floor((fromMs + Math.random() * (toMs - fromMs)) / 50.0));
         }
 
         if (sneakJumpStartTick != -1 && existed - sneakJumpStartTick < sneakJumpDelayTicks) {
