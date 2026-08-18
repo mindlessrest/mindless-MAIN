@@ -605,8 +605,8 @@ public class TestScaffold extends Module {
             }
         }
 
-        float placeYaw = this.yaw;
-        float placePitch = this.pitch;
+        float placeYaw = event.getYaw();
+        float placePitch = event.getPitch();
         if (rotationMode.getInput() != 0 && (!snapMode || this.snapRotating || towerRotating)) {
             float targetYaw = this.yaw;
             float targetPitch = this.pitch;
@@ -648,9 +648,18 @@ public class TestScaffold extends Module {
             }
         }
 
-        if (threeFmcMode && blockData != null && hitVec != null) {
+        if (blockData != null && hitVec != null && snapCanPlace) {
+            // Placement must use hit data produced by the exact rotation written to C03.
             MovingObjectPosition verifiedMop = this.getPlacementMop(blockData, placeYaw, placePitch);
             hitVec = verifiedMop == null ? null : verifiedMop.hitVec;
+        }
+        else {
+            hitVec = null;
+        }
+
+        if (blockData == null || hitVec == null) {
+            this.canRotate = false;
+            this.clearPending();
         }
 
         // Stage the placement instead of doing it here. Placing inside PreMotionEvent
@@ -706,7 +715,7 @@ public class TestScaffold extends Module {
             this.clearPending();
             return;
         }
-        if (this.rotationTick > 0 || !this.canPlace()) {
+        if (!this.canPlace()) {
             this.clearPending();
             return;
         }
@@ -722,7 +731,7 @@ public class TestScaffold extends Module {
 
         this.place(this.pendPos, this.pendFacing, mop.hitVec);
         if (this.pendSnap) {
-            this.rememberSnapRotation();
+            this.rememberSnapRotation(this.sentYaw, this.sentPitch);
         }
 
         if (this.pendMulti) {
@@ -1152,7 +1161,8 @@ public class TestScaffold extends Module {
         for (EnumFacing facing : EnumFacing.VALUES) {
             if (facing != EnumFacing.DOWN) {
                 BlockPos pos = blockPos1.offset(facing);
-                if (pos.getY() <= blockPos3.getY()) {
+                if (pos.getY() <= blockPos3.getY()
+                        && BlockUtils.replaceable(pos)) {
                     double distance = pos.distanceSqToCenter((double) blockPos3.getX() + 0.5,
                             (double) blockPos3.getY() + 0.5, (double) blockPos3.getZ() + 0.5);
                     if (enumFacing == null || distance < offset || distance == offset && facing == EnumFacing.UP) {
@@ -1203,9 +1213,9 @@ public class TestScaffold extends Module {
         return null;
     }
 
-    private void rememberSnapRotation() {
-        this.lastSnapPlaceYaw = this.yaw;
-        this.lastSnapPlacePitch = this.pitch;
+    private void rememberSnapRotation(float yaw, float pitch) {
+        this.lastSnapPlaceYaw = yaw;
+        this.lastSnapPlacePitch = pitch;
     }
 
     private void markPlaced(BlockPos pos) {
