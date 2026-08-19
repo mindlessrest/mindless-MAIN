@@ -10,7 +10,6 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
 import java.net.URI;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -25,6 +24,7 @@ public class BackendClient {
     private static final String SERVER_URL = "wss://api.mindless.rest/ws";
     private static final int MAX_RECONNECT_DELAY = 30_000;
     private static final Gson GSON = new Gson();
+    private static final String TAG = "[BackendClient]";
 
     private static BackendClient instance;
     private WebSocketClient ws;
@@ -54,6 +54,7 @@ public class BackendClient {
     public void connect() {
         if (connected.get()) return;
         shouldReconnect.set(true);
+        System.out.println(TAG + " connect() called, initiating connection...");
         doConnect();
     }
 
@@ -61,6 +62,7 @@ public class BackendClient {
      * Disconnect cleanly. Call on client shutdown.
      */
     public void disconnect() {
+        System.out.println(TAG + " disconnect() called");
         shouldReconnect.set(false);
         if (ws != null) {
             ws.close();
@@ -72,6 +74,7 @@ public class BackendClient {
      */
     public void on(String type, MessageHandler handler) {
         handlers.computeIfAbsent(type, k -> new CopyOnWriteArrayList<>()).add(handler);
+        System.out.println(TAG + " registered handler for: " + type);
     }
 
     /**
@@ -85,13 +88,20 @@ public class BackendClient {
      * Send a typed message to the backend.
      */
     public void send(String type, Object payload) {
-        if (!connected.get() || ws == null) return;
+        if (!connected.get() || ws == null) {
+            System.out.println(TAG + " SEND FAILED (not connected): " + type);
+            return;
+        }
         JsonObject msg = new JsonObject();
         msg.addProperty("type", type);
         msg.add("payload", GSON.toJsonTree(payload));
+        String json = msg.toString();
+        System.out.println(TAG + " >>> " + type + " | " + json);
         try {
-            ws.send(msg.toString());
-        } catch (Exception ignored) {}
+            ws.send(json);
+        } catch (Exception e) {
+            System.out.println(TAG + " send error: " + e.getMessage());
+        }
     }
 
     /**
@@ -106,24 +116,31 @@ public class BackendClient {
             try {
                 String uuid = getPlayerUUID();
                 if (uuid == null || uuid.isEmpty()) {
-                    // Retry after delay — session might not be ready
+                    System.out.println(TAG + " UUID not available yet, will retry...");
                     scheduleReconnect();
                     return;
                 }
 
-                URI uri = new URI(SERVER_URL + "?uuid=" + uuid);
+                String url = SERVER_URL + "?uuid=" + uuid;
+                System.out.println(TAG + " connecting to: " + url);
+
+                URI uri = new URI(url);
                 ws = new WebSocketClient(uri) {
                     @Override
                     public void onOpen(ServerHandshake handshake) {
                         connected.set(true);
                         reconnectAttempts.set(0);
+                        System.out.println(TAG + " CONNECTED! status=" + handshake.getHttpStatus());
                         for (Runnable listener : connectListeners) {
-                            try { listener.run(); } catch (Exception ignored) {}
+                            try { listener.run(); } catch (Exception e) {
+                                System.out.println(TAG + " onConnect listener error: " + e.getMessage());
+                            }
                         }
                     }
 
                     @Override
                     public void onMessage(String message) {
+                        System.out.println(TAG + " <<< " + message);
                         try {
                             JsonObject json = new JsonParser().parse(message).getAsJsonObject();
                             String type = json.get("type").getAsString();
@@ -134,15 +151,22 @@ public class BackendClient {
                             CopyOnWriteArrayList<MessageHandler> typeHandlers = handlers.get(type);
                             if (typeHandlers != null) {
                                 for (MessageHandler handler : typeHandlers) {
-                                    try { handler.handle(payload); } catch (Exception ignored) {}
+                                    try { handler.handle(payload); } catch (Exception e) {
+                                        System.out.println(TAG + " handler error for '" + type + "': " + e.getMessage());
+                                    }
                                 }
+                            } else {
+                                System.out.println(TAG + " no handler for type: " + type);
                             }
-                        } catch (Exception ignored) {}
+                        } catch (Exception e) {
+                            System.out.println(TAG + " parse error: " + e.getMessage());
+                        }
                     }
 
                     @Override
                     public void onClose(int code, String reason, boolean remote) {
                         connected.set(false);
+                        System.out.println(TAG + " DISCONNECTED code=" + code + " reason=" + reason + " remote=" + remote);
                         if (shouldReconnect.get()) {
                             scheduleReconnect();
                         }
@@ -151,11 +175,13 @@ public class BackendClient {
                     @Override
                     public void onError(Exception ex) {
                         connected.set(false);
+                        System.out.println(TAG + " ERROR: " + ex.getClass().getSimpleName() + ": " + ex.getMessage());
                     }
                 };
                 ws.setConnectionLostTimeout(30);
                 ws.connect();
             } catch (Exception e) {
+                System.out.println(TAG + " doConnect exception: " + e.getClass().getSimpleName() + ": " + e.getMessage());
                 if (shouldReconnect.get()) {
                     scheduleReconnect();
                 }
@@ -166,6 +192,7 @@ public class BackendClient {
     private void scheduleReconnect() {
         int attempt = reconnectAttempts.incrementAndGet();
         long delay = Math.min(1000L * (1 << Math.min(attempt, 5)), MAX_RECONNECT_DELAY);
+        System.out.println(TAG + " reconnect attempt #" + attempt + " in " + delay + "ms");
         Raven.getCachedExecutor().execute(() -> {
             try {
                 TimeUnit.MILLISECONDS.sleep(delay);
@@ -180,9 +207,13 @@ public class BackendClient {
         try {
             Minecraft mc = Minecraft.getMinecraft();
             if (mc.getSession() != null) {
-                return mc.getSession().getPlayerID();
+                String uuid = mc.getSession().getPlayerID();
+                System.out.println(TAG + " player UUID: " + uuid);
+                return uuid;
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            System.out.println(TAG + " getPlayerUUID error: " + e.getMessage());
+        }
         return null;
     }
 }

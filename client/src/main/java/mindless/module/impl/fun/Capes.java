@@ -57,7 +57,9 @@ public class Capes extends Module {
         instance = this;
         capeDir = new File(mc.mcDataDir + File.separator + "mindless", "capes");
         if (!capeDir.exists()) capeDir.mkdirs();
+        System.out.println("[Capes] init, dir=" + capeDir.getAbsolutePath());
         List<String> names = buildCapeList();
+        System.out.println("[Capes] loaded " + (names.size() - 1) + " local capes");
         this.registerSetting(selectedCape = new SliderSetting("Cape", 0, names.toArray(new String[0])));
         this.registerSetting(displaySelf = new ButtonSetting("Display self", true));
         this.registerSetting(displayOthers = new ButtonSetting("Display others", true));
@@ -110,15 +112,20 @@ public class Capes extends Module {
      */
     private void syncCapeToServer() {
         BackendClient backend = BackendClient.getInstance();
-        if (!backend.isConnected()) return;
+        if (!backend.isConnected()) {
+            System.out.println("[Capes] syncCapeToServer: not connected, skipping");
+            return;
+        }
 
         int index = selectedCape != null ? (int) selectedCape.getInput() : 0;
         if (index <= 0 || !this.isEnabled()) {
+            System.out.println("[Capes] syncCapeToServer: clearing (index=" + index + " enabled=" + this.isEnabled() + ")");
             backend.send("cape_clear", new Object());
         } else {
             int fileIndex = index - 1;
             if (fileIndex >= 0 && fileIndex < capeFileNames.size()) {
                 String filename = capeFileNames.get(fileIndex);
+                System.out.println("[Capes] syncCapeToServer: selecting '" + filename + "'");
                 Map<String, String> payload = new HashMap<>();
                 payload.put("cape", filename);
                 backend.send("cape_select", payload);
@@ -157,6 +164,7 @@ public class Capes extends Module {
      * Download and register a remote player's cape texture.
      */
     private void loadRemoteCape(String uuid, String filename) {
+        System.out.println("[Capes] loadRemoteCape: uuid=" + uuid + " cape=" + filename);
         // Check if already cached
         if (textureCache.containsKey(filename)) {
             remoteCapes.put(uuid, textureCache.get(filename));
