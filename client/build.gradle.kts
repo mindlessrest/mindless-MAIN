@@ -222,6 +222,7 @@ tasks.shadowJar {
     if (ravenBuildType != "forge") {
         relocate("org.objectweb.asm", "mindless.deps.org.objectweb.asm")
     }
+    relocate("org.slf4j", "mindless.deps.org.slf4j")
 }
 
 val forgeMappedJar = providers.provider {
