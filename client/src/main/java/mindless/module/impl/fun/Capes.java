@@ -215,31 +215,47 @@ public class Capes extends Module {
     private void fetchServerCapeList() {
         Raven.getCachedExecutor().execute(() -> {
             try {
+                System.out.println("[Capes] fetching server cape list...");
                 HttpURLConnection conn = (HttpURLConnection) new URL(
                         BACKEND_URL + "/api/capes/list").openConnection();
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(5000);
                 if (conn.getResponseCode() == 200) {
                     try (InputStream in = conn.getInputStream()) {
-                        // Download any capes we don't have locally
                         String json = new String(readAllBytes(in));
-                        // Simple parse — look for filenames
-                        // Full JSON parsing would be cleaner but keeping deps minimal
-                        for (String name : extractCapeNames(json)) {
+                        List<String> serverCapes = extractCapeNames(json);
+                        System.out.println("[Capes] server has " + serverCapes.size() + " capes: " + serverCapes);
+                        for (String name : serverCapes) {
                             File local = new File(capeDir, name);
                             if (!local.exists()) {
+                                System.out.println("[Capes] downloading: " + name);
                                 downloadCapeToLocal(name);
                             }
                         }
                     }
+                } else {
+                    System.out.println("[Capes] server list failed: " + conn.getResponseCode());
                 }
                 conn.disconnect();
                 // Refresh list on main thread
                 mc.addScheduledTask(() -> {
                     List<String> names = buildCapeList();
                     updateSliderOptions(names);
+                    System.out.println("[Capes] refreshed after server sync: " + (names.size() - 1) + " capes");
+                    // Auto-select mindless cape if nothing selected
+                    if (selectedCape != null && (int) selectedCape.getInput() == 0) {
+                        for (int i = 1; i < names.size(); i++) {
+                            if ("mindless".equalsIgnoreCase(names.get(i))) {
+                                selectedCape.setValue(i);
+                                System.out.println("[Capes] auto-selected mindless cape");
+                                break;
+                            }
+                        }
+                    }
                 });
-            } catch (IOException ignored) {}
+            } catch (IOException e) {
+                System.out.println("[Capes] fetchServerCapeList error: " + e.getMessage());
+            }
         });
     }
 
