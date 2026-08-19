@@ -46,6 +46,8 @@ public class Capes extends Module {
 
     private ButtonSetting openFolder;
     private ButtonSetting reloadCapes;
+    public static ButtonSetting displaySelf;
+    public static ButtonSetting displayOthers;
 
     private static File capeDir;
     private int lastSelectedIndex = -1;
@@ -57,6 +59,8 @@ public class Capes extends Module {
         if (!capeDir.exists()) capeDir.mkdirs();
         List<String> names = buildCapeList();
         this.registerSetting(selectedCape = new SliderSetting("Cape", 0, names.toArray(new String[0])));
+        this.registerSetting(displaySelf = new ButtonSetting("Display self", true));
+        this.registerSetting(displayOthers = new ButtonSetting("Display others", true));
         this.registerSetting(openFolder = new ButtonSetting("Open folder", this::openCapeFolder));
         this.registerSetting(reloadCapes = new ButtonSetting("Reload capes", this::reload));
         fetchServerCapeList();
@@ -389,6 +393,7 @@ public class Capes extends Module {
      */
     public static ResourceLocation getSelectedCapeTexture() {
         if (instance == null || !instance.isEnabled() || selectedCape == null
+                || !displaySelf.isToggled()
                 || selectedCape.getInput() <= 0 || loadedCapes.isEmpty()) {
             return null;
         }
@@ -404,7 +409,7 @@ public class Capes extends Module {
      * Called from the player renderer to render other Mindless users' capes.
      */
     public static ResourceLocation getCapeForPlayer(String uuid) {
-        if (instance == null || !instance.isEnabled()) return null;
+        if (instance == null || !instance.isEnabled() || !displayOthers.isToggled()) return null;
         return remoteCapes.get(uuid);
     }
 
@@ -413,7 +418,7 @@ public class Capes extends Module {
      * Convenience method for the renderer.
      */
     public static ResourceLocation getCapeForPlayer(AbstractClientPlayer player) {
-        if (instance == null || !instance.isEnabled()) return null;
+        if (instance == null || !instance.isEnabled() || !displayOthers.isToggled()) return null;
         String uuid = player.getUniqueID().toString().replace("-", "");
         return remoteCapes.get(uuid);
     }

@@ -25,12 +25,17 @@ public class TransformerLayerCape {
     private void capes$overrideRender(AbstractClientPlayer player, float limbSwing, float limbSwingAmount,
                                       float partialTicks, float ageInTicks, float netHeadYaw,
                                       float headPitch, float scale, InjectionCallback ci) {
-        if (!player.equals(Minecraft.getMinecraft().thePlayer)) return;
 
-        ResourceLocation capeTexture = Capes.getSelectedCapeTexture();
+        // Determine cape texture: local player or remote Mindless user
+        ResourceLocation capeTexture;
+        if (player.equals(Minecraft.getMinecraft().thePlayer)) {
+            capeTexture = Capes.getSelectedCapeTexture();
+        } else {
+            capeTexture = Capes.getCapeForPlayer(player);
+        }
+
         if (capeTexture == null) return;
 
-        // Custom cape active for local player - render directly and cancel original
         if (!player.hasPlayerInfo() || player.isInvisible()) {
             ci.setCancelled(true);
             return;

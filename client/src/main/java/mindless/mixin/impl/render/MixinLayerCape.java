@@ -18,8 +18,10 @@ public class MixinLayerCape {
 
     @Redirect(method = "doRenderLayer", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/entity/AbstractClientPlayer;isWearing(Lnet/minecraft/entity/player/EnumPlayerModelParts;)Z"))
     private boolean modifyIsWearing(AbstractClientPlayer player, EnumPlayerModelParts part) {
-        if (player.equals(Minecraft.getMinecraft().thePlayer) && Capes.getSelectedCapeTexture() != null) {
-            return true;
+        if (player.equals(Minecraft.getMinecraft().thePlayer)) {
+            if (Capes.getSelectedCapeTexture() != null) return true;
+        } else {
+            if (Capes.getCapeForPlayer(player) != null) return true;
         }
         return player.isWearing(part);
     }
@@ -28,9 +30,10 @@ public class MixinLayerCape {
     private ResourceLocation modifyGetLocationCape(AbstractClientPlayer player) {
         if (player.equals(Minecraft.getMinecraft().thePlayer)) {
             ResourceLocation cape = Capes.getSelectedCapeTexture();
-            if (cape != null) {
-                return cape;
-            }
+            if (cape != null) return cape;
+        } else {
+            ResourceLocation remoteCape = Capes.getCapeForPlayer(player);
+            if (remoteCape != null) return remoteCape;
         }
         return player.getLocationCape();
     }

@@ -15,10 +15,17 @@ public class TransformerAbstractClientPlayer {
     @CInline
     @CInject(method = "getLocationCape", target = @CTarget("RETURN"), cancellable = true)
     private void overrideCape(InjectionCallback ci) {
-        if (((Object) this).equals(Minecraft.getMinecraft().thePlayer)) {
+        AbstractClientPlayer self = (AbstractClientPlayer) (Object) this;
+
+        if (self.equals(Minecraft.getMinecraft().thePlayer)) {
             ResourceLocation customCape = Capes.getSelectedCapeTexture();
             if (customCape != null) {
                 ci.setReturnValue(customCape);
+            }
+        } else {
+            ResourceLocation remoteCape = Capes.getCapeForPlayer(self);
+            if (remoteCape != null) {
+                ci.setReturnValue(remoteCape);
             }
         }
     }

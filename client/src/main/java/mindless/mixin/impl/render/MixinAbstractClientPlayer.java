@@ -17,10 +17,19 @@ public class MixinAbstractClientPlayer {
 
     @Inject(method = "getLocationCape", at = @At("RETURN"), cancellable = true)
     private void overrideCape(CallbackInfoReturnable<ResourceLocation> cir) {
-        if (((Object) this).equals(Minecraft.getMinecraft().thePlayer)) {
+        AbstractClientPlayer self = (AbstractClientPlayer) (Object) this;
+
+        if (self.equals(Minecraft.getMinecraft().thePlayer)) {
+            // Local player — use selected cape
             ResourceLocation customCape = Capes.getSelectedCapeTexture();
             if (customCape != null) {
                 cir.setReturnValue(customCape);
+            }
+        } else {
+            // Other player — check if they're a Mindless user with a cape
+            ResourceLocation remoteCape = Capes.getCapeForPlayer(self);
+            if (remoteCape != null) {
+                cir.setReturnValue(remoteCape);
             }
         }
     }
