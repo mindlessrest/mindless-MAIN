@@ -115,6 +115,7 @@ dependencies {
         shadowImpl("net.lenni0451.classtransform:additionalclassprovider:1.15.1")
     }
     shadowImpl("org.java-websocket:Java-WebSocket:1.6.0")
+    shadowImpl("org.slf4j:slf4j-api:2.0.13")
     shadowImpl("net.java.dev.jna:jna:5.14.0")
     // Lunar may run on a JRE without javax.tools' system compiler. Keep script
     // compilation available inside the payload instead of requiring launcher Java configuration.
