@@ -1,14 +1,16 @@
 package mindless.module.impl.fun;
 
+import com.google.gson.JsonObject;
 import mindless.Raven;
+import mindless.backend.BackendClient;
 import mindless.event.PostProfileLoadEvent;
 import mindless.module.Module;
-import mindless.module.setting.Setting;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
-import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.AbstractClientPlayer;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.util.ResourceLocation;
 
 import javax.imageio.ImageIO;
@@ -17,71 +19,255 @@ import javax.imageio.metadata.IIOMetadata;
 import javax.imageio.stream.ImageInputStream;
 import java.awt.Desktop;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
+import java.lang.reflect.Field;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.lang.reflect.Field;
-import java.nio.file.Files;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public class Capes extends Module {
-    private static final String MINDLESS_CAPE_FILE = "mindless.png";
-    private static final String MINDLESS_CAPE_NAME = "mindless";
-    private static final String MINDLESS_CAPE_URL =
-            "https://raw.githubusercontent.com/mindlessrest/resources/55d3bc366279c55854b8f3dac3270409f3b1d0c2/cape.png";
+    private static final String BACKEND_URL = "https://api.mindless.rest";
+
     private static Capes instance;
     public static SliderSetting selectedCape;
     public static List<ResourceLocation> loadedCapes = new ArrayList<>();
     private static final List<AnimatedCape> animatedCapes = new ArrayList<>();
     private static List<String> capeDisplayNames = new ArrayList<>();
+    private static List<String> capeFileNames = new ArrayList<>();
+
+    // Other players' capes: UUID -> ResourceLocation
+    private static final ConcurrentHashMap<String, ResourceLocation> remoteCapes = new ConcurrentHashMap<>();
+    // Cache downloaded textures: filename -> ResourceLocation
+    private static final ConcurrentHashMap<String, ResourceLocation> textureCache = new ConcurrentHashMap<>();
 
     private ButtonSetting openFolder;
     private ButtonSetting reloadCapes;
 
-    private static final String[] bundledCapes = {
-        "anime.png", "rvn_aqua.png", "rvn_green.png", "rvn_purple.png",
-        "rvn_red.png", "rvn_white.png", "rvn_yellow.png"
-    };
-
     private static File capeDir;
+    private int lastSelectedIndex = -1;
 
     public Capes() {
         super("Capes", category.fun);
         instance = this;
         capeDir = new File(mc.mcDataDir + File.separator + "mindless", "capes");
-        extractBundledCapes();
+        if (!capeDir.exists()) capeDir.mkdirs();
         List<String> names = buildCapeList();
         this.registerSetting(selectedCape = new SliderSetting("Cape", 0, names.toArray(new String[0])));
         this.registerSetting(openFolder = new ButtonSetting("Open folder", this::openCapeFolder));
         this.registerSetting(reloadCapes = new ButtonSetting("Reload capes", this::reload));
-        if (!selectMindlessCape(names)) {
-            downloadMindlessCapeAsync();
+        fetchServerCapeList();
+        initBackendListeners();
+    }
+
+    // --- Backend Integration ---
+
+    private void initBackendListeners() {
+        BackendClient backend = BackendClient.getInstance();
+
+        // When connected, query all online players' capes
+        backend.onConnect(() -> {
+            backend.send("cape_query", new Object());
+            // Send our current selection
+            syncCapeToServer();
+        });
+
+        // Receive full state dump (on connect)
+        backend.on("cape_state", payload -> {
+            for (Map.Entry<String, com.google.gson.JsonElement> entry : payload.entrySet()) {
+                String uuid = entry.getKey();
+                String cape = entry.getValue().getAsString();
+                if (!cape.isEmpty()) {
+                    loadRemoteCape(uuid, cape);
+                }
+            }
+        });
+
+        // Receive individual cape updates
+        backend.on("cape_update", payload -> {
+            String uuid = payload.get("uuid").getAsString();
+            String cape = payload.get("cape").getAsString();
+            if (cape.isEmpty()) {
+                remoteCapes.remove(uuid);
+            } else {
+                loadRemoteCape(uuid, cape);
+            }
+        });
+
+        // Connect if not already
+        backend.connect();
+    }
+
+    /**
+     * Sync currently selected cape to the backend server.
+     */
+    private void syncCapeToServer() {
+        BackendClient backend = BackendClient.getInstance();
+        if (!backend.isConnected()) return;
+
+        int index = selectedCape != null ? (int) selectedCape.getInput() : 0;
+        if (index <= 0 || !this.isEnabled()) {
+            backend.send("cape_clear", new Object());
+        } else {
+            int fileIndex = index - 1;
+            if (fileIndex >= 0 && fileIndex < capeFileNames.size()) {
+                String filename = capeFileNames.get(fileIndex);
+                Map<String, String> payload = new HashMap<>();
+                payload.put("cape", filename);
+                backend.send("cape_select", payload);
+                // Upload cape to server if it's a custom one
+                uploadCapeIfNeeded(filename);
+            }
         }
     }
 
-    private void extractBundledCapes() {
-        if (!capeDir.exists()) {
-            capeDir.mkdirs();
-        }
-        for (String name : bundledCapes) {
-            File out = new File(capeDir, name);
-            if (out.isFile() && out.length() > 0) continue;
-            try (InputStream in = getClass().getResourceAsStream("/assets/mindless/textures/capes/" + name)) {
-                if (in != null) {
-                    Files.copy(in, out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+    /**
+     * Upload cape texture to the backend server (deduplication handled server-side).
+     */
+    private void uploadCapeIfNeeded(String filename) {
+        Raven.getCachedExecutor().execute(() -> {
+            File file = new File(capeDir, filename);
+            if (!file.isFile()) return;
+            try {
+                byte[] data = readFileBytes(file);
+                HttpURLConnection conn = (HttpURLConnection) new URL(BACKEND_URL + "/api/capes/upload").openConnection();
+                conn.setRequestMethod("POST");
+                conn.setDoOutput(true);
+                conn.setRequestProperty("X-Filename", filename);
+                conn.setRequestProperty("Content-Type", "application/octet-stream");
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(10000);
+                try (OutputStream out = conn.getOutputStream()) {
+                    out.write(data);
                 }
+                conn.getResponseCode(); // consume response
+                conn.disconnect();
             } catch (IOException ignored) {}
-        }
+        });
     }
+
+    /**
+     * Download and register a remote player's cape texture.
+     */
+    private void loadRemoteCape(String uuid, String filename) {
+        // Check if already cached
+        if (textureCache.containsKey(filename)) {
+            remoteCapes.put(uuid, textureCache.get(filename));
+            return;
+        }
+
+        Raven.getCachedExecutor().execute(() -> {
+            try {
+                // First check local cache
+                File local = new File(capeDir, filename);
+                BufferedImage image;
+                if (local.isFile()) {
+                    image = ImageIO.read(local);
+                } else {
+                    // Download from backend
+                    HttpURLConnection conn = (HttpURLConnection) new URL(
+                            BACKEND_URL + "/api/capes/texture/" + filename).openConnection();
+                    conn.setConnectTimeout(5000);
+                    conn.setReadTimeout(10000);
+                    if (conn.getResponseCode() != 200) {
+                        conn.disconnect();
+                        return;
+                    }
+                    try (InputStream in = conn.getInputStream()) {
+                        image = ImageIO.read(in);
+                    }
+                    conn.disconnect();
+                }
+
+                if (image == null) return;
+
+                // Register texture on main thread
+                BufferedImage finalImage = image;
+                mc.addScheduledTask(() -> {
+                    DynamicTexture texture = new DynamicTexture(finalImage);
+                    ResourceLocation loc = mc.renderEngine.getDynamicTextureLocation(
+                            "remote_cape_" + filename, texture);
+                    textureCache.put(filename, loc);
+                    remoteCapes.put(uuid, loc);
+                });
+            } catch (IOException ignored) {}
+        });
+    }
+
+    /**
+     * Fetch available capes from server and merge with local.
+     */
+    private void fetchServerCapeList() {
+        Raven.getCachedExecutor().execute(() -> {
+            try {
+                HttpURLConnection conn = (HttpURLConnection) new URL(
+                        BACKEND_URL + "/api/capes/list").openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                if (conn.getResponseCode() == 200) {
+                    try (InputStream in = conn.getInputStream()) {
+                        // Download any capes we don't have locally
+                        String json = new String(readAllBytes(in));
+                        // Simple parse — look for filenames
+                        // Full JSON parsing would be cleaner but keeping deps minimal
+                        for (String name : extractCapeNames(json)) {
+                            File local = new File(capeDir, name);
+                            if (!local.exists()) {
+                                downloadCapeToLocal(name);
+                            }
+                        }
+                    }
+                }
+                conn.disconnect();
+                // Refresh list on main thread
+                mc.addScheduledTask(() -> {
+                    List<String> names = buildCapeList();
+                    updateSliderOptions(names);
+                });
+            } catch (IOException ignored) {}
+        });
+    }
+
+    private void downloadCapeToLocal(String filename) {
+        try {
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    BACKEND_URL + "/api/capes/texture/" + filename).openConnection();
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(10000);
+            if (conn.getResponseCode() == 200) {
+                try (InputStream in = conn.getInputStream()) {
+                    File out = new File(capeDir, filename);
+                    try (FileOutputStream fos = new FileOutputStream(out)) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = in.read(buf)) != -1) fos.write(buf, 0, n);
+                    }
+                }
+            }
+            conn.disconnect();
+        } catch (IOException ignored) {}
+    }
+
+    private List<String> extractCapeNames(String json) {
+        List<String> names = new ArrayList<>();
+        // Parse "capes":["file1.png","file2.gif",...]
+        int idx = json.indexOf("\"capes\"");
+        if (idx == -1) return names;
+        int start = json.indexOf('[', idx);
+        int end = json.indexOf(']', start);
+        if (start == -1 || end == -1) return names;
+        String arr = json.substring(start + 1, end);
+        for (String part : arr.split(",")) {
+            String name = part.trim().replace("\"", "");
+            if (!name.isEmpty()) names.add(name);
+        }
+        return names;
+    }
+
+    // --- Local Cape Loading (unchanged logic) ---
 
     private List<String> buildCapeList() {
         for (ResourceLocation loadedCape : loadedCapes) {
@@ -92,6 +278,7 @@ public class Capes extends Module {
         loadedCapes.clear();
         animatedCapes.clear();
         capeDisplayNames.clear();
+        capeFileNames.clear();
         List<String> names = new ArrayList<>();
         names.add("None");
         if (!capeDir.exists() || !capeDir.isDirectory()) return names;
@@ -109,10 +296,11 @@ public class Capes extends Module {
                     displayName = displayName.substring(0, displayName.lastIndexOf('.'));
                     DynamicTexture texture = new DynamicTexture(image);
                     ResourceLocation tex = mc.renderEngine.getDynamicTextureLocation(
-                        "cape_" + file.getName(), texture);
+                            "cape_" + file.getName(), texture);
                     loadedCapes.add(tex);
                     animatedCapes.add(animated == null ? null : animated.withTexture(tex));
                     capeDisplayNames.add(displayName);
+                    capeFileNames.add(file.getName());
                     names.add(displayName);
                 }
             } catch (IOException e) {
@@ -141,7 +329,7 @@ public class Capes extends Module {
     }
 
     private void reload() {
-        extractBundledCapes();
+        fetchServerCapeList();
         List<String> names = buildCapeList();
         updateSliderOptions(names);
         if (names.size() > 1) {
@@ -149,6 +337,96 @@ public class Capes extends Module {
         } else {
             Utils.sendMessage("&7No .png capes found. Place them in:");
             Utils.sendMessage("&7" + capeDir.getAbsolutePath());
+        }
+    }
+
+    // --- Tick: animate + detect selection changes ---
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+
+        // Animate GIF capes
+        if (!animatedCapes.isEmpty()) {
+            long now = System.currentTimeMillis();
+            for (AnimatedCape cape : animatedCapes) {
+                if (cape != null && now >= cape.nextFrameAt) cape.advance(now);
+            }
+        }
+
+        // Detect cape selection change and sync to server
+        if (selectedCape != null) {
+            int current = (int) selectedCape.getInput();
+            if (current != lastSelectedIndex) {
+                lastSelectedIndex = current;
+                syncCapeToServer();
+            }
+        }
+    }
+
+    @Override
+    public void onEnable() {
+        syncCapeToServer();
+    }
+
+    @Override
+    public void onDisable() {
+        BackendClient backend = BackendClient.getInstance();
+        if (backend.isConnected()) {
+            backend.send("cape_clear", new Object());
+        }
+    }
+
+    @SubscribeEvent
+    public void onProfileLoaded(PostProfileLoadEvent event) {
+        syncCapeToServer();
+    }
+
+    // --- Public API for renderer ---
+
+    /**
+     * Get the cape texture for the local player.
+     */
+    public static ResourceLocation getSelectedCapeTexture() {
+        if (instance == null || !instance.isEnabled() || selectedCape == null
+                || selectedCape.getInput() <= 0 || loadedCapes.isEmpty()) {
+            return null;
+        }
+        int index = (int) (selectedCape.getInput() - 1);
+        if (index >= 0 && index < loadedCapes.size()) {
+            return loadedCapes.get(index);
+        }
+        return null;
+    }
+
+    /**
+     * Get the cape texture for another player (by UUID).
+     * Called from the player renderer to render other Mindless users' capes.
+     */
+    public static ResourceLocation getCapeForPlayer(String uuid) {
+        if (instance == null || !instance.isEnabled()) return null;
+        return remoteCapes.get(uuid);
+    }
+
+    /**
+     * Get the cape texture for a player entity.
+     * Convenience method for the renderer.
+     */
+    public static ResourceLocation getCapeForPlayer(AbstractClientPlayer player) {
+        if (instance == null || !instance.isEnabled()) return null;
+        String uuid = player.getUniqueID().toString().replace("-", "");
+        return remoteCapes.get(uuid);
+    }
+
+    // --- Utility ---
+
+    private void openCapeFolder() {
+        try {
+            if (!capeDir.exists()) capeDir.mkdirs();
+            Desktop.getDesktop().open(capeDir);
+        } catch (IOException e) {
+            try { Runtime.getRuntime().exec("explorer " + capeDir.getAbsolutePath()); }
+            catch (IOException ignored) {}
         }
     }
 
@@ -200,124 +478,21 @@ public class Capes extends Module {
         return 100L;
     }
 
-    @SubscribeEvent
-    public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END || animatedCapes.isEmpty()) return;
-        long now = System.currentTimeMillis();
-        for (AnimatedCape cape : animatedCapes) {
-            if (cape != null && now >= cape.nextFrameAt) cape.advance(now);
+    private static byte[] readFileBytes(File file) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            return readAllBytes(fis);
         }
     }
 
-    private boolean selectMindlessCape(List<String> names) {
-        if (selectedCape == null || names == null) return false;
-        for (int i = 1; i < names.size(); i++) {
-            if (MINDLESS_CAPE_NAME.equalsIgnoreCase(names.get(i))) {
-                selectedCape.setValue(i);
-                return true;
-            }
-        }
-        return false;
+    private static byte[] readAllBytes(InputStream in) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) != -1) bos.write(buf, 0, n);
+        return bos.toByteArray();
     }
 
-    private void downloadMindlessCapeAsync() {
-        Raven.getCachedExecutor().execute(() -> {
-            File destination = new File(capeDir, MINDLESS_CAPE_FILE);
-            if (isValidCape(destination)) {
-                scheduleMindlessCapeRefresh();
-                return;
-            }
-            File temporary = null;
-            HttpURLConnection connection = null;
-            try {
-                if (!capeDir.exists() && !capeDir.mkdirs() && !capeDir.isDirectory()) return;
-                connection = (HttpURLConnection) new URL(MINDLESS_CAPE_URL).openConnection();
-                connection.setConnectTimeout(5000);
-                connection.setReadTimeout(10000);
-                connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "Mindless-Client/1.0");
-                if (connection.getResponseCode() / 100 != 2) return;
-                BufferedImage image;
-                try (InputStream input = connection.getInputStream()) {
-                    image = ImageIO.read(input);
-                }
-                if (image == null || image.getWidth() <= 0 || image.getHeight() <= 0) return;
-                temporary = File.createTempFile("mindless-cape-", ".png", capeDir);
-                if (!ImageIO.write(image, "png", temporary)) return;
-                try {
-                    Files.move(temporary.toPath(), destination.toPath(),
-                            StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-                } catch (AtomicMoveNotSupportedException ignored) {
-                    Files.move(temporary.toPath(), destination.toPath(),
-                            StandardCopyOption.REPLACE_EXISTING);
-                }
-                temporary = null;
-                scheduleMindlessCapeRefresh();
-            } catch (IOException ignored) {
-                // Keep startup offline-safe; a missing cape is retried next launch.
-            } finally {
-                if (connection != null) connection.disconnect();
-                if (temporary != null && temporary.isFile()) temporary.delete();
-            }
-        });
-    }
-
-    private static boolean isValidCape(File file) {
-        if (file == null || !file.isFile() || file.length() == 0) return false;
-        try (InputStream input = new FileInputStream(file)) {
-            BufferedImage image = ImageIO.read(input);
-            return image != null && image.getWidth() > 0 && image.getHeight() > 0;
-        } catch (IOException ignored) {
-            return false;
-        }
-    }
-
-    @Override
-    public void onEnable() {
-        selectMindlessCape(currentCapeNames());
-    }
-
-    @SubscribeEvent
-    public void onProfileLoaded(PostProfileLoadEvent event) {
-        selectMindlessCape(currentCapeNames());
-    }
-
-    private List<String> currentCapeNames() {
-        List<String> names = new ArrayList<>();
-        names.add("None");
-        names.addAll(capeDisplayNames);
-        return names;
-    }
-
-    private void scheduleMindlessCapeRefresh() {
-        mc.addScheduledTask(() -> {
-            List<String> names = buildCapeList();
-            updateSliderOptions(names);
-            selectMindlessCape(names);
-        });
-    }
-
-    private void openCapeFolder() {
-        try {
-            if (!capeDir.exists()) capeDir.mkdirs();
-            Desktop.getDesktop().open(capeDir);
-        } catch (IOException e) {
-            try { Runtime.getRuntime().exec("explorer " + capeDir.getAbsolutePath()); }
-            catch (IOException ignored) {}
-        }
-    }
-
-    public static ResourceLocation getSelectedCapeTexture() {
-        if (instance == null || !instance.isEnabled() || selectedCape == null
-                || selectedCape.getInput() <= 0 || loadedCapes.isEmpty()) {
-            return null;
-        }
-        int index = (int) (selectedCape.getInput() - 1);
-        if (index >= 0 && index < loadedCapes.size()) {
-            return loadedCapes.get(index);
-        }
-        return null;
-    }
+    // --- Inner class ---
 
     private static final class AnimatedCape {
         final List<BufferedImage> frames;

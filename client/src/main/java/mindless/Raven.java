@@ -82,6 +82,7 @@ public class Raven {
 
         Runtime.getRuntime().addShutdownHook(new Thread(scheduledExecutor::shutdown));
         Runtime.getRuntime().addShutdownHook(new Thread(cachedExecutor::shutdown));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> mindless.backend.BackendClient.getInstance().disconnect()));
 
         ClientCommandHandler.instance.registerCommand(new KeyStrokeCommand());
 
