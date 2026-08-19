@@ -259,6 +259,7 @@ public class Module {
         client,
         network,
         profiles,
-        scripts;
+        scripts,
+        cloud;
     }
 }

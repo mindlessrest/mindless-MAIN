@@ -237,7 +237,11 @@ public final class ModernClickGui extends ClickGui {
         // detail width and content reveal without deforming panel geometry.
         drawPanels();
         drawSidebar(mx, my);
-        drawModulePanel(mx, my);
+        if (selectedCategory == Module.category.cloud) {
+            drawCloudPanel(mx, my);
+        } else {
+            drawModulePanel(mx, my);
+        }
         drawSettingsPanel(mx, my);
         drawCommandPalette(mx, my);
         drawAboutWindow(mx, my);
@@ -334,7 +338,7 @@ public final class ModernClickGui extends ClickGui {
 
         float y = baseY + 55f;
         for (Module.category category : Module.category.values()) {
-            if (category == Module.category.profiles || category == Module.category.scripts) continue;
+            if (category == Module.category.profiles || category == Module.category.scripts || category == Module.category.cloud) continue;
             y = drawCategory(category, y, mx, my);
         }
         y += 2f;
@@ -342,6 +346,9 @@ public final class ModernClickGui extends ClickGui {
         y += 5f;
         y = drawCategory(Module.category.profiles, y, mx, my);
         y = drawCategory(Module.category.scripts, y, mx, my);
+        if (mindless.backend.BackendClient.getInstance().isConnected()) {
+            y = drawCategory(Module.category.cloud, y, mx, my);
+        }
     }
 
     private float drawCategory(Module.category category, float y, int mx, int my) {
@@ -397,6 +404,145 @@ public final class ModernClickGui extends ClickGui {
         modulesContentHeight = modules.size() * MODULE_ROW_STEP;
         scissor(0, 0, 0, 0, false);
         drawScrollbar(centerX + centerW - 7, top, bottom, moduleScroll, modulesContentHeight);
+    }
+
+    // --- Cloud Panel ---
+    private boolean cloudInitialized = false;
+    private String cloudFilter = "all"; // "all", "profile", "script"
+    private mindless.backend.CloudManager.CloudItem selectedCloudItem = null;
+
+    private void drawCloudPanel(int mx, int my) {
+        mindless.backend.CloudManager cloud = mindless.backend.CloudManager.getInstance();
+        if (!cloudInitialized) {
+            cloudInitialized = true;
+            cloud.refreshList(null);
+            cloud.checkUpdates();
+        }
+
+        // Header
+        drawText("Cloud", centerX + 18, baseY + 18, TEXT, 1.45f, true);
+        java.util.List<mindless.backend.CloudManager.CloudItem> items = cloud.getCachedList();
+        drawText(items.size() + " available", centerX + 18, baseY + 40, MUTED, .82f, false);
+
+        // Filter buttons
+        float bx = centerX + centerW - 200;
+        bx = drawCloudFilterButton("All", "all", bx, baseY + 20, mx, my);
+        bx = drawCloudFilterButton("Profiles", "profile", bx + 6, baseY + 20, mx, my);
+        bx = drawCloudFilterButton("Scripts", "script", bx + 6, baseY + 20, mx, my);
+
+        line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 34));
+        line(centerX + 17, baseY + 55, centerX + 50, baseY + 55, withAlpha(ACCENT, 92));
+
+        // Filter items
+        java.util.List<mindless.backend.CloudManager.CloudItem> filtered = new java.util.ArrayList<>();
+        for (mindless.backend.CloudManager.CloudItem item : items) {
+            if (cloudFilter.equals("all") || item.type.equals(cloudFilter)) {
+                filtered.add(item);
+            }
+        }
+
+        // Scrollable list
+        float top = baseY + 61f;
+        float bottom = baseY + panelH - 12f;
+        scissor(centerX + 8, top, centerX + centerW - 8, bottom, true);
+        float y = top + moduleScroll;
+        for (mindless.backend.CloudManager.CloudItem item : filtered) {
+            drawCloudRow(item, y, mx, my, cloud);
+            y += MODULE_ROW_STEP;
+        }
+        modulesContentHeight = filtered.size() * MODULE_ROW_STEP;
+        scissor(0, 0, 0, 0, false);
+        drawScrollbar(centerX + centerW - 7, top, bottom, moduleScroll, modulesContentHeight);
+    }
+
+    private float drawCloudFilterButton(String label, String filter, float x, float y, int mx, int my) {
+        float w = textWidth(label, .7f, false) + 16;
+        boolean active = cloudFilter.equals(filter);
+        boolean hover = inside(mx, my, x, y, x + w, y + 18);
+        int bg = active ? withAlpha(ACCENT, 80) : hover ? withAlpha(CONTROL_HOVER, 160) : CONTROL;
+        rounded(x, y, x + w, y + 18, 9f, bg);
+        drawText(label, x + 8, y + 3.5f, active ? TEXT : MUTED, .7f, active);
+        return x + w;
+    }
+
+    private void drawCloudRow(mindless.backend.CloudManager.CloudItem item, float y, int mx, int my, mindless.backend.CloudManager cloud) {
+        float x1 = centerX + 14, x2 = centerX + centerW - 14;
+        boolean hover = inside(mx, my, x1, y, x2, y + MODULE_ROW_HEIGHT);
+        boolean selected = selectedCloudItem != null && selectedCloudItem.id.equals(item.id);
+        float hp = hover ? .6f : 0f;
+        float sp = selected ? .8f : 0f;
+        int rowColor = mixColor(ROW, ROW_HOVER, hp);
+        rowColor = mixColor(rowColor, withAlpha(ACCENT, 55), sp);
+        rounded(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f, rowColor);
+
+        // Left accent bar when selected
+        if (sp > .01f) {
+            rounded(x1, y + 5, x1 + 2.5f, y + MODULE_ROW_HEIGHT - 5, 1.25f, withAlpha(ACCENT, (int) (255 * sp)));
+        }
+
+        // Name + type badge
+        drawText(item.name, x1 + 10, y + 4.5f, hover || selected ? TEXT : MUTED, .73f, selected);
+        String badge = item.type.equals("profile") ? "Profile" : "Script";
+        drawSmallText(badge + "  \u2B07 " + item.downloads, x1 + 10, y + 16f, argb(255, 132, 134, 133));
+
+        // Status dot
+        boolean subscribed = cloud.isSubscribed(item.id);
+        boolean hasUpdate = cloud.hasUpdate(item.id);
+        if (subscribed) {
+            int dotColor = hasUpdate ? 0xFFFFD700 : 0xFF4ADE80; // yellow or green
+            float dotX = x2 - 20;
+            float dotY = y + MODULE_ROW_HEIGHT / 2f;
+            rounded(dotX - 4, dotY - 4, dotX + 4, dotY + 4, 4f, dotColor);
+        }
+
+        // Version
+        drawSmallText("v" + item.version, x2 - 42, y + 4.5f, MUTED);
+    }
+
+    private void handleCloudClick(int mx, int my, int mouseButton) {
+        mindless.backend.CloudManager cloud = mindless.backend.CloudManager.getInstance();
+        java.util.List<mindless.backend.CloudManager.CloudItem> items = cloud.getCachedList();
+
+        // Filter button clicks
+        float bx = centerX + centerW - 200;
+        float w1 = textWidth("All", .7f, false) + 16;
+        if (inside(mx, my, bx, baseY + 20, bx + w1, baseY + 38)) { cloudFilter = "all"; return; }
+        bx += w1 + 6;
+        float w2 = textWidth("Profiles", .7f, false) + 16;
+        if (inside(mx, my, bx, baseY + 20, bx + w2, baseY + 38)) { cloudFilter = "profile"; return; }
+        bx += w2 + 6;
+        float w3 = textWidth("Scripts", .7f, false) + 16;
+        if (inside(mx, my, bx, baseY + 20, bx + w3, baseY + 38)) { cloudFilter = "script"; return; }
+
+        // Item clicks
+        java.util.List<mindless.backend.CloudManager.CloudItem> filtered = new java.util.ArrayList<>();
+        for (mindless.backend.CloudManager.CloudItem item : items) {
+            if (cloudFilter.equals("all") || item.type.equals(cloudFilter)) {
+                filtered.add(item);
+            }
+        }
+
+        float top = baseY + 61f;
+        float y = top + moduleScroll;
+        for (mindless.backend.CloudManager.CloudItem item : filtered) {
+            if (inside(mx, my, centerX + 14, y, centerX + centerW - 14, y + MODULE_ROW_HEIGHT)) {
+                if (selectedCloudItem != null && selectedCloudItem.id.equals(item.id)) {
+                    // Double-click = subscribe/update
+                    if (cloud.isSubscribed(item.id)) {
+                        if (cloud.hasUpdate(item.id)) {
+                            mindless.Raven.getCachedExecutor().execute(() -> cloud.update(item));
+                        }
+                    } else {
+                        mindless.Raven.getCachedExecutor().execute(() -> cloud.subscribe(item));
+                    }
+                } else {
+                    selectedCloudItem = item;
+                }
+                return;
+            }
+            y += MODULE_ROW_STEP;
+        }
+        selectedCloudItem = null;
     }
 
     private void drawModuleRow(Module module, float y, int mx, int my) {
@@ -858,7 +1004,7 @@ public final class ModernClickGui extends ClickGui {
 
         float cy = baseY + 55f;
         for (Module.category category : Module.category.values()) {
-            if (category == Module.category.profiles || category == Module.category.scripts) continue;
+            if (category == Module.category.profiles || category == Module.category.scripts || category == Module.category.cloud) continue;
             if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(category); return; }
             cy += CATEGORY_ROW_STEP;
         }
@@ -866,6 +1012,14 @@ public final class ModernClickGui extends ClickGui {
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.profiles); return; }
         cy += CATEGORY_ROW_STEP;
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.scripts); return; }
+        cy += CATEGORY_ROW_STEP;
+        if (mindless.backend.BackendClient.getInstance().isConnected() && inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.cloud); return; }
+
+        // Cloud panel click handling
+        if (selectedCategory == Module.category.cloud) {
+            handleCloudClick(mx, my, mouseButton);
+            return;
+        }
 
         float top = baseY + 61f;
         float y = top + moduleScroll;
@@ -1166,6 +1320,9 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private List<Module> modulesFor(Module.category category) {
+        if (category == Module.category.cloud) {
+            return Collections.<Module>emptyList();
+        }
         if (category == Module.category.profiles) {
             List<Module> profiles = new ArrayList<Module>();
             profiles.add(profileManagerModule);
