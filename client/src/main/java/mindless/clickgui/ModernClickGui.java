@@ -458,11 +458,12 @@ public final class ModernClickGui extends ClickGui {
     private float drawCloudFilterButton(String label, String filter, float x, float y, int mx, int my) {
         float tw = textWidth(label, .7f, false);
         float w = tw + 16;
+        float h = 18;
         boolean active = cloudFilter.equals(filter);
-        boolean hover = inside(mx, my, x, y, x + w, y + 18);
+        boolean hover = inside(mx, my, x, y, x + w, y + h);
         int bg = active ? withAlpha(ACCENT, 80) : hover ? withAlpha(CONTROL_HOVER, 160) : CONTROL;
-        rounded(x, y, x + w, y + 18, 9f, bg);
-        drawText(label, x + (w - tw) / 2f, y + 3.5f, active ? TEXT : MUTED, .7f, active);
+        rounded(x, y, x + w, y + h, 9f, bg);
+        drawTextVCentered(label, x + (w - tw) / 2f, y, y + h, active ? TEXT : MUTED, .7f, active);
         return x + w;
     }
 

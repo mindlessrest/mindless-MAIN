@@ -280,14 +280,9 @@ public class CloudManager {
             body.addProperty("name", name);
             body.addProperty("type", type);
             body.addProperty("data", java.util.Base64.getEncoder().encodeToString(data));
+            byte[] bodyBytes = body.toString().getBytes(StandardCharsets.UTF_8);
 
-            HttpURLConnection conn = openPost(BACKEND_URL + "/api/cloud/upload", body.toString());
-            conn.setRequestProperty("X-UUID", uuid);
-            // Re-send since openPost already wrote — need to restructure
-            conn.disconnect();
-
-            // Redo properly
-            conn = (HttpURLConnection) new URL(BACKEND_URL + "/api/cloud/upload").openConnection();
+            HttpURLConnection conn = (HttpURLConnection) new URL(BACKEND_URL + "/api/cloud/upload").openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
@@ -295,16 +290,18 @@ public class CloudManager {
             conn.setConnectTimeout(10000);
             conn.setReadTimeout(15000);
             try (OutputStream out = conn.getOutputStream()) {
-                out.write(body.toString().getBytes(StandardCharsets.UTF_8));
+                out.write(bodyBytes);
             }
 
-            if (conn.getResponseCode() == 200) {
+            int code = conn.getResponseCode();
+            if (code == 200) {
                 String json = readResponse(conn);
                 CloudItem item = parseItem(new JsonParser().parse(json).getAsJsonObject());
                 conn.disconnect();
                 System.out.println("[Cloud] uploaded: " + name);
                 return item;
             }
+            System.out.println("[Cloud] upload HTTP " + code);
             conn.disconnect();
         } catch (Exception e) {
             System.out.println("[Cloud] upload error: " + e.getMessage());
