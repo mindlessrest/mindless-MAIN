@@ -55,6 +55,8 @@ public class Capes extends Module {
         backend.onConnect(() -> {
             backend.send("cape_query", new Object());
             syncCapeToServer();
+            // Check cloud subscriptions for updates
+            mindless.backend.CloudManager.getInstance().checkUpdates();
         });
 
         // Receive full state dump (on connect)
