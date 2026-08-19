@@ -763,6 +763,7 @@ public class ScriptDefaults {
                 return;
             }
             if (!module.isEnabled()) Notifications.suppressScriptChange(moduleName);
+            if (!module.isEnabled()) ScriptDebugLogger.event(this.superName, "enable module " + moduleName);
             module.enable();
         }
 
@@ -772,6 +773,7 @@ public class ScriptDefaults {
                 return;
             }
             if (module.isEnabled()) Notifications.suppressScriptChange(moduleName);
+            if (module.isEnabled()) ScriptDebugLogger.event(this.superName, "disable module " + moduleName);
             module.disable();
         }
 
@@ -1006,6 +1008,7 @@ public class ScriptDefaults {
                 return;
             }
             setting.setEnabled(value);
+            ScriptDebugLogger.event(this.superName, "set button " + moduleName + "." + name + "=" + value);
         }
 
         public void setSlider(String moduleName, String name, double value) {
@@ -1014,6 +1017,7 @@ public class ScriptDefaults {
                 return;
             }
             setting.setValueRawWithEvent(value);
+            ScriptDebugLogger.event(this.superName, "set slider " + moduleName + "." + name + "=" + value);
         }
 
         public void setKey(String moduleName, String name, int code) {

@@ -434,6 +434,7 @@ public class ScriptManager {
     }
 
     public void onEnable(Script script) {
+        ScriptDebugLogger.event(script.name, "enabled");
         if (script.event == null) {
             script.event = new ScriptEvents(getModule(script));
             MinecraftForge.EVENT_BUS.register(script.event);
@@ -532,8 +533,9 @@ public class ScriptManager {
                         if (cachedHash != null && cachedHash.equals(hash)) {
                             continue;
                         }
-                        loadJarScript(scriptFile);
-                        loadedHashes.put(fileName, hash);
+                        if (loadJarScript(scriptFile)) {
+                            loadedHashes.put(fileName, hash);
+                        }
                     }
                 }
             }
@@ -586,7 +588,8 @@ public class ScriptManager {
             String[] candidates = null;
             try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jarFile)) {
                 candidates = jf.stream()
-                        .filter(e -> e.getName().endsWith(".class") && e.getName().startsWith("sc_"))
+                        .filter(e -> e.getName().endsWith(".class") && e.getName().startsWith("sc_")
+                                && !e.getName().contains("$"))
                         .map(e -> e.getName().replace("/", ".").replace(".class", ""))
                         .toArray(String[]::new);
             }
@@ -693,6 +696,7 @@ public class ScriptManager {
     }
 
     public void onDisable(Script script) {
+        ScriptDebugLogger.event(script.name, "disabled");
         if (script.event != null) {
             MinecraftForge.EVENT_BUS.unregister(script.event);
             script.event = null;
@@ -703,6 +707,7 @@ public class ScriptManager {
     public void invoke(String methodName, Module module, Object... args) {
         for (Map.Entry<Script, Module> entry : this.scripts.entrySet()) {
             if (((entry.getValue().canBeEnabled() && entry.getValue().isEnabled()) || methodName.equals("onLoad")) && entry.getValue().equals(module)) {
+                ScriptDebugLogger.callback(entry.getKey().name, methodName);
                 entry.getKey().invoke(methodName, args);
             }
         }

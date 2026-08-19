@@ -13,8 +13,8 @@ public final class GuiNewChatState {
     public static final long RAVEN_MESSAGE_ANIMATION_MS = 320L;
     public static final float PANEL_RADIUS = 5.0f;
     public static final float PANEL_SHADOW_SOFTNESS = 5.0f;
-    public static final int PANEL_SHADOW_COLOR = 0x72000000;
-    public static final int PANEL_FILL_COLOR = 0x42000000;
+    public static final int PANEL_SHADOW_COLOR = 0x38000000;
+    public static final int PANEL_FILL_COLOR = 0x65000000;
     public static final float PANEL_BLUR_OPACITY = 0.60f;
 
     public static final Map<Object, Long> messageBirths = new IdentityHashMap<Object, Long>();

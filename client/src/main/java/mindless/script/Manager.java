@@ -24,6 +24,7 @@ import java.util.List;
 public class Manager extends Module {
     public static ButtonSetting enableHttpRequests;
     public static ButtonSetting enableWebSockets;
+    public static ButtonSetting debugLogging;
     private final TextSetting createScriptName;
 
     public final String DOCUMENTATION_URL = "https://blowsy.gitbook.io/raven";
@@ -72,6 +73,7 @@ public class Manager extends Module {
         this.registerSetting(new DescriptionSetting("Privacy"));
         this.registerSetting(enableHttpRequests = new ButtonSetting("Enable http requests", true));
         this.registerSetting(enableWebSockets = new ButtonSetting("Enable websockets", true));
+        this.registerSetting(debugLogging = new ButtonSetting("Enable script debug log", false));
         this.canBeEnabled = false;
         this.ignoreOnSave = true;
 

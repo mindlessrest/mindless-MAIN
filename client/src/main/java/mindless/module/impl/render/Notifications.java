@@ -33,7 +33,7 @@ public class Notifications extends Module {
     private final ButtonSetting showEnabled;
     private final ButtonSetting showDisabled;
 
-    private final Map<String, Boolean> moduleStates = new HashMap<>();
+    private final Map<Module, Boolean> moduleStates = new IdentityHashMap<>();
     private final List<Card> cards = new ArrayList<>();
     private static final Set<String> SUPPRESSED_SCRIPT_CHANGES = new HashSet<>();
     private static Notifications instance;
@@ -89,7 +89,7 @@ public class Notifications extends Module {
         moduleStates.clear();
         cards.clear();
         synchronized (SUPPRESSED_SCRIPT_CHANGES) { SUPPRESSED_SCRIPT_CHANGES.clear(); }
-        for (Module m : ModuleManager.modules) moduleStates.put(m.getName(), m.isEnabled());
+        for (Module m : ModuleManager.modules) moduleStates.put(m, m.isEnabled());
     }
     @Override public void onDisable() {
         moduleStates.clear();
@@ -124,25 +124,31 @@ public class Notifications extends Module {
     private void checkModuleState(Module module, long now, long dur) {
         String name = module.getName();
         boolean cur = module.isEnabled();
-        Boolean prev = moduleStates.get(name);
+        Boolean prev = moduleStates.get(module);
         if (prev == null) {
-            moduleStates.put(name, cur);
+            moduleStates.put(module, cur);
             return;
         }
         if (cur != prev) {
             boolean suppressed = startupFiredAt > 0 && now - startupFiredAt < STARTUP_SUPPRESS_MS;
             boolean scriptChange;
             synchronized (SUPPRESSED_SCRIPT_CHANGES) {
-                scriptChange = SUPPRESSED_SCRIPT_CHANGES.remove(name);
+                scriptChange = !isScriptModule(module) && SUPPRESSED_SCRIPT_CHANGES.remove(name);
             }
             if (!suppressed && !scriptChange && ((cur && showEnabled.isToggled()) || (!cur && showDisabled.isToggled())))
                 push(name, cur, dur, now);
-            moduleStates.put(name, cur);
+            moduleStates.put(module, cur);
         } else {
-            synchronized (SUPPRESSED_SCRIPT_CHANGES) {
-                SUPPRESSED_SCRIPT_CHANGES.remove(name);
+            if (!isScriptModule(module)) {
+                synchronized (SUPPRESSED_SCRIPT_CHANGES) {
+                    SUPPRESSED_SCRIPT_CHANGES.remove(name);
+                }
             }
         }
+    }
+
+    private boolean isScriptModule(Module module) {
+        return Raven.scriptManager != null && Raven.scriptManager.scripts.containsValue(module);
     }
 
     private void push(String title, boolean enabled, long dur, long now) {

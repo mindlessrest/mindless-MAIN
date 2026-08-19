@@ -8,9 +8,13 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
 import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.client.Minecraft;
 import net.minecraft.util.ResourceLocation;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.metadata.IIOMetadata;
+import javax.imageio.stream.ImageInputStream;
 import java.awt.Desktop;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -24,8 +28,10 @@ import java.nio.file.Files;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public class Capes extends Module {
     private static final String MINDLESS_CAPE_FILE = "mindless.png";
@@ -35,6 +41,7 @@ public class Capes extends Module {
     private static Capes instance;
     public static SliderSetting selectedCape;
     public static List<ResourceLocation> loadedCapes = new ArrayList<>();
+    private static final List<AnimatedCape> animatedCapes = new ArrayList<>();
     private static List<String> capeDisplayNames = new ArrayList<>();
 
     private ButtonSetting openFolder;
@@ -83,6 +90,7 @@ public class Capes extends Module {
             }
         }
         loadedCapes.clear();
+        animatedCapes.clear();
         capeDisplayNames.clear();
         List<String> names = new ArrayList<>();
         names.add("None");
@@ -90,17 +98,20 @@ public class Capes extends Module {
         File[] files = capeDir.listFiles();
         if (files == null) return names;
         for (File file : files) {
-            if (!file.isFile() || !file.getName().toLowerCase().endsWith(".png")) continue;
-            try (FileInputStream fis = new FileInputStream(file)) {
-                BufferedImage image = ImageIO.read(fis);
-                if (image != null) {
+            if (!file.isFile()) continue;
+            String lowerName = file.getName().toLowerCase();
+            if (!lowerName.endsWith(".png") && !lowerName.endsWith(".gif")) continue;
+            try {
+                AnimatedCape animated = lowerName.endsWith(".gif") ? loadAnimatedCape(file) : null;
+                BufferedImage image = animated == null ? readStaticCape(file) : animated.frames.get(0);
+                if (image != null && image.getWidth() == image.getHeight() * 2) {
                     String displayName = file.getName();
-                    if (displayName.endsWith(".png")) {
-                        displayName = displayName.substring(0, displayName.length() - 4);
-                    }
+                    displayName = displayName.substring(0, displayName.lastIndexOf('.'));
+                    DynamicTexture texture = new DynamicTexture(image);
                     ResourceLocation tex = mc.renderEngine.getDynamicTextureLocation(
-                        "cape_" + file.getName(), new DynamicTexture(image));
+                        "cape_" + file.getName(), texture);
                     loadedCapes.add(tex);
+                    animatedCapes.add(animated == null ? null : animated.withTexture(tex));
                     capeDisplayNames.add(displayName);
                     names.add(displayName);
                 }
@@ -138,6 +149,63 @@ public class Capes extends Module {
         } else {
             Utils.sendMessage("&7No .png capes found. Place them in:");
             Utils.sendMessage("&7" + capeDir.getAbsolutePath());
+        }
+    }
+
+    private static BufferedImage readStaticCape(File file) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            return ImageIO.read(fis);
+        }
+    }
+
+    private static AnimatedCape loadAnimatedCape(File file) throws IOException {
+        List<BufferedImage> frames = new ArrayList<>();
+        List<Long> delays = new ArrayList<>();
+        try (ImageInputStream input = ImageIO.createImageInputStream(file)) {
+            if (input == null) throw new IOException("unable to read GIF");
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new IOException("no GIF reader");
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input, false, false);
+                int count = Math.min(reader.getNumImages(true), 120);
+                for (int i = 0; i < count; i++) {
+                    BufferedImage frame = reader.read(i);
+                    if (frame == null || frame.getWidth() != frame.getHeight() * 2) continue;
+                    frames.add(frame);
+                    delays.add(readFrameDelay(reader.getImageMetadata(i)));
+                }
+            } finally {
+                reader.dispose();
+            }
+        }
+        if (frames.isEmpty()) throw new IOException("GIF has no valid cape frames");
+        return new AnimatedCape(frames, delays);
+    }
+
+    private static long readFrameDelay(IIOMetadata metadata) {
+        try {
+            org.w3c.dom.Node root = metadata.getAsTree("javax_imageio_gif_image_1.0");
+            org.w3c.dom.Node node = root.getFirstChild();
+            while (node != null) {
+                if ("GraphicControlExtension".equals(node.getNodeName())) {
+                    org.w3c.dom.NamedNodeMap attributes = node.getAttributes();
+                    org.w3c.dom.Node delay = attributes.getNamedItem("delayTime");
+                    long millis = delay == null ? 100L : Long.parseLong(delay.getNodeValue()) * 10L;
+                    return Math.max(30L, millis);
+                }
+                node = node.getNextSibling();
+            }
+        } catch (Exception ignored) {}
+        return 100L;
+    }
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || animatedCapes.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        for (AnimatedCape cape : animatedCapes) {
+            if (cape != null && now >= cape.nextFrameAt) cape.advance(now);
         }
     }
 
@@ -249,5 +317,32 @@ public class Capes extends Module {
             return loadedCapes.get(index);
         }
         return null;
+    }
+
+    private static final class AnimatedCape {
+        final List<BufferedImage> frames;
+        final List<Long> delays;
+        ResourceLocation textureLocation;
+        int frame;
+        long nextFrameAt;
+
+        AnimatedCape(List<BufferedImage> frames, List<Long> delays) {
+            this.frames = frames;
+            this.delays = delays;
+            this.nextFrameAt = System.currentTimeMillis() + delays.get(0);
+        }
+
+        AnimatedCape withTexture(ResourceLocation textureLocation) {
+            this.textureLocation = textureLocation;
+            return this;
+        }
+
+        void advance(long now) {
+            frame = (frame + 1) % frames.size();
+            Minecraft.getMinecraft().getTextureManager().deleteTexture(textureLocation);
+            Minecraft.getMinecraft().getTextureManager().loadTexture(textureLocation,
+                    new DynamicTexture(frames.get(frame)));
+            nextFrameAt = now + delays.get(frame);
+        }
     }
 }
