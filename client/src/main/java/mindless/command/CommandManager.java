@@ -6,6 +6,7 @@ import mindless.command.impl.Cname;
 import mindless.command.impl.Debug;
 import mindless.command.impl.Enemy;
 import mindless.command.impl.Friend;
+import mindless.command.impl.Help;
 import mindless.command.impl.HideAll;
 import mindless.command.impl.Irc;
 import mindless.command.impl.Name;
@@ -32,6 +33,7 @@ public class CommandManager {
     public final Track trackCommand;
 
     public CommandManager() {
+        register(new Help());
         register(new Ping());
         register(new Name());
         register(new Toggle());
