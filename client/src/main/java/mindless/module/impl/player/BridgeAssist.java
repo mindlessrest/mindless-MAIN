@@ -2,7 +2,9 @@ package mindless.module.impl.player;
 
 import mindless.event.ClientRotationEvent;
 import mindless.event.PrePlayerInputEvent;
+import mindless.event.PreUpdateEvent;
 import mindless.event.SendPacketEvent;
+import mindless.helper.RotationHelper;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
@@ -23,9 +25,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class BridgeAssist extends Module {
-    private static final EnumFacing[] SIDES = {
-            EnumFacing.NORTH, EnumFacing.SOUTH, EnumFacing.EAST, EnumFacing.WEST
+    /** DOWN is never useful: the block would land above the support, on top of the player. */
+    private static final EnumFacing[] FACES = {
+            EnumFacing.UP, EnumFacing.NORTH, EnumFacing.SOUTH, EnumFacing.EAST, EnumFacing.WEST
     };
+
+    private static final double GRID_INSET = 0.05;
+    private static final double GRID_STEP = 0.25;
+    private static final int GRID_N = (int) Math.round(1.0 / GRID_STEP);
+    /** Cap on how many (support, face) pairs get the full ray-cast sweep in one acquisition. */
+    /** How far along the walk line to look, in blocks, when the cell underfoot is already filled. */
+    private static final double LOOKAHEAD_BLOCKS = 2.0;
+    private static final double LOOKAHEAD_STEP = 0.125;
+    /** How many distinct cells ahead to consider before giving up. */
+    private static final int MAX_LOOKAHEAD_CELLS = 2;
 
     private final SliderSetting edgeOffset;
     private final SliderSetting unsneakDelayMin;
@@ -37,6 +50,7 @@ public class BridgeAssist extends Module {
     private final ButtonSetting notMovingForward;
 
     private final ButtonSetting prePlace;
+    private final ButtonSetting silentRotation;
 
     private boolean sneakingFromModule;
     private boolean placed;
@@ -45,11 +59,26 @@ public class BridgeAssist extends Module {
     private int sneakJumpStartTick = -1;
     private int unsneakDelayTicks = -1;
     private int unsneakStartTick = -1;
+    private boolean placeQueued;
+    private BlockPos placeAtBlock;
+    private EnumFacing placeSide;
+    private Vec3 placeHitVec;
+    private int previousSlot = -1;
+
+    // Retained aim. Held across ticks so the smoothed rotation has a stable goal to converge on.
+    private boolean hasAim;
+    private float aimYaw, aimPitch;
+    private BlockPos targetSupport;
+    private EnumFacing targetSide;
+    private BlockPos targetCell;
+    /** Y of the bridge deck, latched while airborne so a fall does not drag the target down. */
+    private int bridgeY = Integer.MIN_VALUE;
 
     public BridgeAssist() {
         super("Bridge Assist", category.player);
 
         this.registerSetting(prePlace = new ButtonSetting("Pre place", false));
+        this.registerSetting(silentRotation = new ButtonSetting("Silent rotation", false));
 
         GroupSetting sneakingGroup = new GroupSetting("Sneaking");
         this.registerSetting(sneakingGroup);
@@ -78,6 +107,10 @@ public class BridgeAssist extends Module {
     public void onDisable() {
         sneakingFromModule = false;
         resetUnsneak();
+        placeQueued = false;
+        clearAim();
+        bridgeY = Integer.MIN_VALUE;
+        restoreSlot();
     }
 
     @SubscribeEvent
@@ -161,28 +194,88 @@ public class BridgeAssist extends Module {
 
     @SubscribeEvent
     public void onClientRotation(ClientRotationEvent e) {
-        if (!prePlace.isToggled()) return;
+        if (!silentRotation.isToggled()) {
+            placeQueued = false;
+            clearAim();
+            restoreSlot();
+        }
+        if (!prePlace.isToggled() && !silentRotation.isToggled()) return;
         if (!Utils.nullCheck() || mc.currentScreen != null || mc.thePlayer.capabilities.isFlying) return;
         if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
             return;
         }
 
-        ItemStack held = mc.thePlayer.getHeldItem();
-        if (held == null || !(held.getItem() instanceof ItemBlock)) return;
         if (lookingDown.isToggled() && mc.thePlayer.rotationPitch < 70f) return;
         if (notMovingForward.isToggled() && mc.thePlayer.movementInput.moveForward > 0f) return;
 
+        // Resolve the stack first without committing to it, so the slot only changes once a
+        // target is actually reachable with it.
+        int slot = blockSlot();
+        if (slot == -1) {
+            clearAim();
+            restoreSlot();
+            return;
+        }
+        ItemStack held = mc.thePlayer.inventory.getStackInSlot(slot);
+
+        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
         float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
         double reach = mc.playerController.getBlockReachDistance();
 
-        TargetResult target = findTarget(basePitch, reach);
-        if (target == null) return;
+        // Exactly one cell is ever in play: the deck square the player is walking onto. Scanning
+        // a radius and picking by distance filled the neighbours too, which is what produced the
+        // two- and three-wide strips.
+        BlockPos wanted = wantedCell();
+        if (wanted == null) {
+            clearAim();
+            restoreSlot();
+            return;
+        }
+        if (targetCell != null && !targetCell.equals(wanted)) clearAim();
 
-        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
-        float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, target.yaw, target.pitch, 15, 20f);
+        // Keep the previous aim while it still resolves. Re-picking a target every tick let the
+        // choice flip between faces as the player moved, so the smoothing never had a fixed goal
+        // and the rotation stalled a few degrees in.
+        if (!aimStillValid(held, reach) && !acquireAim(wanted, held, reach, baseYaw, basePitch)) {
+            clearAim();
+            restoreSlot();
+            return;
+        }
+
+        if (silentRotation.isToggled()) selectBlockSlot(slot);
+
+        float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, 15, 20f);
+
+        if (silentRotation.isToggled()
+                && (mc.thePlayer.movementInput.moveForward != 0f || mc.thePlayer.movementInput.moveStrafe != 0f)) {
+            MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, sm[0], sm[1]);
+            if (mop != null && mop.getBlockPos().equals(targetSupport) && mop.sideHit == targetSide) {
+                placeAtBlock = mop.getBlockPos();
+                placeSide = mop.sideHit;
+                placeHitVec = mop.hitVec;
+                placeQueued = true;
+            }
+        }
 
         e.setYaw(sm[0]);
         e.setPitch(sm[1]);
+    }
+
+    @SubscribeEvent
+    public void onPreUpdate(PreUpdateEvent e) {
+        if (!placeQueued) return;
+        placeQueued = false;
+        if (!Utils.nullCheck() || mc.currentScreen != null || !silentRotation.isToggled()
+                || placeAtBlock == null || placeSide == null || placeHitVec == null) {
+            return;
+        }
+
+        ItemStack held = mc.thePlayer.getHeldItem();
+        if (held == null || !(held.getItem() instanceof ItemBlock)) return;
+        if (mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held, placeAtBlock, placeSide, placeHitVec)) {
+            mc.thePlayer.swingItem();
+            clearAim();
+        }
     }
 
     private void pressSneak(PrePlayerInputEvent e, boolean resetDelay) {
@@ -285,85 +378,210 @@ public class BridgeAssist extends Module {
         return minDist;
     }
 
-    private TargetResult findTarget(float currentPitch, double reach) {
-        float yaw = mc.thePlayer.rotationYaw;
+    /** True while the retained aim still resolves to the same placement. */
+    private boolean aimStillValid(ItemStack held, double reach) {
+        if (!hasAim || targetSupport == null || targetSide == null || targetCell == null) return false;
+        if (BlockUtils.replaceable(targetSupport)) return false;
+        if (!BlockUtils.replaceable(targetCell)) return false;
+        if (!BlockUtils.canPlaceBlockOnSide(held, targetSupport, targetSide)) return false;
 
-        AxisAlignedBB bbox = mc.thePlayer.getEntityBoundingBox();
-        int standY = MathHelper.floor_double(bbox.minY) - 1;
-        int minX = MathHelper.floor_double(bbox.minX);
-        int maxX = MathHelper.floor_double(bbox.maxX);
-        int minZ = MathHelper.floor_double(bbox.minZ);
-        int maxZ = MathHelper.floor_double(bbox.maxZ);
+        MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, aimYaw, aimPitch);
+        return mop != null
+                && mop.getBlockPos().equals(targetSupport)
+                && mop.sideHit == targetSide;
+    }
 
-        ArrayList<FaceTarget> targets = new ArrayList<>();
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                BlockPos standBlock = new BlockPos(x, standY, z);
-                if (BlockUtils.replaceable(standBlock)) continue;
-                for (EnumFacing face : SIDES) {
-                    BlockPos placed = standBlock.offset(face);
-                    if (!BlockUtils.replaceable(placed)) continue;
-                    targets.add(new FaceTarget(standBlock, face));
+    /**
+     * The one deck square to fill this tick.
+     *
+     * Priority is the square directly under the player -- if that is open they are already over
+     * the gap -- then one and two ticks of movement ahead of them. Nothing to either side is ever
+     * considered, so the bridge stays a single line in the direction of travel.
+     */
+    private BlockPos wantedCell() {
+        double feetY = mc.thePlayer.getEntityBoundingBox().minY;
+
+        // Latch the deck height while standing, so stepping off does not walk the target downward
+        // with the player as they start to fall.
+        if (mc.thePlayer.onGround || bridgeY == Integer.MIN_VALUE) {
+            bridgeY = MathHelper.floor_double(feetY) - 1;
+        }
+        // Only bail once the deck is level with or above the feet. Partway into a fall the
+        // cell is still the right one to fill; vanilla's own placement check rejects it if
+        // the player's hitbox actually intersects it.
+        if (bridgeY >= feetY) return null;
+
+        double vx = mc.thePlayer.posX - mc.thePlayer.prevPosX;
+        double vz = mc.thePlayer.posZ - mc.thePlayer.prevPosZ;
+        double len = Math.sqrt(vx * vx + vz * vz);
+        if (len < 1.0E-4) {
+            // Not moving yet on the tick the key went down: fall back to the input direction.
+            double angle = RotationHelper.getDirection(mc.thePlayer.rotationYaw,
+                    mc.thePlayer.movementInput.moveForward, mc.thePlayer.movementInput.moveStrafe);
+            vx = -Math.sin(angle);
+            vz = Math.cos(angle);
+            len = Math.sqrt(vx * vx + vz * vz);
+            if (len < 1.0E-4) return null;
+        }
+        double ux = vx / len, uz = vz / len;
+
+        BlockPos under = new BlockPos(
+                MathHelper.floor_double(mc.thePlayer.posX), bridgeY, MathHelper.floor_double(mc.thePlayer.posZ));
+        if (BlockUtils.replaceable(under) && hasSupport(under)) return under;
+
+        // Walk the movement line outward and take the cells the player is about to stand on.
+        // Sampling the real line rather than stepping whole blocks is what makes a diagonal
+        // work: it yields exactly the squares the player's centre crosses, in the order it
+        // crosses them, so a diagonal run lays its own staircase and nothing wider.
+        BlockPos previous = under;
+        int seen = 0;
+        for (double d = LOOKAHEAD_STEP; d <= LOOKAHEAD_BLOCKS; d += LOOKAHEAD_STEP) {
+            BlockPos cell = new BlockPos(
+                    MathHelper.floor_double(mc.thePlayer.posX + ux * d), bridgeY,
+                    MathHelper.floor_double(mc.thePlayer.posZ + uz * d));
+            if (cell.equals(previous)) continue;
+            previous = cell;
+            if (++seen > MAX_LOOKAHEAD_CELLS) break;
+            if (BlockUtils.replaceable(cell) && hasSupport(cell)) return cell;
+        }
+        return null;
+    }
+
+    /** Whether any neighbouring block could be clicked to fill this cell. */
+    private boolean hasSupport(BlockPos cell) {
+        for (EnumFacing d : EnumFacing.values()) {
+            if (!BlockUtils.replaceable(cell.offset(d))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Finds an aim that provably fills {@code cell}.
+     *
+     * A block lands at {@code hitBlock.offset(sideHit)}, so the ray has to strike the exact face
+     * of a neighbouring block that points at the cell. Aiming at a face's centre point is not
+     * enough on its own -- from on top of a block its own side faces are occluded by the block
+     * itself -- so every candidate is ray-cast first and only a verified hit is accepted.
+     */
+    private boolean acquireAim(BlockPos cell, ItemStack held, double reach, float baseYaw, float basePitch) {
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
+        double reachSq = reach * reach;
+
+        List<Candidate> candidates = new ArrayList<>(FACES.length);
+        for (EnumFacing side : FACES) {
+            // side is the face of the support we must hit; the support sits opposite the cell.
+            BlockPos support = cell.offset(side.getOpposite());
+            if (BlockUtils.replaceable(support)) continue;
+            if (!BlockUtils.canPlaceBlockOnSide(held, support, side)) continue;
+
+            double dist = eye.squareDistanceTo(new Vec3(
+                    support.getX() + 0.5, support.getY() + 0.5, support.getZ() + 0.5));
+            if (dist > reachSq) continue;
+            candidates.add(new Candidate(support, side, cell, dist));
+        }
+        if (candidates.isEmpty()) return false;
+
+        candidates.sort((a, b) -> Double.compare(a.dist, b.dist));
+        for (Candidate c : candidates) {
+            if (aimAtFace(c, eye, reach, baseYaw, basePitch)) return true;
+        }
+        return false;
+    }
+
+    /** Sweeps aim points across one support face, cheapest turn first, and keeps the first hit. */
+    private boolean aimAtFace(Candidate c, Vec3 eye, double reach, float baseYaw, float basePitch) {
+        double bx = c.support.getX(), by = c.support.getY(), bz = c.support.getZ();
+        List<float[]> aims = new ArrayList<>((GRID_N + 1) * (GRID_N + 1));
+
+        for (int row = 0; row <= GRID_N; row++) {
+            double v = Math.min(1.0, row * GRID_STEP);
+            for (int col = 0; col <= GRID_N; col++) {
+                double u = Math.min(1.0, col * GRID_STEP);
+                double px, py, pz;
+                switch (c.face.getAxis()) {
+                    case Y:
+                        px = bx + u;
+                        pz = bz + v;
+                        py = by + (c.face == EnumFacing.UP ? 1 - GRID_INSET : GRID_INSET);
+                        break;
+                    case X:
+                        py = by + u;
+                        pz = bz + v;
+                        px = bx + (c.face == EnumFacing.EAST ? 1 - GRID_INSET : GRID_INSET);
+                        break;
+                    default:
+                        px = bx + u;
+                        py = by + v;
+                        pz = bz + (c.face == EnumFacing.SOUTH ? 1 - GRID_INSET : GRID_INSET);
+                        break;
                 }
+                float[] rot = RotationUtils.getRotationsFromEye(eye, px, py, pz);
+                float cost = Math.abs(MathHelper.wrapAngleTo180_float(rot[0] - baseYaw))
+                        + Math.abs(rot[1] - basePitch);
+                aims.add(new float[] { rot[0], RotationUtils.clampPitch(rot[1]), cost });
             }
         }
-        if (targets.isEmpty()) return null;
+        aims.sort((a, b) -> Float.compare(a[2], b[2]));
 
-        float bestDelta = Float.MAX_VALUE;
-        float bestPitch = Float.NaN;
-        BlockPos bestSupport = null;
-        EnumFacing bestFace = null;
-        float randScale = 0.2f;
-
-        for (float pitch = 60f; pitch <= 90f; ) {
-            float step = 1.0f + (float) (Math.random() * 2 - 1) * (0.3f + randScale * 0.4f);
-            if (step < 0.4f) step = 0.4f;
-            if (step > 1.8f) step = 1.8f;
-            pitch += step;
-            float samplePitch = Math.min(pitch, 90f);
-            MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, yaw, samplePitch);
+        for (float[] rot : aims) {
+            MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, rot[0], rot[1]);
             if (mop == null) continue;
-            EnumFacing hitFace = mop.sideHit;
-            if (hitFace == EnumFacing.UP || hitFace == EnumFacing.DOWN) continue;
+            if (!mop.getBlockPos().equals(c.support) || mop.sideHit != c.face) continue;
 
-            BlockPos hitBlock = mop.getBlockPos();
-            for (FaceTarget t : targets) {
-                if (hitBlock.equals(t.block) && hitFace == t.face) {
-                    float delta = Math.abs(samplePitch - currentPitch);
-                    if (delta < bestDelta) {
-                        bestDelta = delta;
-                        bestPitch = samplePitch;
-                        bestSupport = t.block;
-                        bestFace = t.face;
-                    }
-                    break;
-                }
-            }
-            if (pitch >= 90f) break;
+            aimYaw = rot[0];
+            aimPitch = rot[1];
+            targetSupport = c.support;
+            targetSide = c.face;
+            targetCell = c.cell;
+            hasAim = true;
+            return true;
         }
-
-        if (bestSupport == null || bestFace == null || Float.isNaN(bestPitch)) return null;
-        return new TargetResult(yaw, bestPitch, bestSupport, bestFace);
+        return false;
     }
 
-    private static class FaceTarget {
-        final BlockPos block;
-        final EnumFacing face;
-        FaceTarget(BlockPos block, EnumFacing face) {
-            this.block = block;
-            this.face = face;
-        }
+    private void clearAim() {
+        hasAim = false;
+        targetSupport = null;
+        targetSide = null;
+        targetCell = null;
     }
 
-    private static class TargetResult {
-        final float yaw, pitch;
+    /** Hotbar slot holding a placeable block: the held one if it already is, else the first found. */
+    private int blockSlot() {
+        ItemStack current = mc.thePlayer.getHeldItem();
+        if (current != null && current.stackSize > 0 && current.getItem() instanceof ItemBlock) {
+            return mc.thePlayer.inventory.currentItem;
+        }
+        for (int i = 0; i < 9; i++) {
+            ItemStack stack = mc.thePlayer.inventory.getStackInSlot(i);
+            if (stack != null && stack.stackSize > 0 && stack.getItem() instanceof ItemBlock) return i;
+        }
+        return -1;
+    }
+
+    private void selectBlockSlot(int slot) {
+        if (mc.thePlayer.inventory.currentItem == slot) return;
+        if (previousSlot == -1) previousSlot = mc.thePlayer.inventory.currentItem;
+        mc.thePlayer.inventory.currentItem = slot;
+    }
+
+    private void restoreSlot() {
+        if (previousSlot != -1 && mc.thePlayer != null) {
+            mc.thePlayer.inventory.currentItem = previousSlot;
+        }
+        previousSlot = -1;
+    }
+
+    private static class Candidate {
         final BlockPos support;
         final EnumFacing face;
-        TargetResult(float yaw, float pitch, BlockPos support, EnumFacing face) {
-            this.yaw = yaw;
-            this.pitch = pitch;
+        final BlockPos cell;
+        final double dist;
+        Candidate(BlockPos support, EnumFacing face, BlockPos cell, double dist) {
             this.support = support;
             this.face = face;
+            this.cell = cell;
+            this.dist = dist;
         }
     }
 }
