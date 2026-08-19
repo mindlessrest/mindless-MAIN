@@ -30,6 +30,28 @@ public class ProfileModule extends Module {
                 Utils.sendMessage("&7Deleted profile: &b" + profileName);
             }
         }));
+        this.registerSetting(new ButtonSetting("Upload to Cloud", () -> {
+            Raven.getCachedExecutor().execute(() -> {
+                try {
+                    java.io.File profileDir = new java.io.File(mc.mcDataDir + java.io.File.separator + "mindless", "profiles");
+                    java.io.File file = new java.io.File(profileDir, getName() + ".json");
+                    if (!file.exists()) {
+                        Utils.sendMessage("&cProfile file not found");
+                        return;
+                    }
+                    byte[] data = java.nio.file.Files.readAllBytes(file.toPath());
+                    mindless.backend.CloudManager.CloudItem result = mindless.backend.CloudManager.getInstance().upload(getName(), "profile", data);
+                    if (result != null) {
+                        Utils.sendMessage("&aUploaded profile to cloud: &b" + getName());
+                        mindless.backend.CloudManager.getInstance().refreshList(null);
+                    } else {
+                        Utils.sendMessage("&cUpload failed");
+                    }
+                } catch (Exception e) {
+                    Utils.sendMessage("&cUpload error: " + e.getMessage());
+                }
+            });
+        }));
         ignoreOnSave = true;
     }
 
