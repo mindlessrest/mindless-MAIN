@@ -7,6 +7,7 @@ import mindless.command.impl.Debug;
 import mindless.command.impl.Enemy;
 import mindless.command.impl.Friend;
 import mindless.command.impl.HideAll;
+import mindless.command.impl.Irc;
 import mindless.command.impl.Name;
 import mindless.command.impl.Ping;
 import mindless.command.impl.Prefix;
@@ -46,6 +47,7 @@ public class CommandManager {
         register(new Profiles());
         register(new ShowAll());
         register(new HideAll());
+        register(new Irc());
     }
 
     public boolean handleChatMessage(String message) {

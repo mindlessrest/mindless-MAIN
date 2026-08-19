@@ -108,6 +108,7 @@ public class Raven {
         playerRelationsManager = new PlayerRelationsManager();
         playerRelationsManager.load();
         moduleManager.register();
+        mindless.backend.IrcListener.init();
         // Scaffold is alwaysOn and Tower is never user-toggleable, so neither is
         // registered by Module#enable. Both listen on the Forge bus only.
         MinecraftForge.EVENT_BUS.register(ModuleManager.scaffold);
