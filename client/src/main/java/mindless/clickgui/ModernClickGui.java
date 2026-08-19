@@ -430,6 +430,13 @@ public final class ModernClickGui extends ClickGui {
         bx = drawCloudFilterButton("Profiles", "profile", bx + 6, baseY + 20, mx, my);
         bx = drawCloudFilterButton("Scripts", "script", bx + 6, baseY + 20, mx, my);
 
+        // Upload button (left of Cloud header)
+        float uploadW = textWidth("Upload", .7f, false) + 16;
+        float uploadX = centerX + 18 + textWidth("Cloud", 1.45f, true) + 16;
+        boolean uploadHover = inside(mx, my, uploadX, baseY + 18, uploadX + uploadW, baseY + 36);
+        rounded(uploadX, baseY + 18, uploadX + uploadW, baseY + 36, 9f, uploadHover ? withAlpha(ACCENT, 100) : CONTROL);
+        drawText("Upload", uploadX + 8, baseY + 21.5f, uploadHover ? TEXT : MUTED, .7f, false);
+
         line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 34));
         line(centerX + 17, baseY + 55, centerX + 50, baseY + 55, withAlpha(ACCENT, 92));
 
@@ -456,12 +463,13 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private float drawCloudFilterButton(String label, String filter, float x, float y, int mx, int my) {
-        float w = textWidth(label, .7f, false) + 16;
+        float tw = textWidth(label, .7f, false);
+        float w = tw + 16;
         boolean active = cloudFilter.equals(filter);
         boolean hover = inside(mx, my, x, y, x + w, y + 18);
         int bg = active ? withAlpha(ACCENT, 80) : hover ? withAlpha(CONTROL_HOVER, 160) : CONTROL;
         rounded(x, y, x + w, y + 18, 9f, bg);
-        drawText(label, x + 8, y + 3.5f, active ? TEXT : MUTED, .7f, active);
+        drawText(label, x + (w - tw) / 2f, y + 3.5f, active ? TEXT : MUTED, .7f, active);
         return x + w;
     }
 
@@ -503,6 +511,14 @@ public final class ModernClickGui extends ClickGui {
         mindless.backend.CloudManager cloud = mindless.backend.CloudManager.getInstance();
         java.util.List<mindless.backend.CloudManager.CloudItem> items = cloud.getCachedList();
 
+        // Upload button click
+        float uploadW = textWidth("Upload", .7f, false) + 16;
+        float uploadX = centerX + 18 + textWidth("Cloud", 1.45f, true) + 16;
+        if (inside(mx, my, uploadX, baseY + 18, uploadX + uploadW, baseY + 36)) {
+            handleCloudUpload();
+            return;
+        }
+
         // Filter button clicks
         float bx = centerX + centerW - 200;
         float w1 = textWidth("All", .7f, false) + 16;
@@ -543,6 +559,43 @@ public final class ModernClickGui extends ClickGui {
             y += MODULE_ROW_STEP;
         }
         selectedCloudItem = null;
+    }
+
+    private void handleCloudUpload() {
+        // Upload the currently active profile
+        if (Raven.profileManager == null || Raven.profileManager.profiles == null) return;
+        mindless.utility.profile.Profile active = null;
+        for (mindless.utility.profile.Profile p : Raven.profileManager.profiles) {
+            if (p.getModule() != null && p.getModule().isEnabled()) {
+                active = p;
+                break;
+            }
+        }
+        if (active == null) {
+            mindless.utility.Utils.sendMessage("&cNo active profile to upload. Load a profile first.");
+            return;
+        }
+        final String name = active.getName();
+        final java.io.File profileDir = new java.io.File(mc.mcDataDir + java.io.File.separator + "mindless", "profiles");
+        final java.io.File file = new java.io.File(profileDir, name + ".json");
+        if (!file.exists()) {
+            mindless.utility.Utils.sendMessage("&cProfile file not found: " + name);
+            return;
+        }
+        Raven.getCachedExecutor().execute(() -> {
+            try {
+                byte[] data = java.nio.file.Files.readAllBytes(file.toPath());
+                mindless.backend.CloudManager.CloudItem result = mindless.backend.CloudManager.getInstance().upload(name, "profile", data);
+                if (result != null) {
+                    mindless.utility.Utils.sendMessage("&aUploaded profile: " + name);
+                    mindless.backend.CloudManager.getInstance().refreshList(null);
+                } else {
+                    mindless.utility.Utils.sendMessage("&cUpload failed");
+                }
+            } catch (Exception e) {
+                mindless.utility.Utils.sendMessage("&cUpload error: " + e.getMessage());
+            }
+        });
     }
 
     private void drawModuleRow(Module module, float y, int mx, int my) {
@@ -992,14 +1045,16 @@ public final class ModernClickGui extends ClickGui {
         }
 
         if (mouseButton == 0 && beginScrollbarDrag(mx, my)) return;
-        float searchW = Math.min(170f, centerW * .43f);
-        float searchX = centerX + centerW - searchW - 16f;
-        searchFocused = inside(mx, my, searchX, baseY + 15, searchX + searchW, baseY + 39);
-        if (searchFocused) {
-            setSearchCaretFromMouse(mx, searchX + 11f, searchW - 35f, isShiftKeyDown());
-            activeText = null;
-            activeList = null;
-            return;
+        if (selectedCategory != Module.category.cloud) {
+            float searchW = Math.min(170f, centerW * .43f);
+            float searchX = centerX + centerW - searchW - 16f;
+            searchFocused = inside(mx, my, searchX, baseY + 15, searchX + searchW, baseY + 39);
+            if (searchFocused) {
+                setSearchCaretFromMouse(mx, searchX + 11f, searchW - 35f, isShiftKeyDown());
+                activeText = null;
+                activeList = null;
+                return;
+            }
         }
 
         float cy = baseY + 55f;
