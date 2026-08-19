@@ -32,7 +32,5 @@ public class Help extends Command {
         reply(" &b" + prefix + "profiles load [name] &7Load a profile.");
         reply(" &b" + prefix + "profiles delete [name] &7Delete a profile.");
         reply(" &b" + prefix + "profiles rename [oldname] [newname] &7Rename a profile.");
-        replyWithHeader("&7Chat commands - &dBackend");
-        reply(" &b" + prefix + "irc [message] &7Send encrypted message to all Mindless users.");
     }
 }

@@ -8,7 +8,6 @@ import mindless.command.impl.Enemy;
 import mindless.command.impl.Friend;
 import mindless.command.impl.Help;
 import mindless.command.impl.HideAll;
-import mindless.command.impl.Irc;
 import mindless.command.impl.Name;
 import mindless.command.impl.Ping;
 import mindless.command.impl.Prefix;
@@ -49,7 +48,6 @@ public class CommandManager {
         register(new Profiles());
         register(new ShowAll());
         register(new HideAll());
-        register(new Irc());
     }
 
     public boolean handleChatMessage(String message) {
@@ -147,7 +145,7 @@ public class CommandManager {
     }
 
     public boolean isCommand(String message) {
-        return message != null && isEnabled() && message.startsWith(getPrefix());
+        return message != null && isEnabled() && message.startsWith(getPrefix()) && message.length() > getPrefix().length();
     }
 
     public String getPrefix() {
