@@ -194,12 +194,16 @@ public class BridgeAssist extends Module {
 
     @SubscribeEvent
     public void onClientRotation(ClientRotationEvent e) {
+        // Hard gate: with Silent rotation off this handler does nothing at all -- no target
+        // search, no slot change, and above all no setYaw/setPitch. Bridge Assist's own sneak
+        // behaviour is untouched by any of the code below.
         if (!silentRotation.isToggled()) {
             placeQueued = false;
             clearAim();
+            bridgeY = Integer.MIN_VALUE;
             restoreSlot();
+            return;
         }
-        if (!prePlace.isToggled() && !silentRotation.isToggled()) return;
         if (!Utils.nullCheck() || mc.currentScreen != null || mc.thePlayer.capabilities.isFlying) return;
         if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
             return;
@@ -242,12 +246,11 @@ public class BridgeAssist extends Module {
             return;
         }
 
-        if (silentRotation.isToggled()) selectBlockSlot(slot);
+        selectBlockSlot(slot);
 
         float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, 15, 20f);
 
-        if (silentRotation.isToggled()
-                && (mc.thePlayer.movementInput.moveForward != 0f || mc.thePlayer.movementInput.moveStrafe != 0f)) {
+        if (mc.thePlayer.movementInput.moveForward != 0f || mc.thePlayer.movementInput.moveStrafe != 0f) {
             MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, sm[0], sm[1]);
             if (mop != null && mop.getBlockPos().equals(targetSupport) && mop.sideHit == targetSide) {
                 placeAtBlock = mop.getBlockPos();
