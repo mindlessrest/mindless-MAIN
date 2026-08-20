@@ -133,6 +133,21 @@ final class TimedLyricsManager {
         pendingTrackKey = "";
 
         if (lyricsAvailable && lyricsLines != null && !lyricsLines.isEmpty()) {
+            // Reuse the existing instance when the track's lyrics have not actually changed.
+            //
+            // This used to build a new TimedLyrics on every poll, i.e. 20 times a second. The
+            // renderer caches its wrapped layout against the *identity* of this object, and for
+            // anything over 30 lines it wraps on a background thread and renders nothing until
+            // that finishes. So each poll invalidated the layout, the renderer drew an empty
+            // list, and the async result came back keyed to an object that had already been
+            // replaced -- never matching. That is the fast flicker, and it hit any song long
+            // enough to take the async path, which is most of them.
+            TimedLyrics existing = cache.get(trackKey);
+            if (existing != null && existing.isAvailable()
+                    && existing.getLines().size() >= lyricsLines.size()) {
+                currentLyrics = existing;
+                return;
+            }
             TimedLyrics lyrics = TimedLyrics.of(lyricsLines);
             cache.put(trackKey, lyrics);
             currentLyrics = lyrics;

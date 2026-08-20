@@ -764,6 +764,14 @@ public final class SpotifyMiniPlayerRenderer {
             });
         }
 
+        // Hold the previous layout while the new one is computed instead of returning nothing.
+        // Returning an empty list here blanks the lyrics for however many frames the wrap takes,
+        // which is a visible flash. A stale layout for a frame or two is far less noticeable --
+        // and during an actual track change the manager reports "loading", so the lyrics block
+        // is not drawn at all and no stale text can appear.
+        if (layoutKey.equals(cachedLyricsLayoutKey) && !cachedWrappedLyrics.isEmpty()) {
+            return cachedWrappedLyrics;
+        }
         return Collections.emptyList();
     }
 

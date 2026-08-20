@@ -27,6 +27,9 @@ final class NativeMediaBridge {
     private String cachedThumbnailBase64 = "";
     private byte[] cachedThumbnailBytes;
     private String cachedThumbnailKey = "";
+    /** Same idea as the thumbnail cache: the DLL resends the whole lyrics array every poll. */
+    private String cachedLyricsJson = "";
+    private List<TimedLyrics.LyricsLine> cachedLyricsLines;
 
     private NativeMediaBridge(MediaBridgeLibrary library) {
         this.library = library;
@@ -144,16 +147,31 @@ final class NativeMediaBridge {
         boolean lyricsAvailable = getBoolean(jsonObject, "lyricsAvailable", false);
         List<TimedLyrics.LyricsLine> lyricsLines = null;
         if (lyricsAvailable && jsonObject.has("lyrics") && jsonObject.get("lyrics").isJsonArray()) {
-            lyricsLines = new ArrayList<TimedLyrics.LyricsLine>();
-            for (com.google.gson.JsonElement elem : jsonObject.get("lyrics").getAsJsonArray()) {
-                if (!elem.isJsonObject()) continue;
-                JsonObject lineObj = elem.getAsJsonObject();
-                long ts = getLong(lineObj, "timestampMs", -1L);
-                String text = getString(lineObj, "text", "");
-                if (ts >= 0) {
-                    lyricsLines.add(new TimedLyrics.LyricsLine(ts, text));
+            // The DLL resends the entire lyrics array on every poll -- 20 times a second. Parsing
+            // it each time allocated a fresh list of fresh LyricsLine objects, and everything
+            // downstream keyed its caches on that identity. Reuse the parse when the payload is
+            // byte-for-byte the same, exactly as the thumbnail above already does.
+            String lyricsJson = jsonObject.get("lyrics").toString();
+            if (cachedLyricsLines != null && lyricsJson.equals(cachedLyricsJson)) {
+                lyricsLines = cachedLyricsLines;
+            } else {
+                List<TimedLyrics.LyricsLine> parsed = new ArrayList<TimedLyrics.LyricsLine>();
+                for (com.google.gson.JsonElement elem : jsonObject.get("lyrics").getAsJsonArray()) {
+                    if (!elem.isJsonObject()) continue;
+                    JsonObject lineObj = elem.getAsJsonObject();
+                    long ts = getLong(lineObj, "timestampMs", -1L);
+                    String text = getString(lineObj, "text", "");
+                    if (ts >= 0) {
+                        parsed.add(new TimedLyrics.LyricsLine(ts, text));
+                    }
                 }
+                lyricsLines = java.util.Collections.unmodifiableList(parsed);
+                cachedLyricsJson = lyricsJson;
+                cachedLyricsLines = lyricsLines;
             }
+        } else {
+            cachedLyricsJson = "";
+            cachedLyricsLines = null;
         }
 
         return new SystemMediaInfo(
