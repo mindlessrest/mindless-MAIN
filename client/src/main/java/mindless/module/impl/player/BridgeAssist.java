@@ -56,6 +56,7 @@ public class BridgeAssist extends Module {
     private final ButtonSetting prePlace;
     private final ButtonSetting silentRotation;
     private final ButtonSetting debug;
+    private final SliderSetting rotationSpeed;
 
     private boolean sneakingFromModule;
     private boolean placed;
@@ -90,6 +91,7 @@ public class BridgeAssist extends Module {
 
         this.registerSetting(prePlace = new ButtonSetting("Pre place", false));
         this.registerSetting(silentRotation = new ButtonSetting("Silent rotation", false));
+        this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 27, 1, 30, 1));
         this.registerSetting(debug = new ButtonSetting("Debug", false));
 
         GroupSetting sneakingGroup = new GroupSetting("Sneaking");
@@ -259,13 +261,14 @@ public class BridgeAssist extends Module {
             if (hasAim && aimHold > 0) {
                 stage("holding aim, nothing to place (deck still solid)");
                 aimHold--;
-                float[] hold = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, 15, 20f);
+                float[] hold = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, speed(), 20f);
                 e.setYaw(hold[0]);
                 e.setPitch(hold[1]);
                 return;
             }
-            stage("no target: square underfoot is solid or has no support"
-                    + " (deckY " + bridgeY + ", feetY " + String.format("%.2f", mc.thePlayer.getEntityBoundingBox().minY) + ")");
+            double feet = mc.thePlayer.getEntityBoundingBox().minY;
+            stage((bridgeY >= feet ? "no target: fallen past the deck" : "no target: deck square is solid or unsupported")
+                    + " (deckY " + bridgeY + ", feetY " + String.format("%.2f", feet) + ")");
             clearAim();
             restoreSlot();
             return;
@@ -286,7 +289,7 @@ public class BridgeAssist extends Module {
 
         selectBlockSlot(slot);
 
-        float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, 15, 20f);
+        float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, speed(), 20f);
 
         // Placement is no longer gated on movement input. Over the gap the block has to go down
         // whether or not a key happens to be held that tick, and requiring input meant a placement
@@ -628,6 +631,19 @@ public class BridgeAssist extends Module {
         } catch (Throwable ignored) {
         }
         logWriter = null;
+    }
+
+    /**
+     * Rotation speed for the silent aim.
+     *
+     * This has to be fast, and that is not a style choice. A block is only placeable in the
+     * couple of ticks after the player steps off the edge and before they have fallen into the
+     * cell -- the debug trace showed exactly two. At the old speed of 15 the aim needed three
+     * ticks to cover the ~100 degrees involved, so it never arrived before the target was gone,
+     * and the player just walked off and fell. 27 covers that in a single tick.
+     */
+    private int speed() {
+        return rotationSpeed == null ? 27 : (int) rotationSpeed.getInput();
     }
 
     private void clearAim() {
