@@ -656,6 +656,9 @@ public class CategoryComponent {
             case client:
                 itemStack = new ItemStack(Items.compass);
                 break;
+            case theme:
+                itemStack = new ItemStack(Items.painting);
+                break;
             case profiles:
                 itemStack = new ItemStack(Items.book);
                 break;

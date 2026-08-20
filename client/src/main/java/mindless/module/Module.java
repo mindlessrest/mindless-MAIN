@@ -255,6 +255,7 @@ public class Module {
         render,
         other,
         client,
+        theme,
         profiles,
         scripts,
         cloud;

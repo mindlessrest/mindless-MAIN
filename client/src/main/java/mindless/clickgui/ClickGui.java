@@ -161,6 +161,8 @@ public class ClickGui extends GuiScreen {
     }
 
     public void drawScreen(int x, int y, float p) {
+        // Legacy GUI has no palette-refresh pass of its own, so drive theme application here too.
+        mindless.module.impl.theme.ThemeManager.poll();
         int logicalMouseX = toLogicalCoordinate(x);
         int logicalMouseY = toLogicalCoordinate(y);
 

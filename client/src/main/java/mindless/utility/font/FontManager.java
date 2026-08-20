@@ -102,6 +102,15 @@ public final class FontManager {
         });
     }
 
+    /**
+     * Renderer rasterised at an exact pixel height, for callers that draw at scale 1.0.
+     * Drawing a 13px atlas at 0.63x, or an 11px atlas at 1.33x, is what makes GUI text mushy;
+     * asking for the height actually needed keeps every glyph on its native grid.
+     */
+    public static RavenFontRenderer getClickGuiRenderer(String family, float pixelHeight) {
+        return getRendererForPixelHeight(family, pixelHeight);
+    }
+
     private static RavenFontRenderer getRendererForPixelHeight(String family, float targetHeight) {
         float safeTargetHeight = Math.max(1.0f, targetHeight);
         BundledFont bundledFont;
