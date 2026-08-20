@@ -213,10 +213,11 @@ public class HUD extends Module {
                 if (alignRight.isToggled()) {
                     bgLeft = posX - maxWidth - horizontalTextPadding - pad;
                 }
+                float hudBgRadius = 8.0f * mindless.module.impl.theme.ThemeManager.roundingScale();
                 BlurUtils.prepareBlur();
-                RoundedUtils.drawRound(bgLeft, bgTop, bgW, bgH, 8.0f, 0xFF000000);
+                RoundedUtils.drawRound(bgLeft, bgTop, bgW, bgH, hudBgRadius, 0xFF000000);
                 BlurUtils.blurEnd(1, 1.4f, 0.60f);
-                RoundedUtils.drawRound(bgLeft, bgTop, bgW, bgH, 8.0f, BACKGROUND_COLOR);
+                RoundedUtils.drawRound(bgLeft, bgTop, bgW, bgH, hudBgRadius, BACKGROUND_COLOR);
             }
         }
 

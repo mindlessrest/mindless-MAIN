@@ -1,7 +1,9 @@
 package mindless.module.impl.render;
 
 import mindless.module.Module;
+import mindless.module.impl.client.Gui;
 import mindless.module.impl.render.HUD;
+import mindless.module.impl.theme.ThemeManager;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.RavenFontRenderer;
@@ -68,10 +70,11 @@ public class DynamicIsland extends Module {
         float x = (sr.getScaledWidth() - totalW) * 0.5f;
         float y = 4.0f;
 
+        float radius = RADIUS * ThemeManager.roundingScale();
         BlurUtils.prepareBlur();
-        RoundedUtils.drawRound(x, y, totalW, totalH, RADIUS, 0xFF000000);
+        RoundedUtils.drawRound(x, y, totalW, totalH, radius, 0xFF000000);
         BlurUtils.blurEnd(3, 3.0f, 0.85f);
-        RoundedUtils.drawRound(x, y, totalW, totalH, RADIUS, FILL_COLOR);
+        RoundedUtils.drawRound(x, y, totalW, totalH, radius, FILL_COLOR);
 
         GL20.glUseProgram(0);
         GlStateManager.enableTexture2D();
@@ -83,16 +86,20 @@ public class DynamicIsland extends Module {
         float textY = y + PADDING_V;
         float cx = x + PADDING_H;
 
+        int accentColor = Gui.themeColor != null ? (0xFF000000 | Gui.themeColor.getRGB()) : HUD.getHudColor(0.0);
         if (logoTexture != null) {
-            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+            float r = ((accentColor >> 16) & 0xFF) / 255.0f;
+            float g = ((accentColor >> 8) & 0xFF) / 255.0f;
+            float b = (accentColor & 0xFF) / 255.0f;
+            GlStateManager.color(r, g, b, 1.0f);
             mc.getTextureManager().bindTexture(logoTexture);
             float logoY = y + (totalH - LOGO_SIZE) * 0.5f;
             net.minecraft.client.gui.Gui.drawModalRectWithCustomSizedTexture(
                     (int) cx, (int) logoY, 0, 0, (int) LOGO_SIZE, (int) LOGO_SIZE, LOGO_SIZE, LOGO_SIZE);
+            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
             cx += LOGO_SIZE + LOGO_GAP;
         }
 
-        int accentColor = HUD.getHudColor(0.0);
         font.drawString(clientName, cx, textY, accentColor, true);
         cx += clientW + DIVIDER_MARGIN;
 

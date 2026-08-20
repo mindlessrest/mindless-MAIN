@@ -4,6 +4,7 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.combat.KillAura;
 import mindless.module.impl.network.Backtrack;
+import mindless.module.impl.theme.ThemeManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -261,10 +262,11 @@ public class TargetHUD extends Module {
             case 0: {
                 float w = Math.abs((float) n6 - n8);
                 float h = Math.abs((float) n7 - (n9 + 13));
+                float thudRadius = 8.0f * ThemeManager.roundingScale();
                 BlurUtils.prepareBlur();
-                RoundedUtils.drawRound((float) n6, (float) n7, w, h, 8.0f, new Color(0, 0, 0, 255));
+                RoundedUtils.drawRound((float) n6, (float) n7, w, h, thudRadius, new Color(0, 0, 0, 255));
                 BlurUtils.blurEnd(1, 1.4f, 0.60f);
-                RoundedUtils.drawRound((float) n6, (float) n7, w, h, 8.0f, new Color(0, 0, 0, (int)(maxAlphaBackground * 0.4f)));
+                RoundedUtils.drawRound((float) n6, (float) n7, w, h, thudRadius, new Color(0, 0, 0, (int)(maxAlphaBackground * 0.4f)));
                 break;
             }
             case 1:
