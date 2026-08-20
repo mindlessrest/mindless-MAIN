@@ -521,18 +521,15 @@ public final class ModernClickGui extends ClickGui {
         // Corner radius of the swatch, clamped against the swatch's own height.
         float r = radius(THEME_CARD_RADIUS, w, THEME_SWATCH_H);
 
-        // The swatch is one Gouraud-shaded rounded quad, not a stack of painted rows.
+        // Drawn by the rounded-rect shader, which evaluates the corner as a signed distance
+        // field and interpolates the colour per fragment.
         //
-        // Every previous attempt drew the ramp as horizontal strips over a rounded base, and
-        // every one of them showed a seam: the strips are axis-aligned rects, so they either
-        // square off the corners or leave the base colour peeking out around the curve, and
-        // consecutive strips land on device-pixel boundaries that do not line up under a
-        // fractional GUI scale, which is the faint banding. A single primitive with the colour
-        // interpolated across its vertices has no strips to misalign and no base to show through.
-        //
-        // Radius is doubled because the helper scales the matrix by 0.5 and doubles the
-        // coordinates, but passes the radius through untouched.
-        RenderUtils.drawRoundedGradientRect(x1, y, x2, splitY, r * 2f, from, to, to, from);
+        // The previous version used RenderUtils.drawRoundedGradientRect, which builds a
+        // GL_POLYGON and lets OpenGL Gouraud-shade it. GL_POLYGON is triangulated as a fan from
+        // its first vertex, so the colour is interpolated across triangles rather than across
+        // the shape -- that is the diagonal streak across each swatch, and it got worse as the
+        // radius grew because the fan got wider. A fragment shader has no triangulation to show.
+        RoundedUtils.drawGradientRound(x1, y, x2 - x1, splitY - y, r, to, from, to, from);
 
         // The helper rounds all four corners; this edge is interior, against the label area, so
         // the lower two are squared off. The seam colour is sampled at exactly the same point on
@@ -542,6 +539,8 @@ public final class ModernClickGui extends ClickGui {
             RenderUtils.drawVerticalGradientRect(x1, splitY - r, x2, splitY,
                     mixColor(from, to, (h - r) / h), to);
         }
+        // drawGradientRound leaves the alpha limit and blend state it set up, so reset before
+        // any text goes down.
         resetTextRenderState();
 
         if (selected) drawCheck(x2 - 13f, y + 13f, argb(255, accent.getRed(), accent.getGreen(), accent.getBlue()));
@@ -1854,7 +1853,10 @@ public final class ModernClickGui extends ClickGui {
      */
     private static float radius(float radius, float w, float h) {
         float scaled = radius * mindless.module.impl.theme.ThemeManager.roundingScale();
-        return Math.max(0f, Math.min(scaled, Math.min(Math.abs(w), Math.abs(h)) * .5f));
+        float limit = Math.min(Math.abs(w), Math.abs(h)) * .5f;
+        // Never hand the shader an exact zero: its signed distance field degenerates there and
+        // the quad it expands by a pixel bleeds over whatever was drawn next to it.
+        return Math.max(.5f, Math.min(scaled, Math.max(.5f, limit)));
     }
 
     /**
