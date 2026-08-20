@@ -245,11 +245,11 @@ public final class HudEditor {
 
             BlurUtils.prepareBlur();
             RoundedUtils.drawRound(left, top, panelWidth, panelHeight,
-                    GuiIngameState.PANEL_RADIUS, 0xFF000000);
+                    GuiIngameState.panelRadius(), 0xFF000000);
             BlurUtils.blurEndRegion(2, 2.4f, GuiIngameState.PANEL_BLUR_OPACITY,
                     left - 2.0F, top - 2.0F, panelWidth + 4.0F, panelHeight + 4.0F);
             RoundedUtils.drawRound(left, top, panelWidth, panelHeight,
-                    GuiIngameState.PANEL_RADIUS, GuiIngameState.PANEL_FILL_COLOR);
+                    GuiIngameState.panelRadius(), GuiIngameState.PANEL_FILL_COLOR);
 
             GlStateManager.pushMatrix();
             GlStateManager.scale(scale, scale, 1.0F);

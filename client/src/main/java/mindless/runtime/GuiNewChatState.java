@@ -11,7 +11,11 @@ import java.util.Map;
 
 public final class GuiNewChatState {
     public static final long RAVEN_MESSAGE_ANIMATION_MS = 320L;
-    public static final float PANEL_RADIUS = 8.0f;
+    private static final float BASE_PANEL_RADIUS = 8.0f;
+
+    public static float panelRadius() {
+        return BASE_PANEL_RADIUS * mindless.module.impl.theme.ThemeManager.roundingScale();
+    }
     public static final int PANEL_FILL_COLOR = 0x55000000;
     public static final float PANEL_BLUR_OPACITY = 0.85f;
 
@@ -49,10 +53,10 @@ public final class GuiNewChatState {
         if (w <= 0.0f || h <= 0.0f) return;
 
         BlurUtils.prepareBlur();
-        RoundedUtils.drawRound(x, y, w, h, PANEL_RADIUS, 0xFF000000);
+        RoundedUtils.drawRound(x, y, w, h, panelRadius(), 0xFF000000);
         if (includeInput) {
             RoundedUtils.drawRound(3.0f, screenHeight - 15.0f,
-                    screenWidth - 6.0f, 13.0f, PANEL_RADIUS, 0xFF000000);
+                    screenWidth - 6.0f, 13.0f, panelRadius(), 0xFF000000);
         }
         float bx = x - 2, by = y - 2, bw = w + 4;
         float bh = h + 4;
@@ -62,18 +66,18 @@ public final class GuiNewChatState {
         }
         BlurUtils.blurEndRegion(2, 2.4f, PANEL_BLUR_OPACITY, bx, by, bw, bh);
 
-        RoundedUtils.drawRound(x, y, w, h, PANEL_RADIUS, PANEL_FILL_COLOR);
+        RoundedUtils.drawRound(x, y, w, h, panelRadius(), PANEL_FILL_COLOR);
         if (includeInput) {
             RoundedUtils.drawRound(3.0f, screenHeight - 15.0f,
-                    screenWidth - 6.0f, 13.0f, PANEL_RADIUS, PANEL_FILL_COLOR);
+                    screenWidth - 6.0f, 13.0f, panelRadius(), PANEL_FILL_COLOR);
         }
     }
 
     public static void drawSurface(float x, float y, float w, float h) {
         if (w <= 0.0f || h <= 0.0f) return;
         BlurUtils.prepareBlur();
-        RoundedUtils.drawRound(x, y, w, h, PANEL_RADIUS, 0xFF000000);
+        RoundedUtils.drawRound(x, y, w, h, panelRadius(), 0xFF000000);
         BlurUtils.blurEndRegion(2, 2.4f, PANEL_BLUR_OPACITY, x - 2, y - 2, w + 4, h + 4);
-        RoundedUtils.drawRound(x, y, w, h, PANEL_RADIUS, PANEL_FILL_COLOR);
+        RoundedUtils.drawRound(x, y, w, h, panelRadius(), PANEL_FILL_COLOR);
     }
 }

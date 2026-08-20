@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 public final class SystemMediaClient {
     // The displayed position interpolates every rendered frame; the native
     // session only needs periodic correction and track/seek updates.
-    private static final long POLL_INTERVAL_MS = 300L;
+    private static final long POLL_INTERVAL_MS = 50L;
     private static final long MEDIA_STALE_GRACE_MS = 1800L;
     private static final int MAX_ALBUM_ART_SIZE = 256;
     private static final SystemMediaClient INSTANCE = new SystemMediaClient();

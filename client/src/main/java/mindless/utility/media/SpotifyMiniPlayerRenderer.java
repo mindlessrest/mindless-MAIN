@@ -336,6 +336,9 @@ public final class SpotifyMiniPlayerRenderer {
             RenderUtils.drawRect(textX, separatorY, textX + textWidth, separatorY + 0.5F, separatorColor);
             RenderUtils.drawRect(textX, separatorY, textX + Math.min(textWidth * 0.28F, 28.0F * uiScale),
                     separatorY + 0.8F, separatorAccent);
+            GL20.glUseProgram(0);
+            GlStateManager.enableTexture2D();
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             float lyricY = separatorY + Math.max(3.5F, 4.5F * uiScale);
             float lyricBottom = showProgress
                     ? progressBarY - Math.max(4.0F, 4.75F * uiScale)
@@ -1002,7 +1005,7 @@ public final class SpotifyMiniPlayerRenderer {
             height -= 12.0F;
         }
         if (!showLyrics) {
-            height -= 42.0F;
+            height -= 62.0F;
         }
         return Math.max(70.0F, height);
     }

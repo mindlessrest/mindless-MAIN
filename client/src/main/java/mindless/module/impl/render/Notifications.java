@@ -221,10 +221,11 @@ public class Notifications extends Module {
 
     private void drawCard(Card c, float x, float y, RavenFontRenderer font,
                           float alpha, int a, int gradL, int gradR, long now) {
+        float radius = R * mindless.module.impl.theme.ThemeManager.roundingScale();
         BlurUtils.prepareBlur();
-        RoundedUtils.drawRound(x, y, W, H, R, new Color(0, 0, 0, 255));
+        RoundedUtils.drawRound(x, y, W, H, radius, new Color(0, 0, 0, 255));
         BlurUtils.blurEnd(3, 3.0f, 0.85f);
-        RoundedUtils.drawRound(x, y, W, H, R, new Color(0, 0, 0, (int)(55 * alpha)));
+        RoundedUtils.drawRound(x, y, W, H, radius, new Color(0, 0, 0, (int)(55 * alpha)));
 
         // Icon
         float iconSz = 14.0f;

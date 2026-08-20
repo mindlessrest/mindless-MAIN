@@ -104,11 +104,11 @@ public abstract class MixinGuiIngame {
 
         BlurUtils.prepareBlur();
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
-                GuiIngameState.PANEL_RADIUS, 0xFF000000);
+                GuiIngameState.panelRadius(), 0xFF000000);
         BlurUtils.blurEndRegion(2, 2.4f, GuiIngameState.PANEL_BLUR_OPACITY,
                 left - 2.0f, top - 2.0f, right - left + 4.0f, bottom - top + 4.0f);
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
-                GuiIngameState.PANEL_RADIUS, GuiIngameState.PANEL_FILL_COLOR);
+                GuiIngameState.panelRadius(), GuiIngameState.PANEL_FILL_COLOR);
 
         // The scoreboard is rendered after several optional HUD modules. Give
         // its text a clean baseline so a preceding gradient/shader cannot tint
