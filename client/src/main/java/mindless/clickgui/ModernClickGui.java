@@ -61,6 +61,10 @@ public final class ModernClickGui extends ClickGui {
     private static final float CATEGORY_ROW_STEP = 22f;
     private static final float MODULE_ROW_HEIGHT = 26f;
     private static final float MODULE_ROW_STEP = 30f;
+    private static final float DROPDOWN_MIN_W = 78f;
+    private static final float DROPDOWN_MAX_W = 156f;
+    /** Gap kept between a setting's label and its dropdown. */
+    private static final float DROPDOWN_LABEL_GAP = 10f;
 
     private static int ACCENT = argb(255, 159, 143, 210);
     private static int ACCENT_SOFT = argb(42, 159, 143, 210);
@@ -126,6 +130,8 @@ public final class ModernClickGui extends ClickGui {
     private SliderSetting openDropdown;
     /** Screen Y of the open dropdown's trigger row, used for overlay positioning. */
     private float dropdownAnchorY = 0f;
+    /** Width of the open dropdown's control, so the overlay lines up with its trigger. */
+    private float dropdownWidth = DROPDOWN_MAX_W;
     /** Scroll inside the open dropdown, for option lists taller than the panel. */
     private float dropdownScroll = 0f;
     private float dropdownScrollTarget = 0f;
@@ -854,7 +860,9 @@ public final class ModernClickGui extends ClickGui {
         if (open < 0.01f) return;
 
         float x2 = detailX + detailW - 15;
-        float dx1 = x2 - 128, dx2 = x2;
+        // One source of truth, shared with the click and hover hit-boxes.
+        float dw = overlayWidth();
+        float dx1 = x2 - dw, dx2 = x2;
         float rowTop = dropdownAnchorY + 30f; // just below the control
         int n = openDropdown.getOptions().length;
         float fullH = n * 21f + 4f;
@@ -904,7 +912,7 @@ public final class ModernClickGui extends ClickGui {
             }
             int textColor = sel ? TEXT : mixColor(MUTED, TEXT, rowHp);
             resetTextRenderState();
-            drawTextVCentered(trim(openDropdown.getOptions()[i], 112, .68f, sel),
+            drawTextVCentered(trim(openDropdown.getOptions()[i], dw - 20f, .68f, sel),
                     dx1 + 10, oy, oy + 19,
                     withAlpha(textColor, (int)(255 * open)),
                     .68f, sel);
@@ -943,7 +951,17 @@ public final class ModernClickGui extends ClickGui {
         if (openDropdown == null || openDropdown.getOptions() == null) return false;
         float x2 = detailX + detailW - 15;
         float top = dropdownAnchorY + 30f;
-        return inside(mx, my, x2 - 128, top, x2, top + dropdownViewH);
+        return inside(mx, my, x2 - overlayWidth(), top, x2, top + dropdownViewH);
+    }
+
+    /** Overlay width: the trigger's width, widened to fit the longest option, capped to the panel. */
+    private float overlayWidth() {
+        if (openDropdown == null || openDropdown.getOptions() == null) return dropdownWidth;
+        float widest = 0f;
+        for (String option : openDropdown.getOptions()) {
+            widest = Math.max(widest, textWidth(option, .68f, false));
+        }
+        return Math.max(dropdownWidth, Math.min(detailW - 34f, widest + 26f));
     }
 
     private final Map<Integer, Object> dropdownRowKeys = new java.util.HashMap<Integer, Object>();
@@ -977,16 +995,31 @@ public final class ModernClickGui extends ClickGui {
         } else if (setting instanceof SliderSetting) {
             SliderSetting slider = (SliderSetting) setting;
             if (slider.isString) {
-                drawTextVCentered(trim(slider.getName(), detailW - 110, .75f, false), x1 + 2, y, y + 30, fa(TEXT, alpha), .75f, false);
-                 float dx1 = x2 - 128, dx2 = x2;
+                // Width follows the label rather than being a fixed 128px, so a long setting
+                // name no longer runs underneath the control.
+                String label = slider.getName();
+                float labelLeft = x1 + 2;
+                float available = x2 - labelLeft;
+                float dropW = Math.max(DROPDOWN_MIN_W, Math.min(DROPDOWN_MAX_W,
+                        available - textWidth(label, .75f, false) - DROPDOWN_LABEL_GAP));
+                float dx1 = x2 - dropW, dx2 = x2;
+                if (openDropdown == slider) dropdownWidth = dropW;
+
+                drawTextVCentered(trim(label, dx1 - labelLeft - DROPDOWN_LABEL_GAP, .75f, false),
+                        labelLeft, y, y + 30, fa(TEXT, alpha), .75f, false);
+
                 float open = animate(dropdownAnimation, slider, openDropdown == slider ? 1f : 0f, 20f);
                 boolean over = inside(mx, my, dx1, y + 3, dx2, y + 27);
                 float hp = animate(hoverAnimation, slider, over ? 1f : 0f, 16f);
-                 rounded(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, Math.max(hp * .65f, open * .7f)), alpha));
-                 outline(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(BORDER, GOLD, open), alpha));
-                 resetTextRenderState();
-                 drawTextVCentered(trim(sliderValue(slider), 76, .68f, false), dx1 + 8, y + 3, y + 27, fa(mixColor(MUTED, GOLD, open), alpha), .68f, false);
-                 drawChevron(dx2 - 10, y + 15, open, fa(mixColor(MUTED, GOLD, open), alpha));
+                // outline() paints a filled rect one pixel larger and is meant to sit BEHIND the
+                // fill. It was being drawn after it, so the control became a solid block of the
+                // border colour -- which is the accent while open, hiding the selected option.
+                outline(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(BORDER, GOLD, open), alpha));
+                rounded(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, Math.max(hp * .65f, open * .7f)), alpha));
+                resetTextRenderState();
+                drawTextVCentered(trim(sliderValue(slider), dropW - 26f, .68f, false), dx1 + 8, y + 3, y + 27,
+                        fa(mixColor(MUTED, TEXT, Math.max(open, hp * .6f)), alpha), .68f, false);
+                drawChevron(dx2 - 10, y + 15, open, fa(mixColor(MUTED, GOLD, open), alpha));
                 // Options drawn as floating overlay in drawDropdownOverlay()
                 return;
             }
@@ -1282,7 +1315,7 @@ public final class ModernClickGui extends ClickGui {
             // Dropdown overlay eats clicks first
             if (openDropdown != null && openDropdown.getOptions() != null) {
                 float x2 = detailX + detailW - 15;
-                float dx1 = x2 - 128, dx2 = x2;
+                float dx1 = x2 - overlayWidth(), dx2 = x2;
                 float overlayTop = dropdownAnchorY + 30f;
                 // Hit-test the visible box, not the full list: rows clipped off the bottom
                 // are not on screen and must not swallow clicks meant for the panel.
