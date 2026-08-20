@@ -34,11 +34,15 @@ public class BridgeAssist extends Module {
     private static final double GRID_STEP = 0.25;
     private static final int GRID_N = (int) Math.round(1.0 / GRID_STEP);
     /** Cap on how many (support, face) pairs get the full ray-cast sweep in one acquisition. */
-    /** How far along the walk line to look, in blocks, when the cell underfoot is already filled. */
-    private static final double LOOKAHEAD_BLOCKS = 2.0;
-    private static final double LOOKAHEAD_STEP = 0.125;
-    /** How many distinct cells ahead to consider before giving up. */
-    private static final int MAX_LOOKAHEAD_CELLS = 2;
+    /**
+     * Ticks the last aim is held after the target disappears.
+     *
+     * Bridging spends most of its ticks with nothing to place -- the square underfoot is still
+     * solid until the player steps off it. Dropping the aim on those ticks made the rotation
+     * snap back and forth and never settle, so it is held briefly instead, which is what keeps
+     * the view pointed down the way a scaffold does.
+     */
+    private static final int AIM_HOLD_TICKS = 12;
 
     private final SliderSetting edgeOffset;
     private final SliderSetting unsneakDelayMin;
@@ -73,6 +77,7 @@ public class BridgeAssist extends Module {
     private BlockPos targetCell;
     /** Y of the bridge deck, latched while airborne so a fall does not drag the target down. */
     private int bridgeY = Integer.MIN_VALUE;
+    private int aimHold;
 
     public BridgeAssist() {
         super("Bridge Assist", category.player);
@@ -110,6 +115,7 @@ public class BridgeAssist extends Module {
         placeQueued = false;
         clearAim();
         bridgeY = Integer.MIN_VALUE;
+        aimHold = 0;
         restoreSlot();
     }
 
@@ -231,10 +237,20 @@ public class BridgeAssist extends Module {
         // two- and three-wide strips.
         BlockPos wanted = wantedCell();
         if (wanted == null) {
+            // Still on the deck. Keep the previous aim alive for a few ticks so the view stays
+            // where the next block goes, rather than snapping back between every placement.
+            if (hasAim && aimHold > 0) {
+                aimHold--;
+                float[] hold = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, 15, 20f);
+                e.setYaw(hold[0]);
+                e.setPitch(hold[1]);
+                return;
+            }
             clearAim();
             restoreSlot();
             return;
         }
+        aimHold = AIM_HOLD_TICKS;
         if (targetCell != null && !targetCell.equals(wanted)) clearAim();
 
         // Keep the previous aim while it still resolves. Re-picking a target every tick let the
@@ -250,7 +266,10 @@ public class BridgeAssist extends Module {
 
         float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, 15, 20f);
 
-        if (mc.thePlayer.movementInput.moveForward != 0f || mc.thePlayer.movementInput.moveStrafe != 0f) {
+        // Placement is no longer gated on movement input. Over the gap the block has to go down
+        // whether or not a key happens to be held that tick, and requiring input meant a placement
+        // was skipped every time the aim came into alignment on a tick with no movement.
+        {
             MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, sm[0], sm[1]);
             if (mop != null && mop.getBlockPos().equals(targetSupport) && mop.sideHit == targetSide) {
                 placeAtBlock = mop.getBlockPos();
@@ -404,56 +423,34 @@ public class BridgeAssist extends Module {
     private BlockPos wantedCell() {
         double feetY = mc.thePlayer.getEntityBoundingBox().minY;
 
-        // Latch the deck height while standing, so stepping off does not walk the target downward
-        // with the player as they start to fall.
+        // Latch the deck height while standing, so stepping off does not walk the target
+        // downward with the player as they start to fall.
         if (mc.thePlayer.onGround || bridgeY == Integer.MIN_VALUE) {
             bridgeY = MathHelper.floor_double(feetY) - 1;
         }
-        // Only bail once the deck is level with or above the feet. Partway into a fall the
-        // cell is still the right one to fill; vanilla's own placement check rejects it if
-        // the player's hitbox actually intersects it.
         if (bridgeY >= feetY) return null;
 
-        double vx = mc.thePlayer.posX - mc.thePlayer.prevPosX;
-        double vz = mc.thePlayer.posZ - mc.thePlayer.prevPosZ;
-        double len = Math.sqrt(vx * vx + vz * vz);
-        if (len < 1.0E-4) {
-            // Not moving yet on the tick the key went down: fall back to the input direction.
-            double angle = RotationHelper.getDirection(mc.thePlayer.rotationYaw,
-                    mc.thePlayer.movementInput.moveForward, mc.thePlayer.movementInput.moveStrafe);
-            vx = -Math.sin(angle);
-            vz = Math.cos(angle);
-            len = Math.sqrt(vx * vx + vz * vz);
-            if (len < 1.0E-4) return null;
-        }
-        double ux = vx / len, uz = vz / len;
-
-        BlockPos under = new BlockPos(
-                MathHelper.floor_double(mc.thePlayer.posX), bridgeY, MathHelper.floor_double(mc.thePlayer.posZ));
-        if (BlockUtils.replaceable(under) && hasSupport(under)) return under;
-
-        // Walk the movement line outward and take the cells the player is about to stand on.
-        // Sampling the real line rather than stepping whole blocks is what makes a diagonal
-        // work: it yields exactly the squares the player's centre crosses, in the order it
-        // crosses them, so a diagonal run lays its own staircase and nothing wider.
-        BlockPos previous = under;
-        int seen = 0;
-        for (double d = LOOKAHEAD_STEP; d <= LOOKAHEAD_BLOCKS; d += LOOKAHEAD_STEP) {
-            BlockPos cell = new BlockPos(
-                    MathHelper.floor_double(mc.thePlayer.posX + ux * d), bridgeY,
-                    MathHelper.floor_double(mc.thePlayer.posZ + uz * d));
-            if (cell.equals(previous)) continue;
-            previous = cell;
-            if (++seen > MAX_LOOKAHEAD_CELLS) break;
-            if (BlockUtils.replaceable(cell) && hasSupport(cell)) return cell;
-        }
-        return null;
+        // Exactly the square under the player, which is what the reference scaffolds target.
+        //
+        // This used to also look one and two cells further along the walk line, and that was
+        // the reason nothing worked: the only support for a cell ahead is the block the player
+        // is currently standing on, and from on top of a block its own side faces are hidden by
+        // the block itself. So the aim search failed on every tick spent on solid ground, the
+        // aim was cleared, and the rotation never got anywhere. A block only becomes placeable
+        // once the player is over the gap and their eye clears the support's column -- which is
+        // exactly the square underfoot.
+        BlockPos under = new BlockPos(MathHelper.floor_double(mc.thePlayer.posX), bridgeY,
+                MathHelper.floor_double(mc.thePlayer.posZ));
+        if (!BlockUtils.replaceable(under) || !hasSupport(under)) return null;
+        return under;
     }
 
     /** Whether any neighbouring block could be clicked to fill this cell. */
     private boolean hasSupport(BlockPos cell) {
-        for (EnumFacing d : EnumFacing.values()) {
-            if (!BlockUtils.replaceable(cell.offset(d))) return true;
+        // Only the faces acquireAim can actually use. Counting a block above the cell as support
+        // would mark cells targetable that the aim search then always rejects.
+        for (EnumFacing side : FACES) {
+            if (!BlockUtils.replaceable(cell.offset(side.getOpposite()))) return true;
         }
         return false;
     }

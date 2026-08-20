@@ -20,6 +20,10 @@ public final class SystemMediaClient {
     // The displayed position interpolates every rendered frame; the native
     // session only needs periodic correction and track/seek updates.
     private static final long POLL_INTERVAL_MS = 50L;
+    /** A position change larger than this is a seek, not clock drift, and is applied at once. */
+    private static final long SEEK_SNAP_MS = 2000L;
+    /** Largest single correction applied to the playback clock, so drift is never a visible jump. */
+    private static final long MAX_DRIFT_STEP_MS = 300L;
     private static final long MEDIA_STALE_GRACE_MS = 1800L;
     private static final int MAX_ALBUM_ART_SIZE = 256;
     private static final SystemMediaClient INSTANCE = new SystemMediaClient();
@@ -386,11 +390,24 @@ public final class SystemMediaClient {
             long incomingLive = incoming.getLivePositionMs();
             if (!nativePositionChanged) {
                 mergedPosition = prevLive;
-            } else if (incomingLive >= prevLive - 750L) {
-                mergedPosition = incomingLive;
             } else {
-                // Native is far behind interpolated — stale report, keep clock running
-                mergedPosition = prevLive;
+                // Ease onto the newly published position instead of snapping to it.
+                //
+                // SMTC republishes every few seconds and its value is routinely a couple of
+                // hundred ms off the running clock in either direction. Jumping straight to it
+                // shifted the lyric clock by up to 750ms at a time, which is why lines landed
+                // early on one refresh and late on the next. The old rule was also asymmetric:
+                // corrections more than 750ms *backwards* were discarded outright, so genuine
+                // drift in that direction could never be recovered.
+                long error = incomingLive - prevLive;
+                if (Math.abs(error) > SEEK_SNAP_MS) {
+                    mergedPosition = incomingLive; // a real seek, not drift
+                } else {
+                    long step = Math.round(error * 0.5d);
+                    if (step > MAX_DRIFT_STEP_MS) step = MAX_DRIFT_STEP_MS;
+                    if (step < -MAX_DRIFT_STEP_MS) step = -MAX_DRIFT_STEP_MS;
+                    mergedPosition = prevLive + step;
+                }
             }
         } else {
             mergedPosition = incoming.getLivePositionMs();
