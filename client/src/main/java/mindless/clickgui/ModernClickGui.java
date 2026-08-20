@@ -512,25 +512,31 @@ public final class ModernClickGui extends ClickGui {
         }
         rounded(x1, y, x2, y2, THEME_CARD_RADIUS, cardColor);
 
-        float r = radius(THEME_CARD_RADIUS, w, THEME_CARD_H);
+        // Corner radius of the swatch, clamped against the swatch's own height.
+        float r = radius(THEME_CARD_RADIUS, w, THEME_SWATCH_H);
 
-        // Vertical ramp. The top strip keeps the rounded corners of the card; below it the bands
-        // are plain rects, which is exactly right because that edge is interior and square.
-        rounded(x1, y, x2, splitY, THEME_CARD_RADIUS, from);
-        float bandTop = y + r;
-        if (splitY > bandTop) {
-            int bands = Math.max(4, (int) ((splitY - bandTop) / 2f));
-            float bandH = (splitY - bandTop) / bands;
-            // Drawn as clamped rects rather than under a nested scissor: disabling the scissor
-            // afterwards would drop the panel clip and let later cards escape the GUI.
-            for (int i = 0; i < bands; i++) {
-                float by = bandTop + i * bandH;
-                float bh = Math.min(bandH + 1f, splitY - by);
-                if (bh <= 0f) break;
-                float t = (by - y) / Math.max(1f, splitY - y);
-                RenderUtils.drawRect(x1, by, x2, by + bh, mixColor(from, to, t));
-            }
+        // The swatch is one Gouraud-shaded rounded quad, not a stack of painted rows.
+        //
+        // Every previous attempt drew the ramp as horizontal strips over a rounded base, and
+        // every one of them showed a seam: the strips are axis-aligned rects, so they either
+        // square off the corners or leave the base colour peeking out around the curve, and
+        // consecutive strips land on device-pixel boundaries that do not line up under a
+        // fractional GUI scale, which is the faint banding. A single primitive with the colour
+        // interpolated across its vertices has no strips to misalign and no base to show through.
+        //
+        // Radius is doubled because the helper scales the matrix by 0.5 and doubles the
+        // coordinates, but passes the radius through untouched.
+        RenderUtils.drawRoundedGradientRect(x1, y, x2, splitY, r * 2f, from, to, to, from);
+
+        // The helper rounds all four corners; this edge is interior, against the label area, so
+        // the lower two are squared off. The seam colour is sampled at exactly the same point on
+        // the ramp, so the join is continuous rather than a step.
+        if (r > .5f) {
+            float h = Math.max(1f, splitY - y);
+            RenderUtils.drawVerticalGradientRect(x1, splitY - r, x2, splitY,
+                    mixColor(from, to, (h - r) / h), to);
         }
+        resetTextRenderState();
 
         if (selected) drawCheck(x2 - 13f, y + 13f, argb(255, accent.getRed(), accent.getGreen(), accent.getBlue()));
 
