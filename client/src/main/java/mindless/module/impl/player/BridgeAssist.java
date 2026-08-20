@@ -83,6 +83,7 @@ public class BridgeAssist extends Module {
     /** Last reported trace stage, so an unchanged state does not spam chat every tick. */
     private String lastStage = "";
     private long lastStageAt;
+    private java.io.BufferedWriter logWriter;
 
     public BridgeAssist() {
         super("Bridge Assist", category.player);
@@ -122,6 +123,8 @@ public class BridgeAssist extends Module {
         clearAim();
         bridgeY = Integer.MIN_VALUE;
         aimHold = 0;
+        lastStage = "";
+        closeLog();
         restoreSlot();
     }
 
@@ -586,6 +589,45 @@ public class BridgeAssist extends Module {
         lastStage = text;
         lastStageAt = now;
         Utils.sendMessage("&7[BridgeAssist] &b" + text);
+        writeLog(text);
+    }
+
+    /**
+     * Mirrors the trace into logs/mindless-bridgeassist-debug.log next to Minecraft's own logs.
+     *
+     * The writer is opened once and kept, rather than reopened per line: this runs on the game
+     * thread, and open-append-close per entry is exactly the kind of synchronous file I/O that
+     * costs frames. Rate limiting upstream keeps this to roughly a line a second.
+     */
+    private void writeLog(String text) {
+        try {
+            if (logWriter == null) {
+                java.io.File dir = new java.io.File(mc.mcDataDir, "logs");
+                if (!dir.exists() && !dir.mkdirs()) return;
+                java.io.File file = new java.io.File(dir, "mindless-bridgeassist-debug.log");
+                logWriter = new java.io.BufferedWriter(new java.io.OutputStreamWriter(
+                        new java.io.FileOutputStream(file, true), java.nio.charset.StandardCharsets.UTF_8));
+                logWriter.write("--- session start " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                        .format(new java.util.Date()) + " ---");
+                logWriter.newLine();
+            }
+            logWriter.write(new java.text.SimpleDateFormat("HH:mm:ss.SSS").format(new java.util.Date())
+                    + "  " + text);
+            logWriter.newLine();
+            logWriter.flush();
+        } catch (Throwable ignored) {
+            logWriter = null;
+        }
+    }
+
+    private void closeLog() {
+        if (logWriter == null) return;
+        try {
+            logWriter.flush();
+            logWriter.close();
+        } catch (Throwable ignored) {
+        }
+        logWriter = null;
     }
 
     private void clearAim() {
