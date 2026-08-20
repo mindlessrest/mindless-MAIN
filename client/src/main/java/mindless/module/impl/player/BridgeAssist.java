@@ -255,62 +255,57 @@ public class BridgeAssist extends Module {
         // a radius and picking by distance filled the neighbours too, which is what produced the
         // two- and three-wide strips.
         BlockPos wanted = wantedCell();
-        if (wanted == null) {
-            // Still on the deck. Keep the previous aim alive for a few ticks so the view stays
-            // where the next block goes, rather than snapping back between every placement.
-            if (hasAim && aimHold > 0) {
-                stage("holding aim, nothing to place (deck still solid)");
-                aimHold--;
-                float[] hold = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, speed(), 20f);
-                e.setYaw(hold[0]);
-                e.setPitch(hold[1]);
+        if (wanted != null) {
+            aimHold = AIM_HOLD_TICKS;
+            // Only the target is dropped when the wanted cell moves on, never the aim itself.
+            if (targetCell != null && !targetCell.equals(wanted)) invalidateTarget();
+
+            if (aimStillValid(held, reach) || acquireAim(wanted, held, reach, baseYaw, basePitch)) {
+                selectBlockSlot(slot);
+                float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, speed(), 20f);
+
+                MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, sm[0], sm[1]);
+                if (mop != null && mop.getBlockPos().equals(targetSupport) && mop.sideHit == targetSide) {
+                    placeAtBlock = mop.getBlockPos();
+                    placeSide = mop.sideHit;
+                    placeHitVec = mop.hitVec;
+                    placeQueued = true;
+                    stage("aligned on " + targetSupport.getX() + "," + targetSupport.getY() + ","
+                            + targetSupport.getZ() + " " + targetSide + " -> queued");
+                } else {
+                    stage("rotating toward target (yaw " + Math.round(sm[0]) + ", pitch " + Math.round(sm[1])
+                            + "; want " + Math.round(aimYaw) + "/" + Math.round(aimPitch) + ")");
+                }
+
+                e.setYaw(sm[0]);
+                e.setPitch(sm[1]);
                 return;
             }
-            double feet = mc.thePlayer.getEntityBoundingBox().minY;
-            stage((bridgeY >= feet ? "no target: fallen past the deck" : "no target: deck square is solid or unsupported")
-                    + " (deckY " + bridgeY + ", feetY " + String.format("%.2f", feet) + ")");
-            clearAim();
-            restoreSlot();
-            return;
-        }
-        aimHold = AIM_HOLD_TICKS;
-        if (targetCell != null && !targetCell.equals(wanted)) clearAim();
 
-        // Keep the previous aim while it still resolves. Re-picking a target every tick let the
-        // choice flip between faces as the player moved, so the smoothing never had a fixed goal
-        // and the rotation stalled a few degrees in.
-        if (!aimStillValid(held, reach) && !acquireAim(wanted, held, reach, baseYaw, basePitch)) {
             stage("target " + wanted.getX() + "," + wanted.getY() + "," + wanted.getZ()
                     + " but no rotation reaches it (all support faces occluded or out of reach)");
-            clearAim();
-            restoreSlot();
+            // Fall through to the hold below rather than releasing: a single tick where no
+            // rotation resolves is not a reason to hand the view back.
+        }
+
+        // Nothing to place this tick. Bridging spends most of its ticks here -- the square
+        // underfoot is solid again the instant a block lands -- so the aim is held rather than
+        // released. Releasing it was what made the view snap back to the real rotation between
+        // every single placement and then get yanked down again on the next.
+        if (hasAim && aimHold > 0) {
+            aimHold--;
+            stage("holding aim (" + aimHold + " ticks left)");
+            float[] hold = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, speed(), 20f);
+            e.setYaw(hold[0]);
+            e.setPitch(hold[1]);
             return;
         }
 
-        selectBlockSlot(slot);
-
-        float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, speed(), 20f);
-
-        // Placement is no longer gated on movement input. Over the gap the block has to go down
-        // whether or not a key happens to be held that tick, and requiring input meant a placement
-        // was skipped every time the aim came into alignment on a tick with no movement.
-        {
-            MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, sm[0], sm[1]);
-            if (mop != null && mop.getBlockPos().equals(targetSupport) && mop.sideHit == targetSide) {
-                placeAtBlock = mop.getBlockPos();
-                placeSide = mop.sideHit;
-                placeHitVec = mop.hitVec;
-                placeQueued = true;
-                stage("aligned on " + targetSupport.getX() + "," + targetSupport.getY() + ","
-                        + targetSupport.getZ() + " " + targetSide + " -> queued");
-            } else {
-                stage("rotating toward target (yaw " + Math.round(sm[0]) + ", pitch " + Math.round(sm[1])
-                        + "; want " + Math.round(aimYaw) + "/" + Math.round(aimPitch) + ")");
-            }
-        }
-
-        e.setYaw(sm[0]);
-        e.setPitch(sm[1]);
+        double feet = mc.thePlayer.getEntityBoundingBox().minY;
+        stage((bridgeY >= feet ? "released: fallen past the deck" : "released: idle on the deck")
+                + " (deckY " + bridgeY + ", feetY " + String.format("%.2f", feet) + ")");
+        clearAim();
+        restoreSlot();
     }
 
     @SubscribeEvent
@@ -329,7 +324,10 @@ public class BridgeAssist extends Module {
         }
         if (mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held, placeAtBlock, placeSide, placeHitVec)) {
             mc.thePlayer.swingItem();
-            clearAim();
+            // Retire the target so the next one is picked up, but hold the aim: the view should
+            // stay looking down through the whole bridge, not reset after each block.
+            invalidateTarget();
+            aimHold = AIM_HOLD_TICKS;
             stage("placed at " + placeAtBlock.getX() + "," + placeAtBlock.getY() + "," + placeAtBlock.getZ()
                     + " " + placeSide);
         } else {
@@ -644,6 +642,18 @@ public class BridgeAssist extends Module {
      */
     private int speed() {
         return rotationSpeed == null ? 27 : (int) rotationSpeed.getInput();
+    }
+
+    /**
+     * Drops the placement target but keeps the aim.
+     *
+     * The two used to be cleared together, so finishing a placement also released the rotation
+     * and the view flicked back to wherever the player was really looking for a tick.
+     */
+    private void invalidateTarget() {
+        targetSupport = null;
+        targetSide = null;
+        targetCell = null;
     }
 
     private void clearAim() {
