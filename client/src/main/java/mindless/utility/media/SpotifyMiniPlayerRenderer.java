@@ -349,8 +349,8 @@ public final class SpotifyMiniPlayerRenderer {
         }
 
         if (showProgress) {
-            progressX = textX;
-            progressWidth = Math.max(28.0F, x + width - padding - progressX);
+            progressX = x + padding;
+            progressWidth = Math.max(28.0F, width - padding * 2.0F);
             if (effectiveShowTimeLabels) {
                 String currentTime = formatTime(livePositionMs);
                 String duration = formatTime(mediaInfo.getDurationMs());
