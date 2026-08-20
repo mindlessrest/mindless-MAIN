@@ -11,7 +11,6 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.combat.AutoClicker;
-import mindless.module.impl.minigames.DuelsStats;
 import mindless.module.impl.player.Freecam;
 import mindless.module.impl.world.AntiBot;
 import mindless.module.setting.impl.SliderSetting;
@@ -232,7 +231,7 @@ public class Utils implements IMinecraftInstance {
     }
 
     public static String getServerName() {
-        return DuelsStats.nick.isEmpty() ? mc.thePlayer.getName() : DuelsStats.nick;
+        return CommandHandler.nick.isEmpty() ? mc.thePlayer.getName() : CommandHandler.nick;
     }
 
     public static boolean tabbedIn() {

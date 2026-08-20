@@ -23,7 +23,7 @@ public class FakeLag extends Module {
     private LagRequest activeLagRequest;
 
     public FakeLag() {
-        super("Fake Lag", category.network);
+        super("Fake Lag", category.combat);
         this.registerSetting(mode = new SliderSetting("Mode", 1, MODE_LABELS));
         this.registerSetting(packetDelaySlider = new SliderSetting("Packet delay", "ms", 0.0, 0.0, 1500.0, 20.0));
     }

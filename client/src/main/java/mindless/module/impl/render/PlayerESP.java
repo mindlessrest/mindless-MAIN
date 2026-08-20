@@ -322,9 +322,7 @@ public class PlayerESP extends Module {
         }
 
         if (shaded.isToggled()) {
-            if (ModuleManager.murderMystery == null || !ModuleManager.murderMystery.isEnabled() || ModuleManager.murderMystery.isEmpty()) {
-                RenderUtils.renderEntity(en, 2, 0, 0, rgb, redOnDamage.isToggled());
-            }
+            RenderUtils.renderEntity(en, 2, 0, 0, rgb, redOnDamage.isToggled());
         }
 
         if (healthBar.isToggled()) {

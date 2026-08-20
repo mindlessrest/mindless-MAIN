@@ -10,7 +10,6 @@ import mindless.module.ModuleManager;
 import mindless.module.impl.client.Gui;
 import mindless.module.impl.client.Relationships;
 import mindless.module.impl.client.Settings;
-import mindless.module.impl.minigames.BridgeInfo;
 import mindless.module.impl.player.HideWindow;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
@@ -153,11 +152,6 @@ public class ProfileManager implements IMinecraftInstance {
             moduleInformation.addProperty("posY", hw.getPosY());
             moduleInformation.addProperty("relPosX", hw.getRelativePosX());
             moduleInformation.addProperty("relPosY", hw.getRelativePosY());
-        }
-        else if (module instanceof BridgeInfo) {
-            BridgeInfo bridge = (BridgeInfo) module;
-            moduleInformation.addProperty("posX", bridge.getHudX());
-            moduleInformation.addProperty("posY", bridge.getHudY());
         }
         else if (module instanceof Gui) {
             for (CategoryComponent c : ClickGui.categories) {
@@ -365,12 +359,6 @@ public class ProfileManager implements IMinecraftInstance {
                             float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : hw.getPosY();
                             hw.setAbsolutePosition(posX, posY);
                         }
-                    }
-                    else if (module.getName().equals("Bridge Info") && module instanceof BridgeInfo) {
-                        BridgeInfo bridge = (BridgeInfo) module;
-                        int posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsInt() : bridge.getHudX();
-                        int posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsInt() : bridge.getHudY();
-                        bridge.setHudPosition(posX, posY);
                     }
                     else if (module.getName().equals("Gui")) {
                         for (Map.Entry<String, JsonElement> setting : moduleInformation.entrySet()) {

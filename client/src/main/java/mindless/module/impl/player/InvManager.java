@@ -278,13 +278,7 @@ public class InvManager extends Module {
     }
 
     private boolean shouldPauseForLobby() {
-        return (disableInLobby.isToggled() && Utils.isLobby())
-            || (ModuleManager.skyWars != null
-            && ModuleManager.invmove != null
-            && ModuleManager.skyWars.isEnabled()
-            && ModuleManager.invmove.isEnabled()
-            && ModuleManager.invmove.inventory.getInput() == 3
-            && Utils.getSkyWarsStatus() != 2);
+        return disableInLobby.isToggled() && Utils.isLobby();
     }
 
     private void handleInventoryScreen() {

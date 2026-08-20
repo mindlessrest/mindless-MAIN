@@ -6,7 +6,6 @@ import mindless.helper.RotationHelper;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
-import mindless.module.impl.minigames.SkyWars;
 import mindless.module.impl.world.AntiBot;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -470,12 +469,7 @@ public class KillAura extends Module {
     }
 
     private boolean isHostile(EntityCreature entityCreature) {
-        if (SkyWars.onlyAuraHostiles()) {
-            if (entityCreature instanceof EntityGiantZombie) {
-                return false;
-            }
-            return !ModuleManager.skyWars.spawnedMobs.contains(entityCreature.getEntityId());
-        } else if (entityCreature instanceof EntitySilverfish) {
+        if (entityCreature instanceof EntitySilverfish) {
             String teamColor = Utils.getFirstColorCode(entityCreature.getCustomNameTag());
             String teamColorSelf = Utils.getFirstColorCode(mc.thePlayer.getDisplayName().getFormattedText());
             return teamColor.isEmpty() || (!teamColorSelf.equals(teamColor) && !Utils.isTeammate(entityCreature));

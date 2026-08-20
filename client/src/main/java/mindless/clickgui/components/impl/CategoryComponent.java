@@ -650,20 +650,11 @@ public class CategoryComponent {
             case render:
                 itemStack = new ItemStack(Items.ender_eye);
                 break;
-            case minigames:
-                itemStack = new ItemStack(Items.gold_ingot);
-                break;
-            case fun:
-                itemStack = new ItemStack(Items.slime_ball);
-                break;
             case other:
                 itemStack = new ItemStack(Items.clock);
                 break;
             case client:
                 itemStack = new ItemStack(Items.compass);
-                break;
-            case network:
-                itemStack = new ItemStack(Items.repeater);
                 break;
             case profiles:
                 itemStack = new ItemStack(Items.book);

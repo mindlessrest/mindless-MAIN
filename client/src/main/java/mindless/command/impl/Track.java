@@ -94,9 +94,7 @@ public class Track extends Command {
             if (mc.thePlayer != player && AntiBot.isBot(player)) {
                 continue;
             }
-            if (ModuleManager.murderMystery == null || !ModuleManager.murderMystery.isEnabled() || ModuleManager.murderMystery.isEmpty()) {
-                RenderUtils.renderEntity(player, 2, 0, 0, Color.RED.getRGB(), false);
-            }
+            RenderUtils.renderEntity(player, 2, 0, 0, Color.RED.getRGB(), false);
         }
     }
 

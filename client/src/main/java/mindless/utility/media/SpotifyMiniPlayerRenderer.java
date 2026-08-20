@@ -449,6 +449,7 @@ public final class SpotifyMiniPlayerRenderer {
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         }
 
+        GL20.glUseProgram(0);
         GlStateManager.enableTexture2D();
         GlStateManager.enableAlpha();
         GlStateManager.enableBlend();

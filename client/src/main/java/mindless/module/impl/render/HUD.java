@@ -9,6 +9,8 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
+import mindless.utility.shader.BlurUtils;
+import mindless.utility.shader.RoundedUtils;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Theme;
@@ -49,6 +51,7 @@ public class HUD extends Module {
     private static SliderSetting outline;
     public static ButtonSetting alphabeticalSort;
     private static ButtonSetting drawBackground;
+    private static ButtonSetting roundedBackground;
     private static ButtonSetting textShadow;
     private static ButtonSetting alignRight;
     private static ButtonSetting lowercase;
@@ -86,6 +89,7 @@ public class HUD extends Module {
         this.registerSetting(alignRight = new ButtonSetting("Align right", false));
         this.registerSetting(alphabeticalSort = new ButtonSetting("Alphabetical sort", false));
         this.registerSetting(drawBackground = new ButtonSetting("Draw background", false));
+        this.registerSetting(roundedBackground = new ButtonSetting("Rounded background", false));
         this.registerSetting(textShadow = new ButtonSetting("Text shadow", true));
         this.registerSetting(lowercase = new ButtonSetting("Lowercase", false));
         this.registerSetting(showInfo = new ButtonSetting("Show module info", true));
@@ -192,6 +196,30 @@ public class HUD extends Module {
         double lastBackgroundBottom = 0.0;
         boolean removeVelocity = ModuleManager.antiKnockback.isEnabled();
 
+        if (roundedBackground.isToggled()) {
+            float maxWidth = 0;
+            int visibleCount = 0;
+            for (Module module : ModuleManager.organizedModules) {
+                if (!module.isEnabled() || module == this || shouldSkipModule(module, removeVelocity)) continue;
+                maxWidth = Math.max(maxWidth, hudFont.getStringWidth(getHudRenderText(module)));
+                visibleCount++;
+            }
+            if (visibleCount > 0) {
+                float pad = 5.0f;
+                float bgLeft = posX - horizontalTextPadding - pad;
+                float bgTop = posY - pad;
+                float bgW = maxWidth + horizontalTextPadding * 2 + pad * 2;
+                float bgH = visibleCount * rowHeight + pad * 2;
+                if (alignRight.isToggled()) {
+                    bgLeft = posX - maxWidth - horizontalTextPadding - pad;
+                }
+                BlurUtils.prepareBlur();
+                RoundedUtils.drawRound(bgLeft, bgTop, bgW, bgH, 8.0f, 0xFF000000);
+                BlurUtils.blurEnd(1, 1.4f, 0.60f);
+                RoundedUtils.drawRound(bgLeft, bgTop, bgW, bgH, 8.0f, BACKGROUND_COLOR);
+            }
+        }
+
         try {
             for (Module module : ModuleManager.organizedModules) {
                 if (!module.isEnabled() || module == this || shouldSkipModule(module, removeVelocity)) {
@@ -222,7 +250,7 @@ public class HUD extends Module {
                 double wavePhase = hudWavePhase(verticalWaveAccum, rowCenterX);
                 int color = getHudColor(wavePhase);
 
-                if (drawBackground.isToggled()) {
+                if (drawBackground.isToggled() && !roundedBackground.isToggled()) {
                     RenderUtils.drawRect(backgroundLeft, backgroundTop, backgroundRight, backgroundBottom, BACKGROUND_COLOR);
                 }
 

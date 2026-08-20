@@ -346,9 +346,7 @@ public class MobESP extends Module {
             RenderUtils.renderEntity(en, 1, 0, 0, rgb, redOnDamage.isToggled());
         }
         if (shaded.isToggled()) {
-            if (ModuleManager.murderMystery == null || !ModuleManager.murderMystery.isEnabled() || ModuleManager.murderMystery.isEmpty()) {
-                RenderUtils.renderEntity(en, 2, 0, 0, rgb, redOnDamage.isToggled());
-            }
+            RenderUtils.renderEntity(en, 2, 0, 0, rgb, redOnDamage.isToggled());
         }
         if (healthBar.isToggled()) {
             RenderUtils.renderEntity(en, 4, 0, 0, rgb, redOnDamage.isToggled());

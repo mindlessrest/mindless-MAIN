@@ -5,7 +5,6 @@ import mindless.helper.PingHelper;
 import mindless.module.Module;
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.combat.Velocity;
-import mindless.module.impl.minigames.DuelsStats;
 import mindless.module.impl.movement.BHop;
 import mindless.module.impl.movement.Fly;
 import mindless.module.impl.movement.Speed;
@@ -43,6 +42,8 @@ public class CommandHandler implements IMinecraftInstance {
     private static int lastBackgroundColorIndex = -1;
     public static List<String> responseLines = new ArrayList<>();
 
+    public static String nick = "";
+
     private static final String INVALID_SYNTAX = "&cInvalid syntax.";
     private static final String INVALID_COMMAND = "&cInvalid command.";
 
@@ -76,13 +77,14 @@ public class CommandHandler implements IMinecraftInstance {
         }
 
         if (args[1].equals("reset")) {
+            nick = "";
             print("&aNick reset.", 1);
             return;
         }
 
-        DuelsStats.nick = args[1];
+        nick = args[1];
         print("&aNick has been set to:", 1);
-        print("\"" + DuelsStats.nick + "\"", 0);
+        print("\"" + nick + "\"", 0);
     }
 
     private static void handleNameHiderCommand(String[] args) {
@@ -135,7 +137,6 @@ public class CommandHandler implements IMinecraftInstance {
                     print("Losses: " + stats[1], 0);
                     print("WLR: " + winLossRatio, 0);
                     print("Winstreak: " + stats[2], 0);
-                    print("Threat: " + DuelsStats.gtl(stats[0], stats[1], winLossRatio, stats[2]).substring(2), 0);
                 }
             }
             else {

@@ -799,26 +799,6 @@ public class ScriptManager {
         final TextSetting[] scriptNameSetting = new TextSetting[1];
         scriptNameSetting[0] = new TextSetting("Script name", script.name, "Type a new script name...", 32, () -> renameScript(script, module, scriptNameSetting[0].getText()));
         module.registerSetting(scriptNameSetting[0]);
-        module.registerSetting(new mindless.module.setting.impl.ButtonSetting("Upload to Cloud", () -> {
-            mindless.Raven.getCachedExecutor().execute(() -> {
-                try {
-                    if (script.file == null || !script.file.exists()) {
-                        mindless.utility.Utils.sendMessage("&cScript file not found");
-                        return;
-                    }
-                    byte[] data = java.nio.file.Files.readAllBytes(script.file.toPath());
-                    mindless.backend.CloudManager.CloudItem result = mindless.backend.CloudManager.getInstance().upload(script.name, "script", data);
-                    if (result != null) {
-                        mindless.utility.Utils.sendMessage("&aUploaded script to cloud: &b" + script.name);
-                        mindless.backend.CloudManager.getInstance().refreshList(null);
-                    } else {
-                        mindless.utility.Utils.sendMessage("&cUpload failed");
-                    }
-                } catch (Exception e) {
-                    mindless.utility.Utils.sendMessage("&cUpload error: " + e.getMessage());
-                }
-            });
-        }));
     }
 
     private void renameScript(Script script, Module module, String requestedName) {

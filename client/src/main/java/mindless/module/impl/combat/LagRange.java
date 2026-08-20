@@ -60,7 +60,7 @@ public class LagRange extends Module {
     private long indicatorInterpStartMs;
 
     public LagRange() {
-        super("Lag Range", category.network);
+        super("Lag Range", category.combat);
         this.registerSetting(range = new SliderSetting("Range", 6.0, 3.0, 10.0, 0.1));
         this.registerSetting(maximumDelay = new SliderSetting("Maximum delay", "ms", 200, 50, 1000, 10));
         this.registerSetting(new DescriptionSetting("Flush conditions"));

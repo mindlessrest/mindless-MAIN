@@ -11,6 +11,7 @@ import mindless.utility.RenderUtils;
 import mindless.utility.Theme;
 import mindless.utility.Timer;
 import mindless.utility.Utils;
+import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.gui.GuiButton;
@@ -40,12 +41,16 @@ public class TargetHUD extends Module {
     private ButtonSetting showStatus;
     private ButtonSetting healthColor;
 
+    private static final long POP_IN_MS = 250L;
+    private static final long POP_OUT_MS = 200L;
+
     private Timer fadeTimer;
     private Timer healthBarTimer = null;
     private EntityLivingBase target;
     private long lastAliveMS;
     private double lastHealth;
     private float lastHealthBar;
+    private long popInStart = -1;
     public int posX = 70;
     public int posY = 30;
 
@@ -90,9 +95,10 @@ public class TargetHUD extends Module {
                 target = KillAura.attackingEntity;
                 lastAliveMS = System.currentTimeMillis();
                 fadeTimer = null;
+                if (popInStart < 0) popInStart = System.currentTimeMillis();
             } else if (target != null) {
                 if (System.currentTimeMillis() - lastAliveMS >= 400 && fadeTimer == null) {
-                    (fadeTimer = new Timer(400)).start();
+                    (fadeTimer = new Timer((int) POP_OUT_MS)).start();
                 }
             }
             else {
@@ -127,7 +133,64 @@ public class TargetHUD extends Module {
             return;
         }
 
-        RenderUtils.renderEntity(auraTarget, 2, 0.0, 0.0, Theme.getGradient((int) theme.getInput(), 0), false);
+        drawPillEsp(auraTarget);
+    }
+
+    private void drawPillEsp(EntityLivingBase entity) {
+        float partialTicks = mindless.runtime.AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks;
+        double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks - mc.getRenderManager().viewerPosX;
+        double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - mc.getRenderManager().viewerPosY;
+        double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - mc.getRenderManager().viewerPosZ;
+
+        float entityHeight = entity.height;
+        double time = (System.currentTimeMillis() % 2000L) / 2000.0;
+        float bounce = (float) (Math.sin(time * Math.PI * 2.0) * 0.5 + 0.5);
+        float ringY = bounce * entityHeight;
+
+        float radius = entity.width * 0.7f;
+        int color = Theme.getGradient((int) theme.getInput(), 0);
+        float r = ((color >> 16) & 0xFF) / 255.0f;
+        float g = ((color >> 8) & 0xFF) / 255.0f;
+        float b = (color & 0xFF) / 255.0f;
+
+        GlStateManager.pushMatrix();
+        GlStateManager.translate((float) x, (float) y, (float) z);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glEnable(GL11.GL_LINE_SMOOTH);
+        GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
+        GL11.glDepthMask(false);
+
+        int trailCount = 5;
+        for (int trail = trailCount; trail >= 0; trail--) {
+            float trailOffset = trail * 0.06f;
+            float trailBounce = (float) (Math.sin((time - trailOffset) * Math.PI * 2.0) * 0.5 + 0.5);
+            float trailY = trailBounce * entityHeight;
+            float alpha = trail == 0 ? 1.0f : (1.0f - (float) trail / trailCount) * 0.35f;
+            float lineWidth = trail == 0 ? 5.0f : 3.0f;
+
+            GL11.glLineWidth(lineWidth);
+            GL11.glBegin(GL11.GL_LINE_LOOP);
+            GL11.glColor4f(r, g, b, alpha);
+            int segments = 40;
+            for (int i = 0; i < segments; i++) {
+                double angle = Math.PI * 2.0 * i / segments;
+                float px = (float) (Math.cos(angle) * radius);
+                float pz = (float) (Math.sin(angle) * radius);
+                GL11.glVertex3f(px, trailY, pz);
+            }
+            GL11.glEnd();
+        }
+
+        GL11.glDepthMask(true);
+        GL11.glDisable(GL11.GL_LINE_SMOOTH);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_BLEND);
+        GlStateManager.popMatrix();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private void drawTargetHUD(Timer fadeTimer, String string, double health) {
@@ -162,24 +225,52 @@ public class TargetHUD extends Module {
         final int n7 = y - padding;
         final int n8 = x + targetStrWithPadding;
         final int n9 = y + (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding;
-        final int alpha = (fadeTimer == null) ? 255 : (255 - fadeTimer.getValueInt(0, 255, 1));
-        if (alpha > 0) {
-            final int maxAlphaOutline = (alpha > 110) ? 110 : alpha;
-            final int maxAlphaBackground = (alpha > 210) ? 210 : alpha;
-            final int[] gradientColors = Theme.getGradients((int) theme.getInput());
-            switch ((int) mode.getInput()) {
-                case 0: {
-                    float w = Math.abs((float) n6 - n8);
-                    float h = Math.abs((float) n7 - (n9 + 13));
-                    int glowColor = Utils.mergeAlpha(gradientColors[0], Math.min(255, (int) (maxAlphaBackground * 1.1f)));
-                    RoundedUtils.drawRoundShadow((float) n6, (float) n7, w, h, 8.0f, (float) glowSize.getInput(), glowColor);
-                    RoundedUtils.drawRound((float) n6, (float) n7, w, h, 8.0f, new Color(0, 0, 0, maxAlphaBackground));
-                    break;
-                }
-                case 1:
-                    RenderUtils.drawRoundedGradientOutlinedRectangle((float) n6, (float) n7, (float) n8, (float) (n9 + 13), 10.0f, Utils.mergeAlpha(Color.black.getRGB(), maxAlphaOutline), Utils.mergeAlpha(gradientColors[0], alpha), Utils.mergeAlpha(gradientColors[1], alpha));
-                    break;
+
+        float popProgress;
+        if (fadeTimer == null) {
+            long elapsed = System.currentTimeMillis() - popInStart;
+            popProgress = Math.min(1.0f, (float) elapsed / POP_IN_MS);
+            popProgress = easeOutBack(popProgress);
+        } else {
+            float raw = fadeTimer.getValueFloat(0.0f, 1.0f, 1);
+            popProgress = 1.0f - raw;
+            popProgress = Math.max(0.0f, popProgress * popProgress);
+        }
+
+        if (popProgress <= 0.001f) {
+            target = null;
+            healthBarTimer = null;
+            popInStart = -1;
+            return;
+        }
+
+        int alpha = (int) (255 * popProgress);
+        float scale = popProgress;
+        float centerX = (n6 + n8) * 0.5f;
+        float centerY = (n7 + n9 + 13) * 0.5f;
+
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(centerX, centerY, 0.0f);
+        GlStateManager.scale(scale, scale, 1.0f);
+        GlStateManager.translate(-centerX, -centerY, 0.0f);
+
+        final int maxAlphaOutline = Math.min(alpha, 110);
+        final int maxAlphaBackground = Math.min(alpha, 210);
+        final int[] gradientColors = Theme.getGradients((int) theme.getInput());
+        switch ((int) mode.getInput()) {
+            case 0: {
+                float w = Math.abs((float) n6 - n8);
+                float h = Math.abs((float) n7 - (n9 + 13));
+                BlurUtils.prepareBlur();
+                RoundedUtils.drawRound((float) n6, (float) n7, w, h, 8.0f, new Color(0, 0, 0, 255));
+                BlurUtils.blurEnd(1, 1.4f, 0.60f);
+                RoundedUtils.drawRound((float) n6, (float) n7, w, h, 8.0f, new Color(0, 0, 0, (int)(maxAlphaBackground * 0.4f)));
+                break;
             }
+            case 1:
+                RenderUtils.drawRoundedGradientOutlinedRectangle((float) n6, (float) n7, (float) n8, (float) (n9 + 13), 10.0f, Utils.mergeAlpha(Color.black.getRGB(), maxAlphaOutline), Utils.mergeAlpha(gradientColors[0], alpha), Utils.mergeAlpha(gradientColors[1], alpha));
+                break;
+        }
         final int n13 = n6 + 5 + headSize + 7;
         final int n14 = n8 - 6;
         final int n15 = n9;
@@ -190,52 +281,50 @@ public class TargetHUD extends Module {
             drawPlayerHead((EntityPlayer) target, headX, headY, headSize, headSize, alpha);
         }
 
-        // Bar background
-            RenderUtils.drawRoundedRectangle((float) n13, (float) n15, (float) n14, (float) (n15 + 5), 4.0f, Utils.mergeAlpha(Color.black.getRGB(), maxAlphaOutline));
-            int mergedGradientLeft = Utils.mergeAlpha(gradientColors[0], maxAlphaBackground);
-            int mergedGradientRight = Utils.mergeAlpha(gradientColors[1], maxAlphaBackground);
-            float healthBar = (float) (int) (n14 + (n13 - n14) * (1 - health));
-            boolean smoothBack = false;
-            if (healthBar != lastHealthBar && lastHealthBar - n13 >= 3 && healthBarTimer != null ) {
-                int type = mode.getInput() == 0 ? 4 : 1;
-                float diff = lastHealthBar - healthBar;
-                if (diff > 0) {
-                    lastHealthBar = lastHealthBar - healthBarTimer.getValueFloat(0, diff, type);
-                }
-                else {
-                    smoothBack = true;
-                    lastHealthBar = healthBarTimer.getValueFloat(lastHealthBar, healthBar, type);
-                }
+        RenderUtils.drawRoundedRectangle((float) n13, (float) n15, (float) n14, (float) (n15 + 5), 4.0f, Utils.mergeAlpha(Color.black.getRGB(), maxAlphaOutline));
+        int mergedGradientLeft = Utils.mergeAlpha(gradientColors[0], maxAlphaBackground);
+        int mergedGradientRight = Utils.mergeAlpha(gradientColors[1], maxAlphaBackground);
+        float healthBar = (float) (int) (n14 + (n13 - n14) * (1 - health));
+        boolean smoothBack = false;
+        if (healthBar != lastHealthBar && lastHealthBar - n13 >= 3 && healthBarTimer != null ) {
+            int type = mode.getInput() == 0 ? 4 : 1;
+            float diff = lastHealthBar - healthBar;
+            if (diff > 0) {
+                lastHealthBar = lastHealthBar - healthBarTimer.getValueFloat(0, diff, type);
             }
             else {
-                lastHealthBar = healthBar;
+                smoothBack = true;
+                lastHealthBar = healthBarTimer.getValueFloat(lastHealthBar, healthBar, type);
             }
-            if (healthColor.isToggled()) {
-                mergedGradientLeft = mergedGradientRight = Utils.mergeAlpha(Utils.getColorForHealth(health), maxAlphaBackground);
-            }
-            if (lastHealthBar > n14) { // exceeds total width then clamp
-                lastHealthBar = n14;
-            }
-
-            switch ((int) mode.getInput()) { // health bar
-                case 0:
-                    RenderUtils.drawRoundedRectangle((float) n13, (float) n15, lastHealthBar, (float) (n15 + 5), 4.0f, Utils.darkenColor(mergedGradientRight, 25));
-                    RenderUtils.drawRoundedGradientRect((float) n13, (float) n15, smoothBack ? lastHealthBar : healthBar, (float) (n15 + 5), 4.0f, mergedGradientLeft, mergedGradientLeft, mergedGradientRight, mergedGradientRight);
-                    break;
-                case 1:
-                    RenderUtils.drawRoundedGradientRect((float) n13, (float) n15, lastHealthBar, (float) (n15 + 5), 4.0f, mergedGradientLeft, mergedGradientLeft, mergedGradientRight, mergedGradientRight);
-                    break;
-            }
-            GL11.glPushMatrix();
-            GL11.glEnable(GL11.GL_BLEND);
-            mc.fontRendererObj.drawString(string, (float) n13, (float) y, (new Color(220, 220, 220, 255).getRGB() & 0xFFFFFF) | Utils.clamp(alpha + 15) << 24, true);
-            GL11.glDisable(GL11.GL_BLEND);
-            GL11.glPopMatrix();
         }
         else {
-            target = null;
-            healthBarTimer = null;
+            lastHealthBar = healthBar;
         }
+        if (healthColor.isToggled()) {
+            mergedGradientLeft = mergedGradientRight = Utils.mergeAlpha(Utils.getColorForHealth(health), maxAlphaBackground);
+        }
+        if (lastHealthBar > n14) {
+            lastHealthBar = n14;
+        }
+
+        switch ((int) mode.getInput()) {
+            case 0:
+                RenderUtils.drawRoundedRectangle((float) n13, (float) n15, lastHealthBar, (float) (n15 + 5), 4.0f, Utils.darkenColor(mergedGradientRight, 25));
+                RenderUtils.drawRoundedGradientRect((float) n13, (float) n15, smoothBack ? lastHealthBar : healthBar, (float) (n15 + 5), 4.0f, mergedGradientLeft, mergedGradientLeft, mergedGradientRight, mergedGradientRight);
+                break;
+            case 1:
+                RenderUtils.drawRoundedGradientRect((float) n13, (float) n15, lastHealthBar, (float) (n15 + 5), 4.0f, mergedGradientLeft, mergedGradientLeft, mergedGradientRight, mergedGradientRight);
+                break;
+        }
+        GL11.glEnable(GL11.GL_BLEND);
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        mindless.utility.font.RavenFontRenderer hudFont = HUD.getHudFontRenderer();
+        hudFont.drawString(string, (float) n13, (float) y, (new Color(220, 220, 220, 255).getRGB() & 0xFFFFFF) | Utils.clamp(alpha + 15) << 24, true);
+        GL11.glDisable(GL11.GL_BLEND);
+
+        GlStateManager.popMatrix();
     }
 
     private void drawPlayerHead(EntityPlayer player, int x, int y, int width, int height, int alpha) {
@@ -303,6 +392,14 @@ public class TargetHUD extends Module {
         fadeTimer = null;
         target = null;
         healthBarTimer = null;
+        popInStart = -1;
+    }
+
+    private static float easeOutBack(float t) {
+        float c1 = 1.70158f;
+        float c3 = c1 + 1.0f;
+        float tm1 = t - 1.0f;
+        return 1.0f + c3 * tm1 * tm1 * tm1 + c1 * tm1 * tm1;
     }
 
     public boolean isEspActiveFor(EntityLivingBase entity) {

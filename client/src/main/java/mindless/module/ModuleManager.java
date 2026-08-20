@@ -7,13 +7,11 @@ import mindless.module.impl.client.Relationships;
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.client.SpotifyMiniPlayer;
 import mindless.module.impl.combat.*;
-import mindless.module.impl.fun.*;
+import mindless.module.impl.fun.Capes;
 import mindless.module.impl.minigames.*;
 import mindless.module.impl.movement.*;
 import mindless.module.impl.render.ExtraBobbing;
 import mindless.module.impl.network.Backtrack;
-import mindless.module.impl.network.Freeze;
-import mindless.module.impl.network.Limbo;
 import mindless.module.impl.other.*;
 import mindless.module.impl.player.*;
 import mindless.module.impl.render.*;
@@ -37,9 +35,7 @@ public class ModuleManager {
 
     public static NameHider nameHider;
     public static FastPlace fastPlace;
-    public static MurderMystery murderMystery;
     public static InvMove invmove;
-    public static SkyWars skyWars;
     public static AntiFireball antiFireball;
     public static BedAura bedAura;
     public static FastMine fastMine;
@@ -103,8 +99,6 @@ public class ModuleManager {
     public static ShopHelper shopHelper;
     public static Autoblock autoBlock;
     public static Backtrack backtrack;
-    public static Limbo limbo;
-    public static Freeze freeze;
     public static Debug debug;
     public static mindless.script.Manager scriptManager;
 
@@ -147,23 +141,11 @@ public class ModuleManager {
         Capes capes = new Capes();
         this.addModule(capes);
         capes.enable();
-        this.addModule(new FlameTrail());
-        this.addModule(new SlyPort());
-        this.addModule(new Spin());
         this.addModule(new HitEffect());
 
         this.addModule(new AutoRequeue());
-        this.addModule(new AutoWho());
-        this.addModule(new ArenaStats());
         this.addModule(bedwars = new BedWars());
         this.addModule(shopHelper = new ShopHelper());
-        this.addModule(new BridgeInfo());
-        this.addModule(new DuelsStats());
-        this.addModule(murderMystery = new MurderMystery());
-        this.addModule(skyWars = new SkyWars());
-        this.addModule(new SpeedBuilders());
-        this.addModule(new SumoFences());
-        this.addModule(new WoolWars());
 
         this.addModule(bHop = new BHop());
         this.addModule(movementFix = new MovementFix());
@@ -208,8 +190,6 @@ public class ModuleManager {
         this.addModule(fastMine = new FastMine());
         this.addModule(fastPlace = new FastPlace());
         this.addModule(new FakeLag());
-        this.addModule(freeze = new Freeze());
-        this.addModule(limbo = new Limbo());
         this.addModule(backtrack = new Backtrack());
         this.addModule(new LagRange());
         this.addModule(new Freecam());
@@ -241,6 +221,7 @@ public class ModuleManager {
         this.addModule(freelook = new Freelook());
         this.addModule(new FallView());
         this.addModule(new Holdlook());
+        this.addModule(new DynamicIsland());
         this.addModule(hud = new HUD());
         this.addModule(new Notifications());
         this.addModule(new Indicators());

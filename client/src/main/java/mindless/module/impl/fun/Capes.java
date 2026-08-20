@@ -39,7 +39,7 @@ public class Capes extends Module {
     private static final ConcurrentHashMap<String, ResourceLocation> remoteCapes = new ConcurrentHashMap<>();
 
     public Capes() {
-        super("Capes", category.fun);
+        super("Capes", category.render);
         instance = this;
         this.registerSetting(displaySelf = new ButtonSetting("Display self", true));
         this.registerSetting(displayOthers = new ButtonSetting("Display others", true));
@@ -72,7 +72,7 @@ public class Capes extends Module {
 
         // Receive individual cape updates
         backend.on("cape_update", payload -> {
-            String uuid = payload.get("uuid").getAsString();
+            String uuid = payload.get("uuid").getAsString().replace("-", "");
             String cape = payload.get("cape").getAsString();
             if (cape.isEmpty()) {
                 remoteCapes.remove(uuid);
@@ -98,7 +98,8 @@ public class Capes extends Module {
     }
 
     private void loadRemoteCape(String uuid) {
-        if (remoteCapes.containsKey(uuid)) return;
+        String normalizedUuid = uuid.replace("-", "");
+        if (remoteCapes.containsKey(normalizedUuid)) return;
 
         Raven.getCachedExecutor().execute(() -> {
             try {
@@ -107,8 +108,8 @@ public class Capes extends Module {
                 mc.addScheduledTask(() -> {
                     DynamicTexture texture = new DynamicTexture(image);
                     ResourceLocation loc = mc.renderEngine.getDynamicTextureLocation(
-                            "remote_cape_" + uuid, texture);
-                    remoteCapes.put(uuid, loc);
+                            "remote_cape_" + normalizedUuid, texture);
+                    remoteCapes.put(normalizedUuid, loc);
                 });
             } catch (Exception ignored) {}
         });

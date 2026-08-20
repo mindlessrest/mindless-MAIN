@@ -2,7 +2,6 @@ package mindless.module.impl.client;
 
 import mindless.module.Module;
 import mindless.module.ModuleManager;
-import mindless.module.impl.minigames.BridgeInfo;
 import mindless.module.impl.player.HideWindow;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
@@ -219,27 +218,6 @@ public final class HudEditor {
                 });
             }
 
-            Module bridgeModule = ModuleManager.getModule("Bridge Info");
-            if (bridgeModule instanceof BridgeInfo) {
-                final BridgeInfo bridge = (BridgeInfo) bridgeModule;
-                elements.add(new Element("Bridge Info") {
-                    @Override
-                    void render() {
-                        setBounds(bridge.renderDesignerPreview());
-                    }
-
-                    @Override
-                    void moveTo(float left, float top) {
-                        bridge.setHudPosition(Math.round(left), Math.round(top));
-                        setBounds(bridge.renderDesignerPreview());
-                    }
-
-                    @Override
-                    void reset() {
-                        bridge.resetPosition();
-                    }
-                });
-            }
         }
 
         private float[] renderScoreboardPreview(Float requestedX, Float requestedY) {
@@ -268,12 +246,9 @@ public final class HudEditor {
             BlurUtils.prepareBlur();
             RoundedUtils.drawRound(left, top, panelWidth, panelHeight,
                     GuiIngameState.PANEL_RADIUS, 0xFF000000);
-            BlurUtils.blurEndRegion(1, 1.4F, GuiIngameState.PANEL_BLUR_OPACITY,
+            BlurUtils.blurEndRegion(2, 2.4f, GuiIngameState.PANEL_BLUR_OPACITY,
                     left - 2.0F, top - 2.0F, panelWidth + 4.0F, panelHeight + 4.0F);
-            RoundedUtils.drawRoundShadow(left, top, panelWidth, panelHeight,
-                    GuiIngameState.PANEL_RADIUS, GuiIngameState.PANEL_SHADOW_SOFTNESS,
-                    GuiIngameState.PANEL_SHADOW_COLOR);
-            RoundedUtils.drawLiquidGlass(left, top, panelWidth, panelHeight,
+            RoundedUtils.drawRound(left, top, panelWidth, panelHeight,
                     GuiIngameState.PANEL_RADIUS, GuiIngameState.PANEL_FILL_COLOR);
 
             GlStateManager.pushMatrix();

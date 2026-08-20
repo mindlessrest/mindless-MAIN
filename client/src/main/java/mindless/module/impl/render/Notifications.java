@@ -48,9 +48,9 @@ public class Notifications extends Module {
     private ResourceLocation texDisabled;
     private boolean texLoaded;
 
-    private static final float W       = 200.0f;
-    private static final float H       = 34.0f;
-    private static final float R       = 6.0f;
+    private static final float W       = 220.0f;
+    private static final float H       = 40.0f;
+    private static final float R       = 14.0f;
     private static final float GAP     = 5.0f;
     private static final float MARGIN  = 10.0f;
     private static final int   MAX     = 4;
@@ -221,15 +221,10 @@ public class Notifications extends Module {
 
     private void drawCard(Card c, float x, float y, RavenFontRenderer font,
                           float alpha, int a, int gradL, int gradR, long now) {
-        // Blur snapshot clipped to card bounds
         BlurUtils.prepareBlur();
-        RoundedUtils.drawRound(x, y, W, H, R, new Color(0, 0, 0, (int)(80 * alpha)));
-        BlurUtils.blurEnd(2, 2.8f, 0.45f);
-
-        // Panel fill + border via SDF outline shader (no corner artifact)
-        Color fill    = new Color(12, 12, 16, (int)(205 * alpha));
-        Color border  = new Color(255, 255, 255, (int)(22 * alpha));
-        RoundedUtils.drawRoundOutline(x, y, W, H, R, 0.8f, fill, border);
+        RoundedUtils.drawRound(x, y, W, H, R, new Color(0, 0, 0, 255));
+        BlurUtils.blurEnd(3, 3.0f, 0.85f);
+        RoundedUtils.drawRound(x, y, W, H, R, new Color(0, 0, 0, (int)(55 * alpha)));
 
         // Icon
         float iconSz = 14.0f;

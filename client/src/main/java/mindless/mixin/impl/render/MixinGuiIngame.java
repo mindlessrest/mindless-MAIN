@@ -97,9 +97,6 @@ public abstract class MixinGuiIngame {
         float bottom = top + panelHeight;
         HudRenderBounds.setScoreboard(left, top, right, bottom);
 
-        // Fully detach the scoreboard from any earlier HUD shader/framebuffer
-        // pass. This is intentionally explicit because legacy shader helpers
-        // mix direct OpenGL calls with GlStateManager's cached state.
         GL20.glUseProgram(0);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         Minecraft.getMinecraft().getFramebuffer().bindFramebuffer(true);
@@ -108,13 +105,9 @@ public abstract class MixinGuiIngame {
         BlurUtils.prepareBlur();
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
                 GuiIngameState.PANEL_RADIUS, 0xFF000000);
-        BlurUtils.blurEndRegion(1, 1.4f, GuiIngameState.PANEL_BLUR_OPACITY,
+        BlurUtils.blurEndRegion(2, 2.4f, GuiIngameState.PANEL_BLUR_OPACITY,
                 left - 2.0f, top - 2.0f, right - left + 4.0f, bottom - top + 4.0f);
-
-        RoundedUtils.drawRoundShadow(left, top, right - left, bottom - top,
-                GuiIngameState.PANEL_RADIUS, GuiIngameState.PANEL_SHADOW_SOFTNESS,
-                GuiIngameState.PANEL_SHADOW_COLOR);
-        RoundedUtils.drawLiquidGlass(left, top, right - left, bottom - top,
+        RoundedUtils.drawRound(left, top, right - left, bottom - top,
                 GuiIngameState.PANEL_RADIUS, GuiIngameState.PANEL_FILL_COLOR);
 
         // The scoreboard is rendered after several optional HUD modules. Give

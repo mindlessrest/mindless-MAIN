@@ -103,7 +103,7 @@ public class HitEffect extends Module {
     private long pendingSequence = Long.MIN_VALUE;
 
     public HitEffect() {
-        super("Hit Effect", category.fun, 0);
+        super("Hit Effect", category.render, 0);
         instance = this;
 
         GroupSetting audio = new GroupSetting("Hit sound");

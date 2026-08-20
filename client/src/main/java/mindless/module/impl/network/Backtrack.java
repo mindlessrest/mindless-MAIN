@@ -59,7 +59,7 @@ public class Backtrack extends Module {
     private boolean delayingPackets = false;
 
     public Backtrack() {
-        super("Backtrack", category.network);
+        super("Backtrack", category.combat);
         this.registerSetting(minDelay = new SliderSetting("Delay min", "ms", 150.0, 0.0, 500.0, 10.0));
         this.registerSetting(maxDelay = new SliderSetting("Delay max", "ms", 200.0, 50.0, 500.0, 10.0));
         this.registerSetting(minDistance = new SliderSetting("Distance (min)", 0.0, 0.0, 3.0, 0.1));

@@ -61,7 +61,7 @@ public class BedWars extends Module {
     private List<String> armoredPlayer = new ArrayList<>();
     private Map<String, String> lastHeldMap = new ConcurrentHashMap<>();
     private Map<BlockPos, Long> obsidianPos = new HashMap<>(); // blockPos, time received
-    public List<SkyWars.SpawnEggInfo> entitySpawnQueue = new ArrayList<>();
+    public List<SpawnEggInfo> entitySpawnQueue = new ArrayList<>();
     public List<Integer> spawnedMobs = new ArrayList<>(); // entity id
 
     private BlockPos spawnAnchor;
@@ -74,7 +74,7 @@ public class BedWars extends Module {
     private int obsidianColor = new Color(106, 13, 173).getRGB();
 
     public BedWars() {
-        super("Bed Wars", category.minigames);
+        super("Bed Wars", category.other);
         this.registerSetting(closestEnemy = new SliderSetting("Closest enemy", true, 0, CLOSEST_ENEMY_MODES));
         this.registerSetting(whitelistOwnBed = new ButtonSetting("Whitelist own bed", true));
         this.registerSetting(new DescriptionSetting("Game alerts"));
@@ -285,7 +285,7 @@ public class BedWars extends Module {
                     return;
                 }
                 Vec3 spawnPosition = new Vec3(e.entity.posX, e.entity.posY, e.entity.posZ);
-                for (SkyWars.SpawnEggInfo eggInfo : entitySpawnQueue) {
+                for (SpawnEggInfo eggInfo : entitySpawnQueue) {
                     if (eggInfo.spawnPos.distanceTo(spawnPosition) > 3 || Utils.timeBetween(mc.thePlayer.ticksExisted, eggInfo.tickSpawned) > 60) { // 3 seconds or not at spawn point then not own mob
                         return;
                     }
@@ -412,7 +412,7 @@ public class BedWars extends Module {
                         return;
                     }
                     if (oclass.getSimpleName().equals("EntityIronGolem")) {
-                        entitySpawnQueue.add(new SkyWars.SpawnEggInfo(p.getPosition(), mc.thePlayer.ticksExisted));
+                        entitySpawnQueue.add(new SpawnEggInfo(p.getPosition(), mc.thePlayer.ticksExisted));
                     }
                 }
             }
@@ -568,6 +568,16 @@ public class BedWars extends Module {
     private void ping() {
         if (shouldPing.isToggled()) {
             mc.thePlayer.playSound("note.pling", 1.0f, 1.0f);
+        }
+    }
+
+    public static class SpawnEggInfo {
+        public final Vec3 spawnPos;
+        public final int tickSpawned;
+
+        public SpawnEggInfo(BlockPos pos, int tickSpawned) {
+            this.spawnPos = new Vec3(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
+            this.tickSpawned = tickSpawned;
         }
     }
 }

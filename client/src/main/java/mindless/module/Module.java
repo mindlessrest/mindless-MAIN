@@ -253,11 +253,8 @@ public class Module {
         player,
         world,
         render,
-        minigames,
-        fun,
         other,
         client,
-        network,
         profiles,
         scripts,
         cloud;

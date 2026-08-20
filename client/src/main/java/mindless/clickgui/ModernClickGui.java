@@ -237,11 +237,7 @@ public final class ModernClickGui extends ClickGui {
         // detail width and content reveal without deforming panel geometry.
         drawPanels();
         drawSidebar(mx, my);
-        if (selectedCategory == Module.category.cloud) {
-            drawCloudPanel(mx, my);
-        } else {
-            drawModulePanel(mx, my);
-        }
+        drawModulePanel(mx, my);
         drawSettingsPanel(mx, my);
         drawCommandPalette(mx, my);
         drawAboutWindow(mx, my);
@@ -346,9 +342,6 @@ public final class ModernClickGui extends ClickGui {
         y += 5f;
         y = drawCategory(Module.category.profiles, y, mx, my);
         y = drawCategory(Module.category.scripts, y, mx, my);
-        if (mindless.backend.BackendClient.getInstance().isConnected()) {
-            y = drawCategory(Module.category.cloud, y, mx, my);
-        }
     }
 
     private float drawCategory(Module.category category, float y, int mx, int my) {
@@ -994,16 +987,14 @@ public final class ModernClickGui extends ClickGui {
         }
 
         if (mouseButton == 0 && beginScrollbarDrag(mx, my)) return;
-        if (selectedCategory != Module.category.cloud) {
-            float searchW = Math.min(170f, centerW * .43f);
-            float searchX = centerX + centerW - searchW - 16f;
-            searchFocused = inside(mx, my, searchX, baseY + 15, searchX + searchW, baseY + 39);
-            if (searchFocused) {
-                setSearchCaretFromMouse(mx, searchX + 11f, searchW - 35f, isShiftKeyDown());
-                activeText = null;
-                activeList = null;
-                return;
-            }
+        float searchW = Math.min(170f, centerW * .43f);
+        float searchX = centerX + centerW - searchW - 16f;
+        searchFocused = inside(mx, my, searchX, baseY + 15, searchX + searchW, baseY + 39);
+        if (searchFocused) {
+            setSearchCaretFromMouse(mx, searchX + 11f, searchW - 35f, isShiftKeyDown());
+            activeText = null;
+            activeList = null;
+            return;
         }
 
         float cy = baseY + 55f;
@@ -1016,14 +1007,6 @@ public final class ModernClickGui extends ClickGui {
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.profiles); return; }
         cy += CATEGORY_ROW_STEP;
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.scripts); return; }
-        cy += CATEGORY_ROW_STEP;
-        if (mindless.backend.BackendClient.getInstance().isConnected() && inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.cloud); return; }
-
-        // Cloud panel click handling
-        if (selectedCategory == Module.category.cloud) {
-            handleCloudClick(mx, my, mouseButton);
-            return;
-        }
 
         float top = baseY + 61f;
         float y = top + moduleScroll;
@@ -1324,9 +1307,6 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private List<Module> modulesFor(Module.category category) {
-        if (category == Module.category.cloud) {
-            return Collections.<Module>emptyList();
-        }
         if (category == Module.category.profiles) {
             List<Module> profiles = new ArrayList<Module>();
             profiles.add(profileManagerModule);
@@ -1752,25 +1732,6 @@ public final class ModernClickGui extends ClickGui {
                     x, y + 2.8f, x, y + 5.5f,
                     x - 3f, y + 5.5f, x + 3f, y + 5.5f);
                 break;
-            case minigames:
-                // 2x2 grid of rounded squares (apps icon)
-                lineBox(x - 5.5f, y - 5.5f, x - 1f, y - 1f, color);
-                lineBox(x + 1f, y - 5.5f, x + 5.5f, y - 1f, color);
-                lineBox(x - 5.5f, y + 1f, x - 1f, y + 5.5f, color);
-                lineBox(x + 1f, y + 1f, x + 5.5f, y + 5.5f, color);
-                break;
-            case fun:
-                // Sparkle / 4-point star
-                segments(color,
-                    x, y - 6.5f, x, y - 2f,
-                    x, y + 2f, x, y + 6.5f,
-                    x - 6.5f, y, x - 2f, y,
-                    x + 2f, y, x + 6.5f, y,
-                    x - 4.5f, y - 4.5f, x - 1.4f, y - 1.4f,
-                    x + 1.4f, y + 1.4f, x + 4.5f, y + 4.5f,
-                    x + 4.5f, y - 4.5f, x + 1.4f, y - 1.4f,
-                    x - 1.4f, y + 1.4f, x - 4.5f, y + 4.5f);
-                break;
             case other:
                 // Three horizontal dots
                 circle(x - 4.5f, y, 1.4f, color);
@@ -1787,16 +1748,6 @@ public final class ModernClickGui extends ClickGui {
                 circle(x + 1.5f, y - 4f, 1.3f, color);
                 circle(x - 2f, y, 1.3f, color);
                 circle(x + 2.5f, y + 4f, 1.3f, color);
-                break;
-            case network:
-                // Triangle network: 3 nodes + edges
-                circleOutline(x, y - 5f, 1.6f, color);
-                circleOutline(x - 5f, y + 4f, 1.6f, color);
-                circleOutline(x + 5f, y + 4f, 1.6f, color);
-                segments(color,
-                    x, y - 3.4f, x - 4f, y + 2.4f,
-                    x, y - 3.4f, x + 4f, y + 2.4f,
-                    x - 3.6f, y + 4f, x + 3.6f, y + 4f);
                 break;
             case profiles:
                 // ID card / bookmark
@@ -2459,9 +2410,6 @@ public final class ModernClickGui extends ClickGui {
                     case player: return "Automates or assists a player action.";
                     case render: return "Customizes a client-side visual effect.";
                     case world: return "Changes how the world is displayed or handled.";
-                    case minigames: return "Provides information or assistance for a minigame.";
-                    case network: return "Controls selected client network behavior.";
-                    case fun: return "Adds a cosmetic or playful client effect.";
                     case other: return "Provides an additional client utility.";
                     case client: return "Configures a Mindless client feature.";
                     default: return "Mindless module with configurable behavior.";
@@ -2481,7 +2429,6 @@ public final class ModernClickGui extends ClickGui {
 
     private String categoryName(Module.category category) {
         switch (category) {
-            case minigames: return "Minigames";
             case client: return "Settings";
             default: String n = category.name(); return Character.toUpperCase(n.charAt(0)) + n.substring(1);
         }
@@ -2490,8 +2437,8 @@ public final class ModernClickGui extends ClickGui {
     private String categoryMark(Module.category category) {
         switch (category) {
             case combat: return "C"; case movement: return "M"; case player: return "P"; case render: return "R";
-            case world: return "W"; case minigames: return "G"; case fun: return "F"; case other: return "O";
-            case client: return "S"; case network: return "N"; case profiles: return "P"; case scripts: return "<";
+            case world: return "W"; case other: return "O";
+            case client: return "S"; case profiles: return "P"; case scripts: return "<";
             default: return "*";
         }
     }

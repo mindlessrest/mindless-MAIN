@@ -88,17 +88,12 @@ public abstract class TransformerGuiIngame {
         Minecraft.getMinecraft().getFramebuffer().bindFramebuffer(true);
         GL11.glColorMask(true, true, true, true);
 
-        // Stencil + region composite — only blends the scoreboard area
         BlurUtils.prepareBlur();
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
                 GuiIngameState.PANEL_RADIUS, 0xFF000000);
-        BlurUtils.blurEndRegion(1, 1.4f, GuiIngameState.PANEL_BLUR_OPACITY,
+        BlurUtils.blurEndRegion(2, 2.4f, GuiIngameState.PANEL_BLUR_OPACITY,
                 left - 2, top - 2, right - left + 4, bottom - top + 4);
-
-        RoundedUtils.drawRoundShadow(left, top, right - left, bottom - top,
-                GuiIngameState.PANEL_RADIUS, GuiIngameState.PANEL_SHADOW_SOFTNESS,
-                GuiIngameState.PANEL_SHADOW_COLOR);
-        RoundedUtils.drawLiquidGlass(left, top, right - left, bottom - top,
+        RoundedUtils.drawRound(left, top, right - left, bottom - top,
                 GuiIngameState.PANEL_RADIUS, GuiIngameState.PANEL_FILL_COLOR);
 
         GlStateManager.enableTexture2D();
