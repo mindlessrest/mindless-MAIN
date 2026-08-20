@@ -55,6 +55,7 @@ public class BridgeAssist extends Module {
 
     private final ButtonSetting prePlace;
     private final ButtonSetting silentRotation;
+    private final ButtonSetting debug;
 
     private boolean sneakingFromModule;
     private boolean placed;
@@ -79,11 +80,16 @@ public class BridgeAssist extends Module {
     private int bridgeY = Integer.MIN_VALUE;
     private int aimHold;
 
+    /** Last reported trace stage, so an unchanged state does not spam chat every tick. */
+    private String lastStage = "";
+    private long lastStageAt;
+
     public BridgeAssist() {
         super("Bridge Assist", category.player);
 
         this.registerSetting(prePlace = new ButtonSetting("Pre place", false));
         this.registerSetting(silentRotation = new ButtonSetting("Silent rotation", false));
+        this.registerSetting(debug = new ButtonSetting("Debug", false));
 
         GroupSetting sneakingGroup = new GroupSetting("Sneaking");
         this.registerSetting(sneakingGroup);
@@ -212,16 +218,24 @@ public class BridgeAssist extends Module {
         }
         if (!Utils.nullCheck() || mc.currentScreen != null || mc.thePlayer.capabilities.isFlying) return;
         if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
+            stage("held by BedAura");
             return;
         }
 
-        if (lookingDown.isToggled() && mc.thePlayer.rotationPitch < 70f) return;
-        if (notMovingForward.isToggled() && mc.thePlayer.movementInput.moveForward > 0f) return;
+        if (lookingDown.isToggled() && mc.thePlayer.rotationPitch < 70f) {
+            stage("blocked by 'Looking down' condition (pitch " + Math.round(mc.thePlayer.rotationPitch) + ")");
+            return;
+        }
+        if (notMovingForward.isToggled() && mc.thePlayer.movementInput.moveForward > 0f) {
+            stage("blocked by 'Not moving forward' condition");
+            return;
+        }
 
         // Resolve the stack first without committing to it, so the slot only changes once a
         // target is actually reachable with it.
         int slot = blockSlot();
         if (slot == -1) {
+            stage("no placeable block in the hotbar");
             clearAim();
             restoreSlot();
             return;
@@ -240,12 +254,15 @@ public class BridgeAssist extends Module {
             // Still on the deck. Keep the previous aim alive for a few ticks so the view stays
             // where the next block goes, rather than snapping back between every placement.
             if (hasAim && aimHold > 0) {
+                stage("holding aim, nothing to place (deck still solid)");
                 aimHold--;
                 float[] hold = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch, 15, 20f);
                 e.setYaw(hold[0]);
                 e.setPitch(hold[1]);
                 return;
             }
+            stage("no target: square underfoot is solid or has no support"
+                    + " (deckY " + bridgeY + ", feetY " + String.format("%.2f", mc.thePlayer.getEntityBoundingBox().minY) + ")");
             clearAim();
             restoreSlot();
             return;
@@ -257,6 +274,8 @@ public class BridgeAssist extends Module {
         // choice flip between faces as the player moved, so the smoothing never had a fixed goal
         // and the rotation stalled a few degrees in.
         if (!aimStillValid(held, reach) && !acquireAim(wanted, held, reach, baseYaw, basePitch)) {
+            stage("target " + wanted.getX() + "," + wanted.getY() + "," + wanted.getZ()
+                    + " but no rotation reaches it (all support faces occluded or out of reach)");
             clearAim();
             restoreSlot();
             return;
@@ -276,6 +295,11 @@ public class BridgeAssist extends Module {
                 placeSide = mop.sideHit;
                 placeHitVec = mop.hitVec;
                 placeQueued = true;
+                stage("aligned on " + targetSupport.getX() + "," + targetSupport.getY() + ","
+                        + targetSupport.getZ() + " " + targetSide + " -> queued");
+            } else {
+                stage("rotating toward target (yaw " + Math.round(sm[0]) + ", pitch " + Math.round(sm[1])
+                        + "; want " + Math.round(aimYaw) + "/" + Math.round(aimPitch) + ")");
             }
         }
 
@@ -293,10 +317,18 @@ public class BridgeAssist extends Module {
         }
 
         ItemStack held = mc.thePlayer.getHeldItem();
-        if (held == null || !(held.getItem() instanceof ItemBlock)) return;
+        if (held == null || !(held.getItem() instanceof ItemBlock)) {
+            stage("place skipped: held item is not a block");
+            return;
+        }
         if (mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held, placeAtBlock, placeSide, placeHitVec)) {
             mc.thePlayer.swingItem();
             clearAim();
+            stage("placed at " + placeAtBlock.getX() + "," + placeAtBlock.getY() + "," + placeAtBlock.getZ()
+                    + " " + placeSide);
+        } else {
+            stage("place REJECTED by the controller at " + placeAtBlock.getX() + ","
+                    + placeAtBlock.getY() + "," + placeAtBlock.getZ() + " " + placeSide);
         }
     }
 
@@ -537,6 +569,23 @@ public class BridgeAssist extends Module {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Reports where the silent-rotation pipeline got to this tick.
+     *
+     * Only fires when the stage text changes, or every two seconds while it is unchanged, so a
+     * steady state reads as one line rather than twenty a second. Every early return in
+     * onClientRotation names itself, so the first thing that stops working is visible directly
+     * instead of having to be inferred from the module doing nothing.
+     */
+    private void stage(String text) {
+        if (debug == null || !debug.isToggled()) return;
+        long now = System.currentTimeMillis();
+        if (text.equals(lastStage) && now - lastStageAt < 2000L) return;
+        lastStage = text;
+        lastStageAt = now;
+        Utils.sendMessage("&7[BridgeAssist] &b" + text);
     }
 
     private void clearAim() {
