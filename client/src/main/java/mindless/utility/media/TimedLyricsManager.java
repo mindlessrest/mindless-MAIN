@@ -99,16 +99,31 @@ final class TimedLyricsManager {
      * When lyricsAvailable=false the DLL is still loading; show LOADING state.
      * When lyricsAvailable=true and lines are non-empty, deliver them directly.
      */
+    /**
+     * How long an empty track key is tolerated before the lyrics are actually dropped. The
+     * native side is polled every 50ms and occasionally returns nothing mid-transition; acting
+     * on a single blank poll made the panel drop its lyrics and resize for one frame.
+     */
+    private static final long EMPTY_TRACK_GRACE_MS = 900L;
+    private long emptyTrackSince = 0L;
+
     public synchronized void updateTrackFromNative(SystemMediaInfo mediaInfo,
             boolean lyricsAvailable, List<TimedLyrics.LyricsLine> lyricsLines) {
         String trackKey = buildTrackKey(mediaInfo);
         if (trackKey.isEmpty()) {
+            long now = System.currentTimeMillis();
+            if (emptyTrackSince == 0L) emptyTrackSince = now;
+            if (now - emptyTrackSince < EMPTY_TRACK_GRACE_MS) {
+                // Probably a blip between tracks: keep showing what we have.
+                return;
+            }
             cancelPendingRequest();
             activeTrackKey = "";
             pendingTrackKey = "";
             currentLyrics = TimedLyrics.empty();
             return;
         }
+        emptyTrackSince = 0L;
 
         boolean trackChanged = !trackKey.equals(activeTrackKey);
         activeTrackKey = trackKey;
@@ -121,7 +136,19 @@ final class TimedLyricsManager {
             TimedLyrics lyrics = TimedLyrics.of(lyricsLines);
             cache.put(trackKey, lyrics);
             currentLyrics = lyrics;
-        } else if (trackChanged || !currentLyrics.isAvailable()) {
+            return;
+        }
+
+        // Already fetched this track before: show it immediately rather than sitting on a
+        // loading state until the DLL gets round to reporting it again. This path never
+        // consulted the cache, so every repeat of a song re-waited for the fetch.
+        TimedLyrics cached = cache.get(trackKey);
+        if (cached != null && cached.isAvailable()) {
+            currentLyrics = cached;
+            return;
+        }
+
+        if (trackChanged || !currentLyrics.isAvailable()) {
             // DLL still fetching — show loading state
             currentLyrics = TimedLyrics.loading();
         }

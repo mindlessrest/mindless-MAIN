@@ -231,11 +231,15 @@ public final class SpotifyMiniPlayerRenderer {
         TimedLyrics timedLyrics = mediaVisible ? mediaClient.getTimedLyrics() : TimedLyrics.empty();
         long livePositionMs = mediaInfo.getLivePositionMs();
         boolean renderLyrics = showLyrics && timedLyrics.isAvailable() && !timedLyrics.getLines().isEmpty();
+        // Keep the lyrics area reserved while a fetch is in flight. Dropping it the instant the
+        // lyrics went unavailable made the panel shrink and grow again on every track change,
+        // which is most of what read as flicker.
+        boolean lyricsArea = showLyrics && (renderLyrics || timedLyrics.isLoading());
         LyricsTimeline lyricsTimeline = renderLyrics ? buildLyricsTimeline(mediaInfo, timedLyrics, livePositionMs) : null;
         RavenFontRenderer lyricFont = uiFont;
         float lowScaleBreathingRoom = lowScaleLayout ? 8.0F : 0.0F;
         float width = getPanelWidth(mediaVisible, showAlbumArt) * uiScale + lowScaleBreathingRoom;
-        float desiredHeight = getPanelHeight(mediaVisible, effectiveShowHeader, showDetails, showProgress, renderLyrics) * uiScale
+        float desiredHeight = getPanelHeight(mediaVisible, effectiveShowHeader, showDetails, showProgress, lyricsArea) * uiScale
                 + lowScaleBreathingRoom;
         float height = previewMode ? desiredHeight : updateAnimatedPanelHeight(desiredHeight);
         float radius = 2.5F;
@@ -310,7 +314,7 @@ public final class SpotifyMiniPlayerRenderer {
         if (renderLyrics) {
             lyricFont = getAdaptiveLyricFont(textScale * getLyricTextScaleMultiplier(), timedLyrics, textWidth);
         }
-        float lyricLineAdvance = renderLyrics ? lyricFont.getFontHeight() + Math.max(lowScaleLayout ? 1.0F : 1.5F, uiScale * (lowScaleLayout ? 1.4F : 1.8F)) : 0.0F;
+        float lyricLineAdvance = lyricsArea ? lyricFont.getFontHeight() + Math.max(lowScaleLayout ? 1.0F : 1.5F, uiScale * (lowScaleLayout ? 1.4F : 1.8F)) : 0.0F;
         String title = mediaVisible
                 ? safeText(mediaInfo.getTitle(), "Nothing playing")
                 : buildHeaderLabel(mediaInfo, mediaVisible);
@@ -329,13 +333,12 @@ public final class SpotifyMiniPlayerRenderer {
             }
         }
 
-        if (renderLyrics) {
+        if (lyricsArea) {
             float separatorY = titleY + totalTextHeight + Math.max(1.5F, 2.0F * uiScale);
-            int separatorColor = Utils.mergeAlpha(0xFFFFFF, Math.max(18, textAlpha / 7));
-            int separatorAccent = Utils.mergeAlpha(HUD.getHudColor(45.0D), Math.max(52, textAlpha / 3));
+            // One even rule. The second, taller bar over the first 28% made the separator look
+            // thicker on the left than on the right.
+            int separatorColor = Utils.mergeAlpha(0xFFFFFF, Math.max(22, textAlpha / 6));
             RenderUtils.drawRect(textX, separatorY, textX + textWidth, separatorY + 0.5F, separatorColor);
-            RenderUtils.drawRect(textX, separatorY, textX + Math.min(textWidth * 0.28F, 28.0F * uiScale),
-                    separatorY + 0.8F, separatorAccent);
             GL20.glUseProgram(0);
             GlStateManager.enableTexture2D();
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
@@ -344,8 +347,14 @@ public final class SpotifyMiniPlayerRenderer {
                     ? progressBarY - Math.max(4.0F, 4.75F * uiScale)
                     : y + height - padding;
             float lyricViewportHeight = Math.max(lyricLineAdvance, lyricBottom - lyricY);
-            renderLyricsTimeline(lyricFont, lyricsTimeline, textX, lyricY, textWidth,
-                    lyricLineAdvance, lyricViewportHeight, primaryColor, secondaryColor);
+            if (renderLyrics) {
+                renderLyricsTimeline(lyricFont, lyricsTimeline, textX, lyricY, textWidth,
+                        lyricLineAdvance, lyricViewportHeight, primaryColor, secondaryColor);
+            } else {
+                String status = timedLyrics.getStatusMessage();
+                if (status == null || status.isEmpty()) status = "Loading lyrics";
+                lyricFont.drawString(status, textX, lyricY, secondaryColor, false);
+            }
         }
 
         if (showProgress) {

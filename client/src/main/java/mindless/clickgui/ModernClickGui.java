@@ -365,7 +365,7 @@ public final class ModernClickGui extends ClickGui {
 
         float y = baseY + 55f;
         for (Module.category category : Module.category.values()) {
-            if (category == Module.category.profiles || category == Module.category.scripts || category == Module.category.cloud) continue;
+            if (isPinnedCategory(category)) continue;
             y = drawCategory(category, y, mx, my);
         }
         y += 2f;
@@ -373,6 +373,15 @@ public final class ModernClickGui extends ClickGui {
         y += 5f;
         y = drawCategory(Module.category.profiles, y, mx, my);
         y = drawCategory(Module.category.scripts, y, mx, my);
+        y = drawCategory(Module.category.theme, y, mx, my);
+    }
+
+    /** Categories drawn below the divider in a fixed order rather than in enum order. */
+    private static boolean isPinnedCategory(Module.category category) {
+        return category == Module.category.profiles
+                || category == Module.category.scripts
+                || category == Module.category.theme
+                || category == Module.category.cloud;
     }
 
     private float drawCategory(Module.category category, float y, int mx, int my) {
@@ -416,11 +425,9 @@ public final class ModernClickGui extends ClickGui {
         drawSearchText(sx, baseY + 15, searchW, baseY + 39);
         drawSearchGlyph(sx + searchW - 15, baseY + 27, searchFocused ? ACCENT : MUTED);
 
-        // A deliberate header separator with breathing room before the first
-        // card.  The short accent lead makes it read as structure, not as the
-        // top border of the first module.
-        line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 34));
-        line(centerX + 17, baseY + 55, centerX + 50, baseY + 55, withAlpha(ACCENT, 92));
+        // A single even rule. There used to be a short bright accent segment over the first
+        // 33px of it, which just read as the line being thicker on the left than the right.
+        line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 46));
         float top = baseY + 61f;
         float bottom = baseY + panelH - 12f;
         scissor(centerX + 8, top, centerX + centerW - 8, bottom, true);
@@ -471,8 +478,9 @@ public final class ModernClickGui extends ClickGui {
         drawSearchText(sx, baseY + 15, searchW, baseY + 39);
         drawSearchGlyph(sx + searchW - 15, baseY + 27, searchFocused ? ACCENT : MUTED);
 
-        line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 34));
-        line(centerX + 17, baseY + 55, centerX + 50, baseY + 55, withAlpha(ACCENT, 92));
+        // A single even rule. There used to be a short bright accent segment over the first
+        // 33px of it, which just read as the line being thicker on the left than the right.
+        line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 46));
 
         float top = baseY + 61f;
         float bottom = baseY + panelH - 12f;
@@ -616,8 +624,9 @@ public final class ModernClickGui extends ClickGui {
         bx = drawCloudFilterButton("Profiles", "profile", bx + 6, baseY + 20, mx, my);
         bx = drawCloudFilterButton("Scripts", "script", bx + 6, baseY + 20, mx, my);
 
-        line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 34));
-        line(centerX + 17, baseY + 55, centerX + 50, baseY + 55, withAlpha(ACCENT, 92));
+        // A single even rule. There used to be a short bright accent segment over the first
+        // 33px of it, which just read as the line being thicker on the left than the right.
+        line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 46));
 
         // Filter items
         java.util.List<mindless.backend.CloudManager.CloudItem> filtered = new java.util.ArrayList<>();
@@ -1259,7 +1268,7 @@ public final class ModernClickGui extends ClickGui {
 
         float cy = baseY + 55f;
         for (Module.category category : Module.category.values()) {
-            if (category == Module.category.profiles || category == Module.category.scripts || category == Module.category.cloud) continue;
+            if (isPinnedCategory(category)) continue;
             if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(category); return; }
             cy += CATEGORY_ROW_STEP;
         }
@@ -1267,6 +1276,8 @@ public final class ModernClickGui extends ClickGui {
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.profiles); return; }
         cy += CATEGORY_ROW_STEP;
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.scripts); return; }
+        cy += CATEGORY_ROW_STEP;
+        if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.theme); return; }
         // Theme picker click handling
         if (clickThemePanel(mx, my, mouseButton)) return;
 
