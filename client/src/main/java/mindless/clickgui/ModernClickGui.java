@@ -51,10 +51,12 @@ import javax.imageio.ImageIO;
  */
 public final class ModernClickGui extends ClickGui {
     private static final String LOGO_RESOURCE = "/assets/mindless/textures/gui/logo.png";
-    private static final String UI_FONT_REGULAR = "Sf-Regular";
-    private static final String UI_FONT_BOLD = "Sf-Bold";
+    private static final String FALLBACK_FONT_REGULAR = "Sf-Regular";
+    private static final String FALLBACK_FONT_BOLD = "Sf-Bold";
     private static final int LOGO_TEXTURE_WIDTH = 1536;
     private static final int LOGO_TEXTURE_HEIGHT = 1024;
+    /** Cloud is hidden from the sidebar; flip to re-expose it. */
+    private static final boolean SHOW_CLOUD_TAB = false;
     private static final float CATEGORY_ROW_HEIGHT = 21f;
     private static final float CATEGORY_ROW_STEP = 22f;
     private static final float MODULE_ROW_HEIGHT = 26f;
@@ -67,14 +69,31 @@ public final class ModernClickGui extends ClickGui {
     // palette itself is now lavender rather than the previous gold theme.
     private static int GOLD = ACCENT;
     private static int GOLD_SOFT = ACCENT_SOFT;
-    private static final int PANEL = argb(232, 13, 16, 18);
-    private static final int PANEL_ALT = argb(236, 15, 18, 20);
-    private static final int ROW = argb(224, 24, 27, 28);
-    private static final int ROW_HOVER = argb(236, 31, 34, 35);
-    private static final int CONTROL = argb(118, 7, 9, 10);
-    private static final int CONTROL_HOVER = argb(150, 28, 30, 31);
-    private static final int BORDER = argb(52, 210, 210, 204);
-    private static final int DIVIDER = argb(45, 210, 210, 204);
+    // Surfaces are no longer constants: a theme may repaint the whole chrome, not just the
+    // accent and text. DEFAULT_* keeps the stock look so surface theming can be switched off.
+    private static final int DEFAULT_PANEL = argb(232, 13, 16, 18);
+    private static final int DEFAULT_PANEL_ALT = argb(236, 15, 18, 20);
+    private static final int DEFAULT_ROW = argb(224, 24, 27, 28);
+    private static final int DEFAULT_ROW_HOVER = argb(236, 31, 34, 35);
+    private static final int DEFAULT_CONTROL = argb(118, 7, 9, 10);
+    private static final int DEFAULT_CONTROL_HOVER = argb(150, 28, 30, 31);
+    private static final int DEFAULT_BORDER = argb(52, 210, 210, 204);
+    private static final int DEFAULT_DIVIDER = argb(45, 210, 210, 204);
+
+    private static int PANEL = DEFAULT_PANEL;
+    private static int PANEL_ALT = DEFAULT_PANEL_ALT;
+    private static int ROW = DEFAULT_ROW;
+    private static int ROW_HOVER = DEFAULT_ROW_HOVER;
+    private static int CONTROL = DEFAULT_CONTROL;
+    private static int CONTROL_HOVER = DEFAULT_CONTROL_HOVER;
+    private static int BORDER = DEFAULT_BORDER;
+    private static int DIVIDER = DEFAULT_DIVIDER;
+    // The dropdown gets its own three so it is not welded to the panel and the accent.
+    private static int DROPDOWN_BG = DEFAULT_PANEL_ALT;
+    private static int DROPDOWN_BORDER = DEFAULT_BORDER;
+    private static int DROPDOWN_SELECTED = argb(80, 159, 143, 210);
+    /** What the surface palette was last derived from; -1 means "currently stock". */
+    private static int surfaceSeed = -1;
     private static int TEXT = argb(255, 235, 234, 230);
     private static int MUTED = argb(255, 157, 158, 156);
     private static int DIM = argb(255, 105, 108, 108);
@@ -107,6 +126,12 @@ public final class ModernClickGui extends ClickGui {
     private SliderSetting openDropdown;
     /** Screen Y of the open dropdown's trigger row, used for overlay positioning. */
     private float dropdownAnchorY = 0f;
+    /** Scroll inside the open dropdown, for option lists taller than the panel. */
+    private float dropdownScroll = 0f;
+    private float dropdownScrollTarget = 0f;
+    /** Visible height of the open dropdown, recomputed each frame; 0 when closed. */
+    private float dropdownViewH = 0f;
+    private float dropdownFullH = 0f;
     private ColorSetting openColor;
     private int draggingScrollbar;
     private float scrollbarDragOffset;
@@ -346,7 +371,7 @@ public final class ModernClickGui extends ClickGui {
         y += 5f;
         y = drawCategory(Module.category.profiles, y, mx, my);
         y = drawCategory(Module.category.scripts, y, mx, my);
-        if (mindless.backend.BackendClient.getInstance().isConnected()) {
+        if (SHOW_CLOUD_TAB && mindless.backend.BackendClient.getInstance().isConnected()) {
             y = drawCategory(Module.category.cloud, y, mx, my);
         }
     }
@@ -375,6 +400,10 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void drawModulePanel(int mx, int my) {
+        if (selectedCategory == Module.category.theme && search.trim().isEmpty()) {
+            drawThemePanel(mx, my);
+            return;
+        }
         List<Module> modules = filteredModules();
         drawText(search.trim().isEmpty() ? categoryName(selectedCategory) : "Search results",
                 centerX + 18, baseY + 18, TEXT, 1.45f, true);
@@ -404,6 +433,159 @@ public final class ModernClickGui extends ClickGui {
         modulesContentHeight = modules.size() * MODULE_ROW_STEP;
         scissor(0, 0, 0, 0, false);
         drawScrollbar(centerX + centerW - 7, top, bottom, moduleScroll, modulesContentHeight);
+    }
+
+    // --- Theme Panel ---
+    private static final int THEME_COLUMNS = 3;
+    private static final float THEME_GAP = 9f;
+    private static final float THEME_SIDE_PAD = 18f;
+    private static final float THEME_CARD_H = 78f;
+    /** Height of the full-bleed swatch across the top of the card. */
+    private static final float THEME_SWATCH_H = 47f;
+    /** Same nominal radius the rest of the chrome uses, so it tracks the Rounding setting. */
+    private static final float THEME_CARD_RADIUS = 10f;
+
+    private float themeCardWidth() {
+        float usable = centerW - THEME_SIDE_PAD * 2f - THEME_GAP * (THEME_COLUMNS - 1);
+        return Math.max(48f, usable / THEME_COLUMNS);
+    }
+
+    private float themeCardX(int column) {
+        return centerX + THEME_SIDE_PAD + column * (themeCardWidth() + THEME_GAP);
+    }
+
+    /**
+     * The theme category is a picker, not a module list, so it gets a grid of swatch cards:
+     * a colour panel on top and a dark name bar beneath. Left click applies, right click
+     * applies and opens the Theme Manager's settings.
+     */
+    private void drawThemePanel(int mx, int my) {
+        drawText("Theme", centerX + 18, baseY + 18, TEXT, 1.45f, true);
+        int count = mindless.module.impl.theme.ThemeManager.themeCount();
+        drawText(count + " themes", centerX + 18, baseY + 40, MUTED, .82f, false);
+
+        float searchW = Math.min(170f, centerW * .43f);
+        float sx = centerX + centerW - searchW - 16f;
+        boolean searchHover = inside(mx, my, sx, baseY + 15, sx + searchW, baseY + 39);
+        float searchState = animate(hoverAnimation, searchAnimationKey, searchFocused ? 1f : searchHover ? .55f : 0f, 16f);
+        rounded(sx, baseY + 15, sx + searchW, baseY + 39, 12f, mixColor(CONTROL, CONTROL_HOVER, searchState));
+        drawSearchText(sx, baseY + 15, searchW, baseY + 39);
+        drawSearchGlyph(sx + searchW - 15, baseY + 27, searchFocused ? ACCENT : MUTED);
+
+        line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 34));
+        line(centerX + 17, baseY + 55, centerX + 50, baseY + 55, withAlpha(ACCENT, 92));
+
+        float top = baseY + 61f;
+        float bottom = baseY + panelH - 12f;
+        scissor(centerX + 8, top, centerX + centerW - 8, bottom, true);
+
+        float step = THEME_CARD_H + THEME_GAP;
+        int rows = (count + THEME_COLUMNS - 1) / THEME_COLUMNS;
+        for (int i = 0; i < count; i++) {
+            float y = top + 6f + moduleScroll + (i / THEME_COLUMNS) * step;
+            if (y + THEME_CARD_H < top || y > bottom) continue;
+            drawThemeCard(i, themeCardX(i % THEME_COLUMNS), y, mx, my);
+        }
+        modulesContentHeight = rows * step + 16f;
+        scissor(0, 0, 0, 0, false);
+        drawScrollbar(centerX + centerW - 7, top, bottom, moduleScroll, modulesContentHeight);
+    }
+
+    private void drawThemeCard(int index, float x1, float y, int mx, int my) {
+        float w = themeCardWidth();
+        float x2 = x1 + w;
+        float y2 = y + THEME_CARD_H;
+        float splitY = y + THEME_SWATCH_H;
+        boolean selected = mindless.module.impl.theme.ThemeManager.selectedIndex() == index;
+        boolean hover = inside(mx, my, x1, y, x2, y2);
+
+        Object key = themeCardKey(index);
+        float hp = animate(hoverAnimation, key, hover ? 1f : 0f, 16f);
+        float sp = animate(selectedAnimation, key, selected ? 1f : 0f, 14f);
+
+        java.awt.Color fromC = mindless.module.impl.theme.ThemeManager.themeGradFrom(index);
+        java.awt.Color toC = mindless.module.impl.theme.ThemeManager.themeGradTo(index);
+        java.awt.Color accent = mindless.module.impl.theme.ThemeManager.themeAccent(index);
+        int from = argb(255, fromC.getRed(), fromC.getGreen(), fromC.getBlue());
+        int to = argb(255, toC.getRed(), toC.getGreen(), toC.getBlue());
+
+        // One surface: the card supplies its own background and all four corners, and the
+        // swatch sits on it full-bleed. No second panel colour underneath the label, which is
+        // what made it read as two stacked overlays.
+        int cardColor = mixColor(ROW, ROW_HOVER, Math.max(hp * .85f, sp * .6f));
+        if (sp > .01f || hp > .01f) {
+            outline(x1, y, x2, y2, THEME_CARD_RADIUS,
+                    withAlpha(ACCENT, (int) (215 * sp + 75 * hp * (1f - sp))));
+        }
+        rounded(x1, y, x2, y2, THEME_CARD_RADIUS, cardColor);
+
+        float r = radius(THEME_CARD_RADIUS, w, THEME_CARD_H);
+
+        // Vertical ramp. The top strip keeps the rounded corners of the card; below it the bands
+        // are plain rects, which is exactly right because that edge is interior and square.
+        rounded(x1, y, x2, splitY, THEME_CARD_RADIUS, from);
+        float bandTop = y + r;
+        if (splitY > bandTop) {
+            int bands = Math.max(4, (int) ((splitY - bandTop) / 2f));
+            float bandH = (splitY - bandTop) / bands;
+            // Drawn as clamped rects rather than under a nested scissor: disabling the scissor
+            // afterwards would drop the panel clip and let later cards escape the GUI.
+            for (int i = 0; i < bands; i++) {
+                float by = bandTop + i * bandH;
+                float bh = Math.min(bandH + 1f, splitY - by);
+                if (bh <= 0f) break;
+                float t = (by - y) / Math.max(1f, splitY - y);
+                RenderUtils.drawRect(x1, by, x2, by + bh, mixColor(from, to, t));
+            }
+        }
+
+        if (selected) drawCheck(x2 - 13f, y + 13f, argb(255, accent.getRed(), accent.getGreen(), accent.getBlue()));
+
+        float textLeft = x1 + 9f;
+        float nameMax = w - 18f;
+        drawTextVCentered(trim(mindless.module.impl.theme.ThemeManager.themeName(index), nameMax, .80f, true), textLeft,
+                splitY + 2f, splitY + 17f, selected ? TEXT : mixColor(MUTED, TEXT, .5f + hp * .5f), .80f, true);
+        drawTextVCentered(selected ? "Active" : "Right click to edit", textLeft, splitY + 15f, y2 - 3f,
+                selected ? withAlpha(ACCENT, 235) : withAlpha(DIM, (int) (150 + 80 * hp)), .60f, false);
+    }
+
+    private void drawCheck(float cx, float cy, int color) {
+        circle(cx, cy, 6.5f, withAlpha(color, 210));
+        segments(argb(255, 20, 20, 24),
+                cx - 2.8f, cy, cx - 0.9f, cy + 2.2f,
+                cx - 0.9f, cy + 2.2f, cx + 3f, cy - 2.4f);
+    }
+
+    private final Map<Integer, Object> themeCardKeys = new java.util.HashMap<Integer, Object>();
+    private Object themeCardKey(int index) {
+        Object k = themeCardKeys.get(index);
+        if (k == null) { k = new Object(); themeCardKeys.put(index, k); }
+        return k;
+    }
+
+    /** Returns true when the click was consumed by the theme picker. */
+    private boolean clickThemePanel(int mx, int my, int mouseButton) {
+        if (selectedCategory != Module.category.theme || !search.trim().isEmpty()) return false;
+        float top = baseY + 61f;
+        float bottom = baseY + panelH - 12f;
+        if (!inside(mx, my, centerX + 8, top, centerX + centerW - 8, bottom)) return false;
+
+        float w = themeCardWidth();
+        float step = THEME_CARD_H + THEME_GAP;
+        int count = mindless.module.impl.theme.ThemeManager.themeCount();
+        for (int i = 0; i < count; i++) {
+            float x1 = themeCardX(i % THEME_COLUMNS);
+            float y = top + 6f + moduleScroll + (i / THEME_COLUMNS) * step;
+            if (inside(mx, my, x1, y, x1 + w, y + THEME_CARD_H)) {
+                mindless.module.impl.theme.ThemeManager.select(i);
+                if (mouseButton == 1 && mindless.module.ModuleManager.themeManager != null) {
+                    // Right click: jump to the manager's settings to tune this theme.
+                    openModule(mindless.module.ModuleManager.themeManager);
+                }
+                return true;
+            }
+        }
+        return true; // clicks in the picker never fall through to module handling
     }
 
     // --- Cloud Panel ---
@@ -678,40 +860,48 @@ public final class ModernClickGui extends ClickGui {
         int n = openDropdown.getOptions().length;
         float fullH = n * 21f + 4f;
 
-        // Slide-down: reveal from top using scissor height = open * fullH
-        float revealH = open * fullH;
-        // Clip to panel bounds and slide reveal
+        // A long option list used to simply run off the bottom of the panel with no way to
+        // reach the hidden entries. Cap the box at the panel and scroll inside it instead.
         float panelBottom = baseY + panelH - 4f;
+        float viewH = Math.max(23f, Math.min(fullH, panelBottom - rowTop));
+        dropdownFullH = fullH;
+        dropdownViewH = viewH;
+        clampDropdownScroll();
+        dropdownScroll += (dropdownScrollTarget - dropdownScroll) * .32f;
+        if (Math.abs(dropdownScrollTarget - dropdownScroll) < .08f) dropdownScroll = dropdownScrollTarget;
+
+        // Slide-down: reveal from top using scissor height = open * viewH
         float clipTop = rowTop;
-        float clipBottom = Math.min(panelBottom, rowTop + revealH);
+        float clipBottom = Math.min(panelBottom, rowTop + open * viewH);
         if (clipBottom <= clipTop) return;
 
         scissor(detailX + 4f, clipTop, detailX + detailW - 4f, clipBottom, true);
 
         // Shadow behind dropdown
-        RoundedUtils.drawRoundShadow(dx1 - 1, rowTop, dx2 - dx1 + 2, fullH, 5f, 6f, argb((int)(80 * open), 0, 0, 0));
+        RoundedUtils.drawRoundShadow(dx1 - 1, rowTop, dx2 - dx1 + 2, viewH, 5f, 6f, argb((int)(80 * open), 0, 0, 0));
 
-        // Keep dropdown surface aligned with rest of dark ClickGUI palette.
+        // Keep dropdown surface aligned with rest of the themed ClickGUI palette.
         int bgAlpha = (int)(255 * open);
-        net.minecraft.client.gui.Gui.drawRect((int) dx1, (int) rowTop, (int) dx2, (int)(rowTop + fullH),
-                withAlpha(PANEL_ALT, bgAlpha));
-        outline(dx1, rowTop, dx2, rowTop + fullH, 5f, withAlpha(BORDER, bgAlpha));
+        net.minecraft.client.gui.Gui.drawRect((int) dx1, (int) rowTop, (int) dx2, (int)(rowTop + viewH),
+                fa(DROPDOWN_BG, open));
+        outline(dx1, rowTop, dx2, rowTop + viewH, 5f, fa(DROPDOWN_BORDER, open));
         resetTextRenderState();
 
         // Options
-        float oy = rowTop + 2f;
+        float oy = rowTop + 2f + dropdownScroll;
         for (int i = 0; i < n; i++) {
+            if (oy + 19 < rowTop || oy > rowTop + viewH) { oy += 21f; continue; }
             boolean sel = (int) openDropdown.getInput() == i;
-            boolean hov = inside(mx, my, dx1 + 2, oy, dx2 - 2, oy + 19);
+            boolean hov = inside(mx, my, dx1 + 2, Math.max(oy, rowTop), dx2 - 2, Math.min(oy + 19, rowTop + viewH));
             Object rowKey = getDropdownRowKey(openDropdown, i);
             float rowHp = animate(hoverAnimation, rowKey, hov ? 1f : 0f, 16f);
             // Selected row: solid accent bg; hover row: subtle tint
             if (sel) {
                 net.minecraft.client.gui.Gui.drawRect((int)(dx1 + 2), (int) oy, (int)(dx2 - 2), (int)(oy + 19),
-                        withAlpha(ACCENT, (int)(80 * open)));
+                        fa(DROPDOWN_SELECTED, open));
             } else if (rowHp > 0.01f) {
                 net.minecraft.client.gui.Gui.drawRect((int)(dx1 + 2), (int) oy, (int)(dx2 - 2), (int)(oy + 19),
-                        withAlpha(ACCENT, (int)(30 * rowHp * open)));
+                        fa(DROPDOWN_SELECTED, rowHp * open * .38f));
             }
             int textColor = sel ? TEXT : mixColor(MUTED, TEXT, rowHp);
             resetTextRenderState();
@@ -721,8 +911,40 @@ public final class ModernClickGui extends ClickGui {
                     .68f, sel);
             oy += 21f;
         }
+
+        // Scroll indicator, only while the list actually overflows
+        if (fullH > viewH + .5f) {
+            float track = viewH - 8f;
+            float thumb = Math.max(14f, track * (viewH / fullH));
+            float progress = dropdownFullH == dropdownViewH ? 0f
+                    : (-dropdownScroll) / (dropdownFullH - dropdownViewH);
+            float ty = rowTop + 4f + (track - thumb) * clamp01(progress);
+            rounded(dx2 - 4.5f, ty, dx2 - 2.5f, ty + thumb, 1f, withAlpha(ACCENT, (int)(120 * open)));
+        }
+
         resetTextRenderState();
         scissor(0, 0, 0, 0, false);
+    }
+
+    /** Clears everything cached about an open dropdown's box. */
+    private void closeDropdownState() {
+        dropdownScroll = dropdownScrollTarget = 0f;
+        dropdownViewH = dropdownFullH = 0f;
+    }
+
+    /** Keeps the dropdown scroll inside its content, and pins it at 0 when nothing overflows. */
+    private void clampDropdownScroll() {
+        float min = Math.min(0f, dropdownViewH - dropdownFullH);
+        dropdownScrollTarget = Math.max(min, Math.min(0f, dropdownScrollTarget));
+        dropdownScroll = Math.max(min, Math.min(0f, dropdownScroll));
+    }
+
+    /** True when the pointer is over the open dropdown's box. */
+    private boolean overDropdown(int mx, int my) {
+        if (openDropdown == null || openDropdown.getOptions() == null) return false;
+        float x2 = detailX + detailW - 15;
+        float top = dropdownAnchorY + 30f;
+        return inside(mx, my, x2 - 128, top, x2, top + dropdownViewH);
     }
 
     private final Map<Integer, Object> dropdownRowKeys = new java.util.HashMap<Integer, Object>();
@@ -1017,7 +1239,10 @@ public final class ModernClickGui extends ClickGui {
         cy += CATEGORY_ROW_STEP;
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.scripts); return; }
         cy += CATEGORY_ROW_STEP;
-        if (mindless.backend.BackendClient.getInstance().isConnected() && inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.cloud); return; }
+        if (SHOW_CLOUD_TAB && mindless.backend.BackendClient.getInstance().isConnected() && inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.cloud); return; }
+
+        // Theme picker click handling
+        if (clickThemePanel(mx, my, mouseButton)) return;
 
         // Cloud panel click handling
         if (selectedCategory == Module.category.cloud) {
@@ -1070,18 +1295,22 @@ public final class ModernClickGui extends ClickGui {
                 float x2 = detailX + detailW - 15;
                 float dx1 = x2 - 128, dx2 = x2;
                 float overlayTop = dropdownAnchorY + 30f;
-                float overlayBot = overlayTop + openDropdown.getOptions().length * 21f + 4f;
+                // Hit-test the visible box, not the full list: rows clipped off the bottom
+                // are not on screen and must not swallow clicks meant for the panel.
+                float overlayBot = overlayTop + dropdownViewH;
                 if (inside(mx, my, dx1, overlayTop, dx2, overlayBot)) {
-                    int index = (int)((my - (overlayTop + 2f)) / 21f);
+                    int index = (int)((my - (overlayTop + 2f + dropdownScroll)) / 21f);
                     if (index >= 0 && index < openDropdown.getOptions().length) {
                         openDropdown.setValueWithEvent(index);
                         if (selectedModule != null) selectedModule.onSlide(openDropdown);
                     }
                     openDropdown = null;
+                    closeDropdownState();
                     return;
                 }
                 // Click outside overlay → close it and consume the click
                 openDropdown = null;
+                closeDropdownState();
                 return;
             }
             clickSetting(mx, my, mouseButton);
@@ -1121,6 +1350,7 @@ public final class ModernClickGui extends ClickGui {
             if (slider.isString) {
                 // toggle open/close — actual option selection handled in mouseClicked overlay block
                 openDropdown = openDropdown == slider ? null : slider;
+                closeDropdownState(); // a freshly opened list always starts at the top
             } else if (button == 0 && inside(mx, my, x2 - 60, y + 2, x2 + 1, y + 20)) {
                 beginSliderValueEdit(slider);
             } else if (button == 1 && slider.canBeDisabled) {
@@ -1209,6 +1439,13 @@ public final class ModernClickGui extends ClickGui {
         int my = (int) Math.floor(height - Mouse.getEventY() * height / (double) mc.displayHeight - 1);
         float speed = Gui.scrollSpeed == null ? 28f : (float) Math.max(8d, Math.min(90d, Gui.scrollSpeed.getInput()));
         float amount = wheel > 0 ? speed : -speed;
+        // An open dropdown takes the wheel first, otherwise the panel behind it scrolls out
+        // from under the options and the hidden entries stay unreachable.
+        if (overDropdown(mx, my)) {
+            dropdownScrollTarget += amount;
+            clampDropdownScroll();
+            return;
+        }
         if (inside(mx, my, centerX + 8, baseY + 61, centerX + centerW - 8, baseY + panelH - 12)) moduleScrollTarget += amount;
         else if (inside(mx, my, detailX + 8, baseY + 59, detailX + detailW - 8, baseY + panelH - 12)) settingScrollTarget += amount;
         clampScrolls();
@@ -1416,6 +1653,7 @@ public final class ModernClickGui extends ClickGui {
         activeList = null;
         draggingSlider = null;
         openDropdown = null;
+        closeDropdownState();
         openColor = null;
         binding = null;
     }
@@ -1590,15 +1828,42 @@ public final class ModernClickGui extends ClickGui {
                 7.5f * renderScale, 6f * renderScale, argb(108, 0, 0, 0));
     }
 
+    /**
+     * Every corner in this screen goes through here or {@link #rounded}, so the theme's rounding
+     * percentage only has to be applied in these two places. Clamped to half the shorter side so
+     * a large value cannot invert the geometry.
+     */
+    private static float radius(float radius, float w, float h) {
+        float scaled = radius * mindless.module.impl.theme.ThemeManager.roundingScale();
+        return Math.max(0f, Math.min(scaled, Math.min(Math.abs(w), Math.abs(h)) * .5f));
+    }
+
+    /**
+     * Font family for this screen. The two family names used to be compile-time constants, so
+     * the Font setting changed nothing here -- it is read live now. Only the SF family ships a
+     * separate bold face; every other family reuses itself for headers.
+     */
+    private static String uiFontFamily(boolean bold) {
+        String family = Gui.getSelectedFontName();
+        // "Minecraft" is the bitmap font; it cannot be rasterised at arbitrary heights and looks
+        // like a different UI entirely here, so this screen always uses a real typeface.
+        if (family == null || family.isEmpty() || "Minecraft".equalsIgnoreCase(family)) {
+            return bold ? FALLBACK_FONT_BOLD : FALLBACK_FONT_REGULAR;
+        }
+        if (!bold) return family;
+        return FALLBACK_FONT_REGULAR.equals(family) ? FALLBACK_FONT_BOLD : family;
+    }
+
     private void outline(float x1, float y1, float x2, float y2, float radius, int color) {
         // Draw a 1px larger rect in the border color behind the fill.
         // Avoids the roundRectOutline shader's transparent-fill blending artifact.
         float b = 1f;
-        RoundedUtils.drawRound(x1 - b, y1 - b, (x2 - x1) + b * 2f, (y2 - y1) + b * 2f, radius + b, color);
+        float w = (x2 - x1) + b * 2f, h = (y2 - y1) + b * 2f;
+        RoundedUtils.drawRound(x1 - b, y1 - b, w, h, radius(radius + b, w, h), color);
     }
 
     private void rounded(float x1, float y1, float x2, float y2, float radius, int color) {
-        RoundedUtils.drawRound(x1, y1, x2 - x1, y2 - y1, radius, color);
+        RoundedUtils.drawRound(x1, y1, x2 - x1, y2 - y1, radius(radius, x2 - x1, y2 - y1), color);
     }
     private void line(float x1, float y1, float x2, float y2, int color) {
         // Fractional geometry stays visually one physical pixel after the GUI
@@ -1808,6 +2073,14 @@ public final class ModernClickGui extends ClickGui {
                     x + 1f, y + .6f, x + 4.5f, y + .6f,
                     x + 1f, y + 2.8f, x + 4.5f, y + 2.8f);
                 break;
+            case theme:
+                // Paint palette: rounded body with a thumb hole and three paint wells
+                circleOutline(x, y, 6f, color);
+                circleOutline(x + 2.6f, y + 2.6f, 1.6f, color);
+                circle(x - 3.2f, y - 1.2f, 1.25f, color);
+                circle(x - 0.4f, y - 3.6f, 1.25f, color);
+                circle(x + 2.8f, y - 2.4f, 1.25f, color);
+                break;
             case scripts:
                 // Code brackets </>
                 segments(color,
@@ -1910,15 +2183,27 @@ public final class ModernClickGui extends ClickGui {
         GlStateManager.disableBlend();
     }
 
+    /** Nominal body size; every other scale is expressed as a multiple of this. */
+    private static final float BASE_TEXT_PX = 13f;
+
+    /**
+     * Renderer rasterised at the exact height this text will occupy, so it can be drawn at
+     * scale 1.0. Previously headers came from an 11px atlas drawn at 1.45x and body text from a
+     * 13px atlas drawn at 0.63x -- both resampled, which is what made the GUI look soft.
+     */
+    private RavenFontRenderer scaledFont(float scale, boolean bold) {
+        float px = Math.max(6f, Math.round(BASE_TEXT_PX * scale * TEXT_SCALE));
+        return FontManager.getClickGuiRenderer(uiFontFamily(bold), px);
+    }
+
     private RavenFontRenderer uiFont(boolean bold) {
-        return bold ? FontManager.getClickGuiHeaderRenderer(UI_FONT_BOLD)
-                : FontManager.getClickGuiSettingRenderer(UI_FONT_REGULAR);
+        return scaledFont(1f, bold);
     }
 
     /** Returns the 9px renderer rasterised at its natural size — always rendered at scale 1.0
      *  so the atlas is never downsampled and glyphs stay crisp. */
     private RavenFontRenderer uiSmallFont() {
-        return FontManager.getClickGuiSmallRenderer(UI_FONT_REGULAR);
+        return FontManager.getClickGuiSmallRenderer(uiFontFamily(false));
     }
 
     /** Draws text using the 9px small renderer at scale 1.0 — no GL downscaling, no blur. */
@@ -1951,9 +2236,14 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void drawText(String text, float x, float y, int color, float scale, boolean bold) {
-        scale *= TEXT_SCALE;
-        RavenFontRenderer renderer = uiFont(bold);
-        GL11.glPushMatrix(); GL11.glTranslatef(x, y, 0); GL11.glScalef(scale, scale, 1);
+        RavenFontRenderer renderer = scaledFont(scale, bold);
+        // Snap to the physical pixel grid. A fractional translate samples the glyph atlas
+        // between texels, which smears every edge; this is the other half of the crispness fix.
+        double rs = getActiveRenderScale();
+        if (rs <= 0) rs = 1;
+        float sx = (float) (Math.round(x * rs) / rs);
+        float sy = (float) (Math.round(y * rs) / rs);
+        GL11.glPushMatrix(); GL11.glTranslatef(sx, sy, 0);
         renderer.drawString(text == null ? "" : text, 0, 0, color, false); GL11.glPopMatrix();
     }
 
@@ -1965,10 +2255,10 @@ public final class ModernClickGui extends ClickGui {
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    private float textWidth(String text, float scale, boolean bold) { return uiFont(bold).getStringWidth(text == null ? "" : text) * scale * TEXT_SCALE; }
+    private float textWidth(String text, float scale, boolean bold) { return scaledFont(scale, bold).getStringWidth(text == null ? "" : text); }
     private void drawCentered(String text, float x1, float x2, float y, int color, float scale, boolean bold) { drawText(text, (x1 + x2 - textWidth(text, scale, bold)) / 2f, y, color, scale, bold); }
     private void drawTextVCentered(String text, float x, float y1, float y2, int color, float scale, boolean bold) {
-        float height = uiFont(bold).getFontHeight() * scale * TEXT_SCALE;
+        float height = scaledFont(scale, bold).getFontHeight();
         drawText(text, x, y1 + (y2 - y1 - height) / 2f, color, scale, bold);
     }
     private void drawCenteredV(String text, float x1, float x2, float y1, float y2, int color, float scale, boolean bold) {
@@ -1977,8 +2267,8 @@ public final class ModernClickGui extends ClickGui {
     private void drawTwoLineTextVCentered(String title, String subtitle, float x, float y1, float y2,
                                           int titleColor, int subtitleColor, float titleScale,
                                           float subtitleScale, float gap, float verticalOffset) {
-        float titleHeight = uiFont(true).getFontHeight() * titleScale * TEXT_SCALE;
-        float subtitleHeight = uiFont(false).getFontHeight() * subtitleScale * TEXT_SCALE;
+        float titleHeight = scaledFont(titleScale, true).getFontHeight();
+        float subtitleHeight = scaledFont(subtitleScale, false).getFontHeight();
         float blockHeight = titleHeight + gap + subtitleHeight;
         float top = y1 + (y2 - y1 - blockHeight) / 2f + verticalOffset;
         drawText(title, x, top, titleColor, titleScale, true);
@@ -1986,11 +2276,10 @@ public final class ModernClickGui extends ClickGui {
     }
     private String trim(String text, float maxWidth, float scale, boolean bold) {
         if (text == null) return "";
-        RavenFontRenderer f = uiFont(bold);
-        float renderScale = scale * TEXT_SCALE;
-        if (f.getStringWidth(text) * renderScale <= maxWidth) return text;
+        RavenFontRenderer f = scaledFont(scale, bold);
+        if (f.getStringWidth(text) <= maxWidth) return text;
         String end = "..."; int i = text.length();
-        while (i > 0 && f.getStringWidth(text.substring(0, i) + end) * renderScale > maxWidth) i--;
+        while (i > 0 && f.getStringWidth(text.substring(0, i) + end) > maxWidth) i--;
         return text.substring(0, i) + end;
     }
 
@@ -2464,6 +2753,7 @@ public final class ModernClickGui extends ClickGui {
                     case fun: return "Adds a cosmetic or playful client effect.";
                     case other: return "Provides an additional client utility.";
                     case client: return "Configures a Mindless client feature.";
+                    case theme: return "Controls a Mindless client theme or colour scheme.";
                     default: return "Mindless module with configurable behavior.";
                 }
         }
@@ -2491,7 +2781,8 @@ public final class ModernClickGui extends ClickGui {
         switch (category) {
             case combat: return "C"; case movement: return "M"; case player: return "P"; case render: return "R";
             case world: return "W"; case minigames: return "G"; case fun: return "F"; case other: return "O";
-            case client: return "S"; case network: return "N"; case profiles: return "P"; case scripts: return "<";
+            case client: return "S"; case theme: return "T";
+            case network: return "N"; case profiles: return "P"; case scripts: return "<";
             default: return "*";
         }
     }
@@ -2509,23 +2800,100 @@ public final class ModernClickGui extends ClickGui {
     private static int argb(int a, int r, int g, int b) { return ((a&255)<<24)|((r&255)<<16)|((g&255)<<8)|(b&255); }
 
     private void updateThemePalette() {
+        // Push a pending theme selection into Gui's colour settings before reading them, so
+        // picking a theme repaints on the same frame instead of on the next GUI open.
+        mindless.module.impl.theme.ThemeManager.poll();
         int next = Gui.themeColor == null ? argb(255, 159, 143, 210)
                 : 0xFF000000 | Gui.themeColor.getRGB();
         int nextText = Gui.themeTextColor == null ? argb(255, 235, 234, 230)
                 : 0xFF000000 | Gui.themeTextColor.getRGB();
-        if (next == ACCENT && nextText == TEXT) return;
-        ACCENT = GOLD = next;
-        ACCENT_SOFT = GOLD_SOFT = withAlpha(next, 42);
-        TEXT = nextText;
-        MUTED = mixColor(nextText, argb(255, 95, 98, 98), .56f);
-        DIM = mixColor(nextText, argb(255, 70, 74, 74), .79f);
-        int red = (next >> 16) & 255;
-        int green = (next >> 8) & 255;
-        int blue = next & 255;
-        double luminance = red * .2126 + green * .7152 + blue * .0722;
-        ACCENT_FOREGROUND = luminance >= 145.0
-                ? argb(255, 25, 22, 31)
-                : argb(255, 244, 242, 248);
+
+        if (next != ACCENT || nextText != TEXT) {
+            ACCENT = GOLD = next;
+            ACCENT_SOFT = GOLD_SOFT = withAlpha(next, 42);
+            TEXT = nextText;
+            MUTED = mixColor(nextText, argb(255, 95, 98, 98), .56f);
+            DIM = mixColor(nextText, argb(255, 70, 74, 74), .79f);
+            int red = (next >> 16) & 255;
+            int green = (next >> 8) & 255;
+            int blue = next & 255;
+            double luminance = red * .2126 + green * .7152 + blue * .0722;
+            ACCENT_FOREGROUND = luminance >= 145.0
+                    ? argb(255, 25, 22, 31)
+                    : argb(255, 244, 242, 248);
+        }
+
+        // Runs unconditionally: surfaces derive from the accent, so they must settle even on
+        // the frames where the accent itself did not move.
+        updateSurfacePalette();
+    }
+
+    /**
+     * Repaints panels, rows, controls and borders from the theme's surface colour, so a theme
+     * changes the whole GUI rather than only the accent and the text. Reverts to the stock
+     * palette when surface theming is off.
+     */
+    private void updateSurfacePalette() {
+        // Full manual control wins over anything derived: every surface is taken verbatim.
+        if (mindless.module.impl.theme.ThemeManager.colorsOverridden()) {
+            surfaceSeed = -3;
+            PANEL = mindless.module.impl.theme.ThemeManager.panel();
+            PANEL_ALT = mindless.module.impl.theme.ThemeManager.panelAlt();
+            ROW = mindless.module.impl.theme.ThemeManager.row();
+            ROW_HOVER = mindless.module.impl.theme.ThemeManager.rowHover();
+            CONTROL = mindless.module.impl.theme.ThemeManager.control();
+            CONTROL_HOVER = mindless.module.impl.theme.ThemeManager.controlHover();
+            BORDER = mindless.module.impl.theme.ThemeManager.border();
+            DIVIDER = mindless.module.impl.theme.ThemeManager.divider();
+            DROPDOWN_BG = mindless.module.impl.theme.ThemeManager.dropdown();
+            DROPDOWN_BORDER = mindless.module.impl.theme.ThemeManager.dropdownBorder();
+            DROPDOWN_SELECTED = mindless.module.impl.theme.ThemeManager.dropdownSelected();
+            return;
+        }
+
+        if (!mindless.module.impl.theme.ThemeManager.surfacesEnabled()) {
+            if (surfaceSeed == -1) return;
+            surfaceSeed = -1;
+            PANEL = DEFAULT_PANEL;
+            PANEL_ALT = DEFAULT_PANEL_ALT;
+            ROW = DEFAULT_ROW;
+            ROW_HOVER = DEFAULT_ROW_HOVER;
+            CONTROL = DEFAULT_CONTROL;
+            CONTROL_HOVER = DEFAULT_CONTROL_HOVER;
+            BORDER = DEFAULT_BORDER;
+            DIVIDER = DEFAULT_DIVIDER;
+            DROPDOWN_BG = DEFAULT_PANEL_ALT;
+            DROPDOWN_BORDER = DEFAULT_BORDER;
+            DROPDOWN_SELECTED = withAlpha(ACCENT, 80);
+            return;
+        }
+
+        java.awt.Color base = mindless.module.impl.theme.ThemeManager.surface();
+        int seed = (base.getRGB() & 0xFFFFFF) * 31 + (ACCENT & 0xFFFFFF);
+        if (seed == surfaceSeed) return;
+        surfaceSeed = seed;
+
+        int r = base.getRed(), g = base.getGreen(), b = base.getBlue();
+        PANEL = argb(232, r, g, b);
+        PANEL_ALT = shade(236, r, g, b, 1.18f);
+        ROW = shade(224, r, g, b, 2.05f);
+        ROW_HOVER = shade(236, r, g, b, 2.70f);
+        CONTROL = shade(118, r, g, b, .55f);
+        CONTROL_HOVER = shade(150, r, g, b, 2.40f);
+        // Edges lean toward the accent so the chrome reads as part of the theme.
+        BORDER = withAlpha(mixColor(argb(255, 210, 210, 204), ACCENT, .55f), 62);
+        DIVIDER = withAlpha(mixColor(argb(255, 210, 210, 204), ACCENT, .40f), 50);
+        DROPDOWN_BG = PANEL_ALT;
+        DROPDOWN_BORDER = BORDER;
+        DROPDOWN_SELECTED = withAlpha(ACCENT, 80);
+    }
+
+    /** Scales a surface colour's brightness, clamped, and never quite to black. */
+    private static int shade(int alpha, int r, int g, int b, float factor) {
+        return argb(Math.min(255, alpha),
+                Math.min(255, Math.round(r * factor) + 3),
+                Math.min(255, Math.round(g * factor) + 3),
+                Math.min(255, Math.round(b * factor) + 3));
     }
 
     private void updateAnimationClock() {

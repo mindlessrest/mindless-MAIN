@@ -257,6 +257,7 @@ public class Module {
         fun,
         other,
         client,
+        theme,
         network,
         profiles,
         scripts,

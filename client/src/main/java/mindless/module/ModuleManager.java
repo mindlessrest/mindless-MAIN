@@ -6,6 +6,7 @@ import mindless.module.impl.client.Gui;
 import mindless.module.impl.client.Relationships;
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.client.SpotifyMiniPlayer;
+import mindless.module.impl.theme.ThemeManager;
 import mindless.module.impl.combat.*;
 import mindless.module.impl.fun.*;
 import mindless.module.impl.minigames.*;
@@ -47,6 +48,7 @@ public class ModuleManager {
     public static MovementFix movementFix;
     public static CommandLine commandLine;
     public static SpotifyMiniPlayer spotifyMiniPlayer;
+    public static ThemeManager themeManager;
     public static LongJump longJump;
     public static AntiBot antiBot;
     public static NoSlow noSlow;
@@ -113,6 +115,7 @@ public class ModuleManager {
         this.addModule(commandLine = new CommandLine());
         this.addModule(new Gui());
         this.addModule(new Settings());
+        this.addModule(themeManager = new ThemeManager());
         this.addModule(spotifyMiniPlayer = new SpotifyMiniPlayer());
         this.addModule(relationships = new Relationships());
         if (mindless.Raven.playerRelationsManager == null || mindless.Raven.playerRelationsManager.isActive()) {
