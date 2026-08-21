@@ -631,18 +631,25 @@ public class SexyESP extends Module {
         int oB = outCol & 0xFF;
 
         double maxDistSq = maxDistance.getInput() * maxDistance.getInput();
-        glowShader.use();
+        // The program is bound per entity, not once around the loop. renderEntityStatic resets
+        // the active program on its way through, so from the second player onward setColor was
+        // calling glUniform with nothing bound -- which is GL_INVALID_OPERATION, and is the 1282
+        // the diagnostics attributed to this pass.
         for (EntityPlayer player : mc.theWorld.playerEntities) {
             if (!isValidEntity(player)) continue;
             if (!RenderUtils.isInViewFrustum(player)) continue;
             if (!RenderUtils.isWithinDistanceSqToRenderView(player, maxDistSq)) continue;
+            glowShader.use();
+            mindless.utility.Diagnostics.gl("esp: bound glow program");
             glowShader.setColor(oR, oG, oB, 255);
+            mindless.utility.Diagnostics.gl("esp: set silhouette colour");
             boolean invis = player.isInvisible();
             if (showInvisible.isToggled()) player.setInvisible(false);
             mc.getRenderManager().renderEntityStatic(player, partialTicks, true);
             player.setInvisible(invis);
+            mindless.utility.Diagnostics.gl("esp: drew silhouette for " + player.getName());
+            glowShader.stop();
         }
-        glowShader.stop();
         mindless.utility.Diagnostics.gl("esp: silhouette pass");
         renderingOutlinePass = false;
 
