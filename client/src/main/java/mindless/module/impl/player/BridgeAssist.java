@@ -82,6 +82,7 @@ public class BridgeAssist extends Module {
     private final ButtonSetting forceDiagonal;
     private final SliderSetting stanceAngle;
     private final ButtonSetting debug;
+    private final ButtonSetting record;
     private final SliderSetting bridgePitch;
     private final SliderSetting smoothness;
     private final SliderSetting relockAngle;
@@ -122,6 +123,9 @@ public class BridgeAssist extends Module {
     private String lastStage = "";
     private long lastStageAt;
     private java.io.BufferedWriter logWriter;
+    private java.io.BufferedWriter recordWriter;
+    private boolean wasRecording;
+    private int recordTick;
 
     public BridgeAssist() {
         super("Bridge Assist", category.player);
@@ -135,6 +139,7 @@ public class BridgeAssist extends Module {
         this.registerSetting(relockAngle = new SliderSetting("Relock angle", "\u00b0", 55, 20, 120, 5));
         this.registerSetting(idleRelease = new SliderSetting("Idle release", "ms", 400, 100, 1500, 50));
         this.registerSetting(debug = new ButtonSetting("Debug", false));
+        this.registerSetting(record = new ButtonSetting("Record", false));
 
         GroupSetting sneakingGroup = new GroupSetting("Sneaking");
         this.registerSetting(sneakingGroup);
@@ -170,6 +175,8 @@ public class BridgeAssist extends Module {
         pitchOverride = Float.NaN;
         lastStage = "";
         closeLog();
+        closeRecord();
+        wasRecording = false;
         restoreSlot();
     }
 
@@ -246,8 +253,11 @@ public class BridgeAssist extends Module {
     public void onSendPacket(SendPacketEvent e) {
         if (e.getPacket() instanceof C08PacketPlayerBlockPlacement) {
             C08PacketPlayerBlockPlacement c08 = (C08PacketPlayerBlockPlacement) e.getPacket();
-            if (c08.getPlacedBlockDirection() != 255 && sneakingFromModule && sneakKeyPressed.isToggled()) {
-                placed = true;
+            if (c08.getPlacedBlockDirection() != 255) {
+                capturePlacement(c08);
+                if (sneakingFromModule && sneakKeyPressed.isToggled()) {
+                    placed = true;
+                }
             }
         }
     }
@@ -612,6 +622,7 @@ public class BridgeAssist extends Module {
 
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent e) {
+        captureTick();
         if (!placeQueued) return;
         placeQueued = false;
         if (!Utils.nullCheck() || mc.currentScreen != null || !silentRotation.isToggled()
@@ -751,6 +762,107 @@ public class BridgeAssist extends Module {
         lastStageAt = now;
         Utils.sendMessage("&7[BridgeAssist] &b" + text);
         writeLog(text);
+    }
+
+    /**
+     * Records what the player is actually doing, one line per tick, for reference.
+     *
+     * Inferring the intended stance from a trace of the module failing is guesswork. Recording a
+     * real bridge instead gives the numbers directly: how far the head is turned off the line of
+     * travel, at what pitch, where in the block the feet are when a block goes down, and which
+     * face gets clicked. Turn Silent rotation off, bridge by hand, and the file describes the
+     * behaviour to reproduce rather than the behaviour to avoid.
+     *
+     * The derived "off" column is the one that matters most: yaw measured relative to the
+     * direction of travel rather than to the world, which is the thing the stance has to get
+     * right and the thing a raw yaw reading hides.
+     */
+    private void captureTick() {
+        if (record == null || !record.isToggled() || !Utils.nullCheck()) {
+            if (wasRecording) {
+                wasRecording = false;
+                closeRecord();
+                Utils.sendMessage("&7[BridgeAssist] &brecording stopped");
+            }
+            return;
+        }
+        if (!wasRecording) {
+            wasRecording = true;
+            recordTick = 0;
+            Utils.sendMessage("&7[BridgeAssist] &brecording to logs/mindless-bridgeassist-record.log");
+        }
+
+        double dx = mc.thePlayer.posX - mc.thePlayer.prevPosX;
+        double dz = mc.thePlayer.posZ - mc.thePlayer.prevPosZ;
+        boolean moving = dx * dx + dz * dz > MOVING_EPSILON_SQ;
+        String travel = "-";
+        String off = "-";
+        if (moving) {
+            float heading = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            travel = String.valueOf(Math.round(heading));
+            // How far the head is turned away from straight back down the line of travel.
+            off = String.valueOf(Math.round(wrap(mc.thePlayer.rotationYaw - (heading + 180f))));
+        }
+
+        writeRecord(String.format(
+                "t%-5d pos %.3f %.3f %.3f  inblk %.2f %.2f  ground %-5b mY %+.3f  yaw %-4d pitch %-3d"
+                        + "  travel %-4s off %-4s  fwd %+.0f str %+.0f  sneak %-5b sprint %-5b",
+                recordTick++,
+                mc.thePlayer.posX, mc.thePlayer.getEntityBoundingBox().minY, mc.thePlayer.posZ,
+                mc.thePlayer.posX - Math.floor(mc.thePlayer.posX),
+                mc.thePlayer.posZ - Math.floor(mc.thePlayer.posZ),
+                mc.thePlayer.onGround, mc.thePlayer.motionY,
+                Math.round(wrap(mc.thePlayer.rotationYaw)), Math.round(mc.thePlayer.rotationPitch),
+                travel, off,
+                mc.thePlayer.movementInput.moveForward, mc.thePlayer.movementInput.moveStrafe,
+                mc.thePlayer.movementInput.sneak, mc.thePlayer.isSprinting()));
+    }
+
+    /** Notes a real block placement against the tick stream, with everything needed to reproduce it. */
+    private void capturePlacement(C08PacketPlayerBlockPlacement c08) {
+        if (!wasRecording) return;
+        BlockPos support = c08.getPosition();
+        EnumFacing face = EnumFacing.getFront(c08.getPlacedBlockDirection());
+        BlockPos placed = support.offset(face);
+        writeRecord(String.format(
+                "     PLACE support %d %d %d  face %-5s -> block %d %d %d  hitoff %.2f %.2f %.2f"
+                        + "  feetY %.3f  yaw %d pitch %d",
+                support.getX(), support.getY(), support.getZ(), face,
+                placed.getX(), placed.getY(), placed.getZ(),
+                c08.getPlacedBlockOffsetX(), c08.getPlacedBlockOffsetY(), c08.getPlacedBlockOffsetZ(),
+                mc.thePlayer.getEntityBoundingBox().minY,
+                Math.round(wrap(mc.thePlayer.rotationYaw)), Math.round(mc.thePlayer.rotationPitch)));
+    }
+
+    private void writeRecord(String line) {
+        try {
+            if (recordWriter == null) {
+                java.io.File dir = new java.io.File(mc.mcDataDir, "logs");
+                if (!dir.exists() && !dir.mkdirs()) return;
+                recordWriter = new java.io.BufferedWriter(new java.io.OutputStreamWriter(
+                        new java.io.FileOutputStream(new java.io.File(dir, "mindless-bridgeassist-record.log"), true),
+                        java.nio.charset.StandardCharsets.UTF_8));
+                recordWriter.write("--- recording " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                        .format(new java.util.Date()) + "  silent rotation "
+                        + (silentRotation.isToggled() ? "ON" : "OFF") + " ---");
+                recordWriter.newLine();
+            }
+            recordWriter.write(line);
+            recordWriter.newLine();
+            recordWriter.flush();
+        } catch (Throwable ignored) {
+            recordWriter = null;
+        }
+    }
+
+    private void closeRecord() {
+        if (recordWriter == null) return;
+        try {
+            recordWriter.flush();
+            recordWriter.close();
+        } catch (Throwable ignored) {
+        }
+        recordWriter = null;
     }
 
     /**
