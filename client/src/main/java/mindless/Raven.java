@@ -86,22 +86,19 @@ public class Raven {
 
         ClientCommandHandler.instance.registerCommand(new KeyStrokeCommand());
 
-        MinecraftForge.EVENT_BUS.register(this);
-        if (!LunarEventBridge.isDirectLunar()) {
-            net.minecraftforge.fml.common.FMLCommonHandler.instance().bus().register(this);
-        }
-        MinecraftForge.EVENT_BUS.register(new DebugHelper());
-        MinecraftForge.EVENT_BUS.register(new MouseHelper());
-        MinecraftForge.EVENT_BUS.register(RotationHelper.get());
-        MinecraftForge.EVENT_BUS.register(new KeyStrokeRenderer());
-        MinecraftForge.EVENT_BUS.register(new PingHelper());
-        MinecraftForge.EVENT_BUS.register(packetsHandler = new PacketsHandler());
-        MinecraftForge.EVENT_BUS.register(new ModuleUtils());
-        MinecraftForge.EVENT_BUS.register(lagHandler = new UnifiedLagHandler());
+        registerHandler(this, true);
+        registerHandler(new DebugHelper(), false);
+        registerHandler(new MouseHelper(), false);
+        registerHandler(RotationHelper.get(), false);
+        registerHandler(new KeyStrokeRenderer(), false);
+        registerHandler(new PingHelper(), false);
+        registerHandler(packetsHandler = new PacketsHandler(), false);
+        registerHandler(new ModuleUtils(), false);
+        registerHandler(lagHandler = new UnifiedLagHandler(), false);
 
         // Account Manager
         AccountManager.init();
-        MinecraftForge.EVENT_BUS.register(new Events());
+        registerHandler(new Events(), false);
 
         ReflectionUtils.setupFields();
         FontManager.preWarmFonts();
@@ -110,13 +107,9 @@ public class Raven {
         moduleManager.register();
         // Scaffold is alwaysOn and Tower is never user-toggleable, so neither is
         // registered by Module#enable. Both listen on the Forge bus only.
-        MinecraftForge.EVENT_BUS.register(ModuleManager.scaffold);
-        MinecraftForge.EVENT_BUS.register(ModuleManager.tower);
-        BlockHighlightSharedHandler blockHighlightHandler = new BlockHighlightSharedHandler();
-        MinecraftForge.EVENT_BUS.register(blockHighlightHandler);
-        if (!LunarEventBridge.isDirectLunar()) {
-            net.minecraftforge.fml.common.FMLCommonHandler.instance().bus().register(blockHighlightHandler);
-        }
+        registerHandler(ModuleManager.scaffold, false);
+        registerHandler(ModuleManager.tower, false);
+        registerHandler(new BlockHighlightSharedHandler(), true);
         scriptManager = new ScriptManager();
         keyStrokeRenderer = new KeyStrokeRenderer();
         clickGui = new ModernClickGui();
@@ -318,5 +311,126 @@ public class Raven {
         }
 
         return changed;
+    }
+
+    /**
+     * Every object handed to a bus, so the registration can be undone.
+     *
+     * Forge unregisters by identity, so the instance has to be kept. The second flag records
+     * whether it also went on the FML bus, which only happens off Lunar.
+     */
+    private static final java.util.List<Object[]> EVENT_HANDLERS = new java.util.ArrayList<Object[]>();
+    private static volatile boolean unloaded = false;
+
+    private static void registerHandler(Object handler, boolean alsoFmlBus) {
+        MinecraftForge.EVENT_BUS.register(handler);
+        boolean fml = alsoFmlBus && !LunarEventBridge.isDirectLunar();
+        if (fml) {
+            net.minecraftforge.fml.common.FMLCommonHandler.instance().bus().register(handler);
+        }
+        EVENT_HANDLERS.add(new Object[] { handler, Boolean.valueOf(fml) });
+    }
+
+    /** Whether the client has been torn down and should be treated as absent. */
+    public static boolean isUnloaded() {
+        return unloaded;
+    }
+
+    /**
+     * Tears the client down inside the running game.
+     *
+     * Mixins and transformers cannot be undone -- the bytecode was rewritten when the game class
+     * was loaded, and it stays rewritten. What can be undone is everything those hooks reach: the
+     * modules stop, the handlers come off the buses so posted events find no listeners, the GPU
+     * resources and background threads are released, and the surviving hooks then run against a
+     * client that does nothing.
+     *
+     * Settings are written out first, so nothing configured this session is lost.
+     */
+    public static synchronized void uninject() {
+        if (unloaded) {
+            return;
+        }
+        unloaded = true;
+
+        try {
+            if (mc.currentScreen instanceof ClickGui) {
+                mc.displayGuiScreen(null);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        // Save before anything is torn down: disabling a module can change its own settings.
+        try {
+            if (profileManager != null && currentProfile != null) {
+                profileManager.saveProfile(currentProfile);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        // Modules first. Each one releases its own framebuffers, restores game settings it had
+        // overridden, and unregisters the handlers it registered when it was enabled.
+        try {
+            if (moduleManager != null) {
+                for (Module module : ModuleManager.modules) {
+                    try {
+                        if (module.isEnabled()) {
+                            module.disable();
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            if (scriptManager != null) {
+                for (Module script : new java.util.ArrayList<Module>(scriptManager.scripts.values())) {
+                    try {
+                        if (script.isEnabled()) {
+                            script.disable();
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
+        for (Object[] entry : EVENT_HANDLERS) {
+            try {
+                MinecraftForge.EVENT_BUS.unregister(entry[0]);
+                if (Boolean.TRUE.equals(entry[1])) {
+                    net.minecraftforge.fml.common.FMLCommonHandler.instance().bus().unregister(entry[0]);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        EVENT_HANDLERS.clear();
+
+        // Anything holding a key down on our behalf has to let go, or the game is left walking.
+        try {
+            net.minecraft.client.settings.KeyBinding.unPressAllKeys();
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            mindless.backend.BackendClient.getInstance().disconnect();
+        } catch (Throwable ignored) {
+        }
+        try {
+            scheduledExecutor.shutdownNow();
+        } catch (Throwable ignored) {
+        }
+        try {
+            cachedExecutor.shutdownNow();
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            Utils.sendMessage("&7Mindless uninjected. Restart the game to load it again.");
+        } catch (Throwable ignored) {
+        }
     }
 }
