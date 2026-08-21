@@ -224,6 +224,7 @@ public class ModuleManager {
         this.addModule(new FallView());
         this.addModule(new Holdlook());
         this.addModule(new DynamicIsland());
+        this.addModule(new SessionInfo());
         this.addModule(hud = new HUD());
         this.addModule(new Notifications());
         this.addModule(new Indicators());
