@@ -54,7 +54,7 @@ public class Scaffold extends Module {
     public  ButtonSetting sprintScaffoldOnSpeed;
     public  ButtonSetting sendPacket;
 
-    private static final String[] rotationModes      = {"None","Simple","Offset A","Offset B","Snap"};
+    private static final String[] rotationModes      = {"None","Simple","Offset A","Offset B","Snap","Beta"};
     private static final String[] sprintModes        = {"None","Vanilla","Float"};
     private static final String[] fastScaffoldModes  = {"None","Jump A","Jump B","Jump C","Keep-Y A","Keep-Y B","Keep-Y C"};
     private static final String[] multiPlaceModes    = {"Disabled","1 extra","2 extra"};
@@ -349,6 +349,33 @@ public class Scaffold extends Module {
                 else
                     e.setRotations(mc.thePlayer.rotationYaw - hardcodedYaw(), 81.150F);
                 break;
+
+            case 5: { // Beta (smooth raytrace-verified)
+                float targetYaw, targetPitchBeta;
+                if (blockRotations != null) {
+                    targetYaw = blockRotations[0];
+                    targetPitchBeta = blockRotations[1];
+                } else {
+                    targetYaw = mc.thePlayer.rotationYaw - hardcodedYaw();
+                    targetPitchBeta = 81.0f;
+                }
+                float currentYaw = e.getYaw();
+                float currentPitch = e.getPitch();
+                float yawDiff = MathHelper.wrapAngleTo180_float(targetYaw - currentYaw);
+                float pitchDiff = targetPitchBeta - currentPitch;
+                float totalDiff = Math.abs(yawDiff) + Math.abs(pitchDiff);
+                boolean diagonal = Math.abs(mc.thePlayer.movementInput.moveForward) > 0.001f
+                        && Math.abs(mc.thePlayer.movementInput.moveStrafe) > 0.001f;
+                float speed = diagonal ? 70.0f : 35.0f;
+                speed *= 1.0f - (float)(Math.random() * 0.2);
+                if (totalDiff <= speed) {
+                    e.setRotations(targetYaw, targetPitchBeta);
+                } else if (speed > 0.0f) {
+                    float ratio = speed / totalDiff;
+                    e.setRotations(currentYaw + yawDiff * ratio, currentPitch + pitchDiff * ratio);
+                }
+                break;
+            }
         }
 
         // ── Jump-facing-forward ────────────────────────────────────────────────
