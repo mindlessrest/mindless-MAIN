@@ -59,6 +59,14 @@ public class BridgeAssist extends Module {
      */
     private static final double LOOKAHEAD_BLOCKS = 2.5;
     private static final double LOOKAHEAD_STEP = 0.5;
+    /**
+     * How close the aim must be to its target before anything is placed.
+     *
+     * Placement follows whatever the ray hits, so while the head is still swinging down the ray
+     * sweeps across the deck and drops a block on everything it crosses -- the stray blocks either
+     * side of the walk line. Nothing is placed until the turn has essentially finished.
+     */
+    private static final float AIM_SETTLE_DEG = 6.0f;
 
     private final SliderSetting edgeOffset;
     private final SliderSetting unsneakDelayMin;
@@ -306,9 +314,9 @@ public class BridgeAssist extends Module {
             rotationInitialised = true;
         }
 
-        // Yaw wants to face back down the line the player is walking, which is what a god bridge
-        // looks like. Snapping that to the nearest 45-degree diagonal is the whole trick: it
-        // gives a target that does not drift as the player's own view wanders.
+        // Yaw wants to face back down the line the player is walking. Snapping that to the nearest
+        // 45-degree heading is the whole trick: it gives a target that does not drift as the
+        // player's own view wanders.
         float awayYaw = (hasTravelYaw ? travelYaw : mc.thePlayer.rotationYaw) + 180f;
 
         // Re-lock only when the direction of travel has genuinely changed, and never more than
@@ -319,7 +327,7 @@ public class BridgeAssist extends Module {
         boolean relock = !aimLocked || (drifted && now - lastRelockAt >= MIN_RELOCK_INTERVAL_MS);
         if (relock) {
             lastRelockAt = now;
-            lockedYaw = bestDiagonal(awayYaw, currentYaw);
+            lockedYaw = snapHeading(awayYaw, currentYaw);
             aimLocked = true;
             yawJitter = (float) (Math.random() * 1.6d - 0.8d);
             pitchJitter = (float) (Math.random() * 2.4d - 1.2d);
@@ -338,6 +346,17 @@ public class BridgeAssist extends Module {
         selectBlockSlot(slot);
         e.setYaw(currentYaw);
         e.setPitch(currentPitch);
+
+        // Turn first, place second. Anything placed before the aim settles lands wherever the ray
+        // happened to sweep, which is where the stray blocks beside the walk line came from.
+        float yawError = Math.abs(wrap(targetYaw - currentYaw));
+        float pitchError = Math.abs(targetPitch - currentPitch);
+        if (yawError > AIM_SETTLE_DEG || pitchError > AIM_SETTLE_DEG) {
+            stage("turning (yaw " + Math.round(currentYaw) + "/" + Math.round(targetYaw)
+                    + ", pitch " + Math.round(currentPitch) + "/" + Math.round(targetPitch)
+                    + ") - holding fire");
+            return;
+        }
 
         // Placement follows the rotation rather than the other way round. Whatever the look
         // vector lands on is the support -- so there is no such thing as "no rotation reaches the
@@ -428,23 +447,29 @@ public class BridgeAssist extends Module {
     }
 
     /**
-     * Nearest 45-degree diagonal to the direction of travel, tie-broken toward where the player
-     * is already looking so a relock is the smallest turn available.
+     * Nearest 45-degree heading to the direction of travel, tie-broken toward where the player is
+     * already looking so a relock is the smallest turn available.
+     *
+     * This used to consider only the four diagonals, on the assumption that bridging is always
+     * done diagonally. Walking straight down an axis then left the aim a full 45 degrees off the
+     * line of travel: the support slid out from under it as the player advanced and the ray missed
+     * everything after a few blocks. Including the cardinals lets a straight bridge look straight
+     * back, while a genuine diagonal still snaps to its diagonal.
      */
-    private static float bestDiagonal(float awayYaw, float headYaw) {
-        float[] diagonals = { 45f, 135f, -135f, -45f };
+    private static float snapHeading(float awayYaw, float headYaw) {
+        float[] headings = { 0f, 45f, 90f, 135f, 180f, -135f, -90f, -45f };
         float closest = Float.MAX_VALUE;
-        for (float d : diagonals) {
-            closest = Math.min(closest, Math.abs(wrap(d - awayYaw)));
+        for (float h : headings) {
+            closest = Math.min(closest, Math.abs(wrap(h - awayYaw)));
         }
-        float best = diagonals[0];
+        float best = headings[0];
         float bestToHead = Float.MAX_VALUE;
-        for (float d : diagonals) {
-            if (Math.abs(Math.abs(wrap(d - awayYaw)) - closest) >= 1.0f) continue;
-            float toHead = Math.abs(wrap(d - headYaw));
+        for (float h : headings) {
+            if (Math.abs(Math.abs(wrap(h - awayYaw)) - closest) >= 1.0f) continue;
+            float toHead = Math.abs(wrap(h - headYaw));
             if (toHead < bestToHead) {
                 bestToHead = toHead;
-                best = d;
+                best = h;
             }
         }
         return best;
