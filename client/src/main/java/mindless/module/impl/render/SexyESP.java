@@ -639,14 +639,14 @@ public class SexyESP extends Module {
         mc.entityRenderer.setupOverlayRendering();
         mc.getFramebuffer().bindFramebuffer(true);
 
-        separableOutlineShader.render(outlineFramebuffer);
-
         float glowSize = (float) outlineGlowSize.getInput();
         if (glowSize > 0.0f) {
             int iterations = Math.max(1, Math.round(glowSize));
             KawaseBloom.renderBlur(outlineFramebuffer.framebufferTexture, iterations, glowSize);
+            mc.getFramebuffer().bindFramebuffer(false);
         }
 
+        separableOutlineShader.render(outlineFramebuffer);
         outlineFramebuffer.framebufferClear();
         mc.getFramebuffer().bindFramebuffer(true);
 
