@@ -70,15 +70,23 @@ public class BridgeAssist extends Module {
     /**
      * Sweep used when the preferred stance stops reaching anything placeable.
      *
-     * The offset stance aims about 45 degrees off the line of travel rather than straight back
-     * down it, which is what lets the player keep moving instead of stopping to look at each
-     * block. The cost is that it does not always reach: a few blocks in, the support slides out
-     * from under the aim and the ray comes back empty. Rather than give up and fall, sweep for a
-     * rotation that does reach and steer to that until the normal stance works again. Ported from
-     * the clutch scan in LegitScaffoldRotV19, which is why that script survives the same stance.
+     * Aiming straight back down the line of travel enters the support through its top face, so the
+     * block would land level with the feet and is refused. Coming in at an angle enters through the
+     * side face instead, which is placeable, and is also the stance that looks and plays like a
+     * real bridge. The trace makes this unambiguous: every placement happened around 25 degrees off
+     * straight back, and every straight-back tick was rejected with "block would land at y80 but
+     * the deck is y79".
+     *
+     * Which offset works depends on where the player is standing relative to the support, so it is
+     * found by sweeping rather than assumed, smallest deflection first. Once found it is kept as
+     * part of the stance: re-deriving it per tick had the aim chasing a target that moved with it,
+     * and clearing it after a successful placement snapped the aim back to straight back, which
+     * fails, which swept again -- the oscillation that ended in a fall.
      */
-    private static final float[] RECOVER_PITCH = { 0f, 3f, 6f, 9f, 12f, 15f, 18f, 20f };
-    private static final float[] RECOVER_YAW = { 0f, -15f, 15f, -30f, 30f, -45f, 45f, -60f, 60f, -90f, 90f, -120f, 120f, 180f };
+    private static final float[] STANCE_PITCH_OFFSET = { 0f, 2f, 4f, 6f, 9f, 12f, 15f, 18f };
+    private static final float[] STANCE_YAW_OFFSET = {
+            0f, -15f, 15f, -22f, 22f, -30f, 30f, -38f, 38f, -45f, 45f, -55f, 55f, -70f, 70f, -90f, 90f
+    };
 
     private final SliderSetting edgeOffset;
     private final SliderSetting unsneakDelayMin;
@@ -122,8 +130,8 @@ public class BridgeAssist extends Module {
     private float yawJitter, pitchJitter;
     private long lastPlaceAt;
     private long lastRelockAt;
-    private boolean recovering;
-    private float recoverYaw, recoverPitch;
+    /** Deflection from the stance heading that actually reaches a placeable face, and its pitch. */
+    private float stanceYawOffset, stancePitchOffset;
     /** Last known heading of actual travel, latched so a momentary stall does not drop the lock. */
     private float travelYaw;
     private boolean hasTravelYaw;
@@ -176,7 +184,8 @@ public class BridgeAssist extends Module {
         aimLocked = false;
         rotationInitialised = false;
         hasTravelYaw = false;
-        recovering = false;
+        stanceYawOffset = 0f;
+        stancePitchOffset = 0f;
         lastStage = "";
         closeLog();
         restoreSlot();
@@ -352,12 +361,8 @@ public class BridgeAssist extends Module {
 
         // A slow wander on top of the lock, so the aim is never perfectly static.
         float t = System.currentTimeMillis() * 0.003f;
-        float targetYaw = wrap(lockedYaw + (float) (Math.sin(t * 2.1f) * 0.45d) + yawJitter);
-        float targetPitch = basePitch + (float) (Math.cos(t * 1.7f) * 0.35d) + pitchJitter;
-        if (recovering) {
-            targetYaw = recoverYaw;
-            targetPitch = recoverPitch;
-        }
+        float targetYaw = wrap(lockedYaw + stanceYawOffset + (float) (Math.sin(t * 2.1f) * 0.45d) + yawJitter);
+        float targetPitch = basePitch + stancePitchOffset + (float) (Math.cos(t * 1.7f) * 0.35d) + pitchJitter;
 
         // Step toward it, quantised to the mouse GCD so the deltas look like real mouse input.
         float gcd = mouseGcd();
@@ -370,14 +375,9 @@ public class BridgeAssist extends Module {
 
         // Turn first, place second. Anything placed before the aim settles lands wherever the ray
         // happened to sweep, which is where the stray blocks beside the walk line came from.
-        //
-        // Recovery is exempt: it only ever runs over a gap, so a block placed part-way through
-        // that turn still lands in the hole rather than beside the walk line, and waiting for the
-        // aim to settle was losing the target -- three ticks to swing thirty degrees is long
-        // enough for the geometry to move on and the angle it found to go stale.
         float yawError = Math.abs(wrap(targetYaw - currentYaw));
         float pitchError = Math.abs(targetPitch - currentPitch);
-        if (!recovering && (yawError > AIM_SETTLE_DEG || pitchError > AIM_SETTLE_DEG)) {
+        if (yawError > AIM_SETTLE_DEG || pitchError > AIM_SETTLE_DEG) {
             stage("turning (yaw " + Math.round(currentYaw) + "/" + Math.round(targetYaw)
                     + ", pitch " + Math.round(currentPitch) + "/" + Math.round(targetPitch)
                     + ") - holding fire");
@@ -397,7 +397,6 @@ public class BridgeAssist extends Module {
         MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, currentYaw, currentPitch);
         String reason = rejectReason(mop, maxPlaceY, held);
         if (reason == null) {
-            recovering = false;
             queuePlacement(mop);
             return;
         }
@@ -407,30 +406,34 @@ public class BridgeAssist extends Module {
         // missed, and sweeping for a rotation that does reach is the difference between carrying
         // on and falling.
         if (mc.thePlayer.onGround && !overEdge()) {
-            recovering = false;
             stage("aiming " + Math.round(currentYaw) + "/" + Math.round(currentPitch)
                     + " - approaching (" + reason + ")");
             return;
         }
 
-        for (float pitchOffset : RECOVER_PITCH) {
-            float testPitch = Math.min(88.5f, currentPitch + pitchOffset);
-            for (float yawOffset : RECOVER_YAW) {
-                float testYaw = wrap(currentYaw + yawOffset);
+        // Sweep from the stance heading, never from the live aim. Offsets measured against a
+        // heading that is itself being steered are a moving target, and the aim chased it.
+        for (float pitchOffset : STANCE_PITCH_OFFSET) {
+            float testPitch = Math.min(88.5f, basePitch + pitchOffset);
+            for (float yawOffset : STANCE_YAW_OFFSET) {
+                float testYaw = wrap(lockedYaw + yawOffset);
                 if (!placeable(RotationUtils.rayCastBlock(reach, testYaw, testPitch), maxPlaceY, held)) {
                     continue;
                 }
-                recoverYaw = testYaw;
-                recoverPitch = testPitch;
-                recovering = true;
-                stage("stance cannot reach, steering to " + Math.round(testYaw) + "/"
-                        + Math.round(testPitch));
+                if (yawOffset != stanceYawOffset) {
+                    stage("stance offset " + Math.round(stanceYawOffset) + " -> "
+                            + Math.round(yawOffset) + " (pitch " + Math.round(testPitch) + ")");
+                }
+                stanceYawOffset = yawOffset;
+                stancePitchOffset = testPitch - basePitch;
                 return;
             }
         }
 
-        recovering = false;
-        stage("no recovery angle from " + Math.round(currentYaw) + "/" + Math.round(currentPitch)
+        // Nothing reaches from anywhere. Hold the offset rather than resetting it: one unreachable
+        // tick mid-stride is not evidence the stance is wrong, and zeroing it here is what used to
+        // snap the aim back to straight back and start the oscillation.
+        stage("nothing reachable at any offset from heading " + Math.round(lockedYaw)
                 + " (" + reason + ")");
     }
 
@@ -598,7 +601,8 @@ public class BridgeAssist extends Module {
         aimLocked = false;
         rotationInitialised = false;
         hasTravelYaw = false;
-        recovering = false;
+        stanceYawOffset = 0f;
+        stancePitchOffset = 0f;
         placeQueued = false;
         restoreSlot();
     }
