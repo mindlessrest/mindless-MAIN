@@ -16,7 +16,6 @@ import mindless.utility.shader.GlowShader;
 import mindless.utility.shader.KawaseBloom;
 import mindless.utility.shader.SeparableOutlineShader;
 import net.minecraft.client.gui.ScaledResolution;
-import net.minecraft.client.model.ModelBiped;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.renderer.Tessellator;
@@ -31,7 +30,6 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.MathHelper;
-import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -80,12 +78,11 @@ public class SexyESP extends Module {
     private final ColorSetting color;
     private final SliderSetting maxDistance;
 
-    private final ButtonSetting outlineGlow;
-    private final ButtonSetting outlineSkeleton;
-    private final ButtonSetting outlineRedOnDamage;
+    private final ButtonSetting outlineEnabled;
+    private final SliderSetting outlineGlowSize;
+    private final ColorSetting outlineColor;
 
     public static boolean renderingOutlinePass = false;
-    private static final float RAD_TO_DEG = 57.29578f;
     private Framebuffer outlineFramebuffer;
     private final SeparableOutlineShader separableOutlineShader = new SeparableOutlineShader();
     private final GlowShader glowShader = new GlowShader();
@@ -125,9 +122,9 @@ public class SexyESP extends Module {
 
         GroupSetting outlineGroup = new GroupSetting("Outline");
         registerSetting(outlineGroup);
-        registerSetting(outlineGlow = new ButtonSetting(outlineGroup, "Glow", false));
-        registerSetting(outlineSkeleton = new ButtonSetting(outlineGroup, "Skeleton", false));
-        registerSetting(outlineRedOnDamage = new ButtonSetting(outlineGroup, "Red on damage", true));
+        registerSetting(outlineEnabled = new ButtonSetting(outlineGroup, "Enabled", false));
+        registerSetting(outlineGlowSize = new SliderSetting(outlineGroup, "Glow size", 4.0, 0.0, 10.0, 0.5));
+        registerSetting(outlineColor = new ColorSetting(outlineGroup, "Color", 180, 0, 255));
 
         registerSetting(localPlayer = new ButtonSetting("Local player", true));
         registerSetting(droppedItems = new ButtonSetting("Dropped items", false));
@@ -143,11 +140,11 @@ public class SexyESP extends Module {
         return instance != null && instance.isEnabled() && instance.tags.isToggled();
     }
 
-    public boolean isGlowEnabled() { return outlineGlow.isToggled(); }
+    public boolean isGlowEnabled() { return outlineEnabled.isToggled(); }
     public boolean isRenderSelf() { return localPlayer.isToggled(); }
     public boolean isRainbow() { return (int) colorMode.getInput() == 1; }
     public boolean isTeamColor() { return (int) colorMode.getInput() == 2; }
-    public boolean isRedOnDamage() { return outlineRedOnDamage.isToggled(); }
+    public boolean isRedOnDamage() { return false; }
     public boolean isShowInvis() { return showInvisible.isToggled(); }
     public int getColorRGB() { return color.getColor(); }
 
@@ -159,15 +156,6 @@ public class SexyESP extends Module {
         }
     }
 
-    @SubscribeEvent
-    public void onRenderPlayer(RenderPlayerEvent.Post e) {
-        if (!outlineSkeleton.isToggled() || e.entityPlayer == null || !Utils.nullCheck()) return;
-        if (renderingOutlinePass) return;
-        if (!isValidEntity(e.entityPlayer)) return;
-        int col = getEntityColor(e.entityPlayer);
-        renderSkeleton(e.entityPlayer, e.renderer.getMainModel(), col, e.partialRenderTick);
-    }
-
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRenderWorld(RenderWorldLastEvent event) {
         if (!Utils.nullCheck() || mc.theWorld == null || mc.entityRenderer == null) {
@@ -177,7 +165,7 @@ public class SexyESP extends Module {
             return;
         }
 
-        if (outlineGlow.isToggled()) {
+        if (outlineEnabled.isToggled()) {
             runOutlinePass(event.partialTicks);
         }
 
@@ -614,15 +602,22 @@ public class SexyESP extends Module {
 
         outlineFramebuffer = createOutlineFramebuffer(outlineFramebuffer);
         if (outlineFramebuffer == null) return;
-        mc.getFramebuffer().bindFramebuffer(true);
 
-        GlStateManager.pushMatrix();
-        GlStateManager.pushAttrib();
+        mc.getFramebuffer().bindFramebuffer(true);
+        GL11.glPushMatrix();
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+
+        outlineFramebuffer.framebufferClear();
         outlineFramebuffer.bindFramebuffer(true);
         AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, partialTicks, 0);
         boolean shadows = mc.gameSettings.entityShadows;
         mc.gameSettings.entityShadows = false;
         renderingOutlinePass = true;
+
+        int outCol = outlineColor.getColor() | 0xFF000000;
+        int oR = (outCol >> 16) & 0xFF;
+        int oG = (outCol >> 8) & 0xFF;
+        int oB = outCol & 0xFF;
 
         double maxDistSq = maxDistance.getInput() * maxDistance.getInput();
         glowShader.use();
@@ -630,9 +625,7 @@ public class SexyESP extends Module {
             if (!isValidEntity(player)) continue;
             if (!RenderUtils.isInViewFrustum(player)) continue;
             if (!RenderUtils.isWithinDistanceSqToRenderView(player, maxDistSq)) continue;
-            int col = getEntityColor(player);
-            if (outlineRedOnDamage.isToggled() && player.hurtTime != 0) col = 0xFFFF0000;
-            glowShader.setColor((col >> 16) & 0xFF, (col >> 8) & 0xFF, col & 0xFF, (col >> 24) & 0xFF);
+            glowShader.setColor(oR, oG, oB, 255);
             boolean invis = player.isInvisible();
             if (showInvisible.isToggled()) player.setInvisible(false);
             mc.getRenderManager().renderEntityStatic(player, partialTicks, true);
@@ -645,13 +638,19 @@ public class SexyESP extends Module {
         mc.entityRenderer.disableLightmap();
         mc.entityRenderer.setupOverlayRendering();
         mc.getFramebuffer().bindFramebuffer(true);
-        KawaseBloom.renderBlur(outlineFramebuffer.framebufferTexture, 4, 4.0f);
-        mc.getFramebuffer().bindFramebuffer(false);
+
+        float glowSize = (float) outlineGlowSize.getInput();
+        if (glowSize > 0.0f) {
+            int iterations = Math.max(1, Math.round(glowSize));
+            KawaseBloom.renderBlur(outlineFramebuffer.framebufferTexture, iterations, glowSize);
+            mc.getFramebuffer().bindFramebuffer(false);
+        }
         separableOutlineShader.render(outlineFramebuffer);
         outlineFramebuffer.framebufferClear();
         mc.getFramebuffer().bindFramebuffer(true);
-        GlStateManager.popAttrib();
-        GlStateManager.popMatrix();
+
+        GL11.glPopAttrib();
+        GL11.glPopMatrix();
     }
 
     private Framebuffer createOutlineFramebuffer(Framebuffer framebuffer) {
@@ -663,113 +662,6 @@ public class SexyESP extends Module {
         }
         framebuffer.setFramebufferColor(0.0f, 0.0f, 0.0f, 0.0f);
         return framebuffer;
-    }
-
-    private void renderSkeleton(EntityPlayer player, ModelBiped modelBiped, int color, float partialTicks) {
-        GL11.glPushMatrix();
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-
-        double posX = player.lastTickPosX + (player.posX - player.lastTickPosX) * partialTicks - mc.getRenderManager().viewerPosX;
-        double posY = player.lastTickPosY + (player.posY - player.lastTickPosY) * partialTicks - mc.getRenderManager().viewerPosY;
-        double posZ = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * partialTicks - mc.getRenderManager().viewerPosZ;
-
-        boolean wasBlendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
-        GL11.glPushMatrix();
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        if (!wasBlendEnabled) GL11.glEnable(GL11.GL_BLEND);
-        GL11.glColor4f((color >> 16 & 0xFF) / 255.0f, (color >> 8 & 0xFF) / 255.0f, (color & 0xFF) / 255.0f, 1.0f);
-        GL11.glDisable(GL11.GL_LIGHTING);
-        GL11.glEnable(GL11.GL_LINE_SMOOTH);
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glTranslated(posX, posY, posZ);
-
-        float distance = mc.thePlayer.getDistanceToEntity(player);
-        GL11.glLineWidth(Math.max(1.0f, 4.0f * ((100.0f - Math.min(distance, 100.0f)) / 100.0f)));
-
-        boolean isSneaking = player.isSneaking();
-        float legHeight = isSneaking ? 0.6f : 0.75f;
-        double legOffsetZ = isSneaking ? -0.2 : 0.0;
-
-        GL11.glRotatef(player.renderYawOffset, 0.0f, -999.0f, 0.0f);
-        GL11.glTranslated(-0.15, legHeight, legOffsetZ);
-
-        float rightLegRotX = modelBiped.bipedRightLeg.rotateAngleX * RAD_TO_DEG;
-        float rightLegRotY = modelBiped.bipedRightLeg.rotateAngleY * RAD_TO_DEG;
-        float rightLegRotZ = modelBiped.bipedRightLeg.rotateAngleZ * RAD_TO_DEG;
-        GL11.glRotatef(rightLegRotX, 1.0f, 0.0f, 0.0f);
-        GL11.glRotatef(-rightLegRotY, 0.0f, 1.0f, 0.0f);
-        GL11.glRotatef(-rightLegRotZ, 0.0f, 0.0f, 1.0f);
-        drawBoneLine(0.0, 0.0, 0.0, 0.0, -legHeight, 0.0);
-        GL11.glRotatef(rightLegRotZ, 0.0f, 0.0f, 1.0f);
-        GL11.glRotatef(rightLegRotY, 0.0f, 1.0f, 0.0f);
-        GL11.glRotatef(-rightLegRotX, 1.0f, 0.0f, 0.0f);
-
-        GL11.glTranslated(0.3, 0.0, 0.0);
-        float leftLegRotX = modelBiped.bipedLeftLeg.rotateAngleX * RAD_TO_DEG;
-        float leftLegRotY = modelBiped.bipedLeftLeg.rotateAngleY * RAD_TO_DEG;
-        float leftLegRotZ = modelBiped.bipedLeftLeg.rotateAngleZ * RAD_TO_DEG;
-        GL11.glRotatef(leftLegRotX, 1.0f, 0.0f, 0.0f);
-        GL11.glRotatef(-leftLegRotY, 0.0f, 1.0f, 0.0f);
-        GL11.glRotatef(-leftLegRotZ, 0.0f, 0.0f, 1.0f);
-        drawBoneLine(0.0, 0.0, 0.0, 0.0, -legHeight, 0.0);
-        GL11.glRotatef(leftLegRotZ, 0.0f, 0.0f, 1.0f);
-        GL11.glRotatef(leftLegRotY, 0.0f, 1.0f, 0.0f);
-        GL11.glRotatef(-leftLegRotX, 1.0f, 0.0f, 0.0f);
-        GL11.glTranslated(-0.15, 0.0, 0.0);
-
-        drawBoneLine(0.15, 0.0, 0.0, -0.15, 0.0, 0.0);
-        if (player.isSneaking()) GL11.glRotatef(20.0f, 1.0f, 0.0f, 0.0f);
-        drawBoneLine(0.0, 0.0, 0.0, 0.0, 0.65, 0.0);
-
-        GL11.glTranslated(0.0, 0.65, 0.0);
-        drawBoneLine(0.35, 0.0, 0.0, -0.35, 0.0, 0.0);
-        GL11.glTranslated(-0.35, 0.0, 0.0);
-
-        float rightArmRotX = modelBiped.bipedRightArm.rotateAngleX * RAD_TO_DEG;
-        float rightArmRotY = modelBiped.bipedRightArm.rotateAngleY * RAD_TO_DEG;
-        float rightArmRotZ = modelBiped.bipedRightArm.rotateAngleZ * RAD_TO_DEG;
-        GL11.glRotatef(rightArmRotX, 1.0f, 0.0f, 0.0f);
-        GL11.glRotatef(-rightArmRotY, 0.0f, 1.0f, 0.0f);
-        GL11.glRotatef(-rightArmRotZ, 0.0f, 0.0f, 1.0f);
-        drawBoneLine(0.0, 0.0, 0.0, 0.0, -0.6, 0.0);
-        GL11.glRotatef(rightArmRotZ, 0.0f, 0.0f, 1.0f);
-        GL11.glRotatef(rightArmRotY, 0.0f, 1.0f, 0.0f);
-        GL11.glRotatef(-rightArmRotX, 1.0f, 0.0f, 0.0f);
-
-        GL11.glTranslated(0.7, 0.0, 0.0);
-        float leftArmRotX = modelBiped.bipedLeftArm.rotateAngleX * RAD_TO_DEG;
-        float leftArmRotY = modelBiped.bipedLeftArm.rotateAngleY * RAD_TO_DEG;
-        float leftArmRotZ = modelBiped.bipedLeftArm.rotateAngleZ * RAD_TO_DEG;
-        GL11.glRotatef(leftArmRotX, 1.0f, 0.0f, 0.0f);
-        GL11.glRotatef(-leftArmRotY, 0.0f, 1.0f, 0.0f);
-        GL11.glRotatef(-leftArmRotZ, 0.0f, 0.0f, 1.0f);
-        drawBoneLine(0.0, 0.0, 0.0, 0.0, -0.6, 0.0);
-        GL11.glRotatef(leftArmRotZ, 0.0f, 0.0f, 1.0f);
-        GL11.glRotatef(leftArmRotY, 0.0f, 1.0f, 0.0f);
-        GL11.glRotatef(-leftArmRotX, 1.0f, 0.0f, 0.0f);
-        GL11.glTranslated(-0.35, 0.0, 0.0);
-
-        GL11.glRotatef(-player.renderYawOffset, 0.0f, -999.0f, 0.0f);
-        GL11.glRotated(player.rotationYaw, 0.0, -999.0, 0.0);
-        GL11.glRotated(player.rotationPitch, 999.0, 0.0, 0.0);
-        drawBoneLine(0.0, 0.0, 0.0, 0.0, 0.4, 0.0);
-        drawBoneLine(0.0, 0.4, 0.0, 0.0, 0.4, 0.25);
-
-        if (!wasBlendEnabled) GL11.glDisable(GL11.GL_BLEND);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_LINE_SMOOTH);
-        GL11.glEnable(GL11.GL_LIGHTING);
-        GL11.glPopMatrix();
-        GL11.glColor4f(1, 1, 1, 1);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glPopMatrix();
-    }
-
-    private void drawBoneLine(double x1, double y1, double z1, double x2, double y2, double z2) {
-        GL11.glBegin(GL11.GL_LINES);
-        GL11.glVertex3d(x1, y1, z1);
-        GL11.glVertex3d(x2, y2, z2);
-        GL11.glEnd();
     }
 
     private static final class RectBatch {
