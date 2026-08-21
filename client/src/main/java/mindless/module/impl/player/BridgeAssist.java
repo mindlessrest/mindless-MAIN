@@ -67,26 +67,6 @@ public class BridgeAssist extends Module {
      * side of the walk line. Nothing is placed until the turn has essentially finished.
      */
     private static final float AIM_SETTLE_DEG = 6.0f;
-    /**
-     * Sweep used when the preferred stance stops reaching anything placeable.
-     *
-     * Aiming straight back down the line of travel enters the support through its top face, so the
-     * block would land level with the feet and is refused. Coming in at an angle enters through the
-     * side face instead, which is placeable, and is also the stance that looks and plays like a
-     * real bridge. The trace makes this unambiguous: every placement happened around 25 degrees off
-     * straight back, and every straight-back tick was rejected with "block would land at y80 but
-     * the deck is y79".
-     *
-     * Which offset works depends on where the player is standing relative to the support, so it is
-     * found by sweeping rather than assumed, smallest deflection first. Once found it is kept as
-     * part of the stance: re-deriving it per tick had the aim chasing a target that moved with it,
-     * and clearing it after a successful placement snapped the aim back to straight back, which
-     * fails, which swept again -- the oscillation that ended in a fall.
-     */
-    private static final float[] STANCE_PITCH_OFFSET = { 0f, 2f, 4f, 6f, 9f, 12f, 15f, 18f };
-    private static final float[] STANCE_YAW_OFFSET = {
-            0f, -15f, 15f, -22f, 22f, -30f, 30f, -38f, 38f, -45f, 45f, -55f, 55f, -70f, 70f, -90f, 90f
-    };
 
     private final SliderSetting edgeOffset;
     private final SliderSetting unsneakDelayMin;
@@ -100,6 +80,7 @@ public class BridgeAssist extends Module {
     private final ButtonSetting prePlace;
     private final ButtonSetting silentRotation;
     private final ButtonSetting forceDiagonal;
+    private final SliderSetting stanceAngle;
     private final ButtonSetting debug;
     private final SliderSetting bridgePitch;
     private final SliderSetting smoothness;
@@ -130,8 +111,7 @@ public class BridgeAssist extends Module {
     private float yawJitter, pitchJitter;
     private long lastPlaceAt;
     private long lastRelockAt;
-    /** Deflection from the stance heading that actually reaches a placeable face, and its pitch. */
-    private float stanceYawOffset, stancePitchOffset;
+
     /** Last known heading of actual travel, latched so a momentary stall does not drop the lock. */
     private float travelYaw;
     private boolean hasTravelYaw;
@@ -147,6 +127,7 @@ public class BridgeAssist extends Module {
         this.registerSetting(prePlace = new ButtonSetting("Pre place", false));
         this.registerSetting(silentRotation = new ButtonSetting("Silent rotation", false));
         this.registerSetting(forceDiagonal = new ButtonSetting("Force diagonal", false));
+        this.registerSetting(stanceAngle = new SliderSetting("Stance angle", "\u00b0", 0, -45, 45, 5));
         this.registerSetting(bridgePitch = new SliderSetting("Pitch", "\u00b0", 78, 60, 88, 0.5));
         this.registerSetting(smoothness = new SliderSetting("Smoothness", "%", 42, 5, 100, 1));
         this.registerSetting(relockAngle = new SliderSetting("Relock angle", "\u00b0", 55, 20, 120, 5));
@@ -184,8 +165,6 @@ public class BridgeAssist extends Module {
         aimLocked = false;
         rotationInitialised = false;
         hasTravelYaw = false;
-        stanceYawOffset = 0f;
-        stancePitchOffset = 0f;
         lastStage = "";
         closeLog();
         restoreSlot();
@@ -361,8 +340,15 @@ public class BridgeAssist extends Module {
 
         // A slow wander on top of the lock, so the aim is never perfectly static.
         float t = System.currentTimeMillis() * 0.003f;
-        float targetYaw = wrap(lockedYaw + stanceYawOffset + (float) (Math.sin(t * 2.1f) * 0.45d) + yawJitter);
-        float targetPitch = basePitch + stancePitchOffset + (float) (Math.cos(t * 1.7f) * 0.35d) + pitchJitter;
+        // Stance angle deflects the aim off the line of travel. Straight back (zero) enters the
+        // support through its top face, where the block would land level with the feet and be
+        // refused; coming in at an angle enters through the side face instead. The trace put every
+        // successful placement around 25 degrees off, so that is the value to reach for, but which
+        // side works depends on where the player walks within the block, hence a setting rather
+        // than a guess.
+        float targetYaw = wrap(lockedYaw + (float) stanceAngle.getInput()
+                + (float) (Math.sin(t * 2.1f) * 0.45d) + yawJitter);
+        float targetPitch = basePitch + (float) (Math.cos(t * 1.7f) * 0.35d) + pitchJitter;
 
         // Step toward it, quantised to the mouse GCD so the deltas look like real mouse input.
         float gcd = mouseGcd();
@@ -411,34 +397,16 @@ public class BridgeAssist extends Module {
             return;
         }
 
-        // Sweep from the stance heading, never from the live aim. Offsets measured against a
-        // heading that is itself being steered are a moving target, and the aim chased it.
-        for (float pitchOffset : STANCE_PITCH_OFFSET) {
-            float testPitch = Math.min(88.5f, basePitch + pitchOffset);
-            for (float yawOffset : STANCE_YAW_OFFSET) {
-                float testYaw = wrap(lockedYaw + yawOffset);
-                if (!placeable(RotationUtils.rayCastBlock(reach, testYaw, testPitch), maxPlaceY, held)) {
-                    continue;
-                }
-                if (yawOffset != stanceYawOffset) {
-                    stage("stance offset " + Math.round(stanceYawOffset) + " -> "
-                            + Math.round(yawOffset) + " (pitch " + Math.round(testPitch) + ")");
-                }
-                stanceYawOffset = yawOffset;
-                stancePitchOffset = testPitch - basePitch;
-                return;
-            }
-        }
-
-        // Nothing reaches from anywhere. Hold the offset rather than resetting it: one unreachable
-        // tick mid-stride is not evidence the stance is wrong, and zeroing it here is what used to
-        // snap the aim back to straight back and start the oscillation.
-        stage("nothing reachable at any offset from heading " + Math.round(lockedYaw)
+        // Hold the stance and wait. There used to be a sweep here, hunting the surrounding
+        // rotations for one that reached a placeable face, and it did more harm than the misses it
+        // was meant to cover: candidates were judged against where the player stood at that
+        // instant, while the aim needs four or five ticks to arrive and the player covers a fifth
+        // of a block per tick. Every angle it chose was stale on arrival. The trace shows it
+        // settling on seventy degrees off, dragging the aim away from the bridge, and the player
+        // falling while facing the wrong way. A steady stance that waits for the geometry places
+        // the block; a stance chasing a stale target never does.
+        stage("holding stance " + Math.round(currentYaw) + "/" + Math.round(currentPitch)
                 + " (" + reason + ")");
-    }
-
-    private boolean placeable(MovingObjectPosition mop, int maxPlaceY, ItemStack held) {
-        return rejectReason(mop, maxPlaceY, held) == null;
     }
 
     /**
@@ -601,8 +569,6 @@ public class BridgeAssist extends Module {
         aimLocked = false;
         rotationInitialised = false;
         hasTravelYaw = false;
-        stanceYawOffset = 0f;
-        stancePitchOffset = 0f;
         placeQueued = false;
         restoreSlot();
     }
