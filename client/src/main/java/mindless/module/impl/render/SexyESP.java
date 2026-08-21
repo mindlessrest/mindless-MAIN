@@ -605,6 +605,9 @@ public class SexyESP extends Module {
     }
 
     private void runOutlinePass(float partialTicks) {
+        if (mindless.utility.Diagnostics.isEnabled() && !glowBloomShader.isValid()) {
+            mindless.utility.Diagnostics.log("esp", "glow shader unavailable, falling back to bloom");
+        }
         if (!glowShader.isValid()) return;
         if (!glowBloomShader.isValid() && !separableOutlineShader.isValid()) return;
 
@@ -640,6 +643,7 @@ public class SexyESP extends Module {
             player.setInvisible(invis);
         }
         glowShader.stop();
+        mindless.utility.Diagnostics.gl("esp: silhouette pass");
         renderingOutlinePass = false;
 
         mc.gameSettings.entityShadows = shadows;

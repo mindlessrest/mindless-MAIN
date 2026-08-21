@@ -13,6 +13,8 @@ import net.minecraft.client.gui.inventory.GuiInventory;
 
 public class Settings extends Module {
     public static KeySetting reinjectKey;
+    public static ButtonSetting diagnostics;
+    public static ButtonSetting diagnosticsChat;
     public static ButtonSetting addBracketsToDistance;
     public static ButtonSetting hideFirstPersonESP;
     public static ButtonSetting setChatAsInventory;
@@ -49,6 +51,10 @@ public class Settings extends Module {
         mindless.utility.CapeManager.reloadCustomCapes();
         this.registerSetting(new ButtonSetting("Uninject", () -> Raven.uninject()));
         this.registerSetting(reinjectKey = new KeySetting("Reinject key", Keyboard.KEY_INSERT));
+        this.registerSetting(new DescriptionSetting("Diagnostics"));
+        this.registerSetting(diagnostics = new ButtonSetting("Diagnostics", false));
+        this.registerSetting(diagnosticsChat = new ButtonSetting("Diagnostics in chat", false));
+        this.registerSetting(new ButtonSetting("Dump GL info", () -> mindless.utility.Diagnostics.dumpEnvironment()));
         this.registerSetting(customCapes = new SliderSetting("Custom cape", 0, mindless.utility.CapeManager.getCapeOptions()));
         this.registerSetting(new DescriptionSetting("HUD layout"));
         this.registerSetting(new ButtonSetting("Edit HUD elements", () -> mc.displayGuiScreen(new HudEditor.Screen())));

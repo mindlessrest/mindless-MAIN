@@ -52,7 +52,7 @@ public abstract class OutlineESPShader {
      * effect simply did not appear and there was no way to tell that from it being switched off.
      */
     private void report(String stage) {
-        System.err.println("[mindless] " + getClass().getSimpleName() + " " + stage
+        mindless.utility.Diagnostics.always("shader", getClass().getSimpleName() + " " + stage
                 + " failed: " + (error == null ? "no driver message" : error.trim()));
     }
 

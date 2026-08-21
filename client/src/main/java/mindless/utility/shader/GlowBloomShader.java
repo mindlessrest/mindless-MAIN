@@ -1,5 +1,6 @@
 package mindless.utility.shader;
 
+import mindless.utility.Diagnostics;
 import mindless.utility.RenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
@@ -45,8 +46,10 @@ public class GlowBloomShader {
     public void render(Framebuffer silhouette, float radius, float intensity, int r, int g, int b) {
         if (!pass.isValid() || silhouette == null || radius <= 0.0f) return;
 
+        Diagnostics.gl("glow: entering (errors from earlier passes)");
         scratch = RenderUtils.createFrameBuffer(scratch, false);
         if (scratch == null) return;
+        Diagnostics.gl("glow: scratch buffer ready");
 
         // Horizontal half, written opaquely into the scratch buffer: blending here would mix the
         // partial result with whatever the buffer already held.
@@ -58,7 +61,9 @@ public class GlowBloomShader {
         pass.setTint(r, g, b);
         pass.setShape(radius, intensity);
         pass.setDirection(1.0f, 0.0f, false);
+        Diagnostics.gl("glow: horizontal uniforms set");
         RenderUtils.drawFramebufferFullscreen(silhouette);
+        Diagnostics.gl("glow: horizontal draw");
         pass.stop();
 
         // Vertical half, composited over the scene. Additive rather than alpha-over, because a
@@ -78,7 +83,9 @@ public class GlowBloomShader {
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE2);
         RenderUtils.bindTexture(silhouette.framebufferTexture);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
+        Diagnostics.gl("glow: vertical uniforms and textures bound");
         RenderUtils.drawFramebufferFullscreen(scratch);
+        Diagnostics.gl("glow: vertical draw");
         pass.stop();
 
         GlStateManager.bindTexture(0);
@@ -86,6 +93,7 @@ public class GlowBloomShader {
         GlStateManager.bindTexture(0);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        Diagnostics.gl("glow: pass complete");
     }
 
     public void delete() {
