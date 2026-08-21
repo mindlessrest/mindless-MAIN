@@ -430,9 +430,31 @@ public class Raven {
         // the pool refuses work forever after -- and reinject would come back to a client whose
         // every scheduled task silently failed. With nothing registered, nothing posts to them.
 
+        markNativeLog("Raven uninjected; awaiting in-game reinject");
         try {
             Utils.sendMessage("&7Mindless uninjected. Press "
                     + org.lwjgl.input.Keyboard.getKeyName(getReinjectKey()) + " to load it again.");
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Notes a state change in the log the loader reads.
+     *
+     * The loader decides what to show purely from that file, and an uninjected client is
+     * indistinguishable in it from a healthy one -- both have the module resident and the same
+     * startup lines -- so it reported "already attached" and offered a full restart as the only
+     * way out. With a marker it can say what is actually true and point at the key instead.
+     */
+    private static void markNativeLog(String message) {
+        try {
+            java.io.File dir = new java.io.File(System.getProperty("java.io.tmpdir"), "RavenNative");
+            if (!dir.isDirectory() && !dir.mkdirs()) return;
+            java.io.File log = new java.io.File(dir, "raven-native.log");
+            try (java.io.PrintWriter writer = new java.io.PrintWriter(
+                    new java.io.FileOutputStream(log, true), true)) {
+                writer.println("[" + new java.util.Date() + "] " + message);
+            }
         } catch (Throwable ignored) {
         }
     }
@@ -489,6 +511,7 @@ public class Raven {
         }
 
         unloaded = false;
+        markNativeLog("Raven reinjected; client is active again");
         try {
             Utils.sendMessage("&7Mindless reinjected.");
         } catch (Throwable ignored) {

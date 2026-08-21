@@ -133,6 +133,22 @@ bool contains(const std::string& text, const char* value)
     return text.find(value) != std::string::npos;
 }
 
+// Whether the client marked itself uninjected more recently than it last came up. The log is
+// appended to across a session, so only the ordering of the final markers says anything.
+bool uninjected_since_load(const std::string& text)
+{
+    size_t uninjected = text.rfind("Raven uninjected");
+    if (uninjected == std::string::npos) return false;
+
+    size_t live = text.rfind("Raven reinjected");
+    size_t started = text.rfind("NativeBootstrap.start completed; Raven is active");
+    if (live == std::string::npos || (started != std::string::npos && started > live))
+    {
+        live = started;
+    }
+    return live == std::string::npos || uninjected > live;
+}
+
 } // namespace
 
 InjectionSession::~InjectionSession()
@@ -149,6 +165,14 @@ bool InjectionSession::start(uint32_t processId)
     if (!loadedModule.empty())
     {
         std::string previousLog = read_text_file(sibling_log(loadedModule));
+        if (uninjected_since_load(previousLog))
+        {
+            // Nothing to re-inject: the module is still resident and the classes are still
+            // loaded, so the client can only be revived from inside the game.
+            fail("Mindless is uninjected, not gone",
+                 "Press your reinject key in game (Insert by default) to load it again.");
+            return false;
+        }
         if (contains(previousLog, "NativeBootstrap.start completed; Raven is active"))
         {
             phase_ = InjectionPhase::Complete;
