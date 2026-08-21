@@ -1506,7 +1506,31 @@ public class RenderUtils implements IMinecraftInstance {
         GL11.glDisable(3042);
         GL11.glDisable(2848);
         GL11.glShadeModel(7424);
-        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        syncGlState();
+    }
+
+    /**
+     * Puts GlStateManager's cache back in agreement with real GL.
+     *
+     * The raw-GL helpers here call GL11.glColor4f, glEnable and glDisable directly, which
+     * GlStateManager never sees. Its cache then believes the colour is already white and blending
+     * is already on, so the next GlStateManager.color(1,1,1,1) or enableBlend() is skipped as
+     * redundant and the leaked state survives into the following frame -- which is what tinted the
+     * hotbar and drew it unblended after a notification card faded.
+     *
+     * resetColor invalidates the colour cache so the white actually reaches the driver, and each
+     * disable/enable pair forces a real call whichever way round the cache happens to be wrong.
+     */
+    public static void syncGlState() {
+        resetColor();
+        GlStateManager.disableBlend();
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableTexture2D();
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableAlpha();
+        GlStateManager.alphaFunc(GL_GREATER, 0.1f);
+        GlStateManager.shadeModel(GL_FLAT);
     }
 
     public static int setAlpha(int rgb, double alpha) {

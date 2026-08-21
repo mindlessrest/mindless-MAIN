@@ -44,6 +44,10 @@ public class BridgeAssist extends Module {
      */
     /** Half the player's hitbox width, for testing whether a corner hangs over the edge. */
     private static final double FOOTPRINT_HALF = 0.3;
+    /** Squared per-tick displacement below which the player counts as standing still. */
+    private static final double MOVING_EPSILON_SQ = 1.0E-5;
+    /** Floor on how often the locked diagonal may change, as insurance against chatter. */
+    private static final long MIN_RELOCK_INTERVAL_MS = 250L;
 
     private final SliderSetting edgeOffset;
     private final SliderSetting unsneakDelayMin;
@@ -85,6 +89,10 @@ public class BridgeAssist extends Module {
     private float lockedYaw;
     private float yawJitter, pitchJitter;
     private long lastPlaceAt;
+    private long lastRelockAt;
+    /** Last known heading of actual travel, latched so a momentary stall does not drop the lock. */
+    private float travelYaw;
+    private boolean hasTravelYaw;
 
     /** Last reported trace stage, so an unchanged state does not spam chat every tick. */
     private String lastStage = "";
@@ -132,6 +140,7 @@ public class BridgeAssist extends Module {
         placeQueued = false;
         aimLocked = false;
         rotationInitialised = false;
+        hasTravelYaw = false;
         lastStage = "";
         closeLog();
         restoreSlot();
@@ -257,9 +266,26 @@ public class BridgeAssist extends Module {
             return;
         }
 
-        float forward = mc.thePlayer.movementInput.moveForward;
-        float strafe = mc.thePlayer.movementInput.moveStrafe;
-        boolean towering = !mc.thePlayer.onGround && forward == 0f && strafe == 0f;
+        // Direction of travel, measured from the distance actually covered last tick.
+        //
+        // This used to be read off movementInput combined with the player's own rotationYaw, and
+        // that was the bug behind the whole thing. Movement Fix rewrites moveForward/moveStrafe to
+        // be relative to the *spoofed* yaw whenever a silent rotation is active
+        // (RotationHelper.onPostInput), while rotationYaw is still the real camera. Mixing the two
+        // frames produced a bogus heading, which relocked the diagonal, which swung the spoofed
+        // yaw, which made Movement Fix pick a different input combination -- a closed loop that
+        // flipped the target between two diagonals every few ticks and left the aim sweeping
+        // sideways through open air. Displacement belongs to no frame at all, so it cannot feed
+        // back. It also keeps working mid-air, where momentum carries the heading through.
+        double dx = mc.thePlayer.posX - mc.thePlayer.prevPosX;
+        double dz = mc.thePlayer.posZ - mc.thePlayer.prevPosZ;
+        boolean moving = dx * dx + dz * dz > MOVING_EPSILON_SQ;
+        if (moving) {
+            travelYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            hasTravelYaw = true;
+        }
+
+        boolean towering = !mc.thePlayer.onGround && !moving;
         float basePitch = towering ? 88.5f : (float) bridgePitch.getInput();
 
         if (!rotationInitialised) {
@@ -272,17 +298,16 @@ public class BridgeAssist extends Module {
         // Yaw wants to face back down the line the player is walking, which is what a god bridge
         // looks like. Snapping that to the nearest 45-degree diagonal is the whole trick: it
         // gives a target that does not drift as the player's own view wanders.
-        float moveOffset = 0f;
-        if (forward != 0f || strafe != 0f) {
-            moveOffset = (float) Math.toDegrees(Math.atan2(-strafe, forward));
-        }
-        float awayYaw = mc.thePlayer.rotationYaw + moveOffset + 180f;
+        float awayYaw = (hasTravelYaw ? travelYaw : mc.thePlayer.rotationYaw) + 180f;
 
-        // Re-lock only when the direction of travel has genuinely changed. Re-picking every tick
-        // is what made the head thrash: the target moved as fast as the aim chased it.
-        boolean relock = !aimLocked
-                || Math.abs(wrap(awayYaw - lockedYaw)) > (float) relockAngle.getInput();
+        // Re-lock only when the direction of travel has genuinely changed, and never more than
+        // once every MIN_RELOCK_INTERVAL_MS. Re-picking freely is what made the head thrash: the
+        // target moved as fast as the aim chased it.
+        long now = System.currentTimeMillis();
+        boolean drifted = Math.abs(wrap(awayYaw - lockedYaw)) > (float) relockAngle.getInput();
+        boolean relock = !aimLocked || (drifted && now - lastRelockAt >= MIN_RELOCK_INTERVAL_MS);
         if (relock) {
+            lastRelockAt = now;
             lockedYaw = bestDiagonal(awayYaw, currentYaw);
             aimLocked = true;
             yawJitter = (float) (Math.random() * 1.6d - 0.8d);
@@ -347,9 +372,11 @@ public class BridgeAssist extends Module {
         if (!mc.thePlayer.onGround) return true;
         if (System.currentTimeMillis() - lastPlaceAt < (long) idleRelease.getInput()) return true;
 
-        boolean moving = mc.thePlayer.movementInput.moveForward != 0f
-                || mc.thePlayer.movementInput.moveStrafe != 0f;
-        if (!moving) return false;
+        // Displacement again rather than movementInput, for the same reason as above: with
+        // Movement Fix on, those fields no longer describe the keys the player is holding.
+        double dx = mc.thePlayer.posX - mc.thePlayer.prevPosX;
+        double dz = mc.thePlayer.posZ - mc.thePlayer.prevPosZ;
+        if (dx * dx + dz * dz <= MOVING_EPSILON_SQ) return false;
 
         // At the lip: any corner of the hitbox hanging over open space.
         return overEdge();
@@ -421,6 +448,7 @@ public class BridgeAssist extends Module {
         }
         aimLocked = false;
         rotationInitialised = false;
+        hasTravelYaw = false;
         placeQueued = false;
         restoreSlot();
     }

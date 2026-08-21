@@ -217,6 +217,10 @@ public class Notifications extends Module {
             int a = (int)(255 * c.alpha);
             drawCard(c, x, c.y, font, c.alpha, a, gradL, gradR, now);
         }
+
+        // Cards draw at the very end of the frame, so anything left dirty here lands on the next
+        // frame's hotbar rather than on the card itself. Hand back a known-clean state.
+        RenderUtils.syncGlState();
     }
 
     private void drawCard(Card c, float x, float y, RavenFontRenderer font,
