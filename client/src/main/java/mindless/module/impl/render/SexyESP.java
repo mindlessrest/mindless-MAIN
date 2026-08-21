@@ -12,8 +12,8 @@ import mindless.module.impl.world.AntiBot;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
+import mindless.utility.shader.GlowBloomShader;
 import mindless.utility.shader.GlowShader;
-import mindless.utility.shader.KawaseBloom;
 import mindless.utility.shader.SeparableOutlineShader;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
@@ -80,11 +80,14 @@ public class SexyESP extends Module {
 
     private final ButtonSetting outlineEnabled;
     private final SliderSetting outlineGlowSize;
+    private final SliderSetting outlineGlowStrength;
+    private final ButtonSetting outlineEdge;
     private final ColorSetting outlineColor;
 
     public static boolean renderingOutlinePass = false;
     private Framebuffer outlineFramebuffer;
     private final SeparableOutlineShader separableOutlineShader = new SeparableOutlineShader();
+    private final GlowBloomShader glowBloomShader = new GlowBloomShader();
     private final GlowShader glowShader = new GlowShader();
 
     public SexyESP() {
@@ -124,6 +127,8 @@ public class SexyESP extends Module {
         registerSetting(outlineGroup);
         registerSetting(outlineEnabled = new ButtonSetting(outlineGroup, "Enabled", false));
         registerSetting(outlineGlowSize = new SliderSetting(outlineGroup, "Glow size", 4.0, 0.0, 10.0, 0.5));
+        registerSetting(outlineGlowStrength = new SliderSetting(outlineGroup, "Glow strength", 1.6, 0.2, 4.0, 0.1));
+        registerSetting(outlineEdge = new ButtonSetting(outlineGroup, "Edge", false));
         registerSetting(outlineColor = new ColorSetting(outlineGroup, "Color", 180, 0, 255));
 
         registerSetting(localPlayer = new ButtonSetting("Local player", true));
@@ -154,6 +159,7 @@ public class SexyESP extends Module {
             outlineFramebuffer.deleteFramebuffer();
             outlineFramebuffer = null;
         }
+        glowBloomShader.delete();
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -598,7 +604,8 @@ public class SexyESP extends Module {
     }
 
     private void runOutlinePass(float partialTicks) {
-        if (!separableOutlineShader.isValid() || !glowShader.isValid()) return;
+        if (!glowShader.isValid()) return;
+        if (!glowBloomShader.isValid() && !separableOutlineShader.isValid()) return;
 
         outlineFramebuffer = createOutlineFramebuffer(outlineFramebuffer);
         if (outlineFramebuffer == null) return;
@@ -638,13 +645,25 @@ public class SexyESP extends Module {
         mc.entityRenderer.disableLightmap();
         mc.getFramebuffer().bindFramebuffer(true);
 
+        // A Gaussian smear of the silhouette's coverage, tinted and added over the scene. The
+        // Kawase bloom that used to run here wrote its result straight onto the main framebuffer
+        // and was then overdrawn by a two-texel dilation of the same silhouette, so what survived
+        // was a hard traced edge with the soft part fighting it rather than a glow.
+        //
+        // Glow size is in silhouette texels rather than screen pixels, and that buffer is three
+        // quarters of the display, so the multiplier keeps the slider reading roughly as pixels.
         float glowSize = (float) outlineGlowSize.getInput();
-        if (glowSize > 0.0f) {
-            int iterations = Math.max(1, Math.round(glowSize));
-            KawaseBloom.renderBlur(outlineFramebuffer.framebufferTexture, iterations, glowSize);
-        }
         mc.getFramebuffer().bindFramebuffer(false);
-        separableOutlineShader.render(outlineFramebuffer);
+        if (glowSize > 0.0f) {
+            glowBloomShader.render(outlineFramebuffer, glowSize * 6.0f,
+                    (float) outlineGlowStrength.getInput(), oR, oG, oB);
+        }
+        // The crisp traced edge is now opt-in: it reads as an outline, which is the opposite of
+        // what the glow is for, but it sharpens the silhouette when both are wanted together.
+        if (outlineEdge.isToggled()) {
+            mc.getFramebuffer().bindFramebuffer(false);
+            separableOutlineShader.render(outlineFramebuffer);
+        }
         outlineFramebuffer.framebufferClear();
         mc.getFramebuffer().bindFramebuffer(true);
 
