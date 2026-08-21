@@ -367,7 +367,8 @@ public class Scaffold extends Module {
                 boolean diagonal = Math.abs(mc.thePlayer.movementInput.moveForward) > 0.001f
                         && Math.abs(mc.thePlayer.movementInput.moveStrafe) > 0.001f;
                 float speed = diagonal ? 70.0f : 35.0f;
-                speed *= 1.0f - (float)(Math.random() * 0.2);
+                //speed *= 1.0f - (float)(Math.random() * 0.3); TODO: UNCOMMENT IF NOT WORKING, OLD!
+                speed *= 1.0f - (0.05f + (float)(Math.random() * 0.25f));
                 if (totalDiff <= speed) {
                     e.setRotations(targetYaw, targetPitchBeta);
                 } else if (speed > 0.0f) {
