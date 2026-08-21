@@ -18,6 +18,7 @@ import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.network.play.client.C09PacketHeldItemChange;
 import net.minecraft.util.*;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
@@ -377,7 +378,6 @@ public class BridgeAssist extends Module {
         currentYaw = wrap(currentYaw + quantise(wrap(targetYaw - currentYaw), gcd));
         currentPitch = RotationUtils.clampPitch(currentPitch + quantise(targetPitch - currentPitch, gcd));
 
-        selectBlockSlot(slot);
         e.setYaw(currentYaw);
         e.setPitch(currentPitch);
 
@@ -405,6 +405,11 @@ public class BridgeAssist extends Module {
         MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, currentYaw, currentPitch);
         String reason = rejectReason(mop, maxPlaceY, held);
         if (reason == null) {
+            // Take the slot only now that a block is genuinely going down. It used to be taken as
+            // soon as the stance engaged, which is two and a half blocks before the edge, and
+            // handed back on release -- so simply walking near a drop swapped the held item back
+            // and forth several times a second.
+            selectBlockSlot(slot);
             queuePlacement(mop);
             return;
         }
@@ -916,15 +921,31 @@ public class BridgeAssist extends Module {
         return -1;
     }
 
+    /**
+     * Switches the held slot, and tells the server about it.
+     *
+     * Writing inventory.currentItem on its own only moves the client's idea of what is held. The
+     * server carries on believing the previous item is in hand, so anything placed -- by the
+     * module or by the player right-clicking themselves -- resolves against the wrong stack. The
+     * held-item packet is what makes the switch real.
+     */
     private void selectBlockSlot(int slot) {
         if (mc.thePlayer.inventory.currentItem == slot) return;
         if (previousSlot == -1) previousSlot = mc.thePlayer.inventory.currentItem;
         mc.thePlayer.inventory.currentItem = slot;
+        if (mc.thePlayer.sendQueue != null) {
+            mc.thePlayer.sendQueue.addToSendQueue(new C09PacketHeldItemChange(slot));
+        }
     }
 
     private void restoreSlot() {
         if (previousSlot != -1 && mc.thePlayer != null) {
-            mc.thePlayer.inventory.currentItem = previousSlot;
+            if (mc.thePlayer.inventory.currentItem != previousSlot) {
+                mc.thePlayer.inventory.currentItem = previousSlot;
+                if (mc.thePlayer.sendQueue != null) {
+                    mc.thePlayer.sendQueue.addToSendQueue(new C09PacketHeldItemChange(previousSlot));
+                }
+            }
         }
         previousSlot = -1;
     }
