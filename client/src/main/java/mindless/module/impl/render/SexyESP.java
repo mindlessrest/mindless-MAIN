@@ -615,6 +615,16 @@ public class SexyESP extends Module {
         if (outlineFramebuffer == null) return;
 
         mc.getFramebuffer().bindFramebuffer(true);
+        // Both matrices are saved, not just the modelview. setupCameraTransform below replaces the
+        // projection with the camera's perspective, and the composite at the end needs an
+        // orthographic one -- every fullscreen helper draws its quad in scaled-GUI coordinates, so
+        // under a perspective projection that quad lands on the camera's near plane and none of the
+        // glow ever reaches the screen. The setupOverlayRendering call was deleted once for leaving
+        // the projection in ortho and breaking freelook; putting the saved matrices back afterwards
+        // fixes that without giving up the projection the composite depends on.
+        GlStateManager.matrixMode(GL11.GL_PROJECTION);
+        GL11.glPushMatrix();
+        GlStateManager.matrixMode(GL11.GL_MODELVIEW);
         GL11.glPushMatrix();
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
 
@@ -655,6 +665,9 @@ public class SexyESP extends Module {
 
         mc.gameSettings.entityShadows = shadows;
         mc.entityRenderer.disableLightmap();
+        // Ortho for the composite. Done while the outline buffer is still bound, because this also
+        // clears depth and that buffer has no depth attachment for it to damage.
+        mc.entityRenderer.setupOverlayRendering();
         mc.getFramebuffer().bindFramebuffer(true);
 
         // A Gaussian smear of the silhouette's coverage, tinted and added over the scene. The
@@ -662,8 +675,8 @@ public class SexyESP extends Module {
         // and was then overdrawn by a two-texel dilation of the same silhouette, so what survived
         // was a hard traced edge with the soft part fighting it rather than a glow.
         //
-        // Glow size is in silhouette texels rather than screen pixels, and that buffer is three
-        // quarters of the display, so the multiplier keeps the slider reading roughly as pixels.
+        // Glow size is in screen pixels; the multiplier turns the slider's 0-10 into a reach wide
+        // enough to read as a halo rather than as a traced edge.
         float glowSize = (float) outlineGlowSize.getInput();
         if (glowSize > 0.0f && glowBloomShader.isValid()) {
             mc.getFramebuffer().bindFramebuffer(false);
@@ -687,17 +700,27 @@ public class SexyESP extends Module {
         mc.getFramebuffer().bindFramebuffer(true);
 
         GL11.glPopAttrib();
+        GlStateManager.matrixMode(GL11.GL_PROJECTION);
         GL11.glPopMatrix();
+        GlStateManager.matrixMode(GL11.GL_MODELVIEW);
+        GL11.glPopMatrix();
+        // glPopAttrib puts real GL back, but GlStateManager never sees it happen, so its cache
+        // still holds whatever this pass left behind and the next enableTexture2D or color is
+        // skipped as redundant -- which is what drew the ESP nametags flat and black afterwards.
+        RenderUtils.syncGlState();
+        mindless.utility.Diagnostics.gl("esp: outline pass complete");
     }
 
     private Framebuffer createOutlineFramebuffer(Framebuffer framebuffer) {
-        int width = Math.max(1, mc.displayWidth * 3 / 4);
-        int height = Math.max(1, mc.displayHeight * 3 / 4);
-        if (framebuffer == null || framebuffer.framebufferWidth != width || framebuffer.framebufferHeight != height) {
-            if (framebuffer != null) framebuffer.deleteFramebuffer();
-            framebuffer = new Framebuffer(width, height, false);
-        }
+        // Display-sized, like every other glow pass here. At three quarters of the width the blur
+        // reached three quarters as far sideways as it did vertically, because both halves share a
+        // single texel-size uniform taken from the display, and the halo came out an ellipse.
+        framebuffer = RenderUtils.createFrameBuffer(framebuffer, false);
+        if (framebuffer == null) return null;
         framebuffer.setFramebufferColor(0.0f, 0.0f, 0.0f, 0.0f);
+        // Linear filtering: at a wide radius the seventeen taps sit several pixels apart, and
+        // nearest sampling turns that spacing into visible rings.
+        framebuffer.setFramebufferFilter(GL11.GL_LINEAR);
         return framebuffer;
     }
 

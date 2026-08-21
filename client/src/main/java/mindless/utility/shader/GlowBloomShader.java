@@ -49,6 +49,7 @@ public class GlowBloomShader {
         Diagnostics.gl("glow: entering (errors from earlier passes)");
         scratch = RenderUtils.createFrameBuffer(scratch, false);
         if (scratch == null) return;
+        scratch.setFramebufferFilter(GL11.GL_LINEAR);
         Diagnostics.gl("glow: scratch buffer ready");
 
         // Horizontal half, written opaquely into the scratch buffer: blending here would mix the
