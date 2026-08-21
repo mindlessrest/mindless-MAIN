@@ -7,6 +7,7 @@ import mindless.event.PrePlayerMovementInputEvent;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.Settings;
 import mindless.utility.RotationUtils;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
@@ -121,6 +122,9 @@ public abstract class MixinEntityLivingBase extends Entity {
 
     @Inject(method = "isPotionActive(Lnet/minecraft/potion/Potion;)Z", at = @At("HEAD"), cancellable = true)
     private void isPotionActive(Potion p_isPotionActive_1_, final CallbackInfoReturnable<Boolean> callbackInfoReturnable) {
+        if ((Object) this != Minecraft.getMinecraft().thePlayer) {
+            return;
+        }
         if (ModuleManager.antiDebuff != null && ModuleManager.antiDebuff.isEnabled() && ((p_isPotionActive_1_ == Potion.confusion && ModuleManager.antiDebuff.removeNausea.isToggled()) || (p_isPotionActive_1_ == Potion.blindness && ModuleManager.antiDebuff.removeBlindness.isToggled()))) {
             if (ModuleManager.antiDebuff.removeSideEffects.isToggled()) {
                 callbackInfoReturnable.setReturnValue(false);

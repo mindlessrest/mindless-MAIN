@@ -29,6 +29,7 @@ public class BreakProgress extends Module {
 
     public BreakProgress() {
         super("BreakProgress", category.render);
+        this.liteModule = true;
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(manual = new ButtonSetting("Show manual", true));
         this.registerSetting(bedAura = new ButtonSetting("Show BedAura", true));

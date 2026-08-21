@@ -4,6 +4,7 @@ import mindless.Raven;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
+import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
@@ -25,13 +26,16 @@ public class Gui extends Module {
     public static SliderSetting font;
     public static SliderSetting backgroundBlur;
     public static SliderSetting scrollSpeed;
-    public static ButtonSetting removePlayerModel;
+    public static ButtonSetting hidePlayerModel;
     public static ButtonSetting darkBackground;
-    public static ButtonSetting removeWatermark;
+    public static ButtonSetting hideWatermark;
     public static ButtonSetting rainBowOutlines;
+    public static ButtonSetting liteMode;
+    public static ButtonSetting loadGuiPositions;
 
     public Gui() {
         super("Gui", category.client, 54);
+        this.liteModule = true;
         this.registerSetting(guiScale = new SliderSetting("Gui scale", "x", 1.0, 0.5, 2.0, 0.01));
         this.registerSetting(font = new SliderSetting("Font", 0, GUI_FONT_OPTIONS));
         this.registerSetting(backgroundBlur = new SliderSetting("Background blur", "%", 0, 0, 100, 1));
@@ -40,8 +44,12 @@ public class Gui extends Module {
         this.registerSetting(themeTextColor = new ColorSetting("ClickGUI text color", 235, 234, 230));
         this.registerSetting(darkBackground = new ButtonSetting("Dark background", true));
         this.registerSetting(rainBowOutlines = new ButtonSetting("Rainbow outlines", false));
-        this.registerSetting(removePlayerModel = new ButtonSetting("Remove player model", false));
-        this.registerSetting(removeWatermark = new ButtonSetting("Remove watermark", false));
+        this.registerSetting(hidePlayerModel = new ButtonSetting("Remove player model", false));
+        this.registerSetting(hideWatermark = new ButtonSetting("Remove watermark", false));
+        this.registerSetting(liteMode = new ButtonSetting("Lite mode", false));
+        this.registerSetting(loadGuiPositions = new ButtonSetting("Save category positions", false));
+        this.registerSetting(new ButtonSetting("Reset positions", () -> Raven.clickGui.resetPositions()));
+        this.registerSetting(new DescriptionSetting("Colors"));
         this.registerSetting(enabledColor = new ColorSetting("Enabled color", 24, 154, 255));
         this.registerSetting(disabledColor = new ColorSetting("Disabled color", 192, 192, 192));
     }
@@ -80,4 +88,23 @@ public class Gui extends Module {
 
         return (float) Math.max(0.5D, Math.min(2.0D, guiScale.getInput()));
     }
+
+    public static boolean isLiteModeEnabled() {
+        return liteMode != null && liteMode.isToggled();
+    }
+
+    public static boolean shouldShowModule(Module module) {
+        return module.moduleCategory() == category.profiles
+                || module.moduleCategory() == category.scripts
+                || !isLiteModeEnabled()
+                || module.liteModule;
+    }
+
+    @Override
+    public void guiButtonToggled(ButtonSetting setting) {
+        if (setting == liteMode && Raven.clickGui != null) {
+            Raven.clickGui.reloadModulesForCurrentMode();
+        }
+    }
+
 }

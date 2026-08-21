@@ -31,6 +31,7 @@ public class WaterBucket extends Module {
 
     public WaterBucket() {
         super("Water Bucket", category.player);
+        this.liteModule = true;
         this.registerSetting(pickupWater = new ButtonSetting("Pickup water", true));
         this.registerSetting(silentAim = new ButtonSetting("Silent aim", true));
         this.registerSetting(switchToItem = new ButtonSetting("Switch to item", true));

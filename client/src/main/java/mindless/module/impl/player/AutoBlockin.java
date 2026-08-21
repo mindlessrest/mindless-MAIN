@@ -88,6 +88,7 @@ public class AutoBlockin extends Module {
 
     public AutoBlockin() {
         super("AutoBlockin", category.player);
+        this.liteModule = true;
         this.registerSetting(speed = new SliderSetting("Speed", 10, 1, 30, 1));
         this.registerSetting(randomization = new SliderSetting("Randomization", "%", 10, 0, 100, 1));
         this.registerSetting(rotationTol = new SliderSetting("Rotation tolerance", "\u00B0", 25, 20, 100, 1));
@@ -677,7 +678,7 @@ public class AutoBlockin extends Module {
         ArrayList<BlockPos> primaryGoals = new ArrayList<>(baseline.size());
         for (BlockPos pos : baseline) {
             if (!BlockUtils.replaceable(pos)) continue;
-            if (!BlockUtils.hasAirNeighbor(pos, feet, head)) continue;
+            if (!hasReplaceableNeighbor(pos, feet, head)) continue;
             primaryGoals.add(pos);
         }
         if (primaryGoals.isEmpty()) return null;
@@ -697,7 +698,7 @@ public class AutoBlockin extends Module {
             for (int i = 0; i < baseline.size() && picked < 3; i++) {
                 BlockPos pos = baseline.get(i);
                 if (!BlockUtils.replaceable(pos)) continue;
-                if (!BlockUtils.hasAirNeighbor(pos, feet, head)) continue;
+                if (!hasReplaceableNeighbor(pos, feet, head)) continue;
                 AimResult rEnemy = findBestForGoals(Collections.singletonList(pos), r, eye);
                 if (rEnemy != null) return rEnemy;
                 picked++;
@@ -731,6 +732,23 @@ public class AutoBlockin extends Module {
             frontier = layer;
         }
         return null;
+    }
+
+    private boolean hasReplaceableNeighbor(BlockPos pos, BlockPos... exclude) {
+        for (EnumFacing facing : EnumFacing.values()) {
+            BlockPos neighbor = pos.offset(facing);
+            if (!BlockUtils.replaceable(neighbor)) continue;
+
+            boolean excluded = false;
+            for (BlockPos excludedPos : exclude) {
+                if (neighbor.equals(excludedPos)) {
+                    excluded = true;
+                    break;
+                }
+            }
+            if (!excluded) return true;
+        }
+        return false;
     }
 
     private AimResult findBestForGoals(List<BlockPos> goals, double reachVal, Vec3 eye) {

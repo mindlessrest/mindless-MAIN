@@ -25,6 +25,7 @@ public class WTap extends Module {
 
     public WTap() {
         super("WTap", category.combat);
+        this.liteModule = true;
         this.registerSetting(chance = new SliderSetting("Chance", "%", 100, 0, 100, 1));
         this.registerSetting(delayBetweenReset = new SliderSetting("Delay between reset", "ms", 300, 0, 1000, 10));
         this.registerSetting(delayUntilReset = new SliderSetting("Delay until reset", "ms", 150, 0, 1000, 10));

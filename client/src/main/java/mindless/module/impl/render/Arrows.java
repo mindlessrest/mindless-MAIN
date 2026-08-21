@@ -25,6 +25,7 @@ public class Arrows extends Module {
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
 
     private SliderSetting arrow;
+    private SliderSetting range;
     private SliderSetting radius;
     private SliderSetting font;
     private ButtonSetting teamColor;
@@ -45,6 +46,7 @@ public class Arrows extends Module {
         super("Arrows", category.render);
         this.registerSetting(arrow = new SliderSetting("Arrow", 0, arrowTypes));
         this.registerSetting(radius = new SliderSetting("Circle radius", 50, 30, 200, 5));
+        this.registerSetting(range = new SliderSetting("Range", " block", 200, 25, 300, 5));
         this.registerSetting(font = new SliderSetting("Font", 0, FONT_OPTIONS));
         this.registerSetting(teamColor = new ButtonSetting("Team color", true));
         this.registerSetting(hideTeammates = new ButtonSetting("Hide teammates", true));
@@ -104,6 +106,10 @@ public class Arrows extends Module {
             }
             if (Utils.isTeammate(en) && hideTeammates.isToggled()) {
                 continue;
+            }
+            if (mc.thePlayer.getDistanceToEntity(en) > range.getInput()) {
+                continue;
+
             }
 
             int color = -1;

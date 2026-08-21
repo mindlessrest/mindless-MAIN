@@ -19,6 +19,7 @@ public class Chams extends Module {
 
     public Chams() {
         super("Chams", Module.category.render, 0);
+        this.liteModule = true;
         this.registerSetting(ignoreBots = new ButtonSetting("Ignore bots", false));
         this.registerSetting(hidePlayers = new ButtonSetting("Hide players", false));
         this.registerSetting(renderSelf = new ButtonSetting("Render self", false));

@@ -139,6 +139,10 @@ public class SliderSetting extends Setting {
         return this.max;
     }
 
+    public double getInterval() {
+        return this.intervals;
+    }
+
     public double setValue(double newValue) {
         newValue = correctValue(newValue, this.min, this.max);
         newValue = (double) Math.round(newValue * (1.0D / this.intervals)) / (1.0D / this.intervals);

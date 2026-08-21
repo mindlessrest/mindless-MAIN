@@ -51,6 +51,7 @@ public class FastPlace extends Module {
 
     public FastPlace() {
         super("Fast Place", Module.category.player, 0);
+        this.liteModule = true;
         this.registerSetting(tickDelay = new SliderSetting("Tick delay", 1.0, 0.0, 3.0, 1.0));
         this.registerSetting(activationTime = new SliderSetting("Activation time", "ms", 0.0, 0.0, 100.0, 5.0));
         this.registerSetting(blocksOnly = new ButtonSetting("Blocks only", true));
@@ -423,7 +424,7 @@ public class FastPlace extends Module {
             } else {
                 int blocks = getTotalBlocks();
                 if (blocks == 0) blocks = 64;
-                String text = blocks + " blocks";
+                String text = blocks + " block" + (blocks == 1 ? "" : "s");
                 int textWidth = fontRendererObj.getStringWidth(text);
                 int textHeight = fontRendererObj.FONT_HEIGHT;
                 float minX = posX - 2;

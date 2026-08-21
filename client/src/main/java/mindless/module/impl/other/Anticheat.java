@@ -46,6 +46,7 @@ public class Anticheat extends Module {
 
     public Anticheat() {
         super("Anticheat", category.other);
+        this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Tries to detect cheaters."));
         this.registerSetting(interval = new SliderSetting("Flag interval", " second", 20.0, 0.0, 60.0, 1.0));
         this.registerSetting(enemyAdd = new ButtonSetting("Add cheaters as enemy", false));

@@ -62,6 +62,7 @@ public class BedAura extends Module {
     private EnumFacing targetSide;
 
     private boolean miningActive;
+    private boolean controlsInput;
     private int hotbarProgrammaticDepth;
     private boolean hasSwapped;
     private int previousSlot = -1;
@@ -74,9 +75,9 @@ public class BedAura extends Module {
         super("BedAura", category.player);
         this.registerSetting(breakSpeed = new SliderSetting("Break speed", "x", 1.0, 1.0, 2.0, 0.02));
         this.registerSetting(breakDelay = new SliderSetting("Break delay", "ms", 250.0, 0.0, 250.0, 50.0));
-        this.registerSetting(range = new SliderSetting("Range", " blocks", 4.5, 2.0, 6.0, 0.1));
         this.registerSetting(fov = new SliderSetting("FOV", "", 180.0, 30.0, 360.0, 1.0));
-        this.registerSetting(rate = new SliderSetting("Scan rate", "ms", 250.0, 50.0, 2000.0, 50.0));
+        this.registerSetting(range = new SliderSetting("Range", " block", 4.5, 2.0, 6.0, 0.1));
+        this.registerSetting(rate = new SliderSetting("Rate", "ms", 250.0, 50.0, 2000.0, 50.0));
         this.registerSetting(breakNearBlock = new ButtonSetting("Break near block", true));
         this.registerSetting(whitelistOwnBed = new ButtonSetting("Whitelist own bed", true));
         this.registerSetting(prioritizeKillAura = new ButtonSetting("Prioritize KillAura", false));
@@ -202,6 +203,7 @@ public class BedAura extends Module {
         }
         int atk = mc.gameSettings.keyBindAttack.getKeyCode();
         int use = mc.gameSettings.keyBindUseItem.getKeyCode();
+        controlsInput = true;
         KeyBinding.setKeyBindState(atk, false);
         KeyBinding.setKeyBindState(use, false);
         KeyBinding.setKeyBindState(atk, true);
@@ -333,8 +335,11 @@ public class BedAura extends Module {
         if (switchBackWhenDone.isToggled() && previousSlot != -1 && Utils.nullCheck()) {
             setSlot(previousSlot);
         }
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindAttack.getKeyCode(), Mouse.isButtonDown(0));
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), Mouse.isButtonDown(1));
+        if (controlsInput) {
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindAttack.getKeyCode(), Mouse.isButtonDown(0));
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), Mouse.isButtonDown(1));
+            controlsInput = false;
+        }
         hotbarProgrammaticDepth = 0;
         targetPos = null;
         targetHitVec = null;

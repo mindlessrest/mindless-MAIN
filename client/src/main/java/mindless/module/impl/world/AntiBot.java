@@ -50,6 +50,7 @@ public class AntiBot extends Module {
         this.registerSetting(npcChecks = new ButtonSetting("NPC checks", true));
         this.registerSetting(printWorldJoin = new ButtonSetting("Print world join", false));
         this.closetModule = true;
+        this.liteModule = true;
     }
 
     @SubscribeEvent

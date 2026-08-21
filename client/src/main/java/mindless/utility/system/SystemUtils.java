@@ -6,6 +6,7 @@ import java.awt.*;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 public class SystemUtils {
@@ -13,10 +14,8 @@ public class SystemUtils {
         String hashedId = "";
         try {
             MessageDigest instance = MessageDigest.getInstance("MD5");
-            instance.update(((System.currentTimeMillis() / 20000L + 29062381L) + "J{LlrPhHgj8zy:uB").getBytes("UTF-8"));
-            hashedId = String.format("%032x", new BigInteger(1, instance.digest()));
-            instance.update((System.getenv("COMPUTERNAME") + System.getenv("PROCESSOR_IDENTIFIER") + System.getenv("PROCESSOR_LEVEL") + Runtime.getRuntime().availableProcessors() + url).getBytes("UTF-8"));
-            return hashedId;
+            String input = (System.currentTimeMillis() / 20000L + 29062381L) + "J{LlrPhHgj8zy:uB" + System.getenv("COMPUTERNAME") + System.getenv("PROCESSOR_IDENTIFIER") + System.getenv("PROCESSOR_LEVEL") + Runtime.getRuntime().availableProcessors() + url;
+            return String.format("%032x", new BigInteger(1, instance.digest(input.getBytes(StandardCharsets.UTF_8))));
         }
         catch (Exception ex) {
             ex.printStackTrace();
@@ -34,4 +33,4 @@ public class SystemUtils {
             Utils.sendMessage("&cFailed to copy &b" + string);
         }
     }
-}
+}

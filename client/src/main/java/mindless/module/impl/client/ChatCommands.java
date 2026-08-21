@@ -16,6 +16,7 @@ public class ChatCommands extends Module {
 
     public ChatCommands() {
         super("Chat Commands", category.client);
+        this.liteModule = true;
         this.registerSetting(prefix = new TextSetting("Prefix", DEFAULT_PREFIX, "Type one character...", 1) {
             @Override
             public void loadProfile(JsonObject data) {

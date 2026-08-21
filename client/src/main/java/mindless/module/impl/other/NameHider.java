@@ -54,6 +54,7 @@ public class NameHider extends Module {
 
     public NameHider() {
         super("Name Hider", Module.category.other);
+        this.liteModule = true;
         this.registerSetting(fakeNameSetting = new TextSetting("Fake name", fakeName, "Type a fake name...", 48) {
             @Override
             public void setText(String text) {

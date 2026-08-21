@@ -121,12 +121,13 @@ public class BedESP extends Module {
 
     public BedESP() {
         super("BedESP", category.render);
+        this.liteModule = true;
         this.registerSetting(colorMode = new SliderSetting("Color mode", 0, COLOR_MODES));
         this.registerSetting(theme = new SliderSetting("Theme", DEFAULT_THEME_INDEX, Theme.THEMES_SETTING));
         this.registerSetting(color = new ColorSetting("Color", 255, 85, 85, 64));
         this.registerSetting(color2 = new ColorSetting("Color 2", 85, 85, 255, 64));
         this.registerSetting(gradientSpeed = new SliderSetting("Gradient speed", 1.0, 0.1, 8.0, 0.1));
-        this.registerSetting(range = new SliderSetting("Range", 10.0, 2.0, 200.0, 2.0));
+        this.registerSetting(range = new SliderSetting("Range", 10.0, 4.0, 200.0, 2.0));
         this.registerSetting(scanSpeed = new SliderSetting("Scan speed", 8.0, 1.0, 32.0, 1.0));
         this.registerSetting(disableInLobby = new ButtonSetting("Disable in lobby", true));
         this.registerSetting(firstBed = new ButtonSetting("Only render first bed", false));

@@ -70,6 +70,7 @@ public class Autoblock extends Module {
 
     public Autoblock() {
         super("Auto Block", category.combat);
+        this.liteModule = true;
 
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(range = new SliderSetting("Range", 4.0, 2.0, 6.0, 0.1));
@@ -439,6 +440,10 @@ public class Autoblock extends Module {
     }
 
     private void resetState(boolean releaseUseKey) {
+        boolean restorePhysicalUse = isBlocking
+                && mc.gameSettings.keyBindUseItem.isKeyDown()
+                && Mouse.isButtonDown(1)
+                && mc.currentScreen == null;
         releaseLag();
         stopBlocking(releaseUseKey);
         manualBlock = false;
@@ -449,7 +454,7 @@ public class Autoblock extends Module {
         currentTarget = null;
         lastSelfHurtTime = 0;
         syncBlockAnimation();
-        if (Mouse.isButtonDown(1) && mc.currentScreen == null) {
+        if (restorePhysicalUse) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), true);
         }
     }

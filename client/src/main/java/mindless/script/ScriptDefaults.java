@@ -80,6 +80,19 @@ public class ScriptDefaults {
             return mc.thePlayer.capabilities.allowFlying;
         }
 
+        public static void setTabName(String name, String displayName) {
+            if (name == null || displayName == null || mc.getNetHandler() == null) {
+                return;
+            }
+
+            for (NetworkPlayerInfo info : mc.getNetHandler().getPlayerInfoMap()) {
+                if (info.getGameProfile() != null && name.equalsIgnoreCase(info.getGameProfile().getName())) {
+                    info.setDisplayName(new ChatComponentText(displayName));
+                    return;
+                }
+            }
+        }
+
         public static void removePotionEffect(int id) {
             if (mc.thePlayer == null) {
                 return;
@@ -598,6 +611,25 @@ public class ScriptDefaults {
             return mc.theWorld != null;
         }
 
+        public static Entity spawnMob(String type, double x, double y, double z) {
+            return ClientEntityManager.spawnMob(type, x, y, z);
+        }
+
+        public static Entity spawnMob(String type, Vec3 position) {
+            if (position == null) {
+                return null;
+            }
+            return spawnMob(type, position.x, position.y, position.z);
+        }
+
+        public static boolean removeClientEntity(Entity entity) {
+            return ClientEntityManager.removeClientEntity(entity);
+        }
+
+        public static void clearClientEntities() {
+            ClientEntityManager.clearClientEntities();
+        }
+
         public static void playSound(String name, float volume, float pitch, double x, double y, double z) {
             mc.theWorld.playSound(x, y, z, name, volume, pitch, false);
         }
@@ -612,6 +644,18 @@ public class ScriptDefaults {
                 return new Block(Blocks.air, new BlockPos(x, y, z));
             }
             return new Block(state, new BlockPos(x, y, z));
+        }
+
+        public static String getTitleText() {
+            return client.getTitle();
+        }
+
+        public static void setTitleText(String title, String subTitle, int timeFadeIn, int displayTime, int timeFadeOut) {
+            mc.ingameGUI.displayTitle(title, subTitle, timeFadeIn, displayTime, timeFadeOut);
+        }
+
+        public static void clearTitleText() {
+            mc.ingameGUI.displayTitle(null, null, -1, -1, -1);
         }
 
         public static Block getBlockAt(Vec3 pos) {
@@ -1064,6 +1108,48 @@ public class ScriptDefaults {
             GlStateManager.color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
         }
 
+        public static void depthFunc(int func) {
+            GL11.glDepthFunc(func);
+        }
+
+        public static void colorMask(boolean red, boolean green, boolean blue, boolean alpha) {
+            GlStateManager.colorMask(red, green, blue, alpha);
+        }
+
+        public static void polygonOffset(float factor, float units) {
+            GL11.glPolygonOffset(factor, units);
+        }
+
+        public static void texCoord2(double u, double v) {
+            GL11.glTexCoord2d(u, v);
+        }
+
+        public static void texCoord2(float u, float v) {
+            GL11.glTexCoord2f(u, v);
+        }
+
+        public static void bindTexture(String resource) {
+            ResourceLocation resLoc = new ResourceLocation(resource);
+            mc.getTextureManager().bindTexture(resLoc);
+        }
+
+        public static void bindTextureId(int textureId) {
+            GlStateManager.bindTexture(textureId);
+        }
+
+        public static int getBoundTexture() {
+            return GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        }
+
+        public static void polygonOffset(boolean enabled) {
+            if (enabled) {
+                GlStateManager.enablePolygonOffset();
+            }
+            else {
+                GlStateManager.disablePolygonOffset();
+            }
+        }
+
         public static void cull(boolean cull) {
             if (cull) {
                 GlStateManager.enableCull();
@@ -1338,6 +1424,10 @@ public class ScriptDefaults {
 
         public static void block(Vec3 position, int color, boolean outline, boolean shade) {
             RenderUtils.renderBlock(new BlockPos(position.x, position.y, position.z), color, outline, shade);
+        }
+
+        public static int getThemeRGB(String theme) {
+            return Theme.getGradient(Utils.getEnum(Theme.class, theme).ordinal(), 0);
         }
 
         public static void block(int x, int y, int z, int color, boolean outline, boolean shade) {

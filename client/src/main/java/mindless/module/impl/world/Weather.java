@@ -54,6 +54,7 @@ public class Weather extends Module {
 
     public Weather() {
         super("Atmosphere", category.world);
+        this.liteModule = true;
         this.registerSetting(customTime = new ButtonSetting("Custom time", true));
         this.registerSetting(time = new SliderSetting("Time", 0, 0, 24, 0.1));
         this.registerSetting(clearWeather = new ButtonSetting("Clear weather", false));

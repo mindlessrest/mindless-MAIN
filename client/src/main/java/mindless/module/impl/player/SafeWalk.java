@@ -24,6 +24,7 @@ public class SafeWalk extends Module {
 
     public SafeWalk() {
         super("SafeWalk", Module.category.player, 0);
+        this.liteModule = true;
         this.registerSetting(sneakDelay = new SliderSetting("Sneak delay", " tick", 0, 0, 20, 1));
         this.registerSetting(motion = new SliderSetting("Motion", "x", 1.0, 0.5, 1.2, 0.01));
         this.registerSetting(blocksOnly = new ButtonSetting("Blocks only", true));

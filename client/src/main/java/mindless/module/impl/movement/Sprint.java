@@ -17,6 +17,7 @@ public class Sprint extends Module {
 
     public Sprint() {
         super("Sprint", category.movement, 0);
+        this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Allow while"));
         this.registerSetting(allowUsingItem = new ButtonSetting("Using item", false));
         this.registerSetting(allowBackwards = new ButtonSetting("Backwards", false));

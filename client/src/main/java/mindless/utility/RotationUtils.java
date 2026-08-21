@@ -5,6 +5,7 @@ import mindless.event.PreMotionEvent;
 import mindless.helper.RotationHelper;
 import mindless.module.impl.client.Settings;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockFenceGate;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
@@ -435,6 +436,10 @@ public class RotationUtils implements IMinecraftInstance {
     }
 
     public static boolean canAimAtPoint(Vec3 eye, Vec3 point, Entity target, double range, boolean allowThroughBlocks, boolean allowThroughEntities) {
+        return canAimAtPoint(eye, point, target, range, allowThroughBlocks, allowThroughEntities, false);
+    }
+
+    public static boolean canAimAtPoint(Vec3 eye, Vec3 point, Entity target, double range, boolean allowThroughBlocks, boolean allowThroughEntities, boolean ignoreOpenFenceGates) {
         if (target == null) return false;
         double dx = point.xCoord - eye.xCoord;
         double dy = point.yCoord - eye.yCoord;
@@ -451,7 +456,9 @@ public class RotationUtils implements IMinecraftInstance {
 
         double entityDistSq = eye.squareDistanceTo(entityHit.hitVec);
         if (!allowThroughBlocks) {
-            MovingObjectPosition blockHit = mc.theWorld.rayTraceBlocks(eye, end, false, false, false);
+            MovingObjectPosition blockHit = ignoreOpenFenceGates
+                    ? rayTraceBlocksIgnoringOpenFenceGates(eye, end, false, false, false)
+                    : mc.theWorld.rayTraceBlocks(eye, end, false, false, false);
             if (blockHit != null && blockHit.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK) {
                 double blockDistSq = eye.squareDistanceTo(blockHit.hitVec);
                 if (blockDistSq < entityDistSq) return false;
@@ -461,6 +468,70 @@ public class RotationUtils implements IMinecraftInstance {
             return false;
         }
         return true;
+    }
+
+    public static MovingObjectPosition rayTraceBlocksIgnoringOpenFenceGates(Vec3 start, Vec3 end, boolean stopOnLiquid, boolean ignoreBlockWithoutBoundingBox, boolean returnLastUncollidableBlock) {
+        if (mc.theWorld == null || start == null || end == null) return null;
+
+        Vec3 traceStart = start;
+        for (int ignoredGates = 0; ignoredGates < 200; ignoredGates++) {
+            MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(traceStart, end, stopOnLiquid, ignoreBlockWithoutBoundingBox, returnLastUncollidableBlock);
+            if (!isOpenFenceGateHit(hit)) {
+                return hit;
+            }
+
+            traceStart = movePastBlock(hit.hitVec, end, hit.getBlockPos());
+            if (traceStart == null) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isOpenFenceGateHit(MovingObjectPosition hit) {
+        if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK || hit.getBlockPos() == null) {
+            return false;
+        }
+
+        IBlockState state = mc.theWorld.getBlockState(hit.getBlockPos());
+        return state.getBlock() instanceof BlockFenceGate && state.getValue(BlockFenceGate.OPEN);
+    }
+
+    private static Vec3 movePastBlock(Vec3 hitVec, Vec3 end, BlockPos blockPos) {
+        if (hitVec == null || end == null || blockPos == null) return null;
+
+        double dx = end.xCoord - hitVec.xCoord;
+        double dy = end.yCoord - hitVec.yCoord;
+        double dz = end.zCoord - hitVec.zCoord;
+        double remainingDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (remainingDistance < 1.0E-7) return null;
+
+        dx /= remainingDistance;
+        dy /= remainingDistance;
+        dz /= remainingDistance;
+
+        double distanceToExit = Double.POSITIVE_INFINITY;
+        if (dx > 1.0E-7) {
+            distanceToExit = Math.min(distanceToExit, (blockPos.getX() + 1.0 - hitVec.xCoord) / dx);
+        } else if (dx < -1.0E-7) {
+            distanceToExit = Math.min(distanceToExit, (blockPos.getX() - hitVec.xCoord) / dx);
+        }
+        if (dy > 1.0E-7) {
+            distanceToExit = Math.min(distanceToExit, (blockPos.getY() + 1.0 - hitVec.yCoord) / dy);
+        } else if (dy < -1.0E-7) {
+            distanceToExit = Math.min(distanceToExit, (blockPos.getY() - hitVec.yCoord) / dy);
+        }
+        if (dz > 1.0E-7) {
+            distanceToExit = Math.min(distanceToExit, (blockPos.getZ() + 1.0 - hitVec.zCoord) / dz);
+        } else if (dz < -1.0E-7) {
+            distanceToExit = Math.min(distanceToExit, (blockPos.getZ() - hitVec.zCoord) / dz);
+        }
+
+        double advance = Math.max(0.0, distanceToExit) + 1.0E-5;
+        if (Double.isInfinite(distanceToExit) || Double.isNaN(distanceToExit) || advance >= remainingDistance) {
+            return null;
+        }
+        return hitVec.addVector(dx * advance, dy * advance, dz * advance);
     }
 
     private static boolean hasEntityBlockingPath(Vec3 eye, Vec3 end, Entity target, double targetDistSq) {
@@ -522,6 +593,10 @@ public class RotationUtils implements IMinecraftInstance {
     }
 
     public static boolean hasValidAimPoint(Entity entity, double hMult, double vMult, double range, boolean allowThroughBlocks, boolean allowThroughEntities) {
+        return hasValidAimPoint(entity, hMult, vMult, range, allowThroughBlocks, allowThroughEntities, false);
+    }
+
+    public static boolean hasValidAimPoint(Entity entity, double hMult, double vMult, double range, boolean allowThroughBlocks, boolean allowThroughEntities, boolean ignoreOpenFenceGates) {
         if (entity == null || mc.thePlayer == null) return false;
         Vec3 mainPoint = getAimPoint(entity, hMult, vMult);
         if (mainPoint == null) return false;
@@ -532,7 +607,7 @@ public class RotationUtils implements IMinecraftInstance {
             return false;
         }
 
-        if (canAimAtPoint(eye, mainPoint, entity, range, allowThroughBlocks, allowThroughEntities)) {
+        if (canAimAtPoint(eye, mainPoint, entity, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)) {
             return true;
         }
 
@@ -544,7 +619,7 @@ public class RotationUtils implements IMinecraftInstance {
             return dx * dx + dy * dy + dz * dz;
         }));
         for (Vec3 p : backups) {
-            if (canAimAtPoint(eye, p, entity, range, allowThroughBlocks, allowThroughEntities)) {
+            if (canAimAtPoint(eye, p, entity, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)) {
                 return true;
             }
         }
@@ -556,6 +631,10 @@ public class RotationUtils implements IMinecraftInstance {
     }
 
     public static float[] getRotationsWithBackup(Entity entity, double horizontalMultipoint, double verticalMultipoint, float baseYaw, float basePitch, double range, boolean allowThroughBlocks, boolean allowThroughEntities) {
+        return getRotationsWithBackup(entity, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch, range, allowThroughBlocks, allowThroughEntities, false);
+    }
+
+    public static float[] getRotationsWithBackup(Entity entity, double horizontalMultipoint, double verticalMultipoint, float baseYaw, float basePitch, double range, boolean allowThroughBlocks, boolean allowThroughEntities, boolean ignoreOpenFenceGates) {
         if (entity == null || mc.thePlayer == null) return null;
         Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
         float borderSize = entity.getCollisionBorderSize();
@@ -573,7 +652,7 @@ public class RotationUtils implements IMinecraftInstance {
             return getRotationsToPoint(mainPoint.xCoord, mainPoint.yCoord, mainPoint.zCoord, baseYaw, basePitch);
         }
 
-        if (canAimAtPoint(eye, mainPoint, entity, range, allowThroughBlocks, allowThroughEntities)) {
+        if (canAimAtPoint(eye, mainPoint, entity, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)) {
             return getRotationsToPoint(mainPoint.xCoord, mainPoint.yCoord, mainPoint.zCoord, baseYaw, basePitch);
         }
 
@@ -586,7 +665,7 @@ public class RotationUtils implements IMinecraftInstance {
         }));
 
         for (Vec3 p : backups) {
-            if (canAimAtPoint(eye, p, entity, range, allowThroughBlocks, allowThroughEntities)) {
+            if (canAimAtPoint(eye, p, entity, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)) {
                 return getRotationsToPoint(p.xCoord, p.yCoord, p.zCoord, baseYaw, basePitch);
             }
         }

@@ -429,6 +429,22 @@ public class Utils implements IMinecraftInstance {
         return false;
     }
 
+    public static String getDistanceColor(double distance) {
+        if (distance < 10) {
+            return "&c";
+        }
+        if (distance < 25) {
+            return "&6";
+        }
+        if (distance < 50) {
+            return "&e";
+        }
+        if (distance > 100) {
+            return "&2";
+        }
+        return "&a";
+    }
+
     public static boolean isWholeNumber(double num) {
         return num == Math.floor(num);
     }

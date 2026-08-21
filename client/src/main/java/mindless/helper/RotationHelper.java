@@ -102,11 +102,15 @@ public class RotationHelper {
     }
 
     public float[] getRotationsToTarget(Entity target, ClientRotationEvent e, int speed, double horizontalMultipoint, double verticalMultipoint, float randomizationPercent, boolean useBackupPoints, double range, boolean allowThroughBlocks, boolean allowThroughEntities) {
+        return getRotationsToTarget(target, e, speed, horizontalMultipoint, verticalMultipoint, randomizationPercent, useBackupPoints, range, allowThroughBlocks, allowThroughEntities, false);
+    }
+
+    public float[] getRotationsToTarget(Entity target, ClientRotationEvent e, int speed, double horizontalMultipoint, double verticalMultipoint, float randomizationPercent, boolean useBackupPoints, double range, boolean allowThroughBlocks, boolean allowThroughEntities, boolean ignoreOpenFenceGates) {
         if (target == null || mc.thePlayer == null) return null;
         float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
         float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
         float[] rot = useBackupPoints
-                ? RotationUtils.getRotationsWithBackup(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch, range, allowThroughBlocks, allowThroughEntities)
+                ? RotationUtils.getRotationsWithBackup(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)
                 : RotationUtils.getRotations(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch);
         if (rot == null) return null;
         return RotationUtils.smoothRotation(baseYaw, basePitch, rot[0], rot[1], speed, randomizationPercent);
@@ -136,11 +140,15 @@ public class RotationHelper {
     }
 
     public float[] getRotationsToTarget(Entity target, int speed, double horizontalMultipoint, double verticalMultipoint, float randomizationPercent, boolean useBackupPoints, double range, boolean allowThroughBlocks, boolean allowThroughEntities) {
+        return getRotationsToTarget(target, speed, horizontalMultipoint, verticalMultipoint, randomizationPercent, useBackupPoints, range, allowThroughBlocks, allowThroughEntities, false);
+    }
+
+    public float[] getRotationsToTarget(Entity target, int speed, double horizontalMultipoint, double verticalMultipoint, float randomizationPercent, boolean useBackupPoints, double range, boolean allowThroughBlocks, boolean allowThroughEntities, boolean ignoreOpenFenceGates) {
         if (target == null || mc.thePlayer == null) return null;
         float baseYaw = mc.thePlayer.rotationYaw;
         float basePitch = mc.thePlayer.rotationPitch;
         float[] rot = useBackupPoints
-                ? RotationUtils.getRotationsWithBackup(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch, range, allowThroughBlocks, allowThroughEntities)
+                ? RotationUtils.getRotationsWithBackup(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)
                 : RotationUtils.getRotations(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch);
         if (rot == null) return null;
         return RotationUtils.smoothRotation(baseYaw, basePitch, rot[0], rot[1], speed, randomizationPercent);

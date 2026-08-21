@@ -34,6 +34,7 @@ public class KawaseBloom implements IMinecraftInstance {
 
         for (int i = 1; i <= iterations; i++) {
             Framebuffer currentBuffer = new Framebuffer((int) (mc.displayWidth / Math.pow(2, i)), (int) (mc.displayHeight / Math.pow(2, i)), false);
+            currentBuffer.setFramebufferColor(0.0f, 0.0f, 0.0f, 0.0f);
             currentBuffer.setFramebufferFilter(GL_LINEAR);
 
             GlStateManager.bindTexture(currentBuffer.framebufferTexture);

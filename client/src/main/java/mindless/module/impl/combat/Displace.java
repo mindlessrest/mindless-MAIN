@@ -1,9 +1,13 @@
 package mindless.module.impl.combat;
 
 import mindless.Raven;
+import mindless.event.AttackEvent;
 import mindless.event.ClientRotationEvent;
 import mindless.event.GameTickEvent;
 import mindless.event.PostPlayerInputEvent;
+import mindless.event.PreAttackEvent;
+import mindless.event.PrePlayerInteractEvent;
+import mindless.event.RightClickMouseEvent;
 import mindless.event.SendPacketEvent;
 import mindless.helper.RotationHelper;
 import mindless.lag.api.EnumLagDirection;
@@ -13,9 +17,10 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
-import mindless.module.setting.impl.ItemListSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.CombatTargeting;
+import mindless.utility.ModuleUtils;
+import mindless.utility.PacketUtils;
 import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
 import net.minecraft.client.renderer.GlStateManager;
@@ -29,6 +34,7 @@ import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.MathHelper;
+import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.Vec3;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
@@ -56,6 +62,11 @@ public class Displace extends Module {
     private static final long VOID_DEBUG_DURATION_MS = 30_000L;
     private static final double VOID_DEBUG_PROBE_Y_OFFSET = 0.08D;
     private static final long ARROW_FADE_MS = 250L;
+    private static final int OVERRIDE_MAX_FLICK_TICKS = 5;
+    private static final int OVERRIDE_ATTACK_TICKS = 2;
+    private static final int OVERRIDE_RESTORE_TICKS = 2;
+    private static final float OVERRIDE_FLICK_TOLERANCE = 6.0F;
+    private static final double OVERRIDE_TARGET_RANGE_SQ = 25.0D;
 
     private final SliderSetting mode;
     private final SliderSetting yawOffset;
@@ -64,10 +75,11 @@ public class Displace extends Module {
     private final SliderSetting direction;
     private final ButtonSetting findVoid;
     private final ButtonSetting blink;
+    private final ButtonSetting overrideAttack;
     private final ButtonSetting renderArrow;
-    private final ButtonSetting hasKnockback;
-    private final ButtonSetting itemWhitelistToggle;
-    private final ItemListSetting itemWhitelist;
+    private final ButtonSetting onlyKnockbackItems;
+    private final ButtonSetting ignoreTeammates;
+    private final ButtonSetting weaponOnly;
 
     private boolean displaceThisTick = false;
     private boolean active = false;
@@ -88,12 +100,33 @@ public class Displace extends Module {
     private VoidDebugScan latestVoidDebugScan;
     private VoidDebugScan frozenVoidDebugScan;
     private long frozenVoidDebugExpiresAtMs;
+    private OverrideAttackState overrideAttackState = OverrideAttackState.IDLE;
+    private EntityPlayer overrideTarget;
+    private float overrideTargetYaw;
+    private float overrideTargetPitch;
+    private float overrideFlickYaw;
+    private float overrideFlickOffset;
+    private boolean overrideAbsoluteFlickYaw;
+    private boolean overrideAwayPacketSent;
+    private boolean overrideAttackInProgress;
+    private boolean overrideAttackPacketSent;
+    private boolean suppressUseForOverrideAttackTick;
+    private int overrideStateTicks;
+    private long lastOverrideFlickMs = -1L;
 
     private static final String[] MODES = {"Offset", "Void"};
     private static final String[] DIRECTIONS = {"Left", "Right"};
 
+    private enum OverrideAttackState {
+        IDLE,
+        FLICKING_AWAY,
+        ATTACKING,
+        RESTORING
+    }
+
     public Displace() {
         super("Displace", category.combat);
+        this.liteModule = true;
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(yawOffset = new SliderSetting("Yaw offset", 90, 0, 180, 1));
         this.registerSetting(scanRadius = new SliderSetting("Scan radius",  " block", 6.0D, 1.0D, 12.0D, 0.5D));
@@ -101,11 +134,11 @@ public class Displace extends Module {
         this.registerSetting(direction = new SliderSetting("Direction", 0, DIRECTIONS));
         this.registerSetting(findVoid = new ButtonSetting("Find void", false));
         this.registerSetting(blink = new ButtonSetting("Blink", false));
+        this.registerSetting(onlyKnockbackItems = new ButtonSetting("Only knockback items", false, "Has knockback"));
+        this.registerSetting(overrideAttack = new ButtonSetting("Override attack", false));
         this.registerSetting(renderArrow = new ButtonSetting("Render arrow", true));
-        this.registerSetting(new DescriptionSetting("Item conditions"));
-        this.registerSetting(hasKnockback = new ButtonSetting("Has knockback", false));
-        this.registerSetting(itemWhitelistToggle = new ButtonSetting("Item whitelist", false));
-        this.registerSetting(itemWhitelist = new ItemListSetting("Whitelisted items"));
+        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", true));
+        this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
     }
 
     @Override
@@ -114,7 +147,6 @@ public class Displace extends Module {
         direction.setVisible(offsetMode, this);
         findVoid.setVisible(offsetMode, this);
         scanRadius.setVisible(!offsetMode, this);
-        itemWhitelist.setVisible(itemWhitelistToggle.isToggled(), this);
     }
 
     @Override
@@ -135,6 +167,8 @@ public class Displace extends Module {
         clearVoidDebugState();
         tickCounter = 0;
         targetWindowStartTicks.clear();
+        resetOverrideAttackState();
+        lastOverrideFlickMs = -1L;
         releaseBlink();
     }
 
@@ -147,7 +181,15 @@ public class Displace extends Module {
         clearArrow();
         clearVoidDebugState();
         targetWindowStartTicks.clear();
-        releaseBlink();
+        resetOverrideAttackState();
+    }
+
+    @Override
+    public void guiButtonToggled(ButtonSetting button) {
+        if (button == overrideAttack) {
+            resetOverrideAttackState();
+            releaseBlinkNextGameTick = false;
+        }
     }
 
     private static int msToTicks(double ms) {
@@ -701,6 +743,203 @@ public class Displace extends Module {
         }
     }
 
+    private boolean isOverrideAttackEnabled() {
+        return overrideAttack.isToggled();
+    }
+
+    private boolean isOverrideTargetValid(EntityPlayer target) {
+        return target != null
+                && target.worldObj == mc.theWorld
+                && CombatTargeting.asValidPlayer(target, OVERRIDE_TARGET_RANGE_SQ,
+                        ignoreTeammates.isToggled()) != null;
+    }
+
+    private boolean passesOverrideItemConditions() {
+        if (onlyKnockbackItems.isToggled() && EnchantmentHelper.getKnockbackModifier(mc.thePlayer) <= 0) {
+            return false;
+        }
+        return !weaponOnly.isToggled() || Utils.holdingWeapon();
+    }
+
+    private boolean canStartOverrideAttack(EntityPlayer target) {
+        if (overrideAttackState != OverrideAttackState.IDLE || !Utils.nullCheck()
+                || mc.currentScreen != null || !isOverrideTargetValid(target)
+                || !passesOverrideItemConditions()) {
+            return false;
+        }
+
+        long configuredDelay = (long) delay.getInput();
+        return lastOverrideFlickMs < 0L
+                || configuredDelay <= 0L
+                || System.currentTimeMillis() - lastOverrideFlickMs >= configuredDelay;
+    }
+
+    private float[] getOverrideTargetRotations(EntityPlayer target, float baseYaw, float basePitch) {
+        return RotationUtils.getRotations(target, 100.0D, 100.0D, baseYaw, basePitch);
+    }
+
+    private void startOverrideBlink() {
+        releaseBlink();
+        releaseBlinkNextGameTick = false;
+        if (!blink.isToggled()) {
+            return;
+        }
+
+        outboundBlink = new LagRequest(EnumLagDirection.ONLY_OUTBOUND, new ModuleBackedTimeout(this));
+        Raven.lagHandler.requestLag(outboundBlink);
+    }
+
+    private void releaseUseForOverrideAttack() {
+        if (!Utils.nullCheck() || mc.playerController == null) {
+            return;
+        }
+
+        if (mc.thePlayer.isUsingItem()) {
+            mc.playerController.onStoppedUsingItem(mc.thePlayer);
+        } else if (ModuleUtils.isBlocked) {
+            PacketUtils.sendReleasePacket();
+        }
+    }
+
+    private boolean startOverrideAttack(EntityPlayer target) {
+        if (!canStartOverrideAttack(target)) {
+            return false;
+        }
+
+        float baseYaw = RotationUtils.serverRotations[0];
+        float basePitch = RotationUtils.serverRotations[1];
+        float[] targetRotations = getOverrideTargetRotations(target, baseYaw, basePitch);
+        if (targetRotations == null) {
+            return false;
+        }
+
+        overrideTargetYaw = targetRotations[0];
+        overrideTargetPitch = targetRotations[1];
+        overrideAbsoluteFlickYaw = isVoidMode();
+        if (overrideAbsoluteFlickYaw) {
+            Float bestVoidYaw = findBestVoidYaw(target, overrideTargetYaw);
+            if (bestVoidYaw == null) {
+                return false;
+            }
+            overrideFlickYaw = bestVoidYaw;
+            overrideFlickOffset = 0.0F;
+            updateDisplaceSide(overrideTargetYaw, overrideFlickYaw);
+        } else {
+            if (!findVoid.isToggled() || !tryFindVoidDirection(target)) {
+                displaceLeft = direction.getInput() == 0;
+            }
+            overrideFlickOffset = displaceLeft
+                    ? -(float) yawOffset.getInput()
+                    : (float) yawOffset.getInput();
+            overrideFlickYaw = overrideTargetYaw + overrideFlickOffset;
+        }
+
+        overrideTarget = target;
+        overrideAttackState = OverrideAttackState.FLICKING_AWAY;
+        overrideStateTicks = 0;
+        overrideAwayPacketSent = false;
+        overrideAttackInProgress = false;
+        overrideAttackPacketSent = false;
+        suppressUseForOverrideAttackTick = false;
+        lastOverrideFlickMs = System.currentTimeMillis();
+        active = true;
+        displaceThisTick = true;
+        hasKB = EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0;
+        compensateNextTick = false;
+        wasDisplacingLastTick = false;
+        showArrow(target, overrideFlickYaw);
+        releaseUseForOverrideAttack();
+        startOverrideBlink();
+        return true;
+    }
+
+    private void resetOverrideAttackState() {
+        releaseBlink();
+        overrideAttackState = OverrideAttackState.IDLE;
+        overrideTarget = null;
+        overrideTargetYaw = 0.0F;
+        overrideTargetPitch = 0.0F;
+        overrideFlickYaw = 0.0F;
+        overrideFlickOffset = 0.0F;
+        overrideAbsoluteFlickYaw = false;
+        overrideAwayPacketSent = false;
+        overrideAttackInProgress = false;
+        overrideAttackPacketSent = false;
+        suppressUseForOverrideAttackTick = false;
+        overrideStateTicks = 0;
+        active = false;
+        displaceThisTick = false;
+        compensateNextTick = false;
+        wasDisplacingLastTick = false;
+        hideArrow();
+    }
+
+    private void updateOverrideRotation(ClientRotationEvent event) {
+        if (!isOverrideTargetValid(overrideTarget)) {
+            resetOverrideAttackState();
+            return;
+        }
+
+        float baseYaw = event.yaw != null ? event.yaw : RotationUtils.serverRotations[0];
+        float basePitch = event.pitch != null ? event.pitch : RotationUtils.serverRotations[1];
+        float[] targetRotations = getOverrideTargetRotations(overrideTarget, baseYaw, basePitch);
+        if (targetRotations == null) {
+            resetOverrideAttackState();
+            return;
+        }
+
+        overrideTargetYaw = targetRotations[0];
+        overrideTargetPitch = targetRotations[1];
+        if (!overrideAbsoluteFlickYaw) {
+            overrideFlickYaw = overrideTargetYaw + overrideFlickOffset;
+        }
+
+        if (overrideAttackState == OverrideAttackState.FLICKING_AWAY) {
+            event.yaw = overrideFlickYaw;
+            displaceThisTick = true;
+        } else {
+            event.yaw = overrideTargetYaw;
+            displaceThisTick = false;
+        }
+        event.pitch = overrideTargetPitch;
+        active = true;
+        showArrow(overrideTarget, overrideFlickYaw);
+        RotationHelper.get().forceMovementFix = true;
+    }
+
+    private void advanceOverrideAttackState() {
+        if (overrideAttackState == OverrideAttackState.IDLE) {
+            return;
+        }
+        if (!Utils.nullCheck() || mc.currentScreen != null || !isOverrideTargetValid(overrideTarget)) {
+            resetOverrideAttackState();
+            return;
+        }
+
+        overrideStateTicks++;
+        switch (overrideAttackState) {
+            case FLICKING_AWAY:
+                if (overrideAwayPacketSent || overrideStateTicks >= OVERRIDE_MAX_FLICK_TICKS) {
+                    overrideAttackState = OverrideAttackState.ATTACKING;
+                    overrideStateTicks = 0;
+                    displaceThisTick = false;
+                }
+                break;
+            case ATTACKING:
+                if (overrideStateTicks >= OVERRIDE_ATTACK_TICKS) {
+                    resetOverrideAttackState();
+                }
+                break;
+            case RESTORING:
+                if (overrideStateTicks >= OVERRIDE_RESTORE_TICKS) {
+                    resetOverrideAttackState();
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
     private void clearVoidDebugState() {
         latestVoidDebugScan = null;
         frozenVoidDebugScan = null;
@@ -1143,14 +1382,115 @@ public class Displace extends Module {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onGameTick(GameTickEvent e) {
+        suppressUseForOverrideAttackTick = false;
+        if (isOverrideAttackEnabled()) {
+            if (releaseBlinkNextGameTick) {
+                releaseBlink();
+                releaseBlinkNextGameTick = false;
+            }
+            advanceOverrideAttackState();
+            return;
+        }
+
+        if (overrideAttackState != OverrideAttackState.IDLE) {
+            resetOverrideAttackState();
+        }
         if (releaseBlinkNextGameTick) {
             releaseBlink();
             releaseBlinkNextGameTick = false;
         }
     }
 
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onRightClickMouse(RightClickMouseEvent event) {
+        if (!isOverrideAttackEnabled()) {
+            return;
+        }
+
+        if (overrideAttackState == OverrideAttackState.FLICKING_AWAY
+                || overrideAttackState == OverrideAttackState.ATTACKING
+                || suppressUseForOverrideAttackTick) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onPreAttack(PreAttackEvent event) {
+        if (!isOverrideAttackEnabled()) {
+            return;
+        }
+        if (overrideAttackState != OverrideAttackState.IDLE) {
+            event.setCanceled(true);
+            return;
+        }
+
+        MovingObjectPosition mouseOver = event.objectMouseOver;
+        EntityPlayer target = mouseOver != null && mouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY
+                ? CombatTargeting.asValidPlayer(mouseOver.entityHit, OVERRIDE_TARGET_RANGE_SQ,
+                        ignoreTeammates.isToggled())
+                : null;
+        if (target != null && startOverrideAttack(target)) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onAttack(AttackEvent event) {
+        if (!isOverrideAttackEnabled() || event.attacker != mc.thePlayer || overrideAttackInProgress) {
+            return;
+        }
+        if (overrideAttackState != OverrideAttackState.IDLE) {
+            event.setCanceled(true);
+            return;
+        }
+
+        EntityPlayer target = CombatTargeting.asValidPlayer(
+                event.target,
+                OVERRIDE_TARGET_RANGE_SQ,
+                ignoreTeammates.isToggled()
+        );
+        if (target != null && startOverrideAttack(target)) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onPrePlayerInteract(PrePlayerInteractEvent event) {
+        if (!isOverrideAttackEnabled() || overrideAttackState != OverrideAttackState.ATTACKING
+                || overrideAttackInProgress) {
+            return;
+        }
+        if (!isOverrideTargetValid(overrideTarget)) {
+            resetOverrideAttackState();
+            return;
+        }
+
+        overrideAttackPacketSent = false;
+        releaseUseForOverrideAttack();
+        suppressUseForOverrideAttackTick = true;
+        overrideAttackInProgress = true;
+        try {
+            Utils.attackEntity(overrideTarget, true, false);
+        } finally {
+            overrideAttackInProgress = false;
+        }
+
+        if (!overrideAttackPacketSent) {
+            resetOverrideAttackState();
+            return;
+        }
+
+        overrideAttackState = OverrideAttackState.RESTORING;
+        overrideStateTicks = 0;
+        displaceThisTick = false;
+    }
+
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onPostInput(PostPlayerInputEvent e) {
+        if (isOverrideAttackEnabled()) {
+            compensateNextTick = false;
+            return;
+        }
         if (!active) {
             compensateNextTick = false;
             return;
@@ -1175,6 +1515,36 @@ public class Displace extends Module {
 
     @SubscribeEvent(priority = EventPriority.HIGH)
     public void onSendPacket(SendPacketEvent e) {
+        if (!isOverrideAttackEnabled() && overrideAttackState != OverrideAttackState.IDLE) {
+            resetOverrideAttackState();
+        }
+
+        if (isOverrideAttackEnabled() && overrideAttackState != OverrideAttackState.IDLE) {
+            if (e.isCanceled()) {
+                return;
+            }
+
+            if (overrideAttackState == OverrideAttackState.FLICKING_AWAY
+                    && e.getPacket() instanceof C03PacketPlayer) {
+                C03PacketPlayer movementPacket = (C03PacketPlayer) e.getPacket();
+                if (movementPacket.getRotating()) {
+                    float yawError = Math.abs(MathHelper.wrapAngleTo180_float(
+                            movementPacket.getYaw() - overrideFlickYaw
+                    ));
+                    if (yawError <= OVERRIDE_FLICK_TOLERANCE) {
+                        overrideAwayPacketSent = true;
+                    }
+                }
+            }
+
+            if (overrideAttackInProgress && e.getPacket() instanceof C02PacketUseEntity
+                    && ((C02PacketUseEntity) e.getPacket()).getAction() == C02PacketUseEntity.Action.ATTACK) {
+                overrideAttackPacketSent = true;
+                releaseBlink();
+            }
+            return;
+        }
+
         if (!blink.isToggled() || !active || !displaceThisTick || releaseBlinkNextGameTick) {
             return;
         }
@@ -1216,12 +1586,30 @@ public class Displace extends Module {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onClientRotation(ClientRotationEvent e) {
         if (!Utils.nullCheck()) {
+            resetOverrideAttackState();
             active = false;
             compensateNextTick = false;
             wasDisplacingLastTick = false;
             clearArrow();
             clearVoidDebugState();
             return;
+        }
+
+        if (isOverrideAttackEnabled()) {
+            if (overrideAttackState == OverrideAttackState.IDLE) {
+                active = false;
+                displaceThisTick = false;
+                compensateNextTick = false;
+                wasDisplacingLastTick = false;
+                hideArrow();
+                return;
+            }
+            updateOverrideRotation(e);
+            return;
+        }
+
+        if (overrideAttackState != OverrideAttackState.IDLE) {
+            resetOverrideAttackState();
         }
 
         if (!Raven.DEBUG || !isVoidMode()) {
@@ -1232,12 +1620,9 @@ public class Displace extends Module {
         int currentTick = tickCounter;
         pruneTargetDelayStates();
 
-        boolean passesItemCondition = true;
-        if (hasKnockback.isToggled() || itemWhitelistToggle.isToggled()) {
-            boolean kbPass = !hasKnockback.isToggled() || EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0;
-            boolean wlPass = !itemWhitelistToggle.isToggled() || itemWhitelist.matches(mc.thePlayer.getHeldItem());
-            passesItemCondition = kbPass || wlPass;
-        }
+        boolean passesItemCondition = (!onlyKnockbackItems.isToggled()
+                || EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0)
+                && (!weaponOnly.isToggled() || Utils.holdingWeapon());
         if (!passesItemCondition) {
             active = false;
             displaceThisTick = false;
@@ -1252,13 +1637,13 @@ public class Displace extends Module {
                 && ModuleManager.killAura.isEnabled()
                 && KillAura.target != null;
         if (killAuraHasTarget) {
-            target = CombatTargeting.asValidPlayer(KillAura.target, 9.0, false);
+            target = CombatTargeting.asValidPlayer(KillAura.target, 9.0, ignoreTeammates.isToggled());
         } else if (Mouse.isButtonDown(0)) {
-            target = CombatTargeting.findClosestTarget(9.0);
+            target = CombatTargeting.findClosestTarget(9.0, ignoreTeammates.isToggled());
         }
 
         boolean hasKBEnchant = EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0;
-        active = target != null && (hasKBEnchant || anyMovementKey());
+        active = target != null;
         if (!active) {
             displaceThisTick = false;
             compensateNextTick = false;

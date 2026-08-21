@@ -1333,15 +1333,14 @@ public class RenderUtils implements IMinecraftInstance {
     }
 
     public static void drawRoundedRectangle(float x, float y, float x2, float y2, float radius, final int color) {
-        if (x2 <= x) {
+        if (x2 <= x || y2 <= y) {
             return;
         }
 
-        float width = x2 - x;
-
-        if (width < 3) {
-            radius = Math.min(radius, width / 2.0f);
-        }
+        // Coordinates are rendered at 2x and scaled back down for smoother edges,
+        // so the supplied radius is effectively a diameter in GUI coordinates.
+        // Clamp it to both axes to keep every corner valid on very narrow bars.
+        radius = Math.max(0.0f, Math.min(radius, Math.min(x2 - x, y2 - y)));
 
         x *= 2.0;
         y *= 2.0;
@@ -1363,15 +1362,13 @@ public class RenderUtils implements IMinecraftInstance {
             final double n8 = (double) (j * 0.017453292f);
             GL11.glVertex2d((double) (x + radius) + Math.sin(n8) * radius * -1.0, (double) (y2 - radius) + Math.cos(n8) * radius * -1.0);
         }
-        if (x2 - x >= 4.5) {
-            for (int k = 0; k <= 90; k += 1) {
-                final double n9 = (double) (k * 0.017453292f);
-                GL11.glVertex2d((double) (x2 - radius) + Math.sin(n9) * radius, (double) (y2 - radius) + Math.cos(n9) * radius);
-            }
-            for (int l = 90; l <= 180; l += 1) {
-                final double n10 = (double) (l * 0.017453292f);
-                GL11.glVertex2d((double) (x2 - radius) + Math.sin(n10) * radius, (double) (y + radius) + Math.cos(n10) * radius);
-            }
+        for (int k = 0; k <= 90; k += 1) {
+            final double n9 = (double) (k * 0.017453292f);
+            GL11.glVertex2d((double) (x2 - radius) + Math.sin(n9) * radius, (double) (y2 - radius) + Math.cos(n9) * radius);
+        }
+        for (int l = 90; l <= 180; l += 1) {
+            final double n10 = (double) (l * 0.017453292f);
+            GL11.glVertex2d((double) (x2 - radius) + Math.sin(n10) * radius, (double) (y + radius) + Math.cos(n10) * radius);
         }
         GL11.glEnd();
         glEnable(3553);

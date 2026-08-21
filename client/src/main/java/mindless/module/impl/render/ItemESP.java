@@ -37,6 +37,7 @@ public class ItemESP extends Module {
 
     public ItemESP() {
         super("ItemESP", category.render);
+        this.liteModule = true;
         this.registerSetting(renderIron = new ButtonSetting("Render iron", true));
         this.registerSetting(renderGold = new ButtonSetting("Render gold", true));
         this.registerSetting(renderDiamond = new ButtonSetting("Render diamond", true));

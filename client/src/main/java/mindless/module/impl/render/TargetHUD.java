@@ -59,6 +59,7 @@ public class TargetHUD extends Module {
 
     public TargetHUD() {
         super("TargetHUD", category.render);
+        this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Only works with KillAura."));
         this.registerSetting(mode = new SliderSetting("Mode", 1, modes));
         this.registerSetting(theme = new SliderSetting("Theme", 0, Theme.THEMES_SETTING));

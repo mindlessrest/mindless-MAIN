@@ -121,6 +121,7 @@ public class Nametags extends Module {
 
     public Nametags() {
         super("Nametags", category.render, 0);
+        this.liteModule = true;
         instance = this;
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.1, 2.0, 0.1));
         this.registerSetting(font = new SliderSetting("Font", 0, FONT_OPTIONS));

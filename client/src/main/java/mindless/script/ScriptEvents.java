@@ -202,7 +202,9 @@ public class ScriptEvents {
 
     @SubscribeEvent
     public void onDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent e) {
-        Raven.scriptManager.invoke("onDisconnect", module);
+        Minecraft.getMinecraft().addScheduledTask(
+                () -> Raven.scriptManager.invoke("onDisconnect", module)
+        );
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

@@ -10,6 +10,8 @@ import mindless.module.ModuleManager;
 import mindless.module.impl.client.Gui;
 import mindless.module.impl.client.Relationships;
 import mindless.module.impl.client.Settings;
+import mindless.module.impl.minigames.BedWars;
+import mindless.module.impl.player.FastPlace;
 import mindless.module.impl.player.HideWindow;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
@@ -152,6 +154,24 @@ public class ProfileManager implements IMinecraftInstance {
             moduleInformation.addProperty("posY", hw.getPosY());
             moduleInformation.addProperty("relPosX", hw.getRelativePosX());
             moduleInformation.addProperty("relPosY", hw.getRelativePosY());
+        }
+        else if (module instanceof FastPlace) {
+            FastPlace fp = (FastPlace) module;
+            moduleInformation.addProperty("posX", fp.getPosX());
+            moduleInformation.addProperty("posY", fp.getPosY());
+            moduleInformation.addProperty("relPosX", fp.getRelativePosX());
+            moduleInformation.addProperty("relPosY", fp.getRelativePosY());
+        }
+        else if (module instanceof BedWars) {
+            BedWars bedWars = (BedWars) module;
+            moduleInformation.addProperty("closestEnemyPosX", bedWars.getClosestEnemyPosX());
+            moduleInformation.addProperty("closestEnemyPosY", bedWars.getClosestEnemyPosY());
+            moduleInformation.addProperty("closestEnemyRelPosX", bedWars.getClosestEnemyRelativePosX());
+            moduleInformation.addProperty("closestEnemyRelPosY", bedWars.getClosestEnemyRelativePosY());
+            moduleInformation.addProperty("magicMilkPosX", bedWars.getMagicMilkPosX());
+            moduleInformation.addProperty("magicMilkPosY", bedWars.getMagicMilkPosY());
+            moduleInformation.addProperty("magicMilkRelPosX", bedWars.getMagicMilkRelativePosX());
+            moduleInformation.addProperty("magicMilkRelPosY", bedWars.getMagicMilkRelativePosY());
         }
         else if (module instanceof Gui) {
             for (CategoryComponent c : ClickGui.categories) {
@@ -360,6 +380,54 @@ public class ProfileManager implements IMinecraftInstance {
                             hw.setAbsolutePosition(posX, posY);
                         }
                     }
+                    else if (module.getName().equals("Fast Place")) {
+                        FastPlace fp = (FastPlace) module;
+                        if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                            fp.setRelativePosition(
+                                    moduleInformation.get("relPosX").getAsFloat(),
+                                    moduleInformation.get("relPosY").getAsFloat()
+                            );
+                        }
+                        else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
+                            float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : fp.getPosX();
+                            float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : fp.getPosY();
+                            fp.setAbsolutePosition(posX, posY);
+                        }
+                    }
+                    else if (module instanceof BedWars) {
+                        BedWars bedWars = (BedWars) module;
+                        if (moduleInformation.has("closestEnemyRelPosX") && moduleInformation.has("closestEnemyRelPosY")) {
+                            bedWars.setClosestEnemyRelativePosition(
+                                    moduleInformation.get("closestEnemyRelPosX").getAsFloat(),
+                                    moduleInformation.get("closestEnemyRelPosY").getAsFloat()
+                            );
+                        }
+                        else if (moduleInformation.has("closestEnemyPosX") || moduleInformation.has("closestEnemyPosY")) {
+                            float posX = moduleInformation.has("closestEnemyPosX")
+                                    ? moduleInformation.get("closestEnemyPosX").getAsFloat()
+                                    : bedWars.getClosestEnemyPosX();
+                            float posY = moduleInformation.has("closestEnemyPosY")
+                                    ? moduleInformation.get("closestEnemyPosY").getAsFloat()
+                                    : bedWars.getClosestEnemyPosY();
+                            bedWars.setClosestEnemyAbsolutePosition(posX, posY);
+                        }
+
+                        if (moduleInformation.has("magicMilkRelPosX") && moduleInformation.has("magicMilkRelPosY")) {
+                            bedWars.setMagicMilkRelativePosition(
+                                    moduleInformation.get("magicMilkRelPosX").getAsFloat(),
+                                    moduleInformation.get("magicMilkRelPosY").getAsFloat()
+                            );
+                        }
+                        else if (moduleInformation.has("magicMilkPosX") || moduleInformation.has("magicMilkPosY")) {
+                            float posX = moduleInformation.has("magicMilkPosX")
+                                    ? moduleInformation.get("magicMilkPosX").getAsFloat()
+                                    : bedWars.getMagicMilkPosX();
+                            float posY = moduleInformation.has("magicMilkPosY")
+                                    ? moduleInformation.get("magicMilkPosY").getAsFloat()
+                                    : bedWars.getMagicMilkPosY();
+                            bedWars.setMagicMilkAbsolutePosition(posX, posY);
+                        }
+                    }
                     else if (module.getName().equals("Gui")) {
                         for (Map.Entry<String, JsonElement> setting : moduleInformation.entrySet()) {
                             String settingName = setting.getKey();
@@ -395,7 +463,7 @@ public class ProfileManager implements IMinecraftInstance {
                 Raven.currentProfile = getProfile(profileName);
                 saveLastProfile(profileName);
 
-                boolean loadGuiPositions = Settings.loadGuiPositions.isToggled();
+                boolean loadGuiPositions = Gui.loadGuiPositions.isToggled();
                 Raven.clickGui.refreshAfterProfileLoad();
                 if (loadGuiPositions) {
                     for (CategoryComponent c : ClickGui.categories) {

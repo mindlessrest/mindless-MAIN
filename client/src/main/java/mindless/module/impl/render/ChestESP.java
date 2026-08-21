@@ -38,6 +38,7 @@ public class ChestESP extends Module {
 
     public ChestESP() {
         super("ChestESP", Module.category.render, 0);
+        this.liteModule = true;
         chestSettingsByKind.put(ChestKind.NORMAL, registerChestSettings("Chest", 198, 132, 56));
         chestSettingsByKind.put(ChestKind.TRAPPED, registerChestSettings("Trapped chest", 176, 64, 64));
         chestSettingsByKind.put(ChestKind.ENDER, registerChestSettings("Ender chest", 128, 64, 192));

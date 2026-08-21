@@ -31,6 +31,7 @@ public class Module {
     public boolean hidden = false;
     public Script script = null;
     public boolean closetModule = false;
+    public boolean liteModule = false;
     public boolean alwaysOn = false;
     public String lastInfo;
     public static boolean sort; // global boolean in charge of sorting upon info change
@@ -171,6 +172,10 @@ public class Module {
     }
 
     public String getInfo() {
+        if (this.script != null) {
+            String suffix = this.script.getString("getSuffix");
+            return suffix == null ? "" : suffix;
+        }
         return "";
     }
 

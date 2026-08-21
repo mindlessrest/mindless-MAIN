@@ -14,7 +14,9 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
 import mindless.utility.shader.GlowShader;
+import mindless.utility.shader.KawaseBloom;
 import mindless.utility.shader.OutlineShader;
+import mindless.utility.shader.SeparableOutlineShader;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.entity.RenderManager;
@@ -47,6 +49,7 @@ public class PlayerESP extends Module {
     public ButtonSetting box;
     public ButtonSetting healthBar;
     public ButtonSetting outline;
+    public ButtonSetting heavyGlow;
     public ButtonSetting shaded;
     public ButtonSetting skeleton;
     public ButtonSetting ring;
@@ -70,6 +73,7 @@ public class PlayerESP extends Module {
 
     private Framebuffer outlineFramebuffer;
     private final OutlineShader outlineShader = new OutlineShader();
+    private final SeparableOutlineShader separableOutlineShader = new SeparableOutlineShader();
     private final GlowShader glowShader = new GlowShader();
 
     private static final class EspRenderState {
@@ -86,10 +90,12 @@ public class PlayerESP extends Module {
 
     public PlayerESP() {
         super("PlayerESP", category.render, 0);
+        this.liteModule = true;
         this.registerSetting(espTypes = new GroupSetting("Types"));
         this.registerSetting(twoD = new ButtonSetting(espTypes, "2D", false));
         this.registerSetting(box = new ButtonSetting(espTypes, "Box", false));
-        this.registerSetting(outline = new ButtonSetting(espTypes, "Outline", false));
+        this.registerSetting(outline = new ButtonSetting(espTypes, "Outline (Light Glow)", false));
+        this.registerSetting(heavyGlow = new ButtonSetting(espTypes, "Outline (Heavy Glow)", false));
         this.registerSetting(ring = new ButtonSetting(espTypes, "Ring", false));
         this.registerSetting(shaded = new ButtonSetting(espTypes, "Shaded", false));
         this.registerSetting(skeleton = new ButtonSetting(espTypes, "Skeleton", false));
@@ -148,7 +154,7 @@ public class PlayerESP extends Module {
         }
 
         boolean renderWorldTypes = box.isToggled() || shaded.isToggled() || healthBar.isToggled() || ring.isToggled();
-        boolean captureVisibleStates = outline.isToggled() || twoD.isToggled();
+        boolean captureVisibleStates = outline.isToggled() || heavyGlow.isToggled() || twoD.isToggled();
         if (renderStateCount == 0 || (!renderWorldTypes && !captureVisibleStates)) {
             return;
         }
@@ -175,20 +181,22 @@ public class PlayerESP extends Module {
         if (!Utils.nullCheck() || visibleRenderStateCount == 0) {
             return;
         }
-        if (outline.isToggled()) runOutlinePass(e.partialTicks);
+        if (outline.isToggled() || heavyGlow.isToggled()) runOutlinePass(e.partialTicks);
         if (twoD.isToggled()) {
             renderTwoDPass(e.partialTicks);
         }
     }
 
     private void runOutlinePass(float partialTicks) {
-        if (!outlineShader.isValid() || !glowShader.isValid() || visibleRenderStateCount == 0) return;
-        outlineFramebuffer = RenderUtils.createFrameBuffer(outlineFramebuffer, false);
+        boolean renderHeavyGlow = heavyGlow.isToggled();
+        if (!glowShader.isValid() || (renderHeavyGlow ? !separableOutlineShader.isValid() : !outlineShader.isValid()) || visibleRenderStateCount == 0) return;
+        outlineFramebuffer = createOutlineFramebuffer(outlineFramebuffer, renderHeavyGlow);
         if (outlineFramebuffer == null) return;
+        mc.getFramebuffer().bindFramebuffer(true);
 
         GlStateManager.pushMatrix();
         GlStateManager.pushAttrib();
-        outlineFramebuffer.bindFramebuffer(false);
+        outlineFramebuffer.bindFramebuffer(true);
         AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, partialTicks, 0);
         boolean shadows = mc.gameSettings.entityShadows;
         mc.gameSettings.entityShadows = false;
@@ -211,14 +219,34 @@ public class PlayerESP extends Module {
         mc.gameSettings.entityShadows = shadows;
         mc.entityRenderer.disableLightmap();
         mc.entityRenderer.setupOverlayRendering();
-        mc.getFramebuffer().bindFramebuffer(false);
-        outlineShader.use();
-        RenderUtils.drawFramebufferFullscreen(outlineFramebuffer);
-        outlineShader.stop();
+        mc.getFramebuffer().bindFramebuffer(true);
+        if (renderHeavyGlow) {
+            KawaseBloom.renderBlur(outlineFramebuffer.framebufferTexture, 4, 4.0f);
+            mc.getFramebuffer().bindFramebuffer(false);
+        }
+        if (renderHeavyGlow) {
+            separableOutlineShader.render(outlineFramebuffer);
+        }
+        else {
+            outlineShader.use();
+            RenderUtils.drawFramebufferFullscreen(outlineFramebuffer);
+            outlineShader.stop();
+        }
         outlineFramebuffer.framebufferClear();
-        mc.getFramebuffer().bindFramebuffer(false);
+        mc.getFramebuffer().bindFramebuffer(true);
         GlStateManager.popAttrib();
         GlStateManager.popMatrix();
+    }
+
+    private Framebuffer createOutlineFramebuffer(Framebuffer framebuffer, boolean reducedResolution) {
+        int width = reducedResolution ? Math.max(1, mc.displayWidth * 3 / 4) : mc.displayWidth;
+        int height = reducedResolution ? Math.max(1, mc.displayHeight * 3 / 4) : mc.displayHeight;
+        if (framebuffer == null || framebuffer.framebufferWidth != width || framebuffer.framebufferHeight != height) {
+            if (framebuffer != null) framebuffer.deleteFramebuffer();
+            framebuffer = new Framebuffer(width, height, false);
+        }
+        framebuffer.setFramebufferColor(0.0f, 0.0f, 0.0f, 0.0f);
+        return framebuffer;
     }
 
     private void clearRenderStates() {
@@ -233,7 +261,7 @@ public class PlayerESP extends Module {
         playerRenderStates.clear();
 
         double maxDistSq = maxDistance.getInput() * maxDistance.getInput();
-        if (Raven.DEBUG) {
+        if (Raven.DEBUG && ModuleManager.debug.debugEntities.isToggled()) {
             for (Entity entity : mc.theWorld.loadedEntityList) {
                 if (!(entity instanceof EntityLivingBase) || entity == mc.thePlayer) {
                     continue;

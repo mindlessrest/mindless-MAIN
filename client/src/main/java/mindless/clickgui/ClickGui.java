@@ -6,9 +6,11 @@ import mindless.clickgui.components.FocusableTextComponent;
 import mindless.clickgui.components.impl.BindComponent;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.clickgui.components.impl.ModuleComponent;
+import mindless.clickgui.components.impl.SliderComponent;
 import mindless.module.Module;
 import mindless.module.impl.client.CommandLine;
 import mindless.module.impl.client.Gui;
+import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.CommandHandler;
 import mindless.utility.Timer;
 import mindless.utility.Utils;
@@ -58,6 +60,15 @@ public class ClickGui extends GuiScreen {
     private boolean pendingScaleRefresh;
     private static ResourceLocation logoTexture;
     private static boolean logoLoadAttempted;
+    private SliderSetting heldArrowSlider;
+    private int heldArrowDirection;
+    private long arrowHoldStartedAt;
+    private long lastArrowAdjustmentAt;
+
+    private static final long ARROW_HOLD_DELAY_MS = 300L;
+    private static final double ARROW_INITIAL_REPEAT_MS = 180.0D;
+    private static final double ARROW_ACCELERATION_HALF_LIFE_MS = 750.0D;
+    private static final long ARROW_MIN_REPEAT_MS = 20L;
 
     public ClickGui() {
         categories = new ArrayList();
@@ -112,6 +123,14 @@ public class ClickGui extends GuiScreen {
         }
     }
 
+    public void resetPositions() {
+        int y = 5;
+        for (CategoryComponent categoryComponent : categories) {
+            categoryComponent.applySavedState(5, y, false, false);
+            y += 20;
+        }
+    }
+
     @Override
     public void initGui() {
         super.initGui();
@@ -129,6 +148,19 @@ public class ClickGui extends GuiScreen {
         int gridW = this.width > 0 ? this.width : getLogicalScreenWidth();
         layoutCategoriesGrid(gridW);
 
+        if (Double.compare(this.previousScale, configuredScale) != 0) {
+            for (CategoryComponent categoryComponent : categories) {
+                categoryComponent.limitPositions();
+            }
+        }
+        reloadModulesForCurrentMode();
+        (this.commandLineInput = new GuiTextField(1, this.mc.fontRendererObj, 22, this.height - 100, 150, 20)).setMaxStringLength(256);
+        this.buttonList.add(this.commandLineSend = new GuiButtonExt(2, 22, this.height - 70, 150, 20, "Send"));
+        this.commandLineSend.visible = CommandLine.opened;
+        this.previousScale = configuredScale;
+    }
+
+    public void reloadModulesForCurrentMode() {
         for (CategoryComponent categoryComponent : categories) {
             if (categoryComponent.category == Module.category.profiles) {
                 categoryComponent.reloadModules(true);
@@ -163,6 +195,11 @@ public class ClickGui extends GuiScreen {
     public void drawScreen(int x, int y, float p) {
         // Legacy GUI has no palette-refresh pass of its own, so drive theme application here too.
         mindless.module.impl.theme.ThemeManager.poll();
+        if (pendingScaleRefresh) {
+            pendingScaleRefresh = false;
+            refreshLayoutForConfiguredScale();
+        }
+
         int logicalMouseX = toLogicalCoordinate(x);
         int logicalMouseY = toLogicalCoordinate(y);
 
@@ -196,7 +233,7 @@ public class ClickGui extends GuiScreen {
 
         // Logo watermark - lazy-load logo.png, render bottom-right semi-transparent
         GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-        if (!Gui.removeWatermark.isToggled()) {
+        if (!Gui.hideWatermark.isToggled()) {
             if (!logoLoadAttempted) {
                 logoLoadAttempted = true;
                 try {
@@ -347,6 +384,7 @@ public class ClickGui extends GuiScreen {
         if (mc == null) {
             mc = Minecraft.getMinecraft();
         }
+        reloadModulesForCurrentMode();
         refreshLayoutForConfiguredScale();
     }
 
@@ -404,6 +442,14 @@ public class ClickGui extends GuiScreen {
             return;
         }
 
+        if (!binding() && adjustHoveredSlider(k)) {
+            if (pendingScaleRefresh) {
+                pendingScaleRefresh = false;
+                refreshLayoutForConfiguredScale();
+            }
+            return;
+        }
+
         for (CategoryComponent category : categories) {
             if (category.isOpened() && !category.getModules().isEmpty()) {
                 for (Component module : category.getModules()) {
@@ -420,6 +466,93 @@ public class ClickGui extends GuiScreen {
             }
             this.commandLineInput.textboxKeyTyped(t, k);
         }
+    }
+
+    private boolean adjustHoveredSlider(int keyCode) {
+        if (keyCode != Keyboard.KEY_LEFT && keyCode != Keyboard.KEY_RIGHT) {
+            return false;
+        }
+        if (CommandLine.opened && this.commandLineInput.isFocused()) {
+            return false;
+        }
+
+        int mouseX = Mouse.getX() * this.width / this.mc.displayWidth;
+        int mouseY = this.height - Mouse.getY() * this.height / this.mc.displayHeight - 1;
+        SliderComponent slider = getHoveredSlider(mouseX, mouseY);
+        if (slider == null) {
+            return false;
+        }
+
+        int direction = keyCode == Keyboard.KEY_RIGHT ? 1 : -1;
+        if (this.heldArrowSlider != slider.sliderSetting || this.heldArrowDirection != direction) {
+            long now = System.currentTimeMillis();
+            this.heldArrowSlider = slider.sliderSetting;
+            this.heldArrowDirection = direction;
+            this.arrowHoldStartedAt = now;
+            this.lastArrowAdjustmentAt = now;
+            slider.adjustValue(direction);
+        }
+        return true;
+    }
+
+    private SliderComponent getHoveredSlider(int mouseX, int mouseY) {
+        CategoryComponent category = getTopmostUnderCursor(getCategoriesInRenderOrder(), mouseX, mouseY);
+        if (category == null || !category.isOpened() || category.overTitle(mouseX, mouseY)) {
+            return null;
+        }
+
+        for (ModuleComponent module : category.getModules()) {
+            for (Component component : module.settings) {
+                if (component instanceof SliderComponent) {
+                    SliderComponent slider = (SliderComponent) component;
+                    if (slider.isHovered(mouseX, mouseY)) {
+                        return slider;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private void updateHeldSliderAdjustment(int mouseX, int mouseY) {
+        if (this.heldArrowSlider == null) {
+            return;
+        }
+
+        int heldKey = this.heldArrowDirection > 0 ? Keyboard.KEY_RIGHT : Keyboard.KEY_LEFT;
+        SliderComponent hoveredSlider = getHoveredSlider(mouseX, mouseY);
+        if (!Keyboard.isKeyDown(heldKey)
+            || binding()
+            || (CommandLine.opened && this.commandLineInput.isFocused())
+            || hoveredSlider == null
+            || hoveredSlider.sliderSetting != this.heldArrowSlider) {
+            clearHeldSliderAdjustment();
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        long heldDuration = now - this.arrowHoldStartedAt;
+        if (heldDuration < ARROW_HOLD_DELAY_MS) {
+            return;
+        }
+
+        long acceleratingDuration = heldDuration - ARROW_HOLD_DELAY_MS;
+        long repeatDelay = Math.max(
+            ARROW_MIN_REPEAT_MS,
+            Math.round(ARROW_INITIAL_REPEAT_MS
+                * Math.pow(0.5D, acceleratingDuration / ARROW_ACCELERATION_HALF_LIFE_MS))
+        );
+        if (now - this.lastArrowAdjustmentAt >= repeatDelay) {
+            hoveredSlider.adjustValue(this.heldArrowDirection);
+            this.lastArrowAdjustmentAt = now;
+        }
+    }
+
+    private void clearHeldSliderAdjustment() {
+        this.heldArrowSlider = null;
+        this.heldArrowDirection = 0;
+        this.arrowHoldStartedAt = 0L;
+        this.lastArrowAdjustmentAt = 0L;
     }
 
     public void actionPerformed(GuiButton b) {
@@ -443,6 +576,7 @@ public class ClickGui extends GuiScreen {
                 m.onGuiClosed();
             }
         }
+        clearHeldSliderAdjustment();
     }
 
     @Override

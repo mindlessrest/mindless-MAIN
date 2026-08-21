@@ -54,6 +54,7 @@ public class HitSelect extends Module {
 
     public HitSelect() {
         super("Hit Select", category.combat);
+        this.liteModule = true;
 
         this.registerSetting(new DescriptionSetting("Filters unnecessary clicks."));
         this.registerSetting(pauseDuration = new SliderSetting("Pause duration", "ms", 500.0D, 0.0D, 500.0D, 50.0D));

@@ -79,6 +79,7 @@ public class KillAura extends Module {
 
     public KillAura() {
         super("Kill Aura", category.combat);
+        this.liteModule = true;
         this.registerSetting(targetCPS = new SliderSetting("Target CPS", 10.0, 1.0, 20.0, 0.5));
         this.registerSetting(fov = new SliderSetting("FOV", "°", 360.0, 30.0, 360.0, 4.0));
         this.registerSetting(attackRange = new SliderSetting("Range (attack)", 3.0, 3.0, 6.0, 0.05));
@@ -154,7 +155,7 @@ public class KillAura extends Module {
             if (targetDistance <= aimRangeVal) {
                 int speedVal = (int) speed.getInput();
                 boolean useBackup = !aimThroughBlocks.isToggled() || !aimThroughEntities.isToggled();
-                float[] rot = RotationHelper.get().getRotationsToTarget(target, e, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled());
+                float[] rot = RotationHelper.get().getRotationsToTarget(target, e, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled(), true);
                 if (rot != null) {
                     e.yaw = rot[0];
                     e.pitch = rot[1];
@@ -180,7 +181,7 @@ public class KillAura extends Module {
             if (targetDistance <= aimRangeVal) {
                 int speedVal = (int) speed.getInput();
                 boolean useBackup = !aimThroughBlocks.isToggled() || !aimThroughEntities.isToggled();
-                float[] rot = RotationHelper.get().getRotationsToTarget(target, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled());
+                float[] rot = RotationHelper.get().getRotationsToTarget(target, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled(), true);
                 if (rot != null) {
                     mc.thePlayer.rotationYaw = rot[0];
                     mc.thePlayer.rotationPitch = rot[1];
@@ -395,7 +396,7 @@ public class KillAura extends Module {
 
         double multipointH = 100;
         double multipointV = 100;
-        if (!RotationUtils.hasValidAimPoint(entity, multipointH, multipointV, maxRange, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled())) {
+        if (!RotationUtils.hasValidAimPoint(entity, multipointH, multipointV, maxRange, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled(), true)) {
             return null;
         }
 
@@ -583,7 +584,7 @@ public class KillAura extends Module {
 
         Vec3 hitVec = inside ? (intercept == null ? eyes : intercept.hitVec) : intercept.hitVec;
         if (!aimThroughBlocks.isToggled()) {
-            MovingObjectPosition blockHit = mc.theWorld.rayTraceBlocks(eyes, hitVec, false, false, true);
+            MovingObjectPosition blockHit = RotationUtils.rayTraceBlocksIgnoringOpenFenceGates(eyes, hitVec, false, false, true);
             if (blockHit != null && blockHit.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK) {
                 return;
             }

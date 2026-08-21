@@ -416,6 +416,43 @@ public class Entity {
         entity.rotationYaw = yaw;
     }
 
+    public void moveTo(Vec3 position) {
+        if (position == null) {
+            return;
+        }
+        moveTo(position.x, position.y, position.z);
+    }
+
+    public void moveTo(double x, double y, double z) {
+        entity.setPositionAndRotation(x, y, z, entity.rotationYaw, entity.rotationPitch);
+    }
+
+    public void moveTo(Vec3 position, float yaw, float pitch) {
+        if (position == null) {
+            return;
+        }
+        moveTo(position.x, position.y, position.z, yaw, pitch);
+    }
+
+    public void moveTo(double x, double y, double z, float yaw, float pitch) {
+        entity.setPositionAndRotation(x, y, z, yaw, pitch);
+    }
+
+    public void moveTo(Vec3 position, float yaw, float pitch, int interpolationTicks) {
+        if (position == null) {
+            return;
+        }
+        moveTo(position.x, position.y, position.z, yaw, pitch, interpolationTicks);
+    }
+
+    public void moveTo(double x, double y, double z, float yaw, float pitch, int interpolationTicks) {
+        if (interpolationTicks <= 0) {
+            moveTo(x, y, z, yaw, pitch);
+            return;
+        }
+        entity.setPositionAndRotation2(x, y, z, yaw, pitch, interpolationTicks, false);
+    }
+
     public void setPosition(Vec3 position) {
         entity.setPosition(position.x, position.y, position.z);
     }

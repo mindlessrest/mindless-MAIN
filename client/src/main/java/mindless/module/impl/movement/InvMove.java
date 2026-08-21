@@ -24,6 +24,13 @@ import org.lwjgl.input.Keyboard;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class InvMove extends Module {
+    private static final int INVENTORY_MODE_LEGIT = 1;
+    private static final int INVENTORY_MODE_LEGIT_SLOW = 2;
+    private static final int INVENTORY_MODE_BLINK = 3;
+    private static final int INVENTORY_MODE_CLOSE = 4;
+    private static final int LEGIT_RELEASE_TICKS = 1;
+    private static final int LEGIT_SLOW_RELEASE_TICKS = 5;
+
     public SliderSetting inventory;
     private SliderSetting chestAndOthers;
     private SliderSetting motion;
@@ -35,16 +42,17 @@ public class InvMove extends Module {
 
     public int ticks;
     public boolean setMotion;
+    private int movementReleaseTicks;
 
     private ConcurrentLinkedQueue<Packet> blinkedPackets = new ConcurrentLinkedQueue<>();
 
-    private final String[] INVENTORY_MODES = new String[] { "Disabled", "Vanilla", "Blink", "Close" };
-    private final String[] CHEST_AND_OTHER_MODES = new String[] { "Disabled", "Vanilla", "Blink" };
+    private final String[] INVENTORY_MODES = new String[] { "Vanilla", "Legit", "Legit (Slow)", "Blink", "Close" };
+    private final String[] CHEST_AND_OTHER_MODES = new String[] { "Vanilla", "Blink" };
 
     public InvMove() {
-        super("InvMove", Module.category.movement);
-        this.registerSetting(inventory = new SliderSetting("Inventory", 1, INVENTORY_MODES));
-        this.registerSetting(chestAndOthers = new SliderSetting("Chest & others", 1, CHEST_AND_OTHER_MODES));
+        super("InvMove", category.movement);
+        this.registerSetting(inventory = new SliderSetting("Inventory", true, 0, INVENTORY_MODES));
+        this.registerSetting(chestAndOthers = new SliderSetting("Chest & others", true, 0, CHEST_AND_OTHER_MODES));
         this.registerSetting(motion = new SliderSetting("Motion", "x", 1, 0.05, 1, 0.01));
         this.registerSetting(modifyMotionPost = new ButtonSetting("Modify motion after click", false));
         this.registerSetting(slowWhenNecessary = new ButtonSetting("Slow motion when necessary", false));
@@ -53,6 +61,7 @@ public class InvMove extends Module {
         this.registerSetting(allowSprinting = new ButtonSetting("Allow sprinting", true));
     }
 
+    @Override
     public void onDisable() {
         reset();
         releasePackets();
@@ -90,17 +99,19 @@ public class InvMove extends Module {
             reset();
         }
 
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindForward));
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindBack));
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindRight));
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindLeft));
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), Utils.jumpDown());
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindSprint));
+        boolean releaseMovement = shouldReleaseMovement();
+        if (releaseMovement) {
+            releaseMovementKeys();
+            --movementReleaseTicks;
+        }
+        else {
+            restoreMovementKeys();
+        }
         boolean foodLvlMet = (float)mc.thePlayer.getFoodStats().getFoodLevel() > 6.0F || mc.thePlayer.capabilities.allowFlying; // from mc
-        if (((Utils.isBindDown(mc.gameSettings.keyBindSprint) || ModuleManager.sprint.isEnabled()) && mc.thePlayer.movementInput.moveForward >= 0.8F && foodLvlMet && !mc.thePlayer.isSprinting()) && allowSprinting.isToggled()) {
+        if (!releaseMovement && ((Utils.isBindDown(mc.gameSettings.keyBindSprint) || ModuleManager.sprint.isEnabled()) && mc.thePlayer.movementInput.moveForward >= 0.8F && foodLvlMet && !mc.thePlayer.isSprinting()) && allowSprinting.isToggled()) {
             mc.thePlayer.setSprinting(true);
         }
-        if (!allowSprinting.isToggled()) {
+        if (releaseMovement || !allowSprinting.isToggled()) {
             mc.thePlayer.setSprinting(false);
         }
         if (allowRotating.isToggled()) {
@@ -129,6 +140,10 @@ public class InvMove extends Module {
     @SubscribeEvent
     public void onSendPacket(SendPacketEvent e) {
         if (e.getPacket() instanceof C0EPacketClickWindow) {
+            if (isLegitInventoryMode() && mc.currentScreen instanceof GuiInventory) {
+                movementReleaseTicks = Math.max(movementReleaseTicks, getMovementReleaseTicks());
+                releaseMovementKeys();
+            }
             if (modifyMotionPost.isToggled() || (slowWhenNecessary.isToggled() && !canBlink())) {
                 setMotion = true;
                 ticks = 0;
@@ -140,7 +155,7 @@ public class InvMove extends Module {
         }
         else if (e.getPacket() instanceof C0DPacketCloseWindow) {
             if (canBlink()) {
-                if (inventory.getInput() == 3) {
+                if (inventory.getInput() == INVENTORY_MODE_CLOSE) {
                     PacketUtils.sendPacketNoEvent(new C16PacketClientStatus(C16PacketClientStatus.EnumState.OPEN_INVENTORY_ACHIEVEMENT));
                 }
                 releasePackets();
@@ -151,6 +166,7 @@ public class InvMove extends Module {
     private void reset() {
         ticks = 0;
         setMotion = false;
+        movementReleaseTicks = 0;
     }
 
     private boolean guiCheck() {
@@ -158,27 +174,65 @@ public class InvMove extends Module {
             return false;
         }
         if (Settings.inInventory()) {
-            if (inventory.getInput() == 0) {
+            if (inventory.getInput() == -1) {
                 return false;
             }
         }
-        else if ((chestAndOthers.getInput() == 0 && !(mc.currentScreen instanceof ClickGui)) || (mc.currentScreen instanceof GuiChat)) {
+        else if ((chestAndOthers.getInput() == -1 && !(mc.currentScreen instanceof ClickGui)) || (mc.currentScreen instanceof GuiChat)) {
             return false;
         }
         return true;
     }
 
     private boolean canBlink() {
-        if (mc.currentScreen == null && inventory.getInput() != 3) {
+        if (mc.currentScreen == null && inventory.getInput() != INVENTORY_MODE_CLOSE) {
             return false;
         }
-        else if ((mc.currentScreen instanceof GuiInventory && inventory.getInput() == 2) || (inventory.getInput() == 3 && mc.currentScreen == null)) {
+        else if ((mc.currentScreen instanceof GuiInventory && inventory.getInput() == INVENTORY_MODE_BLINK) || (inventory.getInput() == INVENTORY_MODE_CLOSE && mc.currentScreen == null)) {
             return true;
         }
-        else if (chestAndOthers.getInput() == 2 && !(mc.currentScreen instanceof ClickGui) && !(mc.currentScreen instanceof GuiChat)) {
+        else if (chestAndOthers.getInput() == 1 && !(mc.currentScreen instanceof ClickGui) && !(mc.currentScreen instanceof GuiChat)) {
             return true;
         }
         return false;
+    }
+
+    private boolean isLegitInventoryMode() {
+        return inventory.getInput() == INVENTORY_MODE_LEGIT || inventory.getInput() == INVENTORY_MODE_LEGIT_SLOW;
+    }
+
+    private int getMovementReleaseTicks() {
+        return inventory.getInput() == INVENTORY_MODE_LEGIT_SLOW ? LEGIT_SLOW_RELEASE_TICKS : LEGIT_RELEASE_TICKS;
+    }
+
+    private boolean shouldReleaseMovement() {
+        return mc.currentScreen instanceof GuiInventory
+            && isLegitInventoryMode()
+            && (movementReleaseTicks > 0 || mc.thePlayer.inventory.getItemStack() != null);
+    }
+
+    private void restoreMovementKeys() {
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindForward));
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindBack));
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindRight));
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindLeft));
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), Utils.jumpDown());
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindSprint));
+    }
+
+    private void releaseMovementKeys() {
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), false);
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), false);
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), false);
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+        if (mc.thePlayer != null && mc.thePlayer.movementInput != null) {
+            mc.thePlayer.movementInput.moveForward = 0.0F;
+            mc.thePlayer.movementInput.moveStrafe = 0.0F;
+            mc.thePlayer.movementInput.jump = false;
+            mc.thePlayer.setSprinting(false);
+        }
     }
 
     private void releasePackets() {

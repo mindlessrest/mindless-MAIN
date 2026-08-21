@@ -11,6 +11,7 @@ public class AntiDebuff extends Module {
 
     public AntiDebuff() {
         super("Anti Debuff", category.render);
+        this.liteModule = true;
         this.registerSetting(removeBlindness = new ButtonSetting("Remove blindness", true));
         this.registerSetting(removeNausea = new ButtonSetting("Remove nausea", true));
         this.registerSetting(removeSideEffects = new ButtonSetting("Remove side effects", false));
@@ -23,5 +24,4 @@ public class AntiDebuff extends Module {
     public boolean canRemoveNausea(Potion potion) {
         return this.isEnabled() && potion == Potion.confusion && this.removeNausea.isToggled();
     }
-
 }

@@ -55,6 +55,7 @@ public class AutoTool extends Module {
 
     public AutoTool() {
         super("Auto Tool", category.player);
+        this.liteModule = true;
 
         this.registerSetting(timingGroup = new GroupSetting("Timing"));
         this.registerSetting(activationTime = new SliderSetting(timingGroup, "Activation time", "ms", 0.0, 0.0, 1000.0, 25.0));
@@ -205,6 +206,7 @@ public class AutoTool extends Module {
 
         int slot = Utils.getTool(BlockUtils.getBlock(swapPos));
         if (slot == -1) {
+            resetNextHover();
             return;
         }
 

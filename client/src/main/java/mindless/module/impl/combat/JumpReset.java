@@ -27,6 +27,7 @@ public class JumpReset extends Module {
 
     public JumpReset() {
         super("Jump Reset", category.combat);
+        this.liteModule = true;
         this.registerSetting(chance = new SliderSetting("Chance", "%", 80, 0, 100, 1));
         this.registerSetting(requireMouseDown = new ButtonSetting("Require mouse down", false));
         this.registerSetting(requireMovingForward = new ButtonSetting("Require moving forward", true));

@@ -124,6 +124,7 @@ public class InvManager extends Module {
 
     public InvManager() {
         super("InvManager", category.player);
+        this.liteModule = true;
         this.registerSetting(closeChest = new ButtonSetting("Close chest", false));
         this.registerSetting(closeInventory = new ButtonSetting("Close inventory", false));
         this.registerSetting(disableInLobby = new ButtonSetting("Disable in lobby", true));

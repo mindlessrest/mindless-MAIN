@@ -1,6 +1,7 @@
 package mindless.helper;
 
 import mindless.Raven;
+import mindless.module.ModuleManager;
 import mindless.utility.IMinecraftInstance;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
@@ -13,12 +14,10 @@ public class DebugHelper implements IMinecraftInstance {
 
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent ev) {
-        if (!Raven.DEBUG || ev.phase != TickEvent.Phase.END || !Utils.nullCheck()) {
+        if (!Raven.DEBUG || ev.phase != TickEvent.Phase.END || !Utils.nullCheck() || !ModuleManager.debug.debugBPS.isToggled() || mc.currentScreen != null) {
             return;
         }
-        if (mc.currentScreen == null) {
-            RenderUtils.renderBPS(true, true);
-        }
+        RenderUtils.renderBPS(true, true);
     }
 
     public static void debugMixin(Object obj, String message) {

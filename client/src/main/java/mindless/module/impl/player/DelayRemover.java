@@ -12,6 +12,7 @@ public class DelayRemover extends Module {
 
     public DelayRemover() {
         super("Delay Remover", category.player, 0);
+        this.liteModule = true;
         this.registerSetting(oldReg = new ButtonSetting("1.7 hitreg", true));
         this.registerSetting(removeJumpTicks = new ButtonSetting("Remove jump ticks", false));
         this.closetModule = true;

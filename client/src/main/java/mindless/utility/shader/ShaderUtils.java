@@ -192,7 +192,7 @@ public class ShaderUtils {
                                          "\n" +
                                          "    vec4 result = sum / 12.0;\n" +
                                          "    float checkAlpha = texture2D(textureToCheck, gl_TexCoord[0].st).a;\n" +
-                                         "    gl_FragColor = vec4(result.rgb / result.a, mix(result.a, result.a * (1.0 - checkAlpha), float(check)));\n" +
+                                         "    gl_FragColor = vec4(result.rgb / max(result.a, 0.0001), mix(result.a, result.a * (1.0 - checkAlpha), float(check)));\n" +
                                          "}\n";
     private final String kawaseDownBloom = "#version 120\n" +
                                            "\n" +
@@ -218,7 +218,7 @@ public class ShaderUtils {
                                            "    smp4.rgb *= smp4.a;\n" +
                                            "    sum += smp4;\n" +
                                            "    vec4 result = sum / 8.0;\n" +
-                                           "    gl_FragColor = vec4(result.rgb / result.a, result.a);\n" +
+                                           "    gl_FragColor = vec4(result.rgb / max(result.a, 0.0001), result.a);\n" +
                                            "}\n";
     private final String kawaseUp = "#version 120\n" +
                                     "\n" +

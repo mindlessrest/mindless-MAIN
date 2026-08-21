@@ -160,6 +160,7 @@ public class Indicators extends Module {
 
     public Indicators() {
         super("Indicators", category.render);
+        this.liteModule = true;
         this.registerSetting(items = new GroupSetting("Items"));
         this.registerSetting(renderArrows = new ButtonSetting(items, "Render arrows", true));
         this.registerSetting(renderPearls = new ButtonSetting(items, "Render ender pearls", true));

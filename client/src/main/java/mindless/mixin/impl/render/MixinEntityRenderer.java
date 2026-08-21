@@ -150,15 +150,16 @@ public class MixinEntityRenderer implements ISaturationRenderer {
 
     @Redirect(method = "setupFog", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/EntityLivingBase;isPotionActive(Lnet/minecraft/potion/Potion;)Z"))
     private boolean redirectSetupFog(EntityLivingBase entity, Potion potion) {
-        if (ModuleManager.antiDebuff != null && ModuleManager.antiDebuff.canRemoveBlindness(potion)) {
+        if (entity == Minecraft.getMinecraft().thePlayer && ModuleManager.antiDebuff != null && ModuleManager.antiDebuff.canRemoveBlindness(potion)) {
             return false;
         }
+
         return entity.isPotionActive(potion);
     }
 
     @Redirect(method = "updateFogColor", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/EntityLivingBase;isPotionActive(Lnet/minecraft/potion/Potion;)Z"))
     private boolean redirectFogColor(EntityLivingBase entity, Potion potion) {
-        if (ModuleManager.antiDebuff != null && ModuleManager.antiDebuff.canRemoveBlindness(potion)) {
+        if (entity == Minecraft.getMinecraft().thePlayer && ModuleManager.antiDebuff != null && ModuleManager.antiDebuff.canRemoveBlindness(potion)) {
             return false;
         }
         return entity.isPotionActive(potion);
@@ -166,7 +167,7 @@ public class MixinEntityRenderer implements ISaturationRenderer {
 
     @Redirect(method = "setupCameraTransform", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/entity/EntityPlayerSP;isPotionActive(Lnet/minecraft/potion/Potion;)Z"))
     private boolean redirectSetupCameraTransform(EntityPlayerSP entity, Potion potion) {
-        if (ModuleManager.antiDebuff != null && ModuleManager.antiDebuff.canRemoveNausea(potion)) {
+        if (entity == Minecraft.getMinecraft().thePlayer && ModuleManager.antiDebuff != null && ModuleManager.antiDebuff.canRemoveNausea(potion)) {
             return false;
         }
         return entity.isPotionActive(potion);

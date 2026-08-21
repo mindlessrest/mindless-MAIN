@@ -92,12 +92,12 @@ public class Clutch extends Module {
 
     public Clutch() {
         super("Clutch", category.player);
-        this.registerSetting(reach = new SliderSetting("Reach", " blocks", 4.5, 0.5, 4.5, 0.1));
+        this.registerSetting(reach = new SliderSetting("Reach", " block", 4.5, 0.5, 4.5, 0.1));
         this.registerSetting(speed = new SliderSetting("Speed", 8, 0, 100, 1));
         this.registerSetting(snapbackSpeed = new SliderSetting("Snapback Speed", 12, 0, 100, 1));
-        this.registerSetting(maxDistance = new SliderSetting("Max distance", " blocks", 10, 0, 20, 1));
+        this.registerSetting(maxDistance = new SliderSetting("Max distance", " block", 10, 0, 20, 1));
         this.registerSetting(rotationTolerance = new SliderSetting("Rotation Tolerance", "\u00B0", 25, 20, 100, 1));
-        this.registerSetting(minimumFallDistance = new SliderSetting("Minimum fall distance", " blocks", 10, 3, 20, 1));
+        this.registerSetting(minimumFallDistance = new SliderSetting("Minimum fall distance", " block", 10, 3, 20, 1));
         this.registerSetting(simulateFuturePosition = new ButtonSetting("Simulate future position", true));
         this.registerSetting(autoClutch = new ButtonSetting("Auto Clutch", false));
         this.registerSetting(requireVoid = new ButtonSetting("Require void", false));

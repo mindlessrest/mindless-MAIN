@@ -111,6 +111,7 @@ public class Trajectories extends Module {
 
     public Trajectories() {
         super("Trajectories", category.render);
+        this.liteModule = true;
         this.registerSetting(disableUnchargedBow = new ButtonSetting("Disable uncharged bow", true));
         this.registerSetting(highlightEntities = new ButtonSetting("Highlight on entity", true));
         this.registerSetting(shortenLine = new ButtonSetting("Shorten line", false));

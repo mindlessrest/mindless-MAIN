@@ -105,6 +105,9 @@ public class CategoryComponent {
         this.animationStartHeight = this.lastHeight;
 
         for (Module mod : Raven.getModuleManager().inCategory(this.category)) {
+            if (!Gui.shouldShowModule(mod)) {
+                continue;
+            }
             ModuleComponent b = new ModuleComponent(mod, this, moduleRenderY);
             this.modules.add(b);
             moduleRenderY += 16;
@@ -122,6 +125,9 @@ public class CategoryComponent {
         float moduleRenderY = this.titleHeight + 3;
 
         for (Module mod : Raven.getModuleManager().inCategory(this.category)) {
+            if (!Gui.shouldShowModule(mod)) {
+                continue;
+            }
             ModuleComponent component = new ModuleComponent(mod, this, moduleRenderY);
             component.restoreOpenState(Boolean.TRUE.equals(openStates.get(mod.getName())));
             this.modules.add(component);

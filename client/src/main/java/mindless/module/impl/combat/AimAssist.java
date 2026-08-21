@@ -48,6 +48,7 @@ public class AimAssist extends Module {
 
     public AimAssist() {
         super("Aim Assist", category.combat);
+        this.liteModule = true;
         this.registerSetting(mode = new SliderSetting("Mode", 0, AIM_MODES));
         this.registerSetting(aimAxis = new SliderSetting("Axis", 0, AIM_AXIS_MODES));
         this.registerSetting(speed = new SliderSetting("Speed", 10, 1, 30, 1));

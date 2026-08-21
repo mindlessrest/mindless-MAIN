@@ -325,6 +325,51 @@ public class Script {
         return -1;
     }
 
+    public String getString(final String s, final Object... array) {
+        if (this.clazz == null || this.instance == null) {
+            return null;
+        }
+        Method method = null;
+        for (final Method method2 : this.clazz.getDeclaredMethods()) {
+            if (method2.getName().equalsIgnoreCase(s) && method2.getParameterCount() == array.length && method2.getReturnType().equals(String.class)) {
+                method = method2;
+                break;
+            }
+        }
+        if (method != null) {
+            try {
+                method.setAccessible(true);
+                final Object invoke = method.invoke(this.instance, array);
+                if (invoke instanceof String) {
+                    return (String) invoke;
+                }
+            }
+            catch (IllegalAccessException | InvocationTargetException ex) {
+                ReflectiveOperationException er = ex;
+                Utils.sendMessage("&7Runtime error during script &b" + this.name);
+                if (er.getCause() == null) {
+                    Utils.sendMessage(" &7err: &cThrowable");
+                }
+                else {
+                    Utils.sendMessage(" &7err: &c" + er.getCause().getClass().getSimpleName());
+                    final StackTraceElement[] stArr = er.getCause().getStackTrace();
+                    if (stArr.length > 0) {
+                        StackTraceElement st = stArr[0];
+                        for (final StackTraceElement element : er.getCause().getStackTrace()) {
+                            if (element.getClassName().equalsIgnoreCase(this.scriptName)) {
+                                st = element;
+                                break;
+                            }
+                        }
+                        Utils.sendMessage(" &7line: &c" + (st.getLineNumber() - STARTING_LINE));
+                        Utils.sendMessage(" &7src: &c" + st.getMethodName());
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
     public Float[] getFloatArray(String methodName, Object... args) {
         if (this.clazz == null || this.instance == null) {
             return null;

@@ -28,6 +28,7 @@ public class ClickAssist extends Module {
 
     public ClickAssist() {
         super("ClickAssist", Module.category.combat, 0);
+        this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Boost your CPS."));
         this.registerSetting(disableInCreative = new ButtonSetting("Disable in creative", true));
         this.registerSetting(leftClick = new ButtonSetting("Left click", true));

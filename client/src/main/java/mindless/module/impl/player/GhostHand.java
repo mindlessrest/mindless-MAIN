@@ -49,6 +49,7 @@ public class GhostHand extends Module {
 
     public GhostHand() {
         super("Ghost Hand", category.player);
+        this.liteModule = true;
         this.registerSetting(interactGroup = new GroupSetting("Interact through"));
         this.registerSetting(throughNonPlayer = new ButtonSetting(interactGroup, "Non-player entities", true));
         this.registerSetting(throughBots = new ButtonSetting(interactGroup, "Bots", false));

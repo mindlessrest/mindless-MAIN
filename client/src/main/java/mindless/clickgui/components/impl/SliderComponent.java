@@ -31,6 +31,7 @@ public class SliderComponent extends Component {
     private double targetValue;
     private double displayedValue;
     private static final double SLIDER_SPEED = 0.6;
+    private static final float SLIDER_BAR_HEIGHT = 4.0f;
 
     public SliderComponent(SliderSetting sliderSetting, ModuleComponent moduleComponent, float o) {
         this.sliderSetting = sliderSetting;
@@ -191,6 +192,53 @@ public class SliderComponent extends Component {
             : (double) (this.moduleComponent.categoryComponent.getWidth() - 8)
                 * (this.sliderSetting.getInput() - this.sliderSetting.getMin())
                 / (this.sliderSetting.getMax() - this.sliderSetting.getMin());
+    }
+
+    public boolean isHovered(int mouseX, int mouseY) {
+        return (u(mouseX, mouseY) || i(mouseX, mouseY))
+            && this.moduleComponent.isOpened
+            && this.moduleComponent.isVisible(this);
+    }
+
+    public void adjustValue(int direction) {
+        if (direction == 0) {
+            return;
+        }
+
+        double previousValue = this.sliderSetting.getInput();
+        if (this.sliderSetting.canBeDisabled && previousValue == -1) {
+            if (direction > 0) {
+                this.sliderSetting.setValue(this.sliderSetting.getMin());
+            }
+        }
+        else if (this.sliderSetting.canBeDisabled
+            && direction < 0
+            && previousValue <= this.sliderSetting.getMin()) {
+            this.sliderSetting.setValueRaw(-1);
+        }
+        else {
+            this.sliderSetting.setValue(previousValue + direction * this.sliderSetting.getInterval());
+        }
+
+        if (Double.compare(previousValue, this.sliderSetting.getInput()) == 0) {
+            return;
+        }
+
+        onSliderChange();
+
+        if (ModuleManager.hud != null
+            && ModuleManager.hud.isEnabled()
+            && !ModuleManager.organizedModules.isEmpty()) {
+            ModuleManager.sort();
+        }
+
+        if (Raven.currentProfile != null) {
+            Raven.currentProfile.getModule().saved = false;
+        }
+
+        if (shouldCommitOnRelease()) {
+            Raven.clickGui.requestScaleRefresh();
+        }
     }
 
     private static double roundToInterval(double value, int places) {

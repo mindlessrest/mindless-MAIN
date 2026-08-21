@@ -20,6 +20,7 @@ public class FastMine extends Module {
 
     public FastMine() {
         super("Fast Mine", category.player);
+        this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Vanilla is 250ms delay & 1x speed."));
         this.registerSetting(delay = new SliderSetting("Break delay", "ms", 250.0, 0.0, 250.0, 50.0));
         this.registerSetting(multiplier = new SliderSetting("Break speed", "x", 1.0, 1.0, 2.0, 0.02));
