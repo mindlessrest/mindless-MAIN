@@ -71,13 +71,20 @@ public class GlowBloomShader {
         pass.setTint(r, g, b);
         pass.setShape(radius, intensity);
         pass.setDirection(0.0f, 1.0f, true);
-        GlStateManager.setActiveTexture(GL13.GL_TEXTURE16);
+        // Unit 2, not 16. OpenGL only guarantees sixteen fragment texture units, numbered
+        // zero to fifteen, and GL_MAX_TEXTURE_IMAGE_UNITS is commonly exactly sixteen, so a
+        // sampler pointed at unit 16 is out of range: the draw raises GL_INVALID_OPERATION
+        // and produces nothing. Unit 1 is off limits too -- that is the lightmap.
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE2);
         RenderUtils.bindTexture(silhouette.framebufferTexture);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         RenderUtils.drawFramebufferFullscreen(scratch);
         pass.stop();
 
         GlStateManager.bindTexture(0);
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE2);
+        GlStateManager.bindTexture(0);
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
     }
 
@@ -149,7 +156,7 @@ public class GlowBloomShader {
             int location = uniform("tex");
             if (location >= 0) GL20.glUniform1i(location, 0);
             location = uniform("original");
-            if (location >= 0) GL20.glUniform1i(location, 16);
+            if (location >= 0) GL20.glUniform1i(location, 2);
             location = uniform("texelSize");
             if (location >= 0) GL20.glUniform2f(location, 1.0f / mc.displayWidth, 1.0f / mc.displayHeight);
         }

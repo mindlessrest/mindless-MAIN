@@ -34,7 +34,7 @@ public class SeparableOutlineShader {
         GlStateManager.blendFunc(770, 771);
         shader.use();
         shader.setPass(1.0f, 0.0f, true);
-        GlStateManager.setActiveTexture(GL13.GL_TEXTURE16);
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE2);
         RenderUtils.bindTexture(source.framebufferTexture);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         RenderUtils.drawFramebufferFullscreen(framebuffer);
@@ -79,7 +79,7 @@ public class SeparableOutlineShader {
             int location = uniform("tex");
             if (location >= 0) GL20.glUniform1i(location, 0);
             location = uniform("original");
-            if (location >= 0) GL20.glUniform1i(location, 16);
+            if (location >= 0) GL20.glUniform1i(location, 2);
             location = uniform("texelSize");
             if (location >= 0) GL20.glUniform2f(location, 1.0f / mc.displayWidth, 1.0f / mc.displayHeight);
         }
