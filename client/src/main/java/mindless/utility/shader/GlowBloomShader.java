@@ -137,9 +137,14 @@ public class GlowBloomShader {
                 "  }\n" +
                 // The body stays clean; the glow belongs outside the silhouette.
                 "  glow *= 1.0 - texture2D(original, uv).a;\n" +
-                // Raising coverage to a power below one lifts the faint tail without touching the
-                // bright core, which is what makes the falloff read as light rather than as a band.
-                "  glow = pow(clamp(glow * intensity, 0.0, 1.0), 0.75);\n" +
+                // The exponent is above one, not below it. Below one lifts the faint tail until
+                // most of the halo sits at full coverage, and additive blending then takes that
+                // wide saturated slab up to white -- bright, but with no falloff left to see.
+                // Above one the tail drops away and the gradient survives.
+                //
+                // The cap is what stops it reaching white at all: additive means an alpha of one
+                // adds the tint at full strength on top of whatever is already on screen.
+                "  glow = pow(clamp(glow * intensity, 0.0, 1.0), 1.5) * 0.85;\n" +
                 "  gl_FragColor = vec4(tint, glow);\n" +
                 "}";
 

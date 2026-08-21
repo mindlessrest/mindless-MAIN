@@ -128,7 +128,7 @@ public class SexyESP extends Module {
         registerSetting(outlineGroup);
         registerSetting(outlineEnabled = new ButtonSetting(outlineGroup, "Enabled", false));
         registerSetting(outlineGlowSize = new SliderSetting(outlineGroup, "Glow size", 4.0, 0.0, 10.0, 0.5));
-        registerSetting(outlineGlowStrength = new SliderSetting(outlineGroup, "Glow strength", 1.6, 0.2, 4.0, 0.1));
+        registerSetting(outlineGlowStrength = new SliderSetting(outlineGroup, "Glow strength", 1.0, 0.1, 3.0, 0.1));
         registerSetting(outlineEdge = new ButtonSetting(outlineGroup, "Edge", false));
         registerSetting(outlineColor = new ColorSetting(outlineGroup, "Color", 180, 0, 255));
 
@@ -680,7 +680,7 @@ public class SexyESP extends Module {
         float glowSize = (float) outlineGlowSize.getInput();
         if (glowSize > 0.0f && glowBloomShader.isValid()) {
             mc.getFramebuffer().bindFramebuffer(false);
-            glowBloomShader.render(outlineFramebuffer, glowSize * 6.0f,
+            glowBloomShader.render(outlineFramebuffer, glowSize * 4.0f,
                     (float) outlineGlowStrength.getInput(), oR, oG, oB);
         }
         else if (glowSize > 0.0f) {
