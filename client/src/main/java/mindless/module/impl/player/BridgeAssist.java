@@ -91,7 +91,7 @@ public class BridgeAssist extends Module {
 
     private final ButtonSetting prePlace;
     private final ButtonSetting silentRotation;
-    private final ButtonSetting offsetStance;
+    private final ButtonSetting forceDiagonal;
     private final ButtonSetting debug;
     private final SliderSetting bridgePitch;
     private final SliderSetting smoothness;
@@ -138,7 +138,7 @@ public class BridgeAssist extends Module {
 
         this.registerSetting(prePlace = new ButtonSetting("Pre place", false));
         this.registerSetting(silentRotation = new ButtonSetting("Silent rotation", false));
-        this.registerSetting(offsetStance = new ButtonSetting("Offset stance", true));
+        this.registerSetting(forceDiagonal = new ButtonSetting("Force diagonal", false));
         this.registerSetting(bridgePitch = new SliderSetting("Pitch", "\u00b0", 78, 60, 88, 0.5));
         this.registerSetting(smoothness = new SliderSetting("Smoothness", "%", 42, 5, 100, 1));
         this.registerSetting(relockAngle = new SliderSetting("Relock angle", "\u00b0", 55, 20, 120, 5));
@@ -344,7 +344,7 @@ public class BridgeAssist extends Module {
         boolean relock = !aimLocked || (drifted && now - lastRelockAt >= MIN_RELOCK_INTERVAL_MS);
         if (relock) {
             lastRelockAt = now;
-            lockedYaw = snapHeading(awayYaw, currentYaw, offsetStance.isToggled());
+            lockedYaw = snapHeading(awayYaw, currentYaw, forceDiagonal.isToggled());
             aimLocked = true;
             yawJitter = (float) (Math.random() * 1.6d - 0.8d);
             pitchJitter = (float) (Math.random() * 2.4d - 1.2d);
@@ -370,9 +370,14 @@ public class BridgeAssist extends Module {
 
         // Turn first, place second. Anything placed before the aim settles lands wherever the ray
         // happened to sweep, which is where the stray blocks beside the walk line came from.
+        //
+        // Recovery is exempt: it only ever runs over a gap, so a block placed part-way through
+        // that turn still lands in the hole rather than beside the walk line, and waiting for the
+        // aim to settle was losing the target -- three ticks to swing thirty degrees is long
+        // enough for the geometry to move on and the angle it found to go stale.
         float yawError = Math.abs(wrap(targetYaw - currentYaw));
         float pitchError = Math.abs(targetPitch - currentPitch);
-        if (yawError > AIM_SETTLE_DEG || pitchError > AIM_SETTLE_DEG) {
+        if (!recovering && (yawError > AIM_SETTLE_DEG || pitchError > AIM_SETTLE_DEG)) {
             stage("turning (yaw " + Math.round(currentYaw) + "/" + Math.round(targetYaw)
                     + ", pitch " + Math.round(currentPitch) + "/" + Math.round(targetPitch)
                     + ") - holding fire");
@@ -390,7 +395,8 @@ public class BridgeAssist extends Module {
         ItemStack held = mc.thePlayer.inventory.getStackInSlot(slot);
 
         MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, currentYaw, currentPitch);
-        if (placeable(mop, maxPlaceY, held)) {
+        String reason = rejectReason(mop, maxPlaceY, held);
+        if (reason == null) {
             recovering = false;
             queuePlacement(mop);
             return;
@@ -403,7 +409,7 @@ public class BridgeAssist extends Module {
         if (mc.thePlayer.onGround && !overEdge()) {
             recovering = false;
             stage("aiming " + Math.round(currentYaw) + "/" + Math.round(currentPitch)
-                    + " - approaching, nothing to place yet");
+                    + " - approaching (" + reason + ")");
             return;
         }
 
@@ -424,17 +430,39 @@ public class BridgeAssist extends Module {
         }
 
         recovering = false;
-        stage("nothing placeable from " + Math.round(currentYaw) + "/" + Math.round(currentPitch)
-                + " and no recovery angle found");
+        stage("no recovery angle from " + Math.round(currentYaw) + "/" + Math.round(currentPitch)
+                + " (" + reason + ")");
     }
 
-    /** Whether this ray hit a face a block can actually be placed against, below the deck. */
     private boolean placeable(MovingObjectPosition mop, int maxPlaceY, ItemStack held) {
-        if (mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) return false;
-        if (mop.sideHit == EnumFacing.DOWN) return false;
+        return rejectReason(mop, maxPlaceY, held) == null;
+    }
+
+    /**
+     * Null when a block can be placed against whatever this ray hit, otherwise why not.
+     *
+     * Returning a reason rather than a bare boolean is what makes the trace worth reading: a
+     * silent false covers four quite different situations, and knowing which one is happening is
+     * the difference between an aim that points at nothing and an aim that points at a face the
+     * game refuses.
+     */
+    private String rejectReason(MovingObjectPosition mop, int maxPlaceY, ItemStack held) {
+        if (mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
+            return "ray hit nothing";
+        }
+        if (mop.sideHit == EnumFacing.DOWN) return "hit an underside";
         BlockPos support = mop.getBlockPos();
-        if (support.offset(mop.sideHit).getY() > maxPlaceY) return false;
-        return BlockUtils.canPlaceBlockOnSide(held, support, mop.sideHit);
+        BlockPos placeAt = support.offset(mop.sideHit);
+        if (placeAt.getY() > maxPlaceY) {
+            return "hit " + mop.sideHit + " of " + support.getX() + "," + support.getY() + ","
+                    + support.getZ() + ", block would land at y" + placeAt.getY()
+                    + " but the deck is y" + maxPlaceY;
+        }
+        if (!BlockUtils.canPlaceBlockOnSide(held, support, mop.sideHit)) {
+            return "game refused " + mop.sideHit + " of " + support.getX() + "," + support.getY()
+                    + "," + support.getZ();
+        }
+        return null;
     }
 
     private void queuePlacement(MovingObjectPosition mop) {
@@ -508,11 +536,16 @@ public class BridgeAssist extends Module {
      * Nearest 45-degree heading to the direction of travel, tie-broken toward where the player is
      * already looking so a relock is the smallest turn available.
      *
-     * With the offset stance on, only the four diagonals are candidates, so a straight walk is
-     * covered from about 45 degrees off its own line -- the stance the reference scripts use,
-     * which keeps the player moving instead of stopping to look down at each block. That aim does
-     * not always reach, and the recovery sweep exists to cover the gaps. With it off the cardinals
-     * are candidates too, so a straight bridge looks straight back: slower, but it always reaches.
+     * Including the cardinals makes the stance adaptive, and that is the whole point. Walking a
+     * diagonal snaps to that diagonal, so the aim sits 45 degrees off the world axis but dead on
+     * the line of travel -- the fast offset stance the reference scripts use. Walking straight
+     * snaps to a cardinal and aims straight back down the line.
+     *
+     * Restricting the candidates to the four diagonals reproduces the reference exactly, but only
+     * works if the player is genuinely walking a diagonal. On a straight walk it leaves the aim 45
+     * degrees off the actual line of travel, firing the ray into open air beside the bridge, and
+     * no amount of recovery sweeping compensates for an aim that never reaches. Hence a setting
+     * that is off by default.
      */
     private static float snapHeading(float awayYaw, float headYaw, boolean diagonalOnly) {
         float[] headings = diagonalOnly
