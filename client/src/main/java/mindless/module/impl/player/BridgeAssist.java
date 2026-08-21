@@ -115,6 +115,8 @@ public class BridgeAssist extends Module {
     /** Last known heading of actual travel, latched so a momentary stall does not drop the lock. */
     private float travelYaw;
     private boolean hasTravelYaw;
+    /** Pitch that reaches the bridge while falling, or NaN when the normal stance pitch applies. */
+    private float pitchOverride = Float.NaN;
 
     /** Last reported trace stage, so an unchanged state does not spam chat every tick. */
     private String lastStage = "";
@@ -165,6 +167,7 @@ public class BridgeAssist extends Module {
         aimLocked = false;
         rotationInitialised = false;
         hasTravelYaw = false;
+        pitchOverride = Float.NaN;
         lastStage = "";
         closeLog();
         restoreSlot();
@@ -309,7 +312,12 @@ public class BridgeAssist extends Module {
             hasTravelYaw = true;
         }
 
-        boolean towering = !mc.thePlayer.onGround && !moving;
+        // Towering means pillaring upward, and the test for it used to be "airborne and not moving
+        // horizontally" -- which is also an exact description of falling straight down. So the
+        // moment the player slipped off the bridge the aim was forced to 88.5 degrees, straight
+        // down, guaranteeing it could not see the block behind it and making the fall
+        // unrecoverable. Rising motion is what actually distinguishes the two.
+        boolean towering = !mc.thePlayer.onGround && !moving && mc.thePlayer.motionY > 0;
         float basePitch = towering ? 88.5f : (float) bridgePitch.getInput();
 
         if (!rotationInitialised) {
@@ -349,6 +357,10 @@ public class BridgeAssist extends Module {
         float targetYaw = wrap(lockedYaw + (float) stanceAngle.getInput()
                 + (float) (Math.sin(t * 2.1f) * 0.45d) + yawJitter);
         float targetPitch = basePitch + (float) (Math.cos(t * 1.7f) * 0.35d) + pitchJitter;
+
+        // Back on solid ground the normal stance applies again; any pitch found mid-fall is stale.
+        if (mc.thePlayer.onGround) pitchOverride = Float.NaN;
+        if (!Float.isNaN(pitchOverride)) targetPitch = pitchOverride;
 
         // Step toward it, quantised to the mouse GCD so the deltas look like real mouse input.
         float gcd = mouseGcd();
@@ -395,6 +407,30 @@ public class BridgeAssist extends Module {
             stage("aiming " + Math.round(currentYaw) + "/" + Math.round(currentPitch)
                     + " - approaching (" + reason + ")");
             return;
+        }
+
+        // Falling past the bridge is the one case worth chasing. The block last placed is now level
+        // with the player or above them, so an aim pitched steeply down passes underneath
+        // everything and reports nothing -- which is exactly how a good run ended, nine blocks in,
+        // with "ray hit nothing" and no way back.
+        //
+        // Only the pitch is searched, and only downward from the stance. The yaw is already known
+        // to be right, and it was sweeping the yaw that caused the earlier disasters: a yaw
+        // candidate takes four or five ticks to reach and is stale on arrival, whereas these pitch
+        // corrections are a few degrees and land in one or two. The same staleness argument that
+        // condemns the yaw sweep is what permits this one.
+        if (!mc.thePlayer.onGround) {
+            for (float testPitch = basePitch - 4f; testPitch >= -30f; testPitch -= 4f) {
+                if (rejectReason(RotationUtils.rayCastBlock(reach, currentYaw, testPitch),
+                        maxPlaceY, held) != null) {
+                    continue;
+                }
+                if (Float.isNaN(pitchOverride) || Math.abs(pitchOverride - testPitch) > 1f) {
+                    stage("falling, dropping pitch to " + Math.round(testPitch) + " to reach back");
+                }
+                pitchOverride = testPitch;
+                return;
+            }
         }
 
         // Hold the stance and wait. There used to be a sweep here, hunting the surrounding
@@ -569,6 +605,7 @@ public class BridgeAssist extends Module {
         aimLocked = false;
         rotationInitialised = false;
         hasTravelYaw = false;
+        pitchOverride = Float.NaN;
         placeQueued = false;
         restoreSlot();
     }
