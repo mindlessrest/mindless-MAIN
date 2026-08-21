@@ -28,7 +28,8 @@ public class BridgeAssist extends Module {
     };
 
     private final SliderSetting edgeOffset;
-    private final SliderSetting unsneakDelay;
+    private final SliderSetting unsneakDelayMin;
+    private final SliderSetting unsneakDelayMax;
     private final SliderSetting sneakOnJump;
     private final ButtonSetting sneakKeyPressed;
     private final ButtonSetting holdingBlocks;
@@ -53,7 +54,8 @@ public class BridgeAssist extends Module {
         GroupSetting sneakingGroup = new GroupSetting("Sneaking");
         this.registerSetting(sneakingGroup);
         this.registerSetting(edgeOffset = new SliderSetting(sneakingGroup, "Edge offset", " block", 0, 0, 0.3, 0.01));
-        this.registerSetting(unsneakDelay = new SliderSetting(sneakingGroup, "Unsneak delay", "ms", 50, 50, 300, 5));
+        this.registerSetting(unsneakDelayMin = new SliderSetting(sneakingGroup, "Sneak delay min", "ms", 50, 50, 300, 5));
+        this.registerSetting(unsneakDelayMax = new SliderSetting(sneakingGroup, "Sneak delay max", "ms", 100, 50, 300, 5));
         this.registerSetting(sneakOnJump = new SliderSetting(sneakingGroup, "Sneak on jump", "ms", 0, 0, 500, 5));
 
         GroupSetting conditionsGroup = new GroupSetting("Conditions");
@@ -191,12 +193,24 @@ public class BridgeAssist extends Module {
     }
 
     private void tryReleaseSneak(PrePlayerInputEvent e, boolean resetDelay) {
+        // Never unsneak in mid-air: the release only matters once there is ground under the feet
+        // again, and letting go while airborne drops the sneak that is holding the player on the
+        // edge.
+        if (!mc.thePlayer.onGround) {
+            pressSneak(e, false);
+            return;
+        }
+
         int existed = mc.thePlayer.ticksExisted;
         if (unsneakStartTick == -1 && sneakJumpStartTick == -1) {
             unsneakStartTick = existed;
-            double raw = (unsneakDelay.getInput() - 50) / 50.0;
-            int base = (int) raw;
-            unsneakDelayTicks = base + (Math.random() < (raw - base) ? 1 : 0);
+            // A delay drawn from a range rather than a fixed value, so the unsneak timing is not
+            // identical on every edge. The bounds are sorted rather than assumed in order, so the
+            // sliders behave whichever way round they are set.
+            double fromMs = Math.min(unsneakDelayMin.getInput(), unsneakDelayMax.getInput());
+            double toMs = Math.max(unsneakDelayMin.getInput(), unsneakDelayMax.getInput());
+            if (toMs <= fromMs) toMs = fromMs + 1;
+            unsneakDelayTicks = Math.max(1, (int) Math.floor((fromMs + Math.random() * (toMs - fromMs)) / 50.0));
         }
 
         if (sneakJumpStartTick != -1 && existed - sneakJumpStartTick < sneakJumpDelayTicks) {
