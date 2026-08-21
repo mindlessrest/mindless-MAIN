@@ -37,6 +37,7 @@ public class TargetHUD extends Module {
     private SliderSetting mode;
     private SliderSetting theme;
     private SliderSetting glowSize;
+    private SliderSetting positionMode;
     private ButtonSetting renderEsp;
     private ButtonSetting showDifference;
     private ButtonSetting showStatus;
@@ -44,6 +45,9 @@ public class TargetHUD extends Module {
 
     private static final long POP_IN_MS = 250L;
     private static final long POP_OUT_MS = 200L;
+    private static final String[] POSITION_MODES = new String[] {
+        "Screen", "Target Left", "Target Right", "Target Top", "Target Bottom", "Target Center"
+    };
 
     private Timer fadeTimer;
     private Timer healthBarTimer = null;
@@ -54,6 +58,8 @@ public class TargetHUD extends Module {
     private long popInStart = -1;
     public int posX = 70;
     public int posY = 30;
+    private float tweenedX = Float.NaN;
+    private float tweenedY = Float.NaN;
 
     private String[] modes = new String[]{ "Modern", "Legacy" };
 
@@ -64,6 +70,7 @@ public class TargetHUD extends Module {
         this.registerSetting(mode = new SliderSetting("Mode", 1, modes));
         this.registerSetting(theme = new SliderSetting("Theme", 0, Theme.THEMES_SETTING));
         this.registerSetting(glowSize = new SliderSetting("Glow size", 9.0, 2.0, 20.0, 0.5));
+        this.registerSetting(positionMode = new SliderSetting("Position", 0, POSITION_MODES));
         this.registerSetting(new ButtonSetting("Edit position", () -> {
             mc.displayGuiScreen(new EditScreen());
         }));
@@ -221,8 +228,49 @@ public class TargetHUD extends Module {
         final int padding = 8;
         final int headSize = mc.fontRendererObj.FONT_HEIGHT + 18;
         final int targetStrWithPadding = mc.fontRendererObj.getStringWidth(string) + padding + headSize + 10;
-        final int x = (scaledResolution.getScaledWidth() / 2 - targetStrWithPadding / 2) + posX;
-        final int y = (scaledResolution.getScaledHeight() / 2 + 15) + posY;
+
+        float desiredX = (scaledResolution.getScaledWidth() / 2 - targetStrWithPadding / 2) + posX;
+        float desiredY = (scaledResolution.getScaledHeight() / 2 + 15) + posY;
+
+        int posMode = positionMode != null ? (int) positionMode.getInput() : 0;
+        if (posMode > 0 && target != null) {
+            float partialTicks = mindless.runtime.AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks;
+            double tx = target.lastTickPosX + (target.posX - target.lastTickPosX) * partialTicks;
+            double ty = target.lastTickPosY + (target.posY - target.lastTickPosY) * partialTicks;
+            double tz = target.lastTickPosZ + (target.posZ - target.lastTickPosZ) * partialTicks;
+            float entityH = target.height;
+            float entityW = target.width;
+            double camX = mc.getRenderManager().viewerPosX;
+            double camY = mc.getRenderManager().viewerPosY;
+            double camZ = mc.getRenderManager().viewerPosZ;
+            double[] projected = new double[3];
+            float sw = scaledResolution.getScaledWidth();
+            float sh = scaledResolution.getScaledHeight();
+            float hudW = targetStrWithPadding + padding * 2;
+            float hudH = (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding * 2 + 13;
+
+            if (SexyESP.projectionContext != null &&
+                    mindless.utility.RenderUtils.projectTo2D(SexyESP.projectionContext, tx - camX, ty - camY + entityH / 2, tz - camZ, projected)) {
+                float screenX = (float) projected[0];
+                float screenY = (float) projected[1];
+                switch (posMode) {
+                    case 1: desiredX = screenX - hudW - 10; desiredY = screenY - hudH / 2; break;
+                    case 2: desiredX = screenX + 10; desiredY = screenY - hudH / 2; break;
+                    case 3: desiredX = screenX - hudW / 2; desiredY = screenY - hudH - entityH * 20; break;
+                    case 4: desiredX = screenX - hudW / 2; desiredY = screenY + entityH * 10; break;
+                    case 5: desiredX = screenX - hudW / 2; desiredY = screenY - hudH / 2; break;
+                }
+                desiredX = Math.max(2, Math.min(sw - hudW - 2, desiredX));
+                desiredY = Math.max(2, Math.min(sh - hudH - 2, desiredY));
+            }
+        }
+
+        if (Float.isNaN(tweenedX)) { tweenedX = desiredX; tweenedY = desiredY; }
+        tweenedX += (desiredX - tweenedX) * 0.15f;
+        tweenedY += (desiredY - tweenedY) * 0.15f;
+
+        final int x = Math.round(tweenedX);
+        final int y = Math.round(tweenedY);
         final int n6 = x - padding;
         final int n7 = y - padding;
         final int n8 = x + targetStrWithPadding;
@@ -396,6 +444,8 @@ public class TargetHUD extends Module {
         target = null;
         healthBarTimer = null;
         popInStart = -1;
+        tweenedX = Float.NaN;
+        tweenedY = Float.NaN;
     }
 
     private static float easeOutBack(float t) {
