@@ -30,7 +30,6 @@ public class Gui extends Module {
     public static ButtonSetting darkBackground;
     public static ButtonSetting hideWatermark;
     public static ButtonSetting rainBowOutlines;
-    public static ButtonSetting liteMode;
     public static ButtonSetting loadGuiPositions;
 
     public Gui() {
@@ -46,9 +45,7 @@ public class Gui extends Module {
         this.registerSetting(rainBowOutlines = new ButtonSetting("Rainbow outlines", false));
         this.registerSetting(hidePlayerModel = new ButtonSetting("Remove player model", false));
         this.registerSetting(hideWatermark = new ButtonSetting("Remove watermark", false));
-        this.registerSetting(liteMode = new ButtonSetting("Lite mode", false));
         this.registerSetting(loadGuiPositions = new ButtonSetting("Save category positions", false));
-        this.registerSetting(new ButtonSetting("Reset positions", () -> Raven.clickGui.resetPositions()));
         this.registerSetting(new DescriptionSetting("Colors"));
         this.registerSetting(enabledColor = new ColorSetting("Enabled color", 24, 154, 255));
         this.registerSetting(disabledColor = new ColorSetting("Disabled color", 192, 192, 192));
@@ -89,22 +86,12 @@ public class Gui extends Module {
         return (float) Math.max(0.5D, Math.min(2.0D, guiScale.getInput()));
     }
 
-    public static boolean isLiteModeEnabled() {
-        return liteMode != null && liteMode.isToggled();
-    }
-
     public static boolean shouldShowModule(Module module) {
-        return module.moduleCategory() == category.profiles
-                || module.moduleCategory() == category.scripts
-                || !isLiteModeEnabled()
-                || module.liteModule;
+        return true;
     }
 
     @Override
     public void guiButtonToggled(ButtonSetting setting) {
-        if (setting == liteMode && Raven.clickGui != null) {
-            Raven.clickGui.reloadModulesForCurrentMode();
-        }
     }
 
 }

@@ -3,6 +3,7 @@ package mindless.module.impl.render;
 import mindless.runtime.AccessorBridge;
 import mindless.runtime.LunarEventBridge;
 import mindless.module.Module;
+import mindless.module.impl.client.Settings;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.GroupSetting;
@@ -11,13 +12,18 @@ import mindless.module.impl.world.AntiBot;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
+import mindless.utility.shader.GlowShader;
+import mindless.utility.shader.KawaseBloom;
+import mindless.utility.shader.SeparableOutlineShader;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.model.ModelBiped;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityItem;
@@ -25,6 +31,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.MathHelper;
+import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -73,6 +80,16 @@ public class SexyESP extends Module {
     private final ColorSetting color;
     private final SliderSetting maxDistance;
 
+    private final ButtonSetting outlineGlow;
+    private final ButtonSetting outlineSkeleton;
+    private final ButtonSetting outlineRedOnDamage;
+
+    public static boolean renderingOutlinePass = false;
+    private static final float RAD_TO_DEG = 57.29578f;
+    private Framebuffer outlineFramebuffer;
+    private final SeparableOutlineShader separableOutlineShader = new SeparableOutlineShader();
+    private final GlowShader glowShader = new GlowShader();
+
     public SexyESP() {
         super("Player ESP", category.render, 0);
         instance = this;
@@ -106,6 +123,12 @@ public class SexyESP extends Module {
         registerSetting(distanceTextScale = new ButtonSetting(tagGroup, "Distance scaling", true));
         registerSetting(textBorder = new ButtonSetting(tagGroup, "Black text outline", true));
 
+        GroupSetting outlineGroup = new GroupSetting("Outline");
+        registerSetting(outlineGroup);
+        registerSetting(outlineGlow = new ButtonSetting(outlineGroup, "Glow", false));
+        registerSetting(outlineSkeleton = new ButtonSetting(outlineGroup, "Skeleton", false));
+        registerSetting(outlineRedOnDamage = new ButtonSetting(outlineGroup, "Red on damage", true));
+
         registerSetting(localPlayer = new ButtonSetting("Local player", true));
         registerSetting(droppedItems = new ButtonSetting("Dropped items", false));
         registerSetting(showInvisible = new ButtonSetting("Show invisible", false));
@@ -120,6 +143,31 @@ public class SexyESP extends Module {
         return instance != null && instance.isEnabled() && instance.tags.isToggled();
     }
 
+    public boolean isGlowEnabled() { return outlineGlow.isToggled(); }
+    public boolean isRenderSelf() { return localPlayer.isToggled(); }
+    public boolean isRainbow() { return (int) colorMode.getInput() == 1; }
+    public boolean isTeamColor() { return (int) colorMode.getInput() == 2; }
+    public boolean isRedOnDamage() { return outlineRedOnDamage.isToggled(); }
+    public boolean isShowInvis() { return showInvisible.isToggled(); }
+    public int getColorRGB() { return color.getColor(); }
+
+    @Override
+    public void onDisable() {
+        if (outlineFramebuffer != null) {
+            outlineFramebuffer.deleteFramebuffer();
+            outlineFramebuffer = null;
+        }
+    }
+
+    @SubscribeEvent
+    public void onRenderPlayer(RenderPlayerEvent.Post e) {
+        if (!outlineSkeleton.isToggled() || e.entityPlayer == null || !Utils.nullCheck()) return;
+        if (renderingOutlinePass) return;
+        if (!isValidEntity(e.entityPlayer)) return;
+        int col = getEntityColor(e.entityPlayer);
+        renderSkeleton(e.entityPlayer, e.renderer.getMainModel(), col, e.partialRenderTick);
+    }
+
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRenderWorld(RenderWorldLastEvent event) {
         if (!Utils.nullCheck() || mc.theWorld == null || mc.entityRenderer == null) {
@@ -127,6 +175,10 @@ public class SexyESP extends Module {
         }
         if (mc.thePlayer.isDead || mc.thePlayer.getHealth() <= 0) {
             return;
+        }
+
+        if (outlineGlow.isToggled()) {
+            runOutlinePass(event.partialTicks);
         }
 
         ScaledResolution resolution = ScaledResolutionCache.get();
@@ -548,6 +600,178 @@ public class SexyESP extends Module {
     }
 
     /** Collects all flat colored quads for an entity into as few GPU submissions as possible. */
+    private int getEntityColor(EntityPlayer player) {
+        int mode = (int) colorMode.getInput();
+        int rgb;
+        if (mode == 2) rgb = Utils.getColorFromEntity(player);
+        else if (mode == 1) rgb = Utils.getChroma(2L, 0L);
+        else rgb = color.getColor();
+        return Utils.mergeAlpha(rgb, 255);
+    }
+
+    private void runOutlinePass(float partialTicks) {
+        if (!separableOutlineShader.isValid() || !glowShader.isValid()) return;
+
+        outlineFramebuffer = createOutlineFramebuffer(outlineFramebuffer);
+        if (outlineFramebuffer == null) return;
+        mc.getFramebuffer().bindFramebuffer(true);
+
+        GlStateManager.pushMatrix();
+        GlStateManager.pushAttrib();
+        outlineFramebuffer.bindFramebuffer(true);
+        AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, partialTicks, 0);
+        boolean shadows = mc.gameSettings.entityShadows;
+        mc.gameSettings.entityShadows = false;
+        renderingOutlinePass = true;
+
+        double maxDistSq = maxDistance.getInput() * maxDistance.getInput();
+        glowShader.use();
+        for (EntityPlayer player : mc.theWorld.playerEntities) {
+            if (!isValidEntity(player)) continue;
+            if (!RenderUtils.isInViewFrustum(player)) continue;
+            if (!RenderUtils.isWithinDistanceSqToRenderView(player, maxDistSq)) continue;
+            int col = getEntityColor(player);
+            if (outlineRedOnDamage.isToggled() && player.hurtTime != 0) col = 0xFFFF0000;
+            glowShader.setColor((col >> 16) & 0xFF, (col >> 8) & 0xFF, col & 0xFF, (col >> 24) & 0xFF);
+            boolean invis = player.isInvisible();
+            if (showInvisible.isToggled()) player.setInvisible(false);
+            mc.getRenderManager().renderEntityStatic(player, partialTicks, true);
+            player.setInvisible(invis);
+        }
+        glowShader.stop();
+        renderingOutlinePass = false;
+
+        mc.gameSettings.entityShadows = shadows;
+        mc.entityRenderer.disableLightmap();
+        mc.entityRenderer.setupOverlayRendering();
+        mc.getFramebuffer().bindFramebuffer(true);
+        KawaseBloom.renderBlur(outlineFramebuffer.framebufferTexture, 4, 4.0f);
+        mc.getFramebuffer().bindFramebuffer(false);
+        separableOutlineShader.render(outlineFramebuffer);
+        outlineFramebuffer.framebufferClear();
+        mc.getFramebuffer().bindFramebuffer(true);
+        GlStateManager.popAttrib();
+        GlStateManager.popMatrix();
+    }
+
+    private Framebuffer createOutlineFramebuffer(Framebuffer framebuffer) {
+        int width = Math.max(1, mc.displayWidth * 3 / 4);
+        int height = Math.max(1, mc.displayHeight * 3 / 4);
+        if (framebuffer == null || framebuffer.framebufferWidth != width || framebuffer.framebufferHeight != height) {
+            if (framebuffer != null) framebuffer.deleteFramebuffer();
+            framebuffer = new Framebuffer(width, height, false);
+        }
+        framebuffer.setFramebufferColor(0.0f, 0.0f, 0.0f, 0.0f);
+        return framebuffer;
+    }
+
+    private void renderSkeleton(EntityPlayer player, ModelBiped modelBiped, int color, float partialTicks) {
+        GL11.glPushMatrix();
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+
+        double posX = player.lastTickPosX + (player.posX - player.lastTickPosX) * partialTicks - mc.getRenderManager().viewerPosX;
+        double posY = player.lastTickPosY + (player.posY - player.lastTickPosY) * partialTicks - mc.getRenderManager().viewerPosY;
+        double posZ = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * partialTicks - mc.getRenderManager().viewerPosZ;
+
+        boolean wasBlendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+        GL11.glPushMatrix();
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        if (!wasBlendEnabled) GL11.glEnable(GL11.GL_BLEND);
+        GL11.glColor4f((color >> 16 & 0xFF) / 255.0f, (color >> 8 & 0xFF) / 255.0f, (color & 0xFF) / 255.0f, 1.0f);
+        GL11.glDisable(GL11.GL_LIGHTING);
+        GL11.glEnable(GL11.GL_LINE_SMOOTH);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glTranslated(posX, posY, posZ);
+
+        float distance = mc.thePlayer.getDistanceToEntity(player);
+        GL11.glLineWidth(Math.max(1.0f, 4.0f * ((100.0f - Math.min(distance, 100.0f)) / 100.0f)));
+
+        boolean isSneaking = player.isSneaking();
+        float legHeight = isSneaking ? 0.6f : 0.75f;
+        double legOffsetZ = isSneaking ? -0.2 : 0.0;
+
+        GL11.glRotatef(player.renderYawOffset, 0.0f, -999.0f, 0.0f);
+        GL11.glTranslated(-0.15, legHeight, legOffsetZ);
+
+        float rightLegRotX = modelBiped.bipedRightLeg.rotateAngleX * RAD_TO_DEG;
+        float rightLegRotY = modelBiped.bipedRightLeg.rotateAngleY * RAD_TO_DEG;
+        float rightLegRotZ = modelBiped.bipedRightLeg.rotateAngleZ * RAD_TO_DEG;
+        GL11.glRotatef(rightLegRotX, 1.0f, 0.0f, 0.0f);
+        GL11.glRotatef(-rightLegRotY, 0.0f, 1.0f, 0.0f);
+        GL11.glRotatef(-rightLegRotZ, 0.0f, 0.0f, 1.0f);
+        drawBoneLine(0.0, 0.0, 0.0, 0.0, -legHeight, 0.0);
+        GL11.glRotatef(rightLegRotZ, 0.0f, 0.0f, 1.0f);
+        GL11.glRotatef(rightLegRotY, 0.0f, 1.0f, 0.0f);
+        GL11.glRotatef(-rightLegRotX, 1.0f, 0.0f, 0.0f);
+
+        GL11.glTranslated(0.3, 0.0, 0.0);
+        float leftLegRotX = modelBiped.bipedLeftLeg.rotateAngleX * RAD_TO_DEG;
+        float leftLegRotY = modelBiped.bipedLeftLeg.rotateAngleY * RAD_TO_DEG;
+        float leftLegRotZ = modelBiped.bipedLeftLeg.rotateAngleZ * RAD_TO_DEG;
+        GL11.glRotatef(leftLegRotX, 1.0f, 0.0f, 0.0f);
+        GL11.glRotatef(-leftLegRotY, 0.0f, 1.0f, 0.0f);
+        GL11.glRotatef(-leftLegRotZ, 0.0f, 0.0f, 1.0f);
+        drawBoneLine(0.0, 0.0, 0.0, 0.0, -legHeight, 0.0);
+        GL11.glRotatef(leftLegRotZ, 0.0f, 0.0f, 1.0f);
+        GL11.glRotatef(leftLegRotY, 0.0f, 1.0f, 0.0f);
+        GL11.glRotatef(-leftLegRotX, 1.0f, 0.0f, 0.0f);
+        GL11.glTranslated(-0.15, 0.0, 0.0);
+
+        drawBoneLine(0.15, 0.0, 0.0, -0.15, 0.0, 0.0);
+        if (player.isSneaking()) GL11.glRotatef(20.0f, 1.0f, 0.0f, 0.0f);
+        drawBoneLine(0.0, 0.0, 0.0, 0.0, 0.65, 0.0);
+
+        GL11.glTranslated(0.0, 0.65, 0.0);
+        drawBoneLine(0.35, 0.0, 0.0, -0.35, 0.0, 0.0);
+        GL11.glTranslated(-0.35, 0.0, 0.0);
+
+        float rightArmRotX = modelBiped.bipedRightArm.rotateAngleX * RAD_TO_DEG;
+        float rightArmRotY = modelBiped.bipedRightArm.rotateAngleY * RAD_TO_DEG;
+        float rightArmRotZ = modelBiped.bipedRightArm.rotateAngleZ * RAD_TO_DEG;
+        GL11.glRotatef(rightArmRotX, 1.0f, 0.0f, 0.0f);
+        GL11.glRotatef(-rightArmRotY, 0.0f, 1.0f, 0.0f);
+        GL11.glRotatef(-rightArmRotZ, 0.0f, 0.0f, 1.0f);
+        drawBoneLine(0.0, 0.0, 0.0, 0.0, -0.6, 0.0);
+        GL11.glRotatef(rightArmRotZ, 0.0f, 0.0f, 1.0f);
+        GL11.glRotatef(rightArmRotY, 0.0f, 1.0f, 0.0f);
+        GL11.glRotatef(-rightArmRotX, 1.0f, 0.0f, 0.0f);
+
+        GL11.glTranslated(0.7, 0.0, 0.0);
+        float leftArmRotX = modelBiped.bipedLeftArm.rotateAngleX * RAD_TO_DEG;
+        float leftArmRotY = modelBiped.bipedLeftArm.rotateAngleY * RAD_TO_DEG;
+        float leftArmRotZ = modelBiped.bipedLeftArm.rotateAngleZ * RAD_TO_DEG;
+        GL11.glRotatef(leftArmRotX, 1.0f, 0.0f, 0.0f);
+        GL11.glRotatef(-leftArmRotY, 0.0f, 1.0f, 0.0f);
+        GL11.glRotatef(-leftArmRotZ, 0.0f, 0.0f, 1.0f);
+        drawBoneLine(0.0, 0.0, 0.0, 0.0, -0.6, 0.0);
+        GL11.glRotatef(leftArmRotZ, 0.0f, 0.0f, 1.0f);
+        GL11.glRotatef(leftArmRotY, 0.0f, 1.0f, 0.0f);
+        GL11.glRotatef(-leftArmRotX, 1.0f, 0.0f, 0.0f);
+        GL11.glTranslated(-0.35, 0.0, 0.0);
+
+        GL11.glRotatef(-player.renderYawOffset, 0.0f, -999.0f, 0.0f);
+        GL11.glRotated(player.rotationYaw, 0.0, -999.0, 0.0);
+        GL11.glRotated(player.rotationPitch, 999.0, 0.0, 0.0);
+        drawBoneLine(0.0, 0.0, 0.0, 0.0, 0.4, 0.0);
+        drawBoneLine(0.0, 0.4, 0.0, 0.0, 0.4, 0.25);
+
+        if (!wasBlendEnabled) GL11.glDisable(GL11.GL_BLEND);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_LINE_SMOOTH);
+        GL11.glEnable(GL11.GL_LIGHTING);
+        GL11.glPopMatrix();
+        GL11.glColor4f(1, 1, 1, 1);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glPopMatrix();
+    }
+
+    private void drawBoneLine(double x1, double y1, double z1, double x2, double y2, double z2) {
+        GL11.glBegin(GL11.GL_LINES);
+        GL11.glVertex3d(x1, y1, z1);
+        GL11.glVertex3d(x2, y2, z2);
+        GL11.glEnd();
+    }
+
     private static final class RectBatch {
         private final Tessellator tessellator = Tessellator.getInstance();
         private final WorldRenderer renderer = tessellator.getWorldRenderer();

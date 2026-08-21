@@ -14,6 +14,6 @@ public final class RendererLivingEntityState {
     public static EntityLivingBase nameHiderRenderNameEntity;
 
     public static boolean shouldRender() {
-        return ModuleManager.playerESP != null && ModuleManager.playerESP.isEnabled() && ModuleManager.playerESP.outline.isToggled();
+        return ModuleManager.sexyESP != null && ModuleManager.sexyESP != null && ModuleManager.sexyESP.isEnabled() && ModuleManager.sexyESP.isGlowEnabled();
     }
 }

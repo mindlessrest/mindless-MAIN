@@ -5,7 +5,7 @@ import mindless.module.impl.render.DamageTint;
 import mindless.module.impl.render.BodyMaterial;
 import mindless.module.impl.render.MobESP;
 import mindless.module.impl.other.NameHider;
-import mindless.module.impl.render.PlayerESP;
+import mindless.module.impl.render.SexyESP;
 import mindless.module.impl.render.Slow;
 import mindless.module.impl.world.AntiBot;
 import mindless.utility.Utils;
@@ -81,15 +81,15 @@ public abstract class MixinRendererLivingEntity<T extends EntityLivingBase> exte
 
     @Unique
     private boolean shouldRender() {
-        return ModuleManager.playerESP != null && ModuleManager.playerESP.isEnabled() && ModuleManager.playerESP.outline.isToggled();
+        return ModuleManager.sexyESP != null && ModuleManager.sexyESP != null && ModuleManager.sexyESP.isEnabled() && ModuleManager.sexyESP.isGlowEnabled();
     }
 
     @Redirect(method = "doRender(Lnet/minecraft/entity/EntityLivingBase;DDDFF)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/entity/RendererLivingEntity;setScoreTeamColor(Lnet/minecraft/entity/EntityLivingBase;)Z"))
     private boolean setOutlineColor(RendererLivingEntity instance, T entityLivingBaseIn) {
         int i = 16777215;
-        boolean drawOutline = shouldRender() && ((entityLivingBaseIn != Minecraft.getMinecraft().thePlayer && !AntiBot.isBot(entityLivingBaseIn)) || (entityLivingBaseIn == Minecraft.getMinecraft().thePlayer && ModuleManager.playerESP.renderSelf.isToggled()));
+        boolean drawOutline = shouldRender() && ((entityLivingBaseIn != Minecraft.getMinecraft().thePlayer && !AntiBot.isBot(entityLivingBaseIn)) || (entityLivingBaseIn == Minecraft.getMinecraft().thePlayer && ModuleManager.sexyESP.isRenderSelf()));
 
-        if (!drawOutline || ModuleManager.playerESP.teamColor.isToggled())
+        if (!drawOutline || ModuleManager.sexyESP.isTeamColor())
         {
             if (entityLivingBaseIn instanceof EntityPlayer)
             {
@@ -106,14 +106,14 @@ public abstract class MixinRendererLivingEntity<T extends EntityLivingBase> exte
                 }
             }
         }
-        else if (ModuleManager.playerESP.rainbow.isToggled()) {
+        else if (ModuleManager.sexyESP.isRainbow()) {
             i = Utils.getChroma(2L, 0L);
         }
         else {
-            i = ModuleManager.playerESP.color.getColor();
+            i = ModuleManager.sexyESP.getColorRGB();
         }
 
-        if (drawOutline && ModuleManager.playerESP.redOnDamage.isToggled() && entityLivingBaseIn.hurtTime != 0) {
+        if (drawOutline && ModuleManager.sexyESP.isRedOnDamage() && entityLivingBaseIn.hurtTime != 0) {
             i = Color.RED.getRGB();
         }
 
@@ -136,12 +136,12 @@ public abstract class MixinRendererLivingEntity<T extends EntityLivingBase> exte
 
     @ModifyVariable(method = "renderModel", at = @At(value = "STORE"), ordinal = 0)
     private boolean modifyInvisibleFlag(boolean flag) {
-        return flag || (this.renderOutlines && shouldRender() && ModuleManager.playerESP.showInvis.isToggled());
+        return flag || (this.renderOutlines && shouldRender() && ModuleManager.sexyESP.isShowInvis());
     }
 
     @Inject(method = "canRenderName(Lnet/minecraft/entity/EntityLivingBase;)Z", at = @At("HEAD"), cancellable = true)
     private void suppressNameDuringOutlinePass(T entity, CallbackInfoReturnable<Boolean> cir) {
-        if (PlayerESP.renderingOutlinePass || MobESP.renderingOutlinePass || BodyMaterial.renderingGlowPass) {
+        if (SexyESP.renderingOutlinePass || MobESP.renderingOutlinePass || BodyMaterial.renderingGlowPass) {
             cir.setReturnValue(false);
         }
     }

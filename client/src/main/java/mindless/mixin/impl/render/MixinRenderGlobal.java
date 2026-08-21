@@ -29,7 +29,7 @@ public class MixinRenderGlobal {
 
     @Unique
     private boolean shouldRender() {
-        return ModuleManager.playerESP != null && ModuleManager.playerESP.isEnabled() && ModuleManager.playerESP.outline.isToggled();
+        return ModuleManager.sexyESP != null && ModuleManager.sexyESP != null && ModuleManager.sexyESP.isEnabled() && ModuleManager.sexyESP.isGlowEnabled();
     }
 
     @Unique

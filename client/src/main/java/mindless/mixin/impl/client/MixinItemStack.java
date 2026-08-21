@@ -1,7 +1,7 @@
 package mindless.mixin.impl.client;
 
 import mindless.module.impl.render.MobESP;
-import mindless.module.impl.render.PlayerESP;
+import mindless.module.impl.render.SexyESP;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class MixinItemStack {
     @Inject(method = "hasEffect", at = @At("HEAD"), cancellable = true)
     private void suppressGlintDuringOutlinePass(CallbackInfoReturnable<Boolean> cir) {
-        if (PlayerESP.renderingOutlinePass || MobESP.renderingOutlinePass) {
+        if (SexyESP.renderingOutlinePass || MobESP.renderingOutlinePass) {
             cir.setReturnValue(false);
         }
     }

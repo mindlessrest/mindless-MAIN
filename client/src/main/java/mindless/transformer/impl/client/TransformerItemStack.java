@@ -1,7 +1,7 @@
 package mindless.transformer.impl.client;
 
 import mindless.module.impl.render.MobESP;
-import mindless.module.impl.render.PlayerESP;
+import mindless.module.impl.render.SexyESP;
 import net.lenni0451.classtransform.InjectionCallback;
 import net.lenni0451.classtransform.annotations.CInline;
 import net.lenni0451.classtransform.annotations.CTarget;
@@ -14,7 +14,7 @@ public abstract class TransformerItemStack {
     @CInline
     @CInject(method = "hasEffect", target = @CTarget("HEAD"), cancellable = true)
     private void suppressGlintDuringOutlinePass(InjectionCallback ci) {
-        if (PlayerESP.renderingOutlinePass || MobESP.renderingOutlinePass) {
+        if (SexyESP.renderingOutlinePass || MobESP.renderingOutlinePass) {
             ci.setReturnValue(false);
         }
     }

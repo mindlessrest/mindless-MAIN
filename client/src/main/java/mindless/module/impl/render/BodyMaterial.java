@@ -130,7 +130,7 @@ public class BodyMaterial extends Module {
 
     private boolean isTarget(EntityLivingBase entity, boolean armorPass) {
         if (!(entity instanceof EntityPlayer)) return false;
-        if (PlayerESP.renderingOutlinePass) return false;
+        if (SexyESP.renderingOutlinePass) return false;
         if (armorPass && !armor.isToggled()) return false;
         if (entity.isInvisible() && !showInvisible.isToggled()) return false;
         if (entity == mc.thePlayer) {
