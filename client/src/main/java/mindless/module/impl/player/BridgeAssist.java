@@ -372,8 +372,20 @@ public class BridgeAssist extends Module {
             return;
         }
         BlockPos support = mop.getBlockPos();
-        if (support.offset(mop.sideHit).getY() > MathHelper.floor_double(mc.thePlayer.posY)) {
-            stage("ray would place above the feet, skipping");
+        BlockPos placeAt = support.offset(mop.sideHit);
+
+        // The block has to land below the surface being walked on, never level with the feet.
+        //
+        // This compared against floor(posY), and standing on a block puts the feet at exactly the
+        // next integer -- on the deck at y79 the feet are at 80.0, so the guard asked whether
+        // 80 > 80 and let the placement through. That is where the block in front of and level
+        // with the player came from: a top-face hit on the last block placed. Rounding up puts the
+        // boundary on the correct side, and still permits the deck level once the player is
+        // falling and the feet have dropped below the integer.
+        int maxPlaceY = (int) Math.ceil(mc.thePlayer.getEntityBoundingBox().minY) - 1;
+        if (placeAt.getY() > maxPlaceY) {
+            stage("would place at y" + placeAt.getY() + " but the deck is y" + maxPlaceY
+                    + " (" + mop.sideHit + " face), skipping");
             return;
         }
         ItemStack held = mc.thePlayer.inventory.getStackInSlot(slot);
@@ -388,7 +400,8 @@ public class BridgeAssist extends Module {
         placeHitVec = mop.hitVec;
         placeQueued = true;
         stage("queued " + support.getX() + "," + support.getY() + "," + support.getZ()
-                + " " + mop.sideHit + " (yaw " + Math.round(currentYaw) + ", pitch " + Math.round(currentPitch) + ")");
+                + " " + mop.sideHit + " -> block at " + placeAt.getX() + "," + placeAt.getY() + ","
+                + placeAt.getZ() + " (yaw " + Math.round(currentYaw) + ", pitch " + Math.round(currentPitch) + ")");
     }
 
     /**
