@@ -1603,10 +1603,33 @@ public final class ModernClickGui extends ClickGui {
         }
         if (categories != null) for (CategoryComponent c : categories) if (c.category == category) {
             List<Module> result = new ArrayList<Module>();
-            for (ModuleComponent component : c.getModules()) if (component.mod != null) result.add(component.mod);
+            for (ModuleComponent component : c.getModules()) {
+                if (component.mod != null && Gui.shouldShowModule(component.mod)) result.add(component.mod);
+            }
             return result;
         }
-        return Raven.getModuleManager() == null ? Collections.<Module>emptyList() : Raven.getModuleManager().inCategory(category);
+        if (Raven.getModuleManager() == null) return Collections.<Module>emptyList();
+        List<Module> visible = new ArrayList<Module>();
+        for (Module mod : Raven.getModuleManager().inCategory(category)) {
+            if (Gui.shouldShowModule(mod)) visible.add(mod);
+        }
+        return visible;
+    }
+
+    /**
+     * Also clears the modern panel's own view state.
+     *
+     * The inherited implementation repositions category components, which this layout does not
+     * read: it centres itself on the screen and cannot be dragged. Scroll offsets are the only
+     * part of the view the user can get stuck, so they are what the button resets here.
+     */
+    @Override
+    public void resetPositions() {
+        super.resetPositions();
+        moduleScroll = moduleScrollTarget = 0f;
+        settingScroll = settingScrollTarget = 0f;
+        dropdownScroll = dropdownScrollTarget = 0f;
+        closeDropdownState();
     }
 
     private void activateProfile(ProfileModule module) {
