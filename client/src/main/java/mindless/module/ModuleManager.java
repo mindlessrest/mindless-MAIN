@@ -248,6 +248,11 @@ public class ModuleManager {
         // Preserve profiles made before SexyESP became the sole Player ESP.
         modulesByName.put("SexyESP", sexyESP);
         modulesByNormalizedName.put(normalizeModuleName("SexyESP"), sexyESP);
+        // Upstream's ESP, kept alongside SexyESP rather than replacing it: it carries the
+        // shader outline and glow passes SexyESP has no equivalent for. Registered under a
+        // distinct name because normalizeModuleName strips the space out of "Player ESP",
+        // which would otherwise collide with SexyESP in the lookup map.
+        this.addModule(playerESP = new PlayerESP());
         this.addModule(new Slow());
 
         this.addModule(antiBot = new AntiBot());

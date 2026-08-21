@@ -89,7 +89,7 @@ public class PlayerESP extends Module {
     }
 
     public PlayerESP() {
-        super("PlayerESP", category.render, 0);
+        super("Outline ESP", category.render, 0);
         this.liteModule = true;
         this.registerSetting(espTypes = new GroupSetting("Types"));
         this.registerSetting(twoD = new ButtonSetting(espTypes, "2D", false));
