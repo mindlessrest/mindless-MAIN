@@ -48,6 +48,17 @@ public class BridgeAssist extends Module {
     private static final double MOVING_EPSILON_SQ = 1.0E-5;
     /** Floor on how often the locked diagonal may change, as insurance against chatter. */
     private static final long MIN_RELOCK_INTERVAL_MS = 250L;
+    /**
+     * How far along the line of travel to look for the drop, in blocks.
+     *
+     * The aim needs roughly seven ticks to swing from wherever the player is looking down to the
+     * bridging pitch. Waiting until a corner of the hitbox is over the edge leaves about one tick
+     * before the player is airborne, so the whole approach was spent ray-casting into open air and
+     * the attempt was abandoned and restarted from the camera pitch on every pass. Two and a half
+     * blocks is nine ticks at walking pace and seven at a sprint, so the aim arrives already down.
+     */
+    private static final double LOOKAHEAD_BLOCKS = 2.5;
+    private static final double LOOKAHEAD_STEP = 0.5;
 
     private final SliderSetting edgeOffset;
     private final SliderSetting unsneakDelayMin;
@@ -261,7 +272,7 @@ public class BridgeAssist extends Module {
         }
 
         if (!shouldBridge()) {
-            stage("idle: on the ground, not near an edge");
+            stage("idle: on the ground, no drop within " + LOOKAHEAD_BLOCKS + " blocks ahead");
             releaseAim();
             return;
         }
@@ -376,10 +387,30 @@ public class BridgeAssist extends Module {
         // Movement Fix on, those fields no longer describe the keys the player is holding.
         double dx = mc.thePlayer.posX - mc.thePlayer.prevPosX;
         double dz = mc.thePlayer.posZ - mc.thePlayer.prevPosZ;
-        if (dx * dx + dz * dz <= MOVING_EPSILON_SQ) return false;
+        double lenSq = dx * dx + dz * dz;
+        if (lenSq <= MOVING_EPSILON_SQ) return false;
 
-        // At the lip: any corner of the hitbox hanging over open space.
-        return overEdge();
+        // Already at the lip, or heading at a drop that is close enough to start turning for.
+        return overEdge() || dropAhead(dx, dz, Math.sqrt(lenSq));
+    }
+
+    /**
+     * True when the deck runs out within LOOKAHEAD_BLOCKS along the current heading.
+     *
+     * Samples the floor beneath a point walked forward from the player's own feet, so it only
+     * fires for a drop the player is actually about to walk off rather than for any hole nearby.
+     */
+    private boolean dropAhead(double dx, double dz, double len) {
+        double ux = dx / len;
+        double uz = dz / len;
+        int y = MathHelper.floor_double(mc.thePlayer.getEntityBoundingBox().minY) - 1;
+        for (double d = LOOKAHEAD_STEP; d <= LOOKAHEAD_BLOCKS; d += LOOKAHEAD_STEP) {
+            BlockPos ahead = new BlockPos(
+                    MathHelper.floor_double(mc.thePlayer.posX + ux * d), y,
+                    MathHelper.floor_double(mc.thePlayer.posZ + uz * d));
+            if (BlockUtils.replaceable(ahead)) return true;
+        }
+        return false;
     }
 
     /** True when a corner of the player's footprint is over air. */
