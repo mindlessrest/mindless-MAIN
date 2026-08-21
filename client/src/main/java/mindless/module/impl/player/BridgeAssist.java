@@ -67,6 +67,18 @@ public class BridgeAssist extends Module {
      * side of the walk line. Nothing is placed until the turn has essentially finished.
      */
     private static final float AIM_SETTLE_DEG = 6.0f;
+    /**
+     * Sweep used when the preferred stance stops reaching anything placeable.
+     *
+     * The offset stance aims about 45 degrees off the line of travel rather than straight back
+     * down it, which is what lets the player keep moving instead of stopping to look at each
+     * block. The cost is that it does not always reach: a few blocks in, the support slides out
+     * from under the aim and the ray comes back empty. Rather than give up and fall, sweep for a
+     * rotation that does reach and steer to that until the normal stance works again. Ported from
+     * the clutch scan in LegitScaffoldRotV19, which is why that script survives the same stance.
+     */
+    private static final float[] RECOVER_PITCH = { 0f, 3f, 6f, 9f, 12f, 15f, 18f, 20f };
+    private static final float[] RECOVER_YAW = { 0f, -15f, 15f, -30f, 30f, -45f, 45f, -60f, 60f, -90f, 90f, -120f, 120f, 180f };
 
     private final SliderSetting edgeOffset;
     private final SliderSetting unsneakDelayMin;
@@ -79,6 +91,7 @@ public class BridgeAssist extends Module {
 
     private final ButtonSetting prePlace;
     private final ButtonSetting silentRotation;
+    private final ButtonSetting offsetStance;
     private final ButtonSetting debug;
     private final SliderSetting bridgePitch;
     private final SliderSetting smoothness;
@@ -109,6 +122,8 @@ public class BridgeAssist extends Module {
     private float yawJitter, pitchJitter;
     private long lastPlaceAt;
     private long lastRelockAt;
+    private boolean recovering;
+    private float recoverYaw, recoverPitch;
     /** Last known heading of actual travel, latched so a momentary stall does not drop the lock. */
     private float travelYaw;
     private boolean hasTravelYaw;
@@ -123,6 +138,7 @@ public class BridgeAssist extends Module {
 
         this.registerSetting(prePlace = new ButtonSetting("Pre place", false));
         this.registerSetting(silentRotation = new ButtonSetting("Silent rotation", false));
+        this.registerSetting(offsetStance = new ButtonSetting("Offset stance", true));
         this.registerSetting(bridgePitch = new SliderSetting("Pitch", "\u00b0", 78, 60, 88, 0.5));
         this.registerSetting(smoothness = new SliderSetting("Smoothness", "%", 42, 5, 100, 1));
         this.registerSetting(relockAngle = new SliderSetting("Relock angle", "\u00b0", 55, 20, 120, 5));
@@ -160,6 +176,7 @@ public class BridgeAssist extends Module {
         aimLocked = false;
         rotationInitialised = false;
         hasTravelYaw = false;
+        recovering = false;
         lastStage = "";
         closeLog();
         restoreSlot();
@@ -327,7 +344,7 @@ public class BridgeAssist extends Module {
         boolean relock = !aimLocked || (drifted && now - lastRelockAt >= MIN_RELOCK_INTERVAL_MS);
         if (relock) {
             lastRelockAt = now;
-            lockedYaw = snapHeading(awayYaw, currentYaw);
+            lockedYaw = snapHeading(awayYaw, currentYaw, offsetStance.isToggled());
             aimLocked = true;
             yawJitter = (float) (Math.random() * 1.6d - 0.8d);
             pitchJitter = (float) (Math.random() * 2.4d - 1.2d);
@@ -337,6 +354,10 @@ public class BridgeAssist extends Module {
         float t = System.currentTimeMillis() * 0.003f;
         float targetYaw = wrap(lockedYaw + (float) (Math.sin(t * 2.1f) * 0.45d) + yawJitter);
         float targetPitch = basePitch + (float) (Math.cos(t * 1.7f) * 0.35d) + pitchJitter;
+        if (recovering) {
+            targetYaw = recoverYaw;
+            targetPitch = recoverPitch;
+        }
 
         // Step toward it, quantised to the mouse GCD so the deltas look like real mouse input.
         float gcd = mouseGcd();
@@ -358,43 +379,67 @@ public class BridgeAssist extends Module {
             return;
         }
 
-        // Placement follows the rotation rather than the other way round. Whatever the look
-        // vector lands on is the support -- so there is no such thing as "no rotation reaches the
-        // target" any more, which is what the block-first search kept failing on.
+        // Placement follows the rotation rather than the other way round: whatever the look
+        // vector lands on becomes the support.
         double reach = mc.playerController.getBlockReachDistance();
-        MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, currentYaw, currentPitch);
-        if (mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
-            stage("aiming " + Math.round(currentYaw) + "/" + Math.round(currentPitch) + " - ray hit nothing");
-            return;
-        }
-        if (mop.sideHit == EnumFacing.DOWN) {
-            stage("ray hit the underside of a block, skipping");
-            return;
-        }
-        BlockPos support = mop.getBlockPos();
-        BlockPos placeAt = support.offset(mop.sideHit);
 
         // The block has to land below the surface being walked on, never level with the feet.
-        //
-        // This compared against floor(posY), and standing on a block puts the feet at exactly the
-        // next integer -- on the deck at y79 the feet are at 80.0, so the guard asked whether
-        // 80 > 80 and let the placement through. That is where the block in front of and level
-        // with the player came from: a top-face hit on the last block placed. Rounding up puts the
-        // boundary on the correct side, and still permits the deck level once the player is
-        // falling and the feet have dropped below the integer.
+        // Standing on a block puts the feet at exactly the next integer, so rounding up is what
+        // keeps a top-face hit from dropping a block in front of the player at feet height.
         int maxPlaceY = (int) Math.ceil(mc.thePlayer.getEntityBoundingBox().minY) - 1;
-        if (placeAt.getY() > maxPlaceY) {
-            stage("would place at y" + placeAt.getY() + " but the deck is y" + maxPlaceY
-                    + " (" + mop.sideHit + " face), skipping");
-            return;
-        }
         ItemStack held = mc.thePlayer.inventory.getStackInSlot(slot);
-        if (!BlockUtils.canPlaceBlockOnSide(held, support, mop.sideHit)) {
-            stage("cannot place on " + support.getX() + "," + support.getY() + "," + support.getZ()
-                    + " " + mop.sideHit);
+
+        MovingObjectPosition mop = RotationUtils.rayCastBlock(reach, currentYaw, currentPitch);
+        if (placeable(mop, maxPlaceY, held)) {
+            recovering = false;
+            queuePlacement(mop);
             return;
         }
 
+        // The stance did not reach. On solid ground with the drop still ahead that is simply the
+        // approach, so leave the aim alone; over the gap it means the next block is about to be
+        // missed, and sweeping for a rotation that does reach is the difference between carrying
+        // on and falling.
+        if (mc.thePlayer.onGround && !overEdge()) {
+            recovering = false;
+            stage("aiming " + Math.round(currentYaw) + "/" + Math.round(currentPitch)
+                    + " - approaching, nothing to place yet");
+            return;
+        }
+
+        for (float pitchOffset : RECOVER_PITCH) {
+            float testPitch = Math.min(88.5f, currentPitch + pitchOffset);
+            for (float yawOffset : RECOVER_YAW) {
+                float testYaw = wrap(currentYaw + yawOffset);
+                if (!placeable(RotationUtils.rayCastBlock(reach, testYaw, testPitch), maxPlaceY, held)) {
+                    continue;
+                }
+                recoverYaw = testYaw;
+                recoverPitch = testPitch;
+                recovering = true;
+                stage("stance cannot reach, steering to " + Math.round(testYaw) + "/"
+                        + Math.round(testPitch));
+                return;
+            }
+        }
+
+        recovering = false;
+        stage("nothing placeable from " + Math.round(currentYaw) + "/" + Math.round(currentPitch)
+                + " and no recovery angle found");
+    }
+
+    /** Whether this ray hit a face a block can actually be placed against, below the deck. */
+    private boolean placeable(MovingObjectPosition mop, int maxPlaceY, ItemStack held) {
+        if (mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) return false;
+        if (mop.sideHit == EnumFacing.DOWN) return false;
+        BlockPos support = mop.getBlockPos();
+        if (support.offset(mop.sideHit).getY() > maxPlaceY) return false;
+        return BlockUtils.canPlaceBlockOnSide(held, support, mop.sideHit);
+    }
+
+    private void queuePlacement(MovingObjectPosition mop) {
+        BlockPos support = mop.getBlockPos();
+        BlockPos placeAt = support.offset(mop.sideHit);
         placeAtBlock = support;
         placeSide = mop.sideHit;
         placeHitVec = mop.hitVec;
@@ -463,14 +508,16 @@ public class BridgeAssist extends Module {
      * Nearest 45-degree heading to the direction of travel, tie-broken toward where the player is
      * already looking so a relock is the smallest turn available.
      *
-     * This used to consider only the four diagonals, on the assumption that bridging is always
-     * done diagonally. Walking straight down an axis then left the aim a full 45 degrees off the
-     * line of travel: the support slid out from under it as the player advanced and the ray missed
-     * everything after a few blocks. Including the cardinals lets a straight bridge look straight
-     * back, while a genuine diagonal still snaps to its diagonal.
+     * With the offset stance on, only the four diagonals are candidates, so a straight walk is
+     * covered from about 45 degrees off its own line -- the stance the reference scripts use,
+     * which keeps the player moving instead of stopping to look down at each block. That aim does
+     * not always reach, and the recovery sweep exists to cover the gaps. With it off the cardinals
+     * are candidates too, so a straight bridge looks straight back: slower, but it always reaches.
      */
-    private static float snapHeading(float awayYaw, float headYaw) {
-        float[] headings = { 0f, 45f, 90f, 135f, 180f, -135f, -90f, -45f };
+    private static float snapHeading(float awayYaw, float headYaw, boolean diagonalOnly) {
+        float[] headings = diagonalOnly
+                ? new float[] { 45f, 135f, -135f, -45f }
+                : new float[] { 0f, 45f, 90f, 135f, 180f, -135f, -90f, -45f };
         float closest = Float.MAX_VALUE;
         for (float h : headings) {
             closest = Math.min(closest, Math.abs(wrap(h - awayYaw)));
@@ -518,6 +565,7 @@ public class BridgeAssist extends Module {
         aimLocked = false;
         rotationInitialised = false;
         hasTravelYaw = false;
+        recovering = false;
         placeQueued = false;
         restoreSlot();
     }
