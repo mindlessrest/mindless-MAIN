@@ -16,6 +16,7 @@ import mindless.keystroke.KeyStrokeConfigGui;
 import mindless.keystroke.KeyStrokeRenderer;
 import mindless.lag.handler.UnifiedLagHandler;
 import mindless.runtime.LunarEventBridge;
+import mindless.runtime.ReinjectHotkey;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.script.ScriptDefaults;
@@ -87,6 +88,9 @@ public class Raven {
         ClientCommandHandler.instance.registerCommand(new KeyStrokeCommand());
 
         registerHandler(this, true);
+        ReinjectHotkey reinjectHotkey = new ReinjectHotkey();
+        MinecraftForge.EVENT_BUS.register(reinjectHotkey);
+        LunarEventBridge.registerTickListener(reinjectHotkey);
         registerHandler(new DebugHelper(), false);
         registerHandler(new MouseHelper(), false);
         registerHandler(RotationHelper.get(), false);
@@ -370,11 +374,13 @@ public class Raven {
 
         // Modules first. Each one releases its own framebuffers, restores game settings it had
         // overridden, and unregisters the handlers it registered when it was enabled.
+        enabledBeforeUnload.clear();
         try {
             if (moduleManager != null) {
                 for (Module module : ModuleManager.modules) {
                     try {
                         if (module.isEnabled()) {
+                            enabledBeforeUnload.add(module);
                             module.disable();
                         }
                     } catch (Throwable ignored) {
@@ -407,7 +413,8 @@ public class Raven {
             } catch (Throwable ignored) {
             }
         }
-        EVENT_HANDLERS.clear();
+        // The list is deliberately kept. Forge registers and unregisters by identity, so bringing
+        // the client back means handing it the same instances again, not new ones.
 
         // Anything holding a key down on our behalf has to let go, or the game is left walking.
         try {
@@ -419,17 +426,71 @@ public class Raven {
             mindless.backend.BackendClient.getInstance().disconnect();
         } catch (Throwable ignored) {
         }
+        // The executors are left alive rather than shut down. A ShutdownNow cannot be undone --
+        // the pool refuses work forever after -- and reinject would come back to a client whose
+        // every scheduled task silently failed. With nothing registered, nothing posts to them.
+
         try {
-            scheduledExecutor.shutdownNow();
+            Utils.sendMessage("&7Mindless uninjected. Press "
+                    + org.lwjgl.input.Keyboard.getKeyName(getReinjectKey()) + " to load it again.");
         } catch (Throwable ignored) {
         }
+    }
+
+    /** Modules that were on when the client was torn down, restored on the way back in. */
+    private static final java.util.List<Module> enabledBeforeUnload = new java.util.ArrayList<Module>();
+
+    /** Key that brings the client back after an uninject. */
+    public static int getReinjectKey() {
         try {
-            cachedExecutor.shutdownNow();
+            return (int) mindless.module.impl.client.Settings.reinjectKey.getKey();
+        } catch (Throwable ignored) {
+            return org.lwjgl.input.Keyboard.KEY_INSERT;
+        }
+    }
+
+    /**
+     * Brings the client back after an uninject, without touching the loader.
+     *
+     * Re-attaching from outside cannot work: the DLL is still resident so the loader reports it as
+     * already attached, and the classes are still defined in the LaunchClassLoader, so even a
+     * successful re-attach would run the same bytecode. Nothing needs to be reloaded, though --
+     * everything is still in memory, merely detached -- so this puts the same handler instances
+     * back on the buses and switches the same modules on again.
+     */
+    public static synchronized void reinject() {
+        if (!unloaded) {
+            return;
+        }
+
+        for (Object[] entry : EVENT_HANDLERS) {
+            try {
+                MinecraftForge.EVENT_BUS.register(entry[0]);
+                if (Boolean.TRUE.equals(entry[1])) {
+                    net.minecraftforge.fml.common.FMLCommonHandler.instance().bus().register(entry[0]);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+
+        for (Module module : enabledBeforeUnload) {
+            try {
+                if (!module.isEnabled()) {
+                    module.enable();
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        enabledBeforeUnload.clear();
+
+        try {
+            mindless.backend.BackendClient.getInstance().connect();
         } catch (Throwable ignored) {
         }
 
+        unloaded = false;
         try {
-            Utils.sendMessage("&7Mindless uninjected. Restart the game to load it again.");
+            Utils.sendMessage("&7Mindless reinjected.");
         } catch (Throwable ignored) {
         }
     }

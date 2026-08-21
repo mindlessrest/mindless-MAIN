@@ -3,13 +3,16 @@ package mindless.module.impl.client;
 import mindless.Raven;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
+import mindless.module.setting.impl.KeySetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import net.minecraft.client.gui.GuiChat;
+import org.lwjgl.input.Keyboard;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.gui.inventory.GuiInventory;
 
 public class Settings extends Module {
+    public static KeySetting reinjectKey;
     public static ButtonSetting addBracketsToDistance;
     public static ButtonSetting hideFirstPersonESP;
     public static ButtonSetting setChatAsInventory;
@@ -45,6 +48,7 @@ public class Settings extends Module {
         super("Settings", category.client, 0);
         mindless.utility.CapeManager.reloadCustomCapes();
         this.registerSetting(new ButtonSetting("Uninject", () -> Raven.uninject()));
+        this.registerSetting(reinjectKey = new KeySetting("Reinject key", Keyboard.KEY_INSERT));
         this.registerSetting(customCapes = new SliderSetting("Custom cape", 0, mindless.utility.CapeManager.getCapeOptions()));
         this.registerSetting(new DescriptionSetting("HUD layout"));
         this.registerSetting(new ButtonSetting("Edit HUD elements", () -> mc.displayGuiScreen(new HudEditor.Screen())));
