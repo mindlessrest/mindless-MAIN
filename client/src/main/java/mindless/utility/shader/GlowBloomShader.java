@@ -102,13 +102,16 @@ public class GlowBloomShader {
                 "  vec2 uv = gl_TexCoord[0].xy;\n" +
                 // Seventeen taps spread across the radius. The loop bound has to be a compile-time
                 // constant in GLSL 120, so reach is varied by scaling the step instead.
-                "  vec2 step = direction * texelSize * (radius / 8.0);\n" +
+                // Not named "step": that is a GLSL built-in, and redeclaring a built-in function
+                // name is rejected outright by a good number of drivers, which left the whole
+                // shader failing to compile and the glow silently absent.
+                "  vec2 sampleStep = direction * texelSize * (radius / 8.0);\n" +
                 "  float acc = 0.0;\n" +
                 "  float weightSum = 0.0;\n" +
                 "  for (int i = -8; i <= 8; i++) {\n" +
                 "    float fi = float(i);\n" +
                 "    float w = exp(-fi * fi / 24.0);\n" +
-                "    acc += texture2D(tex, uv + step * fi).a * w;\n" +
+                "    acc += texture2D(tex, uv + sampleStep * fi).a * w;\n" +
                 "    weightSum += w;\n" +
                 "  }\n" +
                 "  float glow = acc / weightSum;\n" +

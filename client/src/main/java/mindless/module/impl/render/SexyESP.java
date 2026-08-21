@@ -14,6 +14,7 @@ import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.shader.GlowBloomShader;
 import mindless.utility.shader.GlowShader;
+import mindless.utility.shader.KawaseBloom;
 import mindless.utility.shader.SeparableOutlineShader;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
@@ -653,11 +654,18 @@ public class SexyESP extends Module {
         // Glow size is in silhouette texels rather than screen pixels, and that buffer is three
         // quarters of the display, so the multiplier keeps the slider reading roughly as pixels.
         float glowSize = (float) outlineGlowSize.getInput();
-        mc.getFramebuffer().bindFramebuffer(false);
-        if (glowSize > 0.0f) {
+        if (glowSize > 0.0f && glowBloomShader.isValid()) {
+            mc.getFramebuffer().bindFramebuffer(false);
             glowBloomShader.render(outlineFramebuffer, glowSize * 6.0f,
                     (float) outlineGlowStrength.getInput(), oR, oG, oB);
         }
+        else if (glowSize > 0.0f) {
+            // Fall back to the old bloom if the driver would not build the Gaussian. Worse
+            // looking, but a glow that renders beats one that vanishes with no explanation.
+            KawaseBloom.renderBlur(outlineFramebuffer.framebufferTexture,
+                    Math.max(1, Math.round(glowSize)), glowSize);
+        }
+        mc.getFramebuffer().bindFramebuffer(false);
         // The crisp traced edge is now opt-in: it reads as an outline, which is the opposite of
         // what the glow is for, but it sharpens the silhouette when both are wanted together.
         if (outlineEdge.isToggled()) {
