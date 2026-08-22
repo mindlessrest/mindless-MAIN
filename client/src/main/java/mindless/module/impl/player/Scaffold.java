@@ -41,6 +41,8 @@ public class Scaffold extends Module {
     /** How far ahead along the motion vector to look, in multiples of one tick of movement. */
     private static final double[] PROJECTION = {0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5};
     private static final double MAX_REACH_SQ = 20.25;
+    /** Degrees of yaw and pitch combined that the snapback closes per tick. */
+    private static final float SNAPBACK_STEP = 100.0f;
 
     private SliderSetting modeSetting;
     private SliderSetting switchModeSetting;
@@ -62,6 +64,10 @@ public class Scaffold extends Module {
 
     private float rotCurrentYaw = Float.NaN;
     private float rotCurrentPitch = Float.NaN;
+
+    /** Telly only exists in the air; these track the current hop. */
+    private boolean tellyEngaged;
+    private int airborneTicks;
 
     public int blocksPlaced = 0;
 
@@ -89,6 +95,8 @@ public class Scaffold extends Module {
         blocksPlaced = 0;
         rotCurrentYaw = Float.NaN;
         rotCurrentPitch = Float.NaN;
+        tellyEngaged = false;
+        airborneTicks = 0;
 
         if (mc.thePlayer != null) {
             sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
@@ -103,6 +111,8 @@ public class Scaffold extends Module {
         sameYPos = null;
         rotCurrentYaw = Float.NaN;
         rotCurrentPitch = Float.NaN;
+        tellyEngaged = false;
+        airborneTicks = 0;
 
         if (originalSlot != -1 && mc.thePlayer != null) {
             mc.thePlayer.inventory.currentItem = originalSlot;
@@ -135,6 +145,89 @@ public class Scaffold extends Module {
         if (sameYPos == null && mc.thePlayer.onGround) {
             sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
         }
+    }
+
+    /**
+     * Telly, as the name has always meant: sprint, hop, look down for the arc, land looking
+     * normal, hop again.
+     *
+     * The old condition placed while standing on the ground and only skipped the top of the
+     * jump, so the rotation sat pinned down the bridge the entire time you were bridging. A
+     * rotation that never comes back up while you sprint in a straight line is the thing that
+     * gets picked up -- there is no legitimate way to play looking backwards and down for
+     * thirty seconds straight.
+     *
+     * Grounded now means grounded: no aim, no placement, the rotation handed back. Everything
+     * happens inside the hop, which is where a person doing this by hand does it too.
+     *
+     * @return true when the module should go on to search and place this tick.
+     */
+    private boolean updateTelly(ClientRotationEvent e) {
+        if (mc.thePlayer.onGround) {
+            airborneTicks = 0;
+            tellyEngaged = false;
+            blockCache = null;
+            rotation = null;
+            placeQueued = false;
+            releaseRotation(e);
+            return false;
+        }
+
+        airborneTicks++;
+
+        if (!tellyEngaged) {
+            // A hop you asked for, or the first tick of walking off an edge. Anything else --
+            // knockback, a fall from somewhere else -- is left alone.
+            if (mc.gameSettings.keyBindJump.isKeyDown() || airborneTicks == 1) {
+                tellyEngaged = true;
+            } else {
+                blockCache = null;
+                rotation = null;
+                placeQueued = false;
+                releaseRotation(e);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Walks the rotation back to where the player is actually looking, then stops driving it.
+     *
+     * Dropping the override outright would put a hard jump in the rotation stream on every
+     * landing, which is its own signature. This closes the gap quickly -- a landing is not a
+     * moment to be leisurely about -- and then lets go entirely, so between hops nothing is
+     * being sent but the player's own aim.
+     */
+    private void releaseRotation(ClientRotationEvent e) {
+        if (Float.isNaN(rotCurrentYaw) || Float.isNaN(rotCurrentPitch)) return;
+
+        float targetYaw = mc.thePlayer.rotationYaw;
+        float targetPitch = mc.thePlayer.rotationPitch;
+
+        float deltaYaw = MathHelper.wrapAngleTo180_float(targetYaw - rotCurrentYaw);
+        float deltaPitch = targetPitch - rotCurrentPitch;
+
+        if (Math.abs(deltaYaw) + Math.abs(deltaPitch) <= SNAPBACK_STEP) {
+            rotCurrentYaw = Float.NaN;
+            rotCurrentPitch = Float.NaN;
+            return;
+        }
+
+        float scale = SNAPBACK_STEP / (Math.abs(deltaYaw) + Math.abs(deltaPitch));
+        float nextYaw = quantizeAngle(rotCurrentYaw + deltaYaw * scale);
+        float nextPitch = MathHelper.clamp_float(
+                quantizeAngle(rotCurrentPitch + deltaPitch * scale), -89.0f, 89.0f);
+
+        float[] fixed = RotationUtils.fixRotation(nextYaw, nextPitch,
+                RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
+
+        rotCurrentYaw = fixed[0];
+        rotCurrentPitch = fixed[1];
+        e.setYaw(fixed[0]);
+        e.setPitch(fixed[1]);
+        RotationHelper.get().setRotations(fixed[0], fixed[1]);
     }
 
     /** The layer blocks are placed into. */
@@ -174,15 +267,7 @@ public class Scaffold extends Module {
         boolean telly = isTellyMode();
         updateYLock(telly);
 
-        // Telly burst condition: place when falling, on ground, or near peak
-        boolean canPlaceTelly = !telly || mc.thePlayer.onGround || mc.thePlayer.fallDistance > 0.3f || mc.thePlayer.motionY < 0.0;
-
-        if (!canPlaceTelly) {
-            blockCache = null;
-            rotation = null;
-            placeQueued = false;
-            return;
-        }
+        if (telly && !updateTelly(e)) return;
 
         // 2. Search placement block & calculation
         boolean dataFound = updateData();
