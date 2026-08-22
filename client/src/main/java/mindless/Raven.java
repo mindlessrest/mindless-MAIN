@@ -109,7 +109,6 @@ public class Raven {
         playerRelationsManager = new PlayerRelationsManager();
         playerRelationsManager.load();
         moduleManager.register();
-        registerHandler(ModuleManager.scaffold, false);
         registerHandler(new BlockHighlightSharedHandler(), true);
         scriptManager = new ScriptManager();
         keyStrokeRenderer = new KeyStrokeRenderer();

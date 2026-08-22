@@ -94,14 +94,29 @@ public class Scaffold extends Module {
     public void onDisable() {
         placeQueued = false;
         launchY = null;
+        towerJumpStage = 0;
+        towerMoveTicks = 0;
+        lastSentYaw = Float.NaN;
+        lastSentPitch = Float.NaN;
+        targetYaw = Float.NaN;
+        targetPitch = Float.NaN;
+
         if (originalSlot != -1 && mc.thePlayer != null) {
             mc.thePlayer.inventory.currentItem = originalSlot;
-            originalSlot = -1;
+        }
+        originalSlot = -1;
+
+        // Watchdog sprint holds the key down by hand. Left as-is it stays held after the module
+        // stops, so hand it back to whatever the physical key is actually doing.
+        if (mc.gameSettings != null && mc.gameSettings.keyBindSprint != null) {
+            int sprintKey = mc.gameSettings.keyBindSprint.getKeyCode();
+            KeyBinding.setKeyBindState(sprintKey, Keyboard.isKeyDown(sprintKey));
         }
     }
 
     @SubscribeEvent
     public void onClientRotation(ClientRotationEvent e) {
+        if (!this.isEnabled()) return;
         if (!Utils.nullCheck() || mc.currentScreen != null || mc.thePlayer.capabilities.isFlying) return;
         if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) return;
 
@@ -229,6 +244,7 @@ public class Scaffold extends Module {
 
     @SubscribeEvent
     public void onPrePlayerInput(PrePlayerInputEvent e) {
+        if (!this.isEnabled()) return;
         if (!Utils.nullCheck()) return;
 
         // Handle Tower Logic
