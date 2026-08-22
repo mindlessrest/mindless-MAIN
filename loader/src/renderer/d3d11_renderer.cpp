@@ -440,7 +440,15 @@ void Renderer::push_quad(float x0, float y0, float x1, float y1,
 void Renderer::push_sdf_quad(Rect shape, Rect cover, Color c,
                              float radius, float mode, float param)
 {
-    if (shape.w <= 0.0f || shape.h <= 0.0f || c.a <= 0.0f) return;
+    push_sdf_quad_gradient(shape, cover, c, c, radius, mode, param);
+}
+
+void Renderer::push_sdf_quad_gradient(Rect shape, Rect cover, Color left, Color right,
+                                      float radius, float mode, float param)
+{
+    if (shape.w <= 0.0f || shape.h <= 0.0f) return;
+    if (left.a <= 0.0f && right.a <= 0.0f)  return;
+    if (cover.w <= 0.0f || cover.h <= 0.0f) return;
 
     ensure_srv(nullptr);
     if (static_cast<int>(vertices_.size()) + 6 > MaxVertices) flush();
@@ -453,16 +461,16 @@ void Renderer::push_sdf_quad(Rect shape, Rect cover, Color c,
 
     float x0 = cover.x, y0 = cover.y, x1 = cover.right(), y1 = cover.bottom();
 
-    Vertex v = { 0, 0, 0, 0, c.r, c.g, c.b, c.a, mode, cx, cy, hx, hy, radius, param };
+    auto at = [&](float x, float y, Color c) {
+        return Vertex{ x, y, 0, 0, c.r, c.g, c.b, c.a, mode, cx, cy, hx, hy, radius, param };
+    };
 
-    auto at = [&](float x, float y) { Vertex o = v; o.x = x; o.y = y; return o; };
-
-    vertices_.push_back(at(x0, y0));
-    vertices_.push_back(at(x1, y0));
-    vertices_.push_back(at(x1, y1));
-    vertices_.push_back(at(x0, y0));
-    vertices_.push_back(at(x1, y1));
-    vertices_.push_back(at(x0, y1));
+    vertices_.push_back(at(x0, y0, left));
+    vertices_.push_back(at(x1, y0, right));
+    vertices_.push_back(at(x1, y1, right));
+    vertices_.push_back(at(x0, y0, left));
+    vertices_.push_back(at(x1, y1, right));
+    vertices_.push_back(at(x0, y1, left));
 }
 
 void Renderer::draw_rect(Rect r, Color c)
@@ -482,6 +490,12 @@ void Renderer::draw_rect_border(Rect r, Color c, float t)
 void Renderer::draw_rounded_rect(Rect r, Color c, float radius)
 {
     push_sdf_quad(r, r.inset(-2.0f), c, radius, 3.0f, 0.0f);
+}
+
+void Renderer::draw_rounded_rect_gradient(Rect shape, Rect cover, Color left, Color right,
+                                          float radius)
+{
+    push_sdf_quad_gradient(shape, cover, left, right, radius, 3.0f, 0.0f);
 }
 
 void Renderer::draw_rounded_rect_border(Rect r, Color c, float radius, float thickness)
@@ -563,6 +577,9 @@ void execute_draw_list(Renderer& r, const ui::DrawList& list)
             break;
         case ui::DrawCmdType::GlowRoundedRect:
             r.draw_rounded_rect_glow(cmd.rect, cmd.color, cmd.radius, cmd.thick);
+            break;
+        case ui::DrawCmdType::GradientRoundedRect:
+            r.draw_rounded_rect_gradient(cmd.rect, cmd.rect2, cmd.color, cmd.color2, cmd.radius);
             break;
         case ui::DrawCmdType::Text:
             if (cmd.atlas)

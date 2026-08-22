@@ -16,6 +16,7 @@ enum class DrawCmdType : uint8_t
 {
     FillRect,
     FillRoundedRect,
+    GradientRoundedRect,
     StrokeRoundedRect,
     GlowRoundedRect,
     Text,
@@ -29,7 +30,9 @@ struct DrawCmd
     DrawCmdType type;
 
     Rect  rect;
+    Rect  rect2;
     Color color;
+    Color color2;
     float radius   = 0;
     float thick    = 1;
 
@@ -52,7 +55,11 @@ public:
 
     void fill_rect(Rect r, Color c)
     {
-        cmds_.push_back({ DrawCmdType::FillRect, r, c });
+        DrawCmd cmd;
+        cmd.type  = DrawCmdType::FillRect;
+        cmd.rect  = r;
+        cmd.color = c;
+        cmds_.push_back(cmd);
     }
 
     void fill_rounded_rect(Rect r, Color c, float radius)
@@ -61,6 +68,19 @@ public:
         cmd.type   = DrawCmdType::FillRoundedRect;
         cmd.rect   = r;
         cmd.color  = c;
+        cmd.radius = radius;
+        cmds_.push_back(cmd);
+    }
+
+    // Fills the overlap of `shape` and `cover`, ramping left colour to right colour across it.
+    void fill_rounded_rect_gradient(Rect shape, Rect cover, Color left, Color right, float radius)
+    {
+        DrawCmd cmd;
+        cmd.type   = DrawCmdType::GradientRoundedRect;
+        cmd.rect   = shape;
+        cmd.rect2  = cover;
+        cmd.color  = left;
+        cmd.color2 = right;
         cmd.radius = radius;
         cmds_.push_back(cmd);
     }
@@ -111,12 +131,17 @@ public:
 
     void push_clip(Rect r)
     {
-        cmds_.push_back({ DrawCmdType::PushClip, r, {} });
+        DrawCmd cmd;
+        cmd.type = DrawCmdType::PushClip;
+        cmd.rect = r;
+        cmds_.push_back(cmd);
     }
 
     void pop_clip()
     {
-        cmds_.push_back({ DrawCmdType::PopClip, {}, {} });
+        DrawCmd cmd;
+        cmd.type = DrawCmdType::PopClip;
+        cmds_.push_back(cmd);
     }
 
 private:

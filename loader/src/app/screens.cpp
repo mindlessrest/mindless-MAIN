@@ -37,28 +37,34 @@ static void draw_text_in_box(DrawList& dl, FontAtlas& font,
     dl.draw_text(s, { tx, ty }, color, font);
 }
 
-static void draw_progress_bar(DrawList& dl, Rect r, float progress, float elapsed,
-                               Color track, Color fill, float alpha)
+// A short segment sweeping left to right, off the end, and back round again.
+//
+// The segment is one pill, but it is drawn as two halves over the same mask so the colour can
+// ramp up and then back down across it. A flat pill has hard vertical ends that read as a
+// sliding block; fading both ends turns it into a light passing over the track.
+static void draw_sweep_bar(DrawList& dl, Rect r, float elapsed,
+                            Color track, Color fill, float alpha)
 {
     float radius = r.h * 0.5f;
     dl.fill_rounded_rect(r, track.with_alpha(track.a * alpha), radius);
 
-    float filledW = r.w * clamp(progress, 0.0f, 1.0f);
-    if (filledW < 0.5f) return;
-
-    Rect filled = { r.x, r.y, filledW, r.h };
-    dl.fill_rounded_rect(filled, fill.with_alpha(fill.a * alpha), radius);
-
-    if (progress >= 0.999f) return;
-
-    const float period = 1.6f;
-    const float shimW  = r.w * 0.3f;
+    const float period = 1.35f;
+    float segW  = r.w * 0.34f;
     float phase = std::fmod(elapsed, period) / period;
-    float shimX = r.x - shimW + (filledW + shimW) * ease_in_out_cubic(phase);
 
-    dl.push_clip(filled);
-    dl.fill_rounded_rect({ shimX, r.y, shimW, r.h },
-                         Color(0xFFFFFF).with_alpha(0.25f * alpha), radius);
+    // Eased, so the segment is slowest at the two ends of its travel — which is exactly when
+    // it is off the track and nobody can see it stall.
+    float segX = r.x - segW + (r.w + segW) * ease_in_out_cubic(phase);
+
+    Rect  seg  = { segX, r.y, segW, r.h };
+    float mid  = segX + segW * 0.5f;
+
+    Color edge = fill.with_alpha(0.0f);
+    Color peak = fill.with_alpha(fill.a * alpha);
+
+    dl.push_clip(r);
+    dl.fill_rounded_rect_gradient(seg, { segX, r.y, segW * 0.5f, r.h }, edge, peak, radius);
+    dl.fill_rounded_rect_gradient(seg, { mid,  r.y, segW * 0.5f, r.h }, peak, edge, radius);
     dl.pop_clip();
 }
 
@@ -359,17 +365,13 @@ static void draw_loading_content(DrawList& dl, AppState& state,
     draw_text_centered(dl, fn, state.statusText, cx, statusY, t.text.with_alpha(alpha));
 
     float barY = statusY + fn.lineHeight() + 20.0f;
-    draw_progress_bar(dl, { barX, barY, barW, t.progressH }, state.loadProgress,
-                      state.spinElapsed, t.trackBg, t.trackFill, alpha);
-
-    char percent[8];
-    snprintf(percent, sizeof(percent), "%d%%",
-             static_cast<int>(clamp(state.loadProgress, 0.0f, 1.0f) * 100.0f));
+    draw_sweep_bar(dl, { barX, barY, barW, t.progressH }, state.spinElapsed,
+                   t.trackBg, t.trackFill, alpha);
 
     float footY = barY + t.progressH + 11.0f;
-    dl.draw_text(state.targetPid, { barX, footY }, t.textDisable.with_alpha(alpha), fn);
-    float pw = fn.measure_text_width(percent);
-    dl.draw_text(percent, { barX + barW - pw, footY }, t.textDisable.with_alpha(alpha), fn);
+    float pidW  = fn.measure_text_width(state.targetPid.c_str());
+    dl.draw_text(state.targetPid, { cx - pidW * 0.5f, footY },
+                 t.textDisable.with_alpha(alpha), fn);
 }
 
 static float slide_offset(float t, float dir, float width)

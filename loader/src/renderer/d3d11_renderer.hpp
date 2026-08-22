@@ -47,6 +47,10 @@ public:
     void draw_rect(Rect r, Color c);
     void draw_rect_border(Rect r, Color c, float thickness = 1.0f);
     void draw_rounded_rect(Rect r, Color c, float radius);
+
+    // Fills only the part of `shape` that `cover` overlaps, ramping the colour across that
+    // part. The mask stays the whole shape, so several covers tile one pill seamlessly.
+    void draw_rounded_rect_gradient(Rect shape, Rect cover, Color left, Color right, float radius);
     void draw_rounded_rect_border(Rect r, Color c, float radius, float thickness = 1.0f);
     void draw_rounded_rect_glow(Rect r, Color c, float radius, float spread);
     void draw_text(const char* text, Vec2 pos, Color c, const FontAtlas& atlas);
@@ -111,6 +115,8 @@ private:
 
     // One quad covering the shape plus its soft edge, tagged for the distance-field shader.
     void push_sdf_quad(Rect shape, Rect cover, Color c, float radius, float mode, float param);
+    void push_sdf_quad_gradient(Rect shape, Rect cover, Color left, Color right,
+                                float radius, float mode, float param);
 };
 
 } // namespace mindless
