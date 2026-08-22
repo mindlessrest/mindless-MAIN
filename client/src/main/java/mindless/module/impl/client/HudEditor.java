@@ -196,6 +196,26 @@ public final class HudEditor {
                 });
             }
 
+            if (ModuleManager.sessionInfo != null) {
+                final mindless.module.impl.render.SessionInfo session = ModuleManager.sessionInfo;
+                elements.add(new Element("Session Info") {
+                    @Override
+                    void render() {
+                        setBounds(session.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        setBounds(session.renderDesignerPreview(left, top));
+                    }
+
+                    @Override
+                    void reset() {
+                        session.resetPosition();
+                    }
+                });
+            }
+
             if (ModuleManager.hideWindow != null) {
                 final HideWindow hideWindow = ModuleManager.hideWindow;
                 elements.add(new Element("Hide Window") {

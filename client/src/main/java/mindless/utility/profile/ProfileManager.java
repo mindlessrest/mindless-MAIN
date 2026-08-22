@@ -148,6 +148,13 @@ public class ProfileManager implements IMinecraftInstance {
             moduleInformation.addProperty("relPosX", potionHUD.getRelativePosX());
             moduleInformation.addProperty("relPosY", potionHUD.getRelativePosY());
         }
+        else if (module instanceof mindless.module.impl.render.SessionInfo) {
+            mindless.module.impl.render.SessionInfo session = (mindless.module.impl.render.SessionInfo) module;
+            moduleInformation.addProperty("posX", session.getPosX());
+            moduleInformation.addProperty("posY", session.getPosY());
+            moduleInformation.addProperty("relPosX", session.getRelativePosX());
+            moduleInformation.addProperty("relPosY", session.getRelativePosY());
+        }
         else if (module instanceof HideWindow) {
             HideWindow hw = (HideWindow) module;
             moduleInformation.addProperty("posX", hw.getPosX());
@@ -364,6 +371,20 @@ public class ProfileManager implements IMinecraftInstance {
                             float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : potionHUD.getPosX();
                             float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : potionHUD.getPosY();
                             potionHUD.setAbsolutePosition(posX, posY);
+                        }
+                    }
+                    else if (module.getName().equals("Session Info")) {
+                        mindless.module.impl.render.SessionInfo session = (mindless.module.impl.render.SessionInfo) module;
+                        if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                            session.setRelativePosition(
+                                    moduleInformation.get("relPosX").getAsFloat(),
+                                    moduleInformation.get("relPosY").getAsFloat()
+                            );
+                        }
+                        else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
+                            float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : session.getPosX();
+                            float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : session.getPosY();
+                            session.setAbsolutePosition(posX, posY);
                         }
                     }
                     else if (module.getName().equals("Hide Window")) {

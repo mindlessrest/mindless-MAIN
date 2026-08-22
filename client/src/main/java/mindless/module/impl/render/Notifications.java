@@ -13,17 +13,16 @@ import mindless.utility.Utils;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.client.renderer.texture.TextureUtil;
-import net.minecraft.util.ResourceLocation;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.WorldRenderer;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import org.lwjgl.opengl.GL11;
 
 import java.awt.*;
-import java.io.InputStream;
 import java.util.*;
 import java.util.List;
 
@@ -43,19 +42,26 @@ public class Notifications extends Module {
     private static final long STARTUP_SUPPRESS_MS = 4000L;
     private long startupFiredAt = 0L;
 
-    // icon textures
-    private ResourceLocation texEnabled;
-    private ResourceLocation texDisabled;
-    private boolean texLoaded;
-
-    private static final float W       = 220.0f;
-    private static final float H       = 40.0f;
-    private static final float R       = 14.0f;
-    private static final float GAP     = 5.0f;
+    // Width is measured per card rather than fixed. A single width has to fit the longest module
+    // name, so every card was padded out to that -- which is what made a two-word alert look like
+    // a mostly empty bar.
+    private static final float W_MIN   = 108.0f;
+    private static final float W_MAX   = 210.0f;
+    private static final float H       = 32.0f;
+    private static final float R       = 9.0f;
+    private static final float GAP     = 4.0f;
     private static final float MARGIN  = 10.0f;
     private static final int   MAX     = 4;
     private static final long  SLIDE   = 200L;
     private static final long  FADE    = 160L;
+
+    private static final float PAD_L   = 8.0f;
+    private static final float PAD_R   = 9.0f;
+    private static final float ICON    = 18.0f;
+    private static final float ICON_GAP = 7.0f;
+
+    private static final Color ON  = new Color(72, 209, 138);
+    private static final Color OFF = new Color(232, 88, 88);
 
     private static final class Card {
         final String   title;
@@ -159,6 +165,13 @@ public class Notifications extends Module {
         cards.add(new Card(title, enabled, now, dur, startY));
     }
 
+    /** Width that fits this card's own text, so short names get a short card. */
+    private static float cardWidth(RavenFontRenderer font, String title, String status, String clock) {
+        float text = Math.max(font.getStringWidth(title), font.getStringWidth(status));
+        float w = PAD_L + ICON + ICON_GAP + text + 10.0f + font.getStringWidth(clock) + PAD_R;
+        return Math.max(W_MIN, Math.min(W_MAX, w));
+    }
+
     /** Suppresses one automatic alert caused by a script-controlled module toggle. */
     public static void suppressScriptChange(String moduleName) {
         if (moduleName == null) return;
@@ -179,13 +192,12 @@ public class Notifications extends Module {
     public void onRenderTick(TickEvent.RenderTickEvent e) {
         if (e.phase != TickEvent.Phase.END || !Utils.nullCheck() || cards.isEmpty()) return;
 
-        ensureTex();
         RavenFontRenderer font = HUD.getHudFontRenderer();
         if (font == null) return;
 
         ScaledResolution sr = ScaledResolutionCache.get();
         float baseY = sr.getScaledHeight() - MARGIN - H;
-        float x = sr.getScaledWidth() - W - MARGIN;
+        float rightEdge = sr.getScaledWidth() - MARGIN;
         long now = System.currentTimeMillis();
 
         // Assign target Y slots bottom-up
@@ -215,7 +227,7 @@ public class Notifications extends Module {
             if (c.alpha < 0.01f) continue;
 
             int a = (int)(255 * c.alpha);
-            drawCard(c, x, c.y, font, c.alpha, a, gradL, gradR, now);
+            drawCard(c, rightEdge, c.y, font, c.alpha, a, gradL, gradR, now);
         }
 
         // Cards draw at the very end of the frame, so anything left dirty here lands on the next
@@ -223,31 +235,32 @@ public class Notifications extends Module {
         RenderUtils.syncGlState();
     }
 
-    private void drawCard(Card c, float x, float y, RavenFontRenderer font,
+    private void drawCard(Card c, float rightEdge, float y, RavenFontRenderer font,
                           float alpha, int a, int gradL, int gradR, long now) {
-        float radius = R * mindless.module.impl.theme.ThemeManager.roundingScale();
-        BlurUtils.prepareBlur();
-        RoundedUtils.drawRound(x, y, W, H, radius, new Color(0, 0, 0, 255));
-        BlurUtils.blurEnd(3, 3.0f, 0.85f);
-        RoundedUtils.drawRound(x, y, W, H, radius, new Color(0, 0, 0, (int)(55 * alpha)));
+        long age = now - c.birthMs;
+        float progress = c.durationMs <= 0L
+                ? 0.0f : Math.max(0.0f, Math.min(1.0f, 1.0f - (float) age / c.durationMs));
+        float remaining = Math.max(0.0f, (c.durationMs - age) / 1000.0f);
 
-        // Icon
-        float iconSz = 14.0f;
-        float iconX  = x + 9.0f;
-        float iconY  = y + (H - iconSz) * 0.5f;
-        ResourceLocation tex = c.enabled ? texEnabled : texDisabled;
-        if (tex != null) {
-            GlStateManager.enableBlend();
-            GlStateManager.color(1, 1, 1, alpha);
-            Minecraft.getMinecraft().getTextureManager().bindTexture(tex);
-            net.minecraft.client.gui.Gui.drawModalRectWithCustomSizedTexture(
-                    (int) iconX, (int) iconY, 0, 0, (int) iconSz, (int) iconSz, iconSz, iconSz);
-            GlStateManager.color(1, 1, 1, 1);
-        } else {
-            int dotCol = c.enabled ? new Color(80, 200, 100, a).getRGB() : new Color(200, 70, 70, a).getRGB();
-            RoundedUtils.drawRound(iconX + 2, iconY + 2, iconSz - 4, iconSz - 4,
-                    (iconSz - 4) * 0.5f, new Color(dotCol, true));
-        }
+        Color accent = c.enabled ? ON : OFF;
+        String status = c.enabled ? "Enabled" : "Disabled";
+        String clock = String.format(Locale.ROOT, "%.1fs", remaining);
+
+        float w = cardWidth(font, c.title, status, clock);
+        float x = rightEdge - w;
+        float radius = R * mindless.module.impl.theme.ThemeManager.roundingScale();
+
+        BlurUtils.prepareBlur();
+        RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
+        BlurUtils.blurEnd(3, 3.0f, 0.85f);
+        RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, (int)(120 * alpha)));
+        // A faint top-down sheen. Cheaper than a border and it stops the card reading as a plain
+        // flat slab, which was most of what made it feel unfinished.
+        RoundedUtils.drawGradientVertical(x, y, w, H, radius,
+                new Color(255, 255, 255, (int)(17 * alpha)),
+                new Color(255, 255, 255, (int)(3 * alpha)));
+
+        drawBadge(x + PAD_L, y + (H - ICON) * 0.5f, accent, c.enabled, progress, alpha);
 
         // The card is drawn through the Kawase blur and the SDF rounded-rect shaders, and
         // neither unbinds its program on the way out. Any shader still bound here would be
@@ -256,58 +269,129 @@ public class Notifications extends Module {
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.enableTexture2D();
         GlStateManager.enableBlend();
-        GlStateManager.blendFunc(org.lwjgl.opengl.GL11.GL_SRC_ALPHA, org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
 
         // Text. Snap to whole pixels — the card slides in on a fractional X and the vertical
         // centering lands on a half pixel, which samples the glyph atlas between texels and
         // renders the text doubled/smeared. Rounding both axes keeps glyphs on the grid.
         float fontH = font.getFontHeight();
-        float block = fontH * 2 + 2.0f;
-        float textX = Math.round(iconX + iconSz + 6.0f);
+        float block = fontH * 2 + 1.0f;
+        float textX = Math.round(x + PAD_L + ICON + ICON_GAP);
         float textY = Math.round(y + (H - block) * 0.5f);
 
-        font.drawString(c.title, textX, textY, new Color(230, 230, 235, a).getRGB(), false);
+        font.drawString(c.title, textX, textY, new Color(236, 236, 242, a).getRGB(), false);
+        font.drawString(status, textX, Math.round(textY + fontH + 1.0f),
+                new Color(accent.getRed(), accent.getGreen(), accent.getBlue(),
+                        (int)(200 * alpha)).getRGB(), false);
 
-        String statusStr = c.enabled ? "Enabled" : "Disabled";
-        int statusCol = c.enabled
-                ? new Color(80, 200, 100, (int)(175 * alpha)).getRGB()
-                : new Color(200, 70, 70, (int)(175 * alpha)).getRGB();
-        font.drawString(statusStr, textX, Math.round(textY + fontH + 2.0f), statusCol, false);
+        // Countdown, right-aligned against the title so it reads as one row rather than floating.
+        font.drawString(clock, Math.round(x + w - PAD_R - font.getStringWidth(clock)), textY,
+                new Color(150, 150, 162, (int)(170 * alpha)).getRGB(), false);
+    }
 
-        // Progress bar - fully rounded, theme gradient
-        long age = now - c.birthMs;
-        float progress = Math.max(0.0f, Math.min(1.0f, 1.0f - (float) age / c.durationMs));
+    /**
+     * The state badge: a ring that drains as the card ages, wrapped around a tick or a cross.
+     *
+     * This replaces two flat PNGs. They could not carry the countdown, could not follow the
+     * card's colour, and at 14 pixels a bitmap on a scaled GUI lands between texels and blurs.
+     */
+    private void drawBadge(float x, float y, Color accent, boolean enabled, float progress, float alpha) {
+        float cx = x + ICON * 0.5f;
+        float cy = y + ICON * 0.5f;
+        float ring = ICON * 0.5f - 1.0f;
+
+        int fill = argb(accent, (int)(38 * alpha));
+        int track = argb(Color.WHITE, (int)(28 * alpha));
+        int line = argb(accent, (int)(235 * alpha));
+
+        disc(cx, cy, ring - 1.6f, fill);
+        arc(cx, cy, ring, 1.6f, 0.0f, 360.0f, track);
         if (progress > 0.0f) {
-            float bx = x + 9.0f;
-            float bw = W - 18.0f;
-            float by = y + H - 5.5f;
-            float bh = 2.5f;
-            float br = bh * 0.5f;
-            // Track
-            RoundedUtils.drawRound(bx, by, bw, bh, br,
-                    new Color(255, 255, 255, (int)(18 * alpha)));
-            // Fill gradient
-            RenderUtils.drawRoundedGradientRect(bx, by, bx + bw * progress, by + bh, br,
-                    new Color((gradL >> 16) & 0xFF, (gradL >> 8) & 0xFF, gradL & 0xFF, (int)(190 * alpha)).getRGB(),
-                    new Color((gradL >> 16) & 0xFF, (gradL >> 8) & 0xFF, gradL & 0xFF, (int)(190 * alpha)).getRGB(),
-                    new Color((gradR >> 16) & 0xFF, (gradR >> 8) & 0xFF, gradR & 0xFF, (int)(190 * alpha)).getRGB(),
-                    new Color((gradR >> 16) & 0xFF, (gradR >> 8) & 0xFF, gradR & 0xFF, (int)(190 * alpha)).getRGB());
+            arc(cx, cy, ring, 1.6f, 0.0f, 360.0f * progress, argb(accent, (int)(215 * alpha)));
+        }
+
+        float s = 2.5f;
+        if (enabled) {
+            // Tick: short down-stroke into a longer up-stroke.
+            stroke(cx - s, cy + 0.1f, cx - s * 0.28f, cy + s * 0.72f, 1.7f, line);
+            stroke(cx - s * 0.28f, cy + s * 0.72f, cx + s * 1.02f, cy - s * 0.78f, 1.7f, line);
+        } else {
+            stroke(cx - s * 0.75f, cy - s * 0.75f, cx + s * 0.75f, cy + s * 0.75f, 1.7f, line);
+            stroke(cx - s * 0.75f, cy + s * 0.75f, cx + s * 0.75f, cy - s * 0.75f, 1.7f, line);
         }
     }
 
-    private void ensureTex() {
-        if (texLoaded) return;
-        texLoaded = true;
-        texEnabled  = loadTex("/assets/mindless/textures/notification/green.png",  "notif_on");
-        texDisabled = loadTex("/assets/mindless/textures/notification/red.png",    "notif_off");
+    private static int argb(Color base, int alpha) {
+        return new Color(base.getRed(), base.getGreen(), base.getBlue(),
+                Math.max(0, Math.min(255, alpha))).getRGB();
     }
 
-    private static ResourceLocation loadTex(String path, String name) {
-        try (InputStream is = Minecraft.class.getResourceAsStream(path)) {
-            if (is == null) return null;
-            return Minecraft.getMinecraft().getTextureManager()
-                    .getDynamicTextureLocation(name, new DynamicTexture(TextureUtil.readBufferedImage(is)));
-        } catch (Exception ignored) { return null; }
+    /** Begins an untextured 2D batch. The rounded-rect shaders leave a program bound; drop it. */
+    private static WorldRenderer begin2D(int mode) {
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableTexture2D();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        WorldRenderer wr = Tessellator.getInstance().getWorldRenderer();
+        wr.begin(mode, DefaultVertexFormats.POSITION_COLOR);
+        return wr;
+    }
+
+    private static void end2D() {
+        Tessellator.getInstance().draw();
+        GlStateManager.enableTexture2D();
+    }
+
+    private static void disc(float cx, float cy, float radius, int color) {
+        if (radius <= 0.0f) return;
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF, a = (color >>> 24) & 0xFF;
+        WorldRenderer wr = begin2D(GL11.GL_TRIANGLE_FAN);
+        wr.pos(cx, cy, 0.0D).color(r, g, b, a).endVertex();
+        for (int i = 0; i <= 24; i++) {
+            double t = Math.PI * 2 * i / 24.0;
+            wr.pos(cx + Math.sin(t) * radius, cy - Math.cos(t) * radius, 0.0D).color(r, g, b, a).endVertex();
+        }
+        end2D();
+    }
+
+    /**
+     * A ring segment as a triangle strip. Angles are degrees, zero at the top, sweeping clockwise
+     * so the countdown unwinds the way a clock hand would.
+     */
+    private static void arc(float cx, float cy, float radius, float thickness,
+                            float startDeg, float sweepDeg, int color) {
+        if (sweepDeg <= 0.0f || radius <= 0.0f) return;
+        float inner = radius - thickness * 0.5f;
+        float outer = radius + thickness * 0.5f;
+        int steps = Math.max(2, Math.round(sweepDeg / 5.0f));
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF, a = (color >>> 24) & 0xFF;
+
+        WorldRenderer wr = begin2D(GL11.GL_TRIANGLE_STRIP);
+        for (int i = 0; i <= steps; i++) {
+            double t = Math.toRadians(startDeg + sweepDeg * i / (double) steps);
+            double sin = Math.sin(t), cos = Math.cos(t);
+            wr.pos(cx + sin * outer, cy - cos * outer, 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(cx + sin * inner, cy - cos * inner, 0.0D).color(r, g, b, a).endVertex();
+        }
+        end2D();
+    }
+
+    /** A straight segment of the given thickness, used for the tick and cross strokes. */
+    private static void stroke(float x1, float y1, float x2, float y2, float thickness, int color) {
+        float dx = x2 - x1, dy = y2 - y1;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len < 1.0e-4f) return;
+        float nx = -dy / len * thickness * 0.5f;
+        float ny = dx / len * thickness * 0.5f;
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF, a = (color >>> 24) & 0xFF;
+
+        WorldRenderer wr = begin2D(GL11.GL_QUADS);
+        wr.pos(x1 + nx, y1 + ny, 0.0D).color(r, g, b, a).endVertex();
+        wr.pos(x2 + nx, y2 + ny, 0.0D).color(r, g, b, a).endVertex();
+        wr.pos(x2 - nx, y2 - ny, 0.0D).color(r, g, b, a).endVertex();
+        wr.pos(x1 - nx, y1 - ny, 0.0D).color(r, g, b, a).endVertex();
+        end2D();
     }
 }

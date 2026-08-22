@@ -61,6 +61,7 @@ public class ModuleManager {
     public static Chams chams;
     public static HUD hud;
     public static PotionHUD potionHUD;
+    public static SessionInfo sessionInfo;
     public static Timer timer;
     public static Fly fly;
     public static WTap wTap;
@@ -224,7 +225,7 @@ public class ModuleManager {
         this.addModule(new FallView());
         this.addModule(new Holdlook());
         this.addModule(new DynamicIsland());
-        this.addModule(new SessionInfo());
+        this.addModule(sessionInfo = new SessionInfo());
         this.addModule(hud = new HUD());
         this.addModule(new Notifications());
         this.addModule(new Indicators());
