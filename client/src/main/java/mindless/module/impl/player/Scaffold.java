@@ -168,12 +168,7 @@ public class Scaffold extends Module {
         float[] smooth = RotationUtils.smoothRotation(yaw, pitch, targetYaw, targetPitch, Math.max(0, (int)speed), 0);
         e.setYaw(smooth[0]); e.setPitch(smooth[1]);
         MovingObjectPosition mop = RotationUtils.rayTraceCustom(mc.playerController.getBlockReachDistance(), smooth[0], smooth[1]);
-        boolean strictRaycast = (int) raycast.getInput() == 2;
-        if (mop != null && mop.getBlockPos().equals(support)
-                && (!strictRaycast || mop.sideHit == face) && canPlace()) {
-            hit = strictRaycast ? mop.hitVec : ScaffoldUtils.computeHitVec(support, face);
-            queued = true;
-        }
+        if (mop != null && mop.getBlockPos().equals(support) && mop.sideHit == face && canPlace()) { hit = mop.hitVec; queued = true; }
     }
 
     @SubscribeEvent public void onUpdate(PreUpdateEvent e) {
