@@ -45,6 +45,8 @@ public class Scaffold extends Module {
     private static final float SNAPBACK_STEP = 100.0f;
     /** Within this much of the target the yaw goes exactly there instead of easing. */
     private static final float YAW_SNAP_WINDOW = 45.0f;
+    /** How long to keep the aim through a gap in placements before letting go. */
+    private static final int RELEASE_DELAY = 10;
     /** How far ahead, in blocks, an edge counts as near enough to start bridging for. */
     private static final double EDGE_LOOKAHEAD = 1.0;
     /** How far to the side to look for the orthogonal cells a diagonal step needs under it. */
@@ -75,6 +77,8 @@ public class Scaffold extends Module {
     /** Telly only exists in the air; these track the current hop. */
     private boolean tellyEngaged;
     private int airborneTicks;
+    /** Ticks in a row with nothing to place, before the aim is handed back. */
+    private int idleTicks;
 
     public int blocksPlaced = 0;
 
@@ -105,6 +109,7 @@ public class Scaffold extends Module {
         rotCurrentPitch = Float.NaN;
         tellyEngaged = false;
         airborneTicks = 0;
+        idleTicks = 0;
 
         if (mc.thePlayer != null) {
             sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
@@ -121,6 +126,7 @@ public class Scaffold extends Module {
         rotCurrentPitch = Float.NaN;
         tellyEngaged = false;
         airborneTicks = 0;
+        idleTicks = 0;
 
         if (originalSlot != -1 && mc.thePlayer != null) {
             mc.thePlayer.inventory.currentItem = originalSlot;
@@ -211,6 +217,28 @@ public class Scaffold extends Module {
         }
 
         return true;
+    }
+
+    /**
+     * Keeps the current aim through a short gap in placements, and only then gives it back.
+     *
+     * Letting go the instant there is nothing to place, and taking the target back the instant
+     * there is, turns an ordinary one or two tick gap into the head flicking down and up again.
+     * Bridging is full of those gaps: the block just placed fills the cell it was aimed at, and
+     * the next one is not due until you have moved far enough to need it. So hold through them,
+     * and let go only once you have actually stopped.
+     */
+    private void holdOrRelease(ClientRotationEvent e) {
+        if (Float.isNaN(rotCurrentYaw) || Float.isNaN(rotCurrentPitch)) return;
+
+        if (++idleTicks < RELEASE_DELAY) {
+            e.setYaw(rotCurrentYaw);
+            e.setPitch(rotCurrentPitch);
+            RotationHelper.get().setRotations(rotCurrentYaw, rotCurrentPitch);
+            return;
+        }
+
+        releaseRotation(e);
     }
 
     /**
@@ -361,7 +389,7 @@ public class Scaffold extends Module {
             blockCache = null;
             rotation = null;
             placeQueued = false;
-            releaseRotation(e);
+            holdOrRelease(e);
             return;
         }
 
@@ -407,6 +435,7 @@ public class Scaffold extends Module {
 
             float[] finalRots = RotationUtils.fixRotation(finalYaw, finalPitch, RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
 
+            idleTicks = 0;
             rotCurrentYaw = finalRots[0];
             rotCurrentPitch = finalRots[1];
 
@@ -421,13 +450,7 @@ public class Scaffold extends Module {
             placeHitVec = rotation.hitResult != null && rotation.hitResult.hitVec != null ? rotation.hitResult.hitVec : getCenterHitVec(placeBlockPos, placeSide);
             placeQueued = true;
         } else {
-            // Nothing to place: give the rotation back instead of sitting on the last one.
-            //
-            // It used to re-send the previous rotation every tick for as long as no target was
-            // found, so once a block went down and there was nothing else to do it stayed
-            // pointing back down the bridge -- including stood on flat ground with the module
-            // idle.
-            releaseRotation(e);
+            holdOrRelease(e);
             placeQueued = false;
         }
     }
