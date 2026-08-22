@@ -1,21 +1,23 @@
 package mindless.module.impl.render;
 
 import mindless.module.Module;
+import mindless.module.ModuleManager;
 import mindless.module.impl.world.AntiBot;
 import mindless.module.setting.impl.ButtonSetting;
 import net.minecraft.entity.Entity;
-import net.minecraftforge.client.event.RenderPlayerEvent.Post;
-import net.minecraftforge.client.event.RenderPlayerEvent.Pre;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.opengl.GL11;
-
-import java.util.HashSet;
 
 public class Chams extends Module {
     private ButtonSetting ignoreBots;
     private ButtonSetting renderSelf;
     private ButtonSetting hidePlayers;
-    private HashSet<Entity> bots = new HashSet<>();
+
+    /**
+     * Whether the polygon offset is currently pushed. The pre and post hooks used to each work
+     * out for themselves whether they applied, which came apart the moment a setting changed
+     * between the two halves of one player's render and left the offset stuck on.
+     */
+    private static boolean offsetPushed;
 
     public Chams() {
         super("Chams", Module.category.render, 0);
@@ -25,47 +27,54 @@ public class Chams extends Module {
         this.registerSetting(renderSelf = new ButtonSetting("Render self", false));
     }
 
-    @SubscribeEvent
-    public void onPreRender(Pre e) {
-        Entity entity = e.entity;
-        if (entity == mc.thePlayer && (!renderSelf.isToggled() || mc.currentScreen != null)) {
-            return;
+    /**
+     * Called from the RenderPlayer hook rather than through {@code RenderPlayerEvent}. Forge
+     * posts that event from its own patched copy of the render classes; Lunar has no Forge
+     * patches, so nothing ever posted it and this module did nothing at all.
+     *
+     * @return true when the player should not be drawn.
+     */
+    public static boolean onRenderPlayerPre(Entity entity) {
+        offsetPushed = false;
+
+        Module module = ModuleManager.getModule(Chams.class);
+        if (!(module instanceof Chams) || !module.isEnabled() || entity == null) {
+            return false;
         }
-        if (hidePlayers.isToggled() && !(entity == mc.thePlayer && renderSelf.isToggled())) {
-            e.setCanceled(true);
-            return;
+        Chams chams = (Chams) module;
+
+        boolean self = entity == mc.thePlayer;
+        if (self && (!chams.renderSelf.isToggled() || mc.currentScreen != null)) {
+            return false;
         }
-        if (ignoreBots.isToggled()) {
-            if (AntiBot.isBot(entity)) {
-                return;
-            }
-            bots.add(entity);
+        if (chams.hidePlayers.isToggled() && !(self && chams.renderSelf.isToggled())) {
+            return true;
         }
+        if (chams.ignoreBots.isToggled() && AntiBot.isBot(entity)) {
+            return false;
+        }
+
         GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
         GL11.glPolygonOffset(1.0f, -4_000_000.0f);
+        offsetPushed = true;
+        return false;
     }
 
-    @SubscribeEvent
-    public void onPostRender(Post e) {
-        Entity entity = e.entity;
-        if (entity == mc.thePlayer && (!renderSelf.isToggled() || mc.currentScreen != null)) {
+    public static void onRenderPlayerPost(Entity entity) {
+        if (!offsetPushed) {
             return;
         }
-        if (hidePlayers.isToggled() && !(entity == mc.thePlayer && renderSelf.isToggled())) {
-            return;
-        }
-        if (ignoreBots.isToggled()) {
-            if (!bots.contains(entity)) {
-                return;
-            }
-            bots.remove(entity);
-        }
-        GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
+        offsetPushed = false;
         GL11.glPolygonOffset(1.0f, 4_000_000.0f);
+        GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
     }
 
     @Override
     public void onDisable() {
-        bots.clear();
+        if (offsetPushed) {
+            offsetPushed = false;
+            GL11.glPolygonOffset(1.0f, 4_000_000.0f);
+            GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
+        }
     }
 }

@@ -1,5 +1,6 @@
 package mindless.transformer.impl.render;
 
+import mindless.module.impl.render.Chams;
 import mindless.utility.BlockAnimationUtils;
 import mindless.utility.Utils;
 import net.lenni0451.classtransform.InjectionCallback;
@@ -17,8 +18,12 @@ import net.minecraft.item.ItemStack;
 @CTransformer(RenderPlayer.class)
 public class TransformerRenderPlayer {
     @CInline
-    @CInject(method = "doRender(Lnet/minecraft/client/entity/AbstractClientPlayer;DDDFF)V", target = @CTarget("HEAD"))
+    @CInject(method = "doRender(Lnet/minecraft/client/entity/AbstractClientPlayer;DDDFF)V", target = @CTarget("HEAD"), cancellable = true)
     private void onDoRenderHead(AbstractClientPlayer entity, double x, double y, double z, float entityYaw, float partialTicks, InjectionCallback ci) {
+        if (Chams.onRenderPlayerPre(entity)) {
+            ci.setCancelled(true);
+            return;
+        }
         BlockAnimationUtils.beginRender(entity);
     }
 
@@ -26,6 +31,7 @@ public class TransformerRenderPlayer {
     @CInject(method = "doRender(Lnet/minecraft/client/entity/AbstractClientPlayer;DDDFF)V", target = @CTarget("RETURN"))
     private void onDoRenderReturn(AbstractClientPlayer entity, double x, double y, double z, float entityYaw, float partialTicks, InjectionCallback ci) {
         BlockAnimationUtils.endRender(entity);
+        Chams.onRenderPlayerPost(entity);
     }
 
     @CInline

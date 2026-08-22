@@ -1,5 +1,6 @@
 package mindless.mixin.impl.render;
 
+import mindless.module.impl.render.Chams;
 import mindless.utility.BlockAnimationUtils;
 import mindless.utility.Utils;
 import net.minecraft.client.Minecraft;
@@ -15,14 +16,19 @@ import net.minecraft.client.renderer.entity.RenderPlayer;
 
 @Mixin(RenderPlayer.class)
 public class MixinRenderPlayer {
-    @Inject(method = "doRender(Lnet/minecraft/client/entity/AbstractClientPlayer;DDDFF)V", at = @At("HEAD"))
+    @Inject(method = "doRender(Lnet/minecraft/client/entity/AbstractClientPlayer;DDDFF)V", at = @At("HEAD"), cancellable = true)
     private void onDoRenderHead(AbstractClientPlayer entity, double x, double y, double z, float entityYaw, float partialTicks, CallbackInfo ci) {
+        if (Chams.onRenderPlayerPre(entity)) {
+            ci.cancel();
+            return;
+        }
         BlockAnimationUtils.beginRender(entity);
     }
 
     @Inject(method = "doRender(Lnet/minecraft/client/entity/AbstractClientPlayer;DDDFF)V", at = @At("RETURN"))
     private void onDoRenderReturn(AbstractClientPlayer entity, double x, double y, double z, float entityYaw, float partialTicks, CallbackInfo ci) {
         BlockAnimationUtils.endRender(entity);
+        Chams.onRenderPlayerPost(entity);
     }
 
     @Redirect(method = "setModelVisibilities(Lnet/minecraft/client/entity/AbstractClientPlayer;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/player/InventoryPlayer;getCurrentItem()Lnet/minecraft/item/ItemStack;"))
