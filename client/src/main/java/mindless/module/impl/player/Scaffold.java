@@ -43,6 +43,10 @@ public class Scaffold extends Module {
     private static final double MAX_REACH_SQ = 20.25;
     /** Degrees of yaw and pitch combined that the snapback closes per tick. */
     private static final float SNAPBACK_STEP = 100.0f;
+    /** Within this much of the target the yaw goes exactly there instead of easing. */
+    private static final float YAW_SNAP_WINDOW = 45.0f;
+    /** How far ahead, in blocks, an edge counts as near enough to start bridging for. */
+    private static final double EDGE_LOOKAHEAD = 1.0;
 
     private SliderSetting modeSetting;
     private SliderSetting switchModeSetting;
@@ -138,12 +142,25 @@ public class Scaffold extends Module {
             sameYPos = null;
             return;
         }
+
+        // A jump you pressed yourself means you want to go up, so let the level follow your feet
+        // for that hop instead of pinning the bridge to where you took off. Telly's autojump
+        // sets the input directly rather than the key, so it still keeps its level, which is
+        // the whole point of it.
+        if (mc.gameSettings.keyBindJump.isKeyDown()) {
+            sameYPos = null;
+            return;
+        }
+
+        // Re-taken every time you are stood on something, so landing a step higher carries the
+        // bridge up with you. Held while you are in the air, which is what Same Y is for.
+        if (mc.thePlayer.onGround) {
+            sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
+            return;
+        }
         if (sameYPos != null
                 && Math.abs(MathHelper.floor_double(mc.thePlayer.posY) - sameYPos) > 3) {
             sameYPos = null;
-        }
-        if (sameYPos == null && mc.thePlayer.onGround) {
-            sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
         }
     }
 
@@ -230,6 +247,38 @@ public class Scaffold extends Module {
         RotationHelper.get().setRotations(fixed[0], fixed[1]);
     }
 
+    /**
+     * Whether there is actually a gap worth bridging: under your feet, under any corner of
+     * them, or one block along the way you are heading.
+     */
+    private boolean isNearEdge() {
+        int targetY = targetY();
+
+        if (BlockUtils.replaceable(new BlockPos(
+                MathHelper.floor_double(mc.thePlayer.posX), targetY,
+                MathHelper.floor_double(mc.thePlayer.posZ)))) {
+            return true;
+        }
+
+        for (double[] corner : FOOTPRINT_CORNERS) {
+            if (BlockUtils.replaceable(new BlockPos(
+                    MathHelper.floor_double(mc.thePlayer.posX + corner[0]), targetY,
+                    MathHelper.floor_double(mc.thePlayer.posZ + corner[1])))) {
+                return true;
+            }
+        }
+
+        double px = mc.thePlayer.motionX;
+        double pz = mc.thePlayer.motionZ;
+        double lengthSq = px * px + pz * pz;
+        if (lengthSq <= 1.0E-6) return false;
+
+        double length = Math.sqrt(lengthSq);
+        return BlockUtils.replaceable(new BlockPos(
+                MathHelper.floor_double(mc.thePlayer.posX + px / length * EDGE_LOOKAHEAD), targetY,
+                MathHelper.floor_double(mc.thePlayer.posZ + pz / length * EDGE_LOOKAHEAD)));
+    }
+
     /** The layer blocks are placed into. */
     private int targetY() {
         return (sameYPos != null
@@ -268,6 +317,17 @@ public class Scaffold extends Module {
         updateYLock(telly);
 
         if (telly && !updateTelly(e)) return;
+
+        // Nothing to bridge means nothing to do. Without this it kept a bridging rotation and
+        // hunted for placements while walking across a solid floor, because the forward search
+        // reaches far enough to find a hole several blocks away and start aiming at it.
+        if (!isNearEdge()) {
+            blockCache = null;
+            rotation = null;
+            placeQueued = false;
+            releaseRotation(e);
+            return;
+        }
 
         // 2. Search placement block & calculation
         boolean dataFound = updateData();
@@ -408,7 +468,17 @@ public class Scaffold extends Module {
             speed = 70.0f;
         }
 
-        float nextYaw = currentYaw + MathHelper.clamp_float(deltaYaw, -speed, speed);
+        // Land exactly on the target once it is close, rather than easing in forever.
+        //
+        // The yaw we send is what the movement fix reads to decide which of eight directions
+        // your keys mean. Sitting a few degrees short of the target is enough to fall on the
+        // wrong side of a sector boundary, and that is a 45 degree sideways shove. Landing
+        // exactly on camera + 180 makes one of those eight an exact match, so there is no
+        // sideways component at all -- in every mode, not just when the easing happened to have
+        // caught up.
+        float nextYaw = Math.abs(deltaYaw) <= YAW_SNAP_WINDOW
+                ? targetYaw
+                : currentYaw + MathHelper.clamp_float(deltaYaw, -speed, speed);
         float nextPitch = currentPitch + MathHelper.clamp_float(deltaPitch, -speed, speed);
 
         return new float[]{nextYaw, MathHelper.clamp_float(nextPitch, -89.0f, 89.0f)};
