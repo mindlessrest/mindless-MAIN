@@ -315,13 +315,83 @@ public class Notifications extends Module {
 
         float s = 2.5f;
         if (enabled) {
-            // Tick: short down-stroke into a longer up-stroke.
-            stroke(cx - s, cy + 0.1f, cx - s * 0.28f, cy + s * 0.72f, 1.7f, line);
-            stroke(cx - s * 0.28f, cy + s * 0.72f, cx + s * 1.02f, cy - s * 0.78f, 1.7f, line);
+            // One mitred polyline, not two strokes butted together. Two overlapping strokes
+            // double-blend down the join and need a cap disc to hide the notch, and at five
+            // pixels across that cap is most of the tick.
+            polyline(new float[] { cx - s, cx - s * 0.28f, cx + s * 1.02f },
+                     new float[] { cy + 0.1f, cy + s * 0.72f, cy - s * 0.78f }, 1.7f, line);
         } else {
-            stroke(cx - s * 0.75f, cy - s * 0.75f, cx + s * 0.75f, cy + s * 0.75f, 1.7f, line);
-            stroke(cx - s * 0.75f, cy + s * 0.75f, cx + s * 0.75f, cy - s * 0.75f, 1.7f, line);
+            polyline(new float[] { cx - s * 0.72f, cx + s * 0.72f },
+                     new float[] { cy - s * 0.72f, cy + s * 0.72f }, 1.7f, line);
+            polyline(new float[] { cx - s * 0.72f, cx + s * 0.72f },
+                     new float[] { cy + s * 0.72f, cy - s * 0.72f }, 1.7f, line);
         }
+    }
+
+    /**
+     * A polyline stroked at a fixed width, mitred at the joins and feathered along both sides.
+     *
+     * The previous stroke drew a core quad, two fringe quads and a cap disc at each end, all
+     * overlapping. Everything here is drawn at less than full alpha, so each overlap blended
+     * twice and the glyph came out blotchy with a heavy blob at the elbow. This emits three
+     * non-overlapping strips instead -- core, and one fringe down each side -- so every pixel is
+     * covered exactly once.
+     */
+    private static void polyline(float[] xs, float[] ys, float thickness, int color) {
+        int n = xs.length;
+        if (n < 2) return;
+        float half = thickness * 0.5f;
+
+        // Offset direction at each point: the segment normal at the ends, and the mitre of the
+        // two adjoining normals in between, lengthened so the join keeps its width through
+        // the corner.
+        float[] mx = new float[n], my = new float[n];
+        for (int i = 0; i < n; i++) {
+            float ax = 0, ay = 0, bx = 0, by = 0;
+            if (i > 0) {
+                float dx = xs[i] - xs[i - 1], dy = ys[i] - ys[i - 1];
+                float len = (float) Math.sqrt(dx * dx + dy * dy);
+                if (len > 1.0e-5f) { ax = -dy / len; ay = dx / len; }
+            }
+            if (i < n - 1) {
+                float dx = xs[i + 1] - xs[i], dy = ys[i + 1] - ys[i];
+                float len = (float) Math.sqrt(dx * dx + dy * dy);
+                if (len > 1.0e-5f) { bx = -dy / len; by = dx / len; }
+            }
+            float vx = (i == 0) ? bx : (i == n - 1) ? ax : ax + bx;
+            float vy = (i == 0) ? by : (i == n - 1) ? ay : ay + by;
+            float len = (float) Math.sqrt(vx * vx + vy * vy);
+            if (len < 1.0e-5f) { vx = ax; vy = ay; len = 1.0f; }
+            vx /= len; vy /= len;
+            // Mitre length. Clamped so a sharp corner cannot shoot off into a spike.
+            float scale = 1.0f;
+            if (i > 0 && i < n - 1) {
+                float d = vx * bx + vy * by;
+                scale = d > 0.35f ? 1.0f / d : 1.0f / 0.35f;
+            }
+            mx[i] = vx * scale;
+            my[i] = vy * scale;
+        }
+
+        strip(xs, ys, mx, my, half, -half, 1.0f, 1.0f, color);
+        strip(xs, ys, mx, my, half + FEATHER, half, 0.0f, 1.0f, color);
+        strip(xs, ys, mx, my, -half, -half - FEATHER, 1.0f, 0.0f, color);
+    }
+
+    /** Triangle strip between two parallel offsets of a polyline, with an alpha at each. */
+    private static void strip(float[] xs, float[] ys, float[] mx, float[] my,
+                              float offsetA, float offsetB, float alphaA, float alphaB, int color) {
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+        int alpha = (color >>> 24) & 0xFF;
+        int ca = Math.round(alpha * alphaA), cb = Math.round(alpha * alphaB);
+        if (ca <= 0 && cb <= 0) return;
+
+        WorldRenderer wr = begin2D(GL11.GL_TRIANGLE_STRIP);
+        for (int i = 0; i < xs.length; i++) {
+            wr.pos(xs[i] + mx[i] * offsetA, ys[i] + my[i] * offsetA, 0.0D).color(r, g, b, ca).endVertex();
+            wr.pos(xs[i] + mx[i] * offsetB, ys[i] + my[i] * offsetB, 0.0D).color(r, g, b, cb).endVertex();
+        }
+        end2D();
     }
 
     private static int argb(Color base, int alpha) {
@@ -398,47 +468,5 @@ public class Notifications extends Module {
         band(cx, cy, inner, 1.0f, outer, 1.0f, startDeg, sweepDeg, color);
         band(cx, cy, Math.max(0.0f, inner - FEATHER), 0.0f, inner, 1.0f, startDeg, sweepDeg, color);
         band(cx, cy, outer, 1.0f, outer + FEATHER, 0.0f, startDeg, sweepDeg, color);
-    }
-
-    /** A straight segment with round caps, used for the tick and cross strokes. */
-    private static void stroke(float x1, float y1, float x2, float y2, float thickness, int color) {
-        float dx = x2 - x1, dy = y2 - y1;
-        float len = (float) Math.sqrt(dx * dx + dy * dy);
-        if (len < 1.0e-4f) return;
-        float half = thickness * 0.5f;
-        float nx = -dy / len, ny = dx / len;
-
-        float ax1 = x1 + nx * half, ay1 = y1 + ny * half;
-        float ax2 = x2 + nx * half, ay2 = y2 + ny * half;
-        float bx1 = x1 - nx * half, by1 = y1 - ny * half;
-        float bx2 = x2 - nx * half, by2 = y2 - ny * half;
-
-        quad(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2, color, 1.0f, 1.0f);
-        quad(ax1, ay1, ax2, ay2,
-                ax1 + nx * FEATHER, ay1 + ny * FEATHER, ax2 + nx * FEATHER, ay2 + ny * FEATHER,
-                color, 1.0f, 0.0f);
-        quad(bx1, by1, bx2, by2,
-                bx1 - nx * FEATHER, by1 - ny * FEATHER, bx2 - nx * FEATHER, by2 - ny * FEATHER,
-                color, 1.0f, 0.0f);
-        // Round caps rather than square ends: they hide the seam where the tick's two segments
-        // meet, and stop the ends looking chipped at this size.
-        disc(x1, y1, half, color);
-        disc(x2, y2, half, color);
-    }
-
-    /** Quad between two edges, each with its own alpha. Vertices wind a1, a2, b2, b1. */
-    private static void quad(float a1x, float a1y, float a2x, float a2y,
-                             float b1x, float b1y, float b2x, float b2y,
-                             int color, float alphaA, float alphaB) {
-        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
-        int alpha = (color >>> 24) & 0xFF;
-        int ca = Math.round(alpha * alphaA), cb = Math.round(alpha * alphaB);
-
-        WorldRenderer wr = begin2D(GL11.GL_QUADS);
-        wr.pos(a1x, a1y, 0.0D).color(r, g, b, ca).endVertex();
-        wr.pos(a2x, a2y, 0.0D).color(r, g, b, ca).endVertex();
-        wr.pos(b2x, b2y, 0.0D).color(r, g, b, cb).endVertex();
-        wr.pos(b1x, b1y, 0.0D).color(r, g, b, cb).endVertex();
-        end2D();
     }
 }
