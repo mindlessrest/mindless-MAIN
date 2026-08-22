@@ -137,8 +137,8 @@ public class Scaffold extends Module {
         int forward = mc.gameSettings.keyBindForward.isKeyDown() ? 1 : mc.gameSettings.keyBindBack.isKeyDown() ? -1 : 0;
         int strafe = mc.gameSettings.keyBindRight.isKeyDown() ? -1 : mc.gameSettings.keyBindLeft.isKeyDown() ? 1 : 0;
         double direction = mindless.helper.RotationHelper.getDirection(mc.thePlayer.rotationYaw, forward, strafe);
-        int ox = (int) (-Math.sin(direction));
-        int oz = (int) Math.cos(direction);
+        int ox = (int) Math.round(-Math.sin(direction));
+        int oz = (int) Math.round(Math.cos(direction));
         Vec3 targetPos = ScaffoldPlayerUtils.getPlacePossibility(ox, 0, oz,
                 keepY.isToggled() && !mc.gameSettings.keyBindJump.isKeyDown() ? startY : null);
         if (targetPos == null && keepY.isToggled()) targetPos = ScaffoldPlayerUtils.getPlacePossibility(ox, 0, oz, null);
