@@ -51,13 +51,13 @@ public final class NativeBootstrap {
         }
         STATE.set(BootstrapState.STARTING);
         ProgressPipe.connect();
-        ProgressPipe.report(0.55f, "Initializing bootstrap");
+        ProgressPipe.report(0.55f, "Starting Mindless");
         try {
-            ProgressPipe.report(0.57f, "Loading transformer registry");
+            ProgressPipe.report(0.57f, "Loading Mindless");
             RavenTransformerManager manager = RavenTransformerManager.get();
-            ProgressPipe.report(0.62f, "Asserting transformer integrity");
+            ProgressPipe.report(0.62f, "Loading Mindless");
             manager.assertNoTransformFailures();
-            ProgressPipe.report(0.65f, "Transformers ready");
+            ProgressPipe.report(0.65f, "Loading Mindless");
             log("RavenTransformerManager instantiated ("
                     + manager.registeredCount()
                     + " targets)");
@@ -70,7 +70,7 @@ public final class NativeBootstrap {
                     managerFailure);
         }
         try {
-            ProgressPipe.report(0.68f, "Scheduling client thread initialization");
+            ProgressPipe.report(0.68f, "Starting modules");
             ProgressPipe.report(0.70f, "Starting modules");
             if (!driveModInitOnClientThread()) {
                 // The client-thread task claimed permission to run before the
@@ -165,16 +165,16 @@ public final class NativeBootstrap {
     }
 
     private static void driveModInit() throws Exception {
-        ProgressPipe.report(0.72f, "Preparing module context");
+        ProgressPipe.report(0.72f, "Starting modules");
         ProgressPipe.report(0.75f, "Loading modules");
         Raven mod = new Raven();
-        ProgressPipe.report(0.80f, "Instantiated mod container");
+        ProgressPipe.report(0.80f, "Loading modules");
         ProgressPipe.report(0.83f, "Applying patches");
         Method init = Raven.class.getDeclaredMethod(
                 "init", net.minecraftforge.fml.common.event.FMLInitializationEvent.class);
         init.setAccessible(true);
         try {
-            ProgressPipe.report(0.88f, "Running mod initialization");
+            ProgressPipe.report(0.88f, "Almost there");
             init.invoke(mod, (Object) null);
         } catch (InvocationTargetException wrapper) {
             Throwable cause = wrapper.getCause();
@@ -182,7 +182,7 @@ public final class NativeBootstrap {
             if (cause instanceof Error) throw (Error) cause;
             throw wrapper;
         }
-        ProgressPipe.report(0.92f, "Mod initialized");
+        ProgressPipe.report(0.92f, "Almost there");
         ProgressPipe.report(0.95f, "Finishing up");
         log("Raven.init(null) invoked on " + Thread.currentThread().getName());
     }

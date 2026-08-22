@@ -43,7 +43,7 @@ private:
     std::wstring directory_;
     std::wstring dllPath_;
     std::wstring logPath_;
-    std::string status_ = "Checking connection";
+    std::string status_ = "Connecting to Minecraft";
     std::string solution_;
     static constexpr float BootstrapFloor = 0.45f;
     float bootstrapProgress_ = BootstrapFloor;

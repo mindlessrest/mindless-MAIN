@@ -189,15 +189,15 @@ bool InjectionSession::start(uint32_t processId)
         }
         else
         {
-            fail("Mindless is already attached",
-                 "Fully restart Lunar before trying to inject again.");
+            fail("Mindless is already running",
+                 "Fully restart Lunar before loading it again.");
         }
         return false;
     }
 
     targetProcessId_ = processId;
     phase_ = InjectionPhase::CheckingConnection;
-    status_ = "Checking connection";
+    status_ = "Connecting to Minecraft";
     return true;
 }
 
@@ -207,7 +207,7 @@ void InjectionSession::reset()
     cleanup_runtime();
 
     phase_ = InjectionPhase::Idle;
-    status_ = "Checking connection";
+    status_ = "Connecting to Minecraft";
     solution_.clear();
     injectError_.clear();
     bootstrapProgress_ = BootstrapFloor;
@@ -222,7 +222,7 @@ void InjectionSession::reset()
 void InjectionSession::start_injection()
 {
     phase_ = InjectionPhase::Injecting;
-    status_ = "Injecting into Minecraft";
+    status_ = "Loading Mindless";
     injectDone_ = false;
     injectThread_ = std::thread([this] {
         injectSuccess_ = inject_remote();
@@ -320,36 +320,34 @@ void InjectionSession::tick()
 {
     if (phase_ == InjectionPhase::CheckingConnection)
     {
-        status_ = "Checking connection";
+        status_ = "Connecting to Minecraft";
         if (!validate_target())
         {
             fail("Could not connect to Minecraft",
                  "Keep the selected client open, then launch Mindless again.");
             return;
         }
-        status_ = "Connection verified";
         phase_ = InjectionPhase::VerifyingFiles;
-        status_ = "Verifying files";
+        status_ = "Checking files";
         return;
     }
 
     if (phase_ == InjectionPhase::VerifyingFiles)
     {
-        status_ = "Validating session";
+        status_ = "Checking files";
         if (!validate_session())
         {
             fail("The selected client session is not valid",
                  "Select a Minecraft process running in your Windows session.");
             return;
         }
-        status_ = "Preparing runtime environment";
+        status_ = "Getting ready";
         if (!prepare_runtime())
         {
             fail("Could not verify Mindless files",
                  "Check Windows Security and available disk space, then retry.");
             return;
         }
-        status_ = "Writing native module";
         start_injection();
         return;
     }
@@ -361,11 +359,11 @@ void InjectionSession::tick()
         if (injectSuccess_)
         {
             phase_ = InjectionPhase::Bootstrapping;
-            status_ = "Native module loaded";
+            status_ = "Starting Mindless";
         }
         else
         {
-            fail("Could not inject Mindless", injectError_);
+            fail("Could not load Mindless", injectError_);
         }
     }
 
