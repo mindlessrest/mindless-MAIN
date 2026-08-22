@@ -1008,10 +1008,28 @@ public class HUD extends Module {
             return;
         }
 
+        // Three pieces of inherited state have to be corrected here, and every one of them is
+        // invisible until geometry like this is drawn through it.
+        //
+        // shadeModel is the important one. The gradient helpers in RenderUtils set GL_SMOOTH,
+        // draw, and set GL_FLAT back, and syncGlState leaves GL_FLAT too. Under GL_FLAT a
+        // triangle takes one vertex's colour for all of it, so the alpha ramps that feather
+        // every edge below collapsed into solid blocks -- the anti-aliasing was being written
+        // and then thrown away by the rasteriser.
+        //
+        // The alpha test is Minecraft's usual GL_GREATER 0.1, which chops the tail off a fade
+        // and turns the soft edge back into a hard one.
+        //
+        // Culling depends on winding, and winding here depends on which way a stroke runs, so a
+        // shape could vanish entirely based on the direction it was drawn in.
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.enableBlend();
-        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GlStateManager.disableTexture2D();
+        GlStateManager.disableAlpha();
+        GlStateManager.disableCull();
+        GlStateManager.shadeModel(GL11.GL_SMOOTH);
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
 
         Tessellator tessellator = Tessellator.getInstance();
@@ -1024,7 +1042,11 @@ public class HUD extends Module {
             worldRenderer.pos(cx + sin * r0, cy - cos * r0, 0.0D).color(r, g, b, c0).endVertex();
         }
         tessellator.draw();
+        GlStateManager.shadeModel(GL11.GL_FLAT);
+        GlStateManager.enableCull();
+        GlStateManager.enableAlpha();
         GlStateManager.enableTexture2D();
+
     }
 
     private static int getBackgroundAlpha() {
