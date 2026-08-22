@@ -170,6 +170,10 @@ public class RotationHelper {
         }
         rotationsUpdatedThisTick = true;
 
+        // Cleared every tick so a module has to keep asking for it. It used to be set once and
+        // never put back, so the first module to want it turned it on for everything after.
+        this.forceMovementFix = false;
+
         ClientRotationEvent event = new ClientRotationEvent(this.serverYaw, this.serverPitch);
 
         MinecraftForge.EVENT_BUS.post(event);
@@ -324,16 +328,39 @@ public class RotationHelper {
 
     @SubscribeEvent
     public void onStrafe(StrafeEvent e) {
-        if (fixMovement()) {
-            e.setYaw(this.serverYaw);
+        if (!fixMovement()) return;
+
+        if (this.forceMovementFix) {
+            // Keep the player travelling where the camera points while the rotation being sent
+            // to the server points somewhere else.
+            //
+            // Swapping the server yaw in on its own does not align the input with the rotation,
+            // it steers by it: moveFlying builds the motion vector out of whatever yaw it is
+            // handed. For a scaffold, whose rotation faces back down the bridge, that means
+            // holding W walks you backwards off it. Re-expressing forward/strafe against the
+            // server yaw leaves the world-space direction exactly as asked for.
+            double delta = Math.toRadians(e.getYaw() - this.serverYaw);
+            float cos = (float) Math.cos(delta);
+            float sin = (float) Math.sin(delta);
+            float strafe = e.getStrafe();
+            float forward = e.getForward();
+            e.setStrafe(strafe * cos - forward * sin);
+            e.setForward(strafe * sin + forward * cos);
         }
+
+        e.setYaw(this.serverYaw);
     }
 
     @SubscribeEvent
     public void onJump(JumpEvent e) {
-        if (fixMovement()) {
-            e.setYaw(this.serverYaw);
-        }
+        if (!fixMovement()) return;
+
+        // The sprint-jump boost is added along the yaw as well, so under an input-preserving fix
+        // it has to stay on the camera or every hop shoves you back off the block you just put
+        // down. Telly's autojump made that constant.
+        if (this.forceMovementFix) return;
+
+        e.setYaw(this.serverYaw);
     }
 
     public boolean fixMovement() {

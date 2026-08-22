@@ -35,6 +35,14 @@ public class Scaffold extends Module {
     private static final String[] MODE_OPTIONS = {"Watchdog", "Telly", "Godbridge", "Vanilla"};
     private static final String[] SWITCH_MODE_OPTIONS = {"Normal", "Hotbar"};
 
+    /** Corners of the player's footprint, so a block goes down before the middle of you clears it. */
+    private static final double[][] FOOTPRINT_CORNERS = {
+            {-0.3, -0.3}, {0.3, -0.3}, {-0.3, 0.3}, {0.3, 0.3}
+    };
+    /** How far ahead along the motion vector to look, in multiples of one tick of movement. */
+    private static final double[] PROJECTION = {0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5};
+    private static final double MAX_REACH_SQ = 20.25;
+
     private SliderSetting modeSetting;
     private SliderSetting switchModeSetting;
     private ButtonSetting sameYSetting;
@@ -107,6 +115,36 @@ public class Scaffold extends Module {
         return (int) modeSetting.getInput() == 1; // 1 = Telly
     }
 
+    /**
+     * Latches the bridging level once, rather than re-reading it every tick.
+     *
+     * The old condition refreshed the locked Y whenever onGround was true -- which while
+     * bridging is nearly every tick -- so Same Y held nothing at all. It also never released,
+     * so once the module had a level it carried it around on ordinary ground too. Now it is
+     * taken the first time you are stood on something and only given up if you end up more
+     * than a few blocks off it, which is a clutch or a staircase rather than a bridge.
+     */
+    private void updateYLock(boolean telly) {
+        if (!sameYSetting.isToggled() && !telly) {
+            sameYPos = null;
+            return;
+        }
+        if (sameYPos != null
+                && Math.abs(MathHelper.floor_double(mc.thePlayer.posY) - sameYPos) > 3) {
+            sameYPos = null;
+        }
+        if (sameYPos == null && mc.thePlayer.onGround) {
+            sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
+        }
+    }
+
+    /** The layer blocks are placed into. */
+    private int targetY() {
+        return (sameYPos != null
+                ? sameYPos
+                : MathHelper.floor_double(mc.thePlayer.posY - 0.5)) - 1;
+    }
+
     @SubscribeEvent
     public void onClientRotation(ClientRotationEvent e) {
         if (!this.isEnabled()) return;
@@ -134,19 +172,8 @@ public class Scaffold extends Module {
             return;
         }
 
-        // 1. Same Y handling
-        boolean sameY = sameYSetting.isToggled();
-        boolean autoJump = autoJumpSetting.isToggled();
         boolean telly = isTellyMode();
-
-        boolean updateY = (!sameY && !telly)
-                || (autoJump && Keyboard.isKeyDown(mc.gameSettings.keyBindJump.getKeyCode()))
-                || mc.thePlayer.onGround
-                || (sameYPos != null && Math.abs(MathHelper.floor_double(mc.thePlayer.posY) - sameYPos) > 3);
-
-        if (updateY) {
-            sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
-        }
+        updateYLock(telly);
 
         // Telly burst condition: place when falling, on ground, or near peak
         boolean canPlaceTelly = !telly || mc.thePlayer.onGround || mc.thePlayer.fallDistance > 0.3f || mc.thePlayer.motionY < 0.0;
@@ -182,6 +209,9 @@ public class Scaffold extends Module {
             e.setYaw(finalRots[0]);
             e.setPitch(finalRots[1]);
 
+            // The rotation faces back down the bridge, so without this the movement fix would
+            // steer by it and W would walk off the edge behind you.
+            RotationHelper.get().forceMovementFix = true;
             RotationHelper.get().setRotations(finalRots[0], finalRots[1]);
 
             // Queue block placement
@@ -194,6 +224,7 @@ public class Scaffold extends Module {
             if (!Float.isNaN(rotCurrentYaw)) {
                 e.setYaw(rotCurrentYaw);
                 e.setPitch(rotCurrentPitch);
+                RotationHelper.get().forceMovementFix = true;
                 RotationHelper.get().setRotations(rotCurrentYaw, rotCurrentPitch);
             }
             placeQueued = false;
@@ -289,46 +320,72 @@ public class Scaffold extends Module {
     }
 
     private boolean updateData() {
-        blockCache = getBlockData();
-        if (blockCache != null) {
-            this.rotation = blockCache.rotation;
+        blockCache = null;
+        rotation = null;
+
+        Vec3 eyePos = getEyePos();
+        int targetY = targetY();
+
+        if (accept(getBlockData(new BlockPos(
+                MathHelper.floor_double(mc.thePlayer.posX),
+                targetY,
+                MathHelper.floor_double(mc.thePlayer.posZ)), eyePos))) {
             return true;
         }
 
-        // Lookahead search up to 3 blocks when moving fast
-        if (!movementIntelSetting.isToggled()) return false;
-
-        double vx = mc.thePlayer.motionX;
-        double vz = mc.thePlayer.motionZ;
-        if (Math.abs(vx) > 0.01 || Math.abs(vz) > 0.01) {
-            Vec3 eyePos = getEyePos();
-            for (int i = 1; i <= 3; i++) {
-                BlockPos simPos = new BlockPos(
-                        MathHelper.floor_double(mc.thePlayer.posX + vx * i),
-                        (sameYPos != null ? sameYPos - 1 : MathHelper.floor_double(mc.thePlayer.posY - 0.5) - 1),
-                        MathHelper.floor_double(mc.thePlayer.posZ + vz * i)
-                );
-                BlockData simulatedData = getBlockData(simPos, eyePos);
-                if (simulatedData != null) {
-                    rotation = simulatedData.rotation;
-                    blockCache = simulatedData;
-                    break;
-                }
+        // Any corner of the hitbox over a gap counts, not just the block the middle of you is
+        // above. Waiting for the centre to cross means the block only goes down once you are
+        // already dropping off the edge, which is most of why bridging felt like walk, stop,
+        // place, walk.
+        for (double[] corner : FOOTPRINT_CORNERS) {
+            if (accept(getBlockData(new BlockPos(
+                    MathHelper.floor_double(mc.thePlayer.posX + corner[0]),
+                    targetY,
+                    MathHelper.floor_double(mc.thePlayer.posZ + corner[1])), eyePos))) {
+                return true;
             }
         }
 
-        return blockCache != null;
+        if (!movementIntelSetting.isToggled()) return false;
+
+        // Where you are about to be. This used to step one tick of motion at a time up to three,
+        // which at sprint speed is well under a block, so the next block along was only ever
+        // found at the last possible moment.
+        double px = mc.thePlayer.motionX;
+        double pz = mc.thePlayer.motionZ;
+        if (px * px + pz * pz <= 1.0E-6) {
+            // Standing still against a wall, or the first tick off a ledge: aim where the keys
+            // point instead, or there is no direction to project along at all.
+            float forward = mc.thePlayer.moveForward;
+            float strafe = mc.thePlayer.moveStrafing;
+            double length = Math.sqrt(forward * forward + strafe * strafe);
+            if (length <= 0.01) return false;
+            double yaw = Math.toRadians(mc.thePlayer.rotationYaw);
+            px = (-Math.sin(yaw) * forward + Math.cos(yaw) * strafe) / length * 0.75;
+            pz = (Math.cos(yaw) * forward + Math.sin(yaw) * strafe) / length * 0.75;
+        }
+
+        int lastX = MathHelper.floor_double(mc.thePlayer.posX);
+        int lastZ = MathHelper.floor_double(mc.thePlayer.posZ);
+        for (double multiplier : PROJECTION) {
+            int projectedX = MathHelper.floor_double(mc.thePlayer.posX + px * multiplier);
+            int projectedZ = MathHelper.floor_double(mc.thePlayer.posZ + pz * multiplier);
+            if (projectedX == lastX && projectedZ == lastZ) continue;
+            lastX = projectedX;
+            lastZ = projectedZ;
+            if (accept(getBlockData(new BlockPos(projectedX, targetY, projectedZ), eyePos))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    private BlockData getBlockData() {
-        // Subtract 0.5 from posY so walking off block edges never misses the target block level underneath
-        int targetY = (sameYPos != null ? sameYPos - 1 : MathHelper.floor_double(mc.thePlayer.posY - 0.5) - 1);
-        BlockPos targetPos = new BlockPos(
-                MathHelper.floor_double(mc.thePlayer.posX),
-                targetY,
-                MathHelper.floor_double(mc.thePlayer.posZ)
-        );
-        return getBlockData(targetPos, getEyePos());
+    private boolean accept(BlockData data) {
+        if (data == null) return false;
+        blockCache = data;
+        rotation = data.rotation;
+        return true;
     }
 
     private BlockData getBlockData(BlockPos targetBlockPos, Vec3 eyePos) {
@@ -357,7 +414,13 @@ public class Scaffold extends Module {
 
             if (blockList.isEmpty()) return null;
 
-            blockList.sort(Comparator.comparingDouble(data -> data.blockPos.offset(data.direction).distanceSq(targetBlockPos)));
+            // Nearest and best lined up with where we are already looking.
+            //
+            // The old comparator measured blockPos.offset(direction) against the target, but by
+            // construction that IS the target, so every candidate scored zero and the order was
+            // whatever EnumFacing.values() happened to be. Picking a support on the far side of
+            // the gap costs a longer reach and a bigger turn for the same block.
+            blockList.sort(Comparator.comparingDouble(data -> supportScore(data, eyePos)));
 
             for (BlockWithDirection block : blockList) {
                 RaytracedRotation rRot = getRotation(block, eyePos);
@@ -367,6 +430,24 @@ public class Scaffold extends Module {
             }
         }
         return null;
+    }
+
+    private double supportScore(BlockWithDirection data, Vec3 eyePos) {
+        Vec3 hit = getCenterHitVec(data.blockPos, data.direction);
+        double dx = hit.xCoord - eyePos.xCoord;
+        double dy = hit.yCoord - eyePos.yCoord;
+        double dz = hit.zCoord - eyePos.zCoord;
+        double distanceSq = dx * dx + dy * dy + dz * dz;
+        if (distanceSq > MAX_REACH_SQ) return Double.MAX_VALUE;
+
+        double length = Math.sqrt(distanceSq);
+        Vec3 look = getVectorForRotation(
+                Float.isNaN(rotCurrentPitch) ? mc.thePlayer.rotationPitch : rotCurrentPitch,
+                Float.isNaN(rotCurrentYaw) ? mc.thePlayer.rotationYaw : rotCurrentYaw);
+        double alignment = length > 0.0
+                ? (look.xCoord * dx + look.yCoord * dy + look.zCoord * dz) / length
+                : -1.0;
+        return distanceSq + (1.0 - alignment) * 0.25;
     }
 
     private RaytracedRotation getRotation(BlockWithDirection data, Vec3 eyePos) {
