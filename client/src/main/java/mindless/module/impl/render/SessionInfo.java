@@ -46,6 +46,7 @@ public class SessionInfo extends Module {
     private static final Pattern RANK_TAG = Pattern.compile("\\[[^\\]]*\\]\\s*");
     private static final Pattern KILLED_BY = Pattern.compile("\\bby ([A-Za-z0-9_]{1,16})\\b");
     private static final Pattern DUEL_WINNER = Pattern.compile("^Winner: ([A-Za-z0-9_]{1,16})\\b");
+    private static final Pattern NICKED_AS = Pattern.compile("nicked as ([A-Za-z0-9_]{1,16})");
 
     /**
      * A death line is a username followed directly by the verb that killed them. Anchoring on
@@ -81,6 +82,9 @@ public class SessionInfo extends Module {
     private long lastResultMs;
     private String lastLine = "";
     private long lastLineMs;
+    // Chat calls a nicked player by the nick, not the account, so the account name alone stops
+    // matching anything the moment you nick.
+    private String nickName = "";
     private int kills;
     private int deaths;
     private int wins;
@@ -212,11 +216,20 @@ public class SessionInfo extends Module {
         lastLine = line;
         lastLineMs = now;
 
-        String me = mc.thePlayer.getName();
+        Matcher nick = NICKED_AS.matcher(line);
+        if (nick.find()) {
+            nickName = nick.group(1);
+            return;
+        }
+        if (line.contains("no longer nicked") || line.contains("nick has been reset")
+                || line.contains("You are no longer disguised")) {
+            nickName = "";
+            return;
+        }
 
         Matcher duel = DUEL_WINNER.matcher(line);
         if (duel.find()) {
-            recordResult(duel.group(1).equalsIgnoreCase(me));
+            recordResult(isMe(duel.group(1)));
             return;
         }
         if (line.contains("VICTORY!") || line.contains("You won")) {
@@ -240,8 +253,15 @@ public class SessionInfo extends Module {
         Matcher by = KILLED_BY.matcher(line);
         while (by.find()) killer = by.group(1);
 
-        if (victim.equalsIgnoreCase(me)) deaths++;
-        else if (killer != null && killer.equalsIgnoreCase(me)) kills++;
+        if (isMe(victim)) deaths++;
+        else if (isMe(killer)) kills++;
+    }
+
+    /** The account name, or the nick when one is active. */
+    private boolean isMe(String name) {
+        if (name == null || mc.thePlayer == null) return false;
+        if (name.equalsIgnoreCase(mc.thePlayer.getName())) return true;
+        return !nickName.isEmpty() && name.equalsIgnoreCase(nickName);
     }
 
     private void recordResult(boolean won) {
