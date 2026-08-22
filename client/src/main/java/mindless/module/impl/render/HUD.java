@@ -1038,9 +1038,11 @@ public class HUD extends Module {
         }
         float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
                 * mindless.module.impl.theme.ThemeManager.roundingScale();
-        // Past half the shorter side the rounding folds in on itself and the box comes out
-        // pinched, which is what a tall thin row looked like at the old fixed radius of eight.
-        return Math.max(0.0f, Math.min(radius, height * 0.5f));
+        // A third of the row, not half. The corner lives inside a single row -- it cannot spill
+        // into the one below, because that row is a different width -- so at half the row height
+        // the curve runs from the top edge to the middle and the end row stops reading as a
+        // rounded corner and starts reading as a lozenge stuck on the end of a square staircase.
+        return Math.max(0.0f, Math.min(radius, height * 0.34f));
     }
 
     /**
