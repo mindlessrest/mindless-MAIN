@@ -41,6 +41,16 @@ public class Scaffold extends Module {
     /** How far ahead along the motion vector to look, in multiples of one tick of movement. */
     private static final double[] PROJECTION = {0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5};
     private static final double MAX_REACH_SQ = 20.25;
+    /**
+     * Faces worth clicking, in the order the search walks them.
+     *
+     * DOWN first, so the usual case -- the top of the block behind you -- is checked before
+     * anything else. UP is absent on purpose: that is the underside of the block above the gap,
+     * and clicking a ceiling to bridge is neither what you want nor usually reachable.
+     */
+    private static final EnumFacing[] SUPPORT_FACES = {
+            EnumFacing.DOWN, EnumFacing.NORTH, EnumFacing.SOUTH, EnumFacing.WEST, EnumFacing.EAST
+    };
 
     private SliderSetting modeSetting;
     private SliderSetting switchModeSetting;
@@ -393,51 +403,51 @@ public class Scaffold extends Module {
     }
 
     private BlockData getBlockData(BlockPos targetBlockPos, Vec3 eyePos) {
-        if (BlockUtils.replaceable(targetBlockPos)) {
-            List<BlockWithDirection> blockList = new ArrayList<>();
+        if (!BlockUtils.replaceable(targetBlockPos)) return null;
 
-            for (EnumFacing facing : EnumFacing.values()) {
-                BlockPos neighbor = targetBlockPos.offset(facing);
-                if (!BlockUtils.replaceable(neighbor)) {
-                    blockList.add(new BlockWithDirection(neighbor, facing.getOpposite()));
-                }
-            }
+        ItemStack held = mc.thePlayer.getHeldItem();
+        if (held == null || !(held.getItem() instanceof ItemBlock)) return null;
 
-            // Fallback 2-block extend neighbors
-            if (blockList.isEmpty()) {
-                for (EnumFacing facing : EnumFacing.values()) {
-                    BlockPos neighbor = targetBlockPos.offset(facing);
-                    for (EnumFacing secondFacing : EnumFacing.values()) {
-                        BlockPos secondNeighbor = neighbor.offset(secondFacing);
-                        if (!BlockUtils.replaceable(secondNeighbor)) {
-                            blockList.add(new BlockWithDirection(secondNeighbor, secondFacing.getOpposite()));
-                        }
-                    }
-                }
-            }
+        BlockWithDirection best = null;
+        double bestScore = Double.MAX_VALUE;
 
-            if (blockList.isEmpty()) return null;
+        for (EnumFacing facing : SUPPORT_FACES) {
+            BlockPos support = targetBlockPos.offset(facing);
+            if (BlockUtils.replaceable(support)) continue;
+            if (!isUsableSupport(support)) continue;
 
-            // Nearest and best lined up with where we are already looking.
-            //
-            // The old comparator measured blockPos.offset(direction) against the target, but by
-            // construction that IS the target, so every candidate scored zero and the order was
-            // whatever EnumFacing.values() happened to be. Picking a support on the far side of
-            // the gap costs a longer reach and a bigger turn for the same block.
-            blockList.sort(Comparator.comparingDouble(data -> supportScore(data, eyePos)));
+            EnumFacing side = facing.getOpposite();
+            // The same question the game asks before a real right click. Without it the search
+            // can settle on a face the block legally cannot go on, onPlayerRightClick refuses,
+            // and the tick is spent for nothing.
+            if (!BlockUtils.canPlaceBlockOnSide(held, support, side)) continue;
 
-            for (BlockWithDirection block : blockList) {
-                RaytracedRotation rRot = getRotation(block, eyePos);
-                if (rRot != null) {
-                    return new BlockData(block, rRot);
-                }
+            double score = supportScore(support, side, eyePos);
+            if (score < bestScore) {
+                bestScore = score;
+                best = new BlockWithDirection(support, side);
             }
         }
-        return null;
+
+        if (best == null) return null;
+        return new BlockData(best, getRotation(best, eyePos));
     }
 
-    private double supportScore(BlockWithDirection data, Vec3 eyePos) {
-        Vec3 hit = getCenterHitVec(data.blockPos, data.direction);
+    /**
+     * Whether a block is worth clicking as support.
+     *
+     * Right-clicking a chest, a workbench or a fence gate opens it rather than placing anything,
+     * which costs the tick and pops a screen mid-bridge. Slabs, fences and the rest have hit
+     * boxes that do not fill the cell, so the face is not where the arithmetic says it is.
+     */
+    private boolean isUsableSupport(BlockPos pos) {
+        net.minecraft.block.Block block = BlockUtils.getBlock(pos);
+        if (block == null) return false;
+        return !BlockUtils.isInteractable(block) && !BlockUtils.notFull(block);
+    }
+
+    private double supportScore(BlockPos support, EnumFacing side, Vec3 eyePos) {
+        Vec3 hit = getCenterHitVec(support, side);
         double dx = hit.xCoord - eyePos.xCoord;
         double dy = hit.yCoord - eyePos.yCoord;
         double dz = hit.zCoord - eyePos.zCoord;
@@ -454,12 +464,31 @@ public class Scaffold extends Module {
         return distanceSq + (1.0 - alignment) * 0.25;
     }
 
+    /**
+     * Aim for a support, preferring an angle that actually raytraces to it.
+     *
+     * The raytrace used to be a requirement: no clean line to the face meant no placement at
+     * all. While bridging, the face you want is the side or underside of the block you are
+     * stood on, so your own bridge occludes it constantly and whole ticks went by placing
+     * nothing. It is now a bonus -- when a candidate angle traces cleanly we use it and its
+     * exact hit point, and when none does we aim at the face geometrically and let the server
+     * judge it, which is what the reference script does and why it never stalls.
+     */
     private RaytracedRotation getRotation(BlockWithDirection data, Vec3 eyePos) {
         float moveDir = getDirection();
         float baseYaw = MathHelper.wrapAngleTo180_float(moveDir + 180.0f);
         Vec2f sortingAngle = new Vec2f(baseYaw, 85.0f);
 
-        return getRotationFromRaycastedBlock(data.blockPos, data.direction, sortingAngle, eyePos);
+        RaytracedRotation traced = getRotationFromRaycastedBlock(
+                data.blockPos, data.direction, sortingAngle, eyePos);
+        if (traced != null) return traced;
+
+        Vec3 hit = getCenterHitVec(data.blockPos, data.direction);
+        Vec2f raw = getRotationFromPosition(eyePos, hit);
+        return new RaytracedRotation(
+                new Vec2f(quantizeAngle(raw.x),
+                        MathHelper.clamp_float(quantizeAngle(raw.y), -89.0f, 89.0f)),
+                null);
     }
 
     private RaytracedRotation getRotationFromRaycastedBlock(BlockPos blockPos, EnumFacing side, Vec2f priorityRotations, Vec3 eyePos) {
@@ -553,11 +582,15 @@ public class Scaffold extends Module {
         return new Vec3(mc.thePlayer.posX, mc.thePlayer.posY + mc.thePlayer.getEyeHeight(), mc.thePlayer.posZ);
     }
 
+    /**
+     * The middle of a face, a hair inside the block rather than exactly on the plane, so the
+     * point cannot land on the wrong side of it once it has been through a float.
+     */
     private Vec3 getCenterHitVec(BlockPos pos, EnumFacing side) {
         return new Vec3(
-                pos.getX() + 0.5 + side.getFrontOffsetX() * 0.5,
-                pos.getY() + 0.5 + side.getFrontOffsetY() * 0.5,
-                pos.getZ() + 0.5 + side.getFrontOffsetZ() * 0.5
+                pos.getX() + 0.5 + side.getFrontOffsetX() * 0.499,
+                pos.getY() + 0.5 + side.getFrontOffsetY() * 0.499,
+                pos.getZ() + 0.5 + side.getFrontOffsetZ() * 0.499
         );
     }
 
