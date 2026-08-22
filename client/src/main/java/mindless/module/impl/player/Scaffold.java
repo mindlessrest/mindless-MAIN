@@ -132,8 +132,6 @@ public class Scaffold extends Module {
         if (autoSwap.isToggled()) SlotManager.swap(slot, (int) swap.getInput() == 1);
         updateGroundTicks();
         applySprint(); applyTower();
-        BlockPos feet = new BlockPos(MathHelper.floor_double(mc.thePlayer.posX), MathHelper.floor_double(mc.thePlayer.posY) - 1, MathHelper.floor_double(mc.thePlayer.posZ));
-        if (!BlockUtils.replaceable(feet) && mc.thePlayer.onGround) { active = false; return; }
         float yaw = e.yaw == null ? RotationUtils.serverRotations[0] : e.yaw;
         float pitch = e.pitch == null ? RotationUtils.serverRotations[1] : e.pitch;
         int forward = mc.gameSettings.keyBindForward.isKeyDown() ? 1 : mc.gameSettings.keyBindBack.isKeyDown() ? -1 : 0;
@@ -165,7 +163,8 @@ public class Scaffold extends Module {
         if (mode.getInput() == 2) { targetYaw = breezilyYaw(); targetPitch = 80; }
         if (staticYaw.isToggled() && mode.getInput() != 1) targetYaw = mc.thePlayer.rotationYaw - 180.0f;
         float speed = (float)(minRotation.getInput() + Math.random() * (maxRotation.getInput() - minRotation.getInput()));
-        float[] smooth = RotationUtils.smoothRotation(yaw, pitch, targetYaw, targetPitch, Math.max(0, (int)speed), 0);
+        float[] smooth = RotationUtils.smoothRotation(yaw, pitch, targetYaw, targetPitch,
+                Math.min(30, Math.max(0, Math.round(speed * 3.0f))), 0);
         e.setYaw(smooth[0]); e.setPitch(smooth[1]);
         MovingObjectPosition mop = RotationUtils.rayTraceCustom(mc.playerController.getBlockReachDistance(), smooth[0], smooth[1]);
         boolean strictRaycast = (int) raycast.getInput() == 2;
