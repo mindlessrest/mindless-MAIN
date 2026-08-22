@@ -89,10 +89,9 @@ public class HUD extends Module {
      * instead, which stays legible without turning into a second set of letters.
      */
     private static final float[][] SOFT_SHADOW_TAPS = {
-            { 1.0f, 1.0f, 0.60f },
-            { 2.0f, 2.0f, 0.28f },
-            { 0.0f, 2.0f, 0.15f },
-            { 2.0f, 0.0f, 0.15f }
+            { 0.55f, 0.55f, 0.30f },
+            { 1.00f, 1.00f, 0.50f },
+            { 1.45f, 1.45f, 0.26f }
     };
     private static final String[] INFO_SEPARATORS = new String[] { "Space", "Brackets", "Dash" };
     /** Eight neighbours, so an outlined glyph is enclosed on the diagonals as well as the sides. */
@@ -937,20 +936,17 @@ public class HUD extends Module {
             float left = right ? posX - widths[i] - horizontalTextPadding : posX - horizontalTextPadding;
             float rowTop = top + i * rowHeight;
 
+            // Only the two ends of the list are rounded. Rounding each step as well curls every
+            // row's outer corner back on itself, and against rows this short the curve is most of
+            // the step -- the left edge stops reading as a staircase and turns into a column of
+            // scalloped tongues. Square steps between rounded ends stay one clean shape.
             boolean firstRow = i == 0;
             boolean lastRow = i == widths.length - 1;
-            // A step is only convex where the neighbour is narrower; where it is wider this row is
-            // tucked inside it and the corner has to stay square or a bite appears in the edge.
-            boolean stepAbove = firstRow || widths[i - 1] < widths[i];
-            boolean stepBelow = lastRow || widths[i + 1] < widths[i];
-
-            float topLeft = (right ? stepAbove : firstRow) ? radius : 0.0f;
-            float bottomLeft = (right ? stepBelow : lastRow) ? radius : 0.0f;
-            float topRight = (right ? firstRow : stepAbove) ? radius : 0.0f;
-            float bottomRight = (right ? lastRow : stepBelow) ? radius : 0.0f;
+            float top4 = firstRow ? radius : 0.0f;
+            float bottom4 = lastRow ? radius : 0.0f;
 
             fillRow(left, rowTop, left + width, rowTop + rowHeight,
-                    topLeft, topRight, bottomRight, bottomLeft, color);
+                    top4, top4, bottom4, bottom4, color);
         }
     }
 
@@ -1112,47 +1108,70 @@ public class HUD extends Module {
             drawHudText(hudFont, name, xPos, textY, color);
             return;
         }
-        drawHudText(hudFont, name, xPos, textY, color);
-        drawHudText(hudFont, info, xPos + hudFont.getStringWidth(name), textY, getHudInfoColor(color));
+        // Decoration for the whole row at once, before either half is drawn. Giving the name and
+        // the value their own shadow put two of them on top of each other where the two halves
+        // meet, and that overlap was a visible dark notch between the module and its value.
+        drawDecoration(hudFont, name + info, xPos, textY);
+        drawTextSegment(hudFont, name, xPos, textY, color, false);
+        drawTextSegment(hudFont, info, xPos + hudFont.getStringWidth(name), textY,
+                getHudInfoColor(color), false);
     }
 
     private static void drawHudText(RavenFontRenderer hudFont, String moduleName, float xPos, float textY, int fallbackColor) {
-        if (Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled()) {
-            TextGlowUtils.drawGlow(hudFont, moduleName, xPos, textY, fallbackColor);
-        }
+        drawDecoration(hudFont, moduleName, xPos, textY);
+        drawTextSegment(hudFont, moduleName, xPos, textY, fallbackColor, false);
+    }
 
-        // Outline mode draws its own border and then the text unshadowed, because the renderer's
-        // built-in shadow is a single offset copy -- fine over dark ground, but over a bright sky
-        // it just smears the glyph rather than separating it from the background.
-        int style = shadowStyle == null ? 0 : (int) shadowStyle.getInput();
-        if (shouldDrawTextShadow() && style != 0) {
-            String plain = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(moduleName);
-            if (plain == null) {
-                plain = moduleName;
-            }
-            int base = getShadowAlpha();
-            if (style == 1) {
-                int border = base << 24;
-                for (int[] offset : OUTLINE_OFFSETS) {
-                    // Straight to drawString, never through the wave path -- the border has to stay
-                    // black, and the per-glyph colour provider would paint it with the row's gradient.
-                    hudFont.drawString(plain, xPos + offset[0], textY + offset[1], border, false);
-                }
-            }
-            else {
-                for (float[] tap : SOFT_SHADOW_TAPS) {
-                    int alpha = Math.round(base * tap[2]);
-                    if (alpha <= 0) {
-                        continue;
-                    }
-                    hudFont.drawString(plain, xPos + tap[0], textY + tap[1], alpha << 24, false);
-                }
-            }
-            drawTextSegment(hudFont, moduleName, xPos, textY, fallbackColor, false);
+    /**
+     * Glow and shadow for a row, drawn under the text.
+     *
+     * Every offset is a multiple of the font's own height rather than a fixed pixel count. At
+     * scale 2 a one pixel shadow is half as far as it should be and at scale 0.6 it is nearly
+     * twice; anchoring it to the glyph keeps the same shadow at every size. All three styles are
+     * drawn here rather than leaning on the renderer's built-in shadow, so Shadow opacity means
+     * something for all of them.
+     */
+    private static void drawDecoration(RavenFontRenderer hudFont, String text, float xPos, float textY) {
+        if (Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled()) {
+            TextGlowUtils.drawGlow(hudFont, text, xPos, textY, 0xFFFFFFFF);
+        }
+        if (!shouldDrawTextShadow()) {
             return;
         }
 
-        drawTextSegment(hudFont, moduleName, xPos, textY, fallbackColor, shouldDrawTextShadow());
+        String plain = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(text);
+        if (plain == null) {
+            plain = text;
+        }
+        int base = getShadowAlpha();
+        if (base <= 0) {
+            return;
+        }
+        float unit = Math.max(1.0f, Math.round(hudFont.getFontHeight() * 0.1f));
+
+        switch (shadowStyle == null ? 0 : (int) shadowStyle.getInput()) {
+            case 1:
+                for (int[] offset : OUTLINE_OFFSETS) {
+                    hudFont.drawString(plain, xPos + offset[0] * unit, textY + offset[1] * unit,
+                            base << 24, false);
+                }
+                break;
+            case 2:
+                // Three copies a fraction of a pixel apart along one diagonal. Overlapping them
+                // builds a falloff, where the old taps sat up to two pixels out in three
+                // directions and read as a second, blurrier set of letters.
+                for (float[] tap : SOFT_SHADOW_TAPS) {
+                    int alpha = Math.round(base * tap[2]);
+                    if (alpha > 0) {
+                        hudFont.drawString(plain, xPos + tap[0] * unit, textY + tap[1] * unit,
+                                alpha << 24, false);
+                    }
+                }
+                break;
+            default:
+                hudFont.drawString(plain, xPos + unit, textY + unit, base << 24, false);
+                break;
+        }
     }
 
     private static void drawTextSegment(RavenFontRenderer hudFont, String text, float xPos, float textY,
