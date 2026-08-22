@@ -167,7 +167,7 @@ public class Scaffold extends Module {
         float speed = (float)(minRotation.getInput() + Math.random() * (maxRotation.getInput() - minRotation.getInput()));
         float[] smooth = RotationUtils.smoothRotation(yaw, pitch, targetYaw, targetPitch, Math.max(0, (int)speed), 0);
         e.setYaw(smooth[0]); e.setPitch(smooth[1]);
-        MovingObjectPosition mop = RotationUtils.rayCastBlock(mc.playerController.getBlockReachDistance(), smooth[0], smooth[1]);
+        MovingObjectPosition mop = RotationUtils.rayTraceCustom(mc.playerController.getBlockReachDistance(), smooth[0], smooth[1]);
         if (mop != null && mop.getBlockPos().equals(support) && mop.sideHit == face && canPlace()) { hit = mop.hitVec; queued = true; }
     }
 
