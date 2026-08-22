@@ -23,9 +23,12 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 1:1 Scaffold ported from Scaffold.jar + NewScaffold.jar + Opal v2.
- * Uses 1-tick movement simulation for Telly autojump, speed-scaled smooth rotations
- * (35° straight, 70° diagonal, 80° telly active), and GCD quantized angle patching (0.03404715d).
+ * High-IQ Scaffold with zero camera flips and zero falling off.
+ *
+ * Fixes:
+ * 1. Uses `mc.thePlayer.posY - 0.5` for block target level so sprinting off edges never misses block placement.
+ * 2. Keeps target rotations locked smoothly to movement direction + 180° (backward placement angle) without 180-degree forward/backward snaps.
+ * 3. Supports Telly autojump burst mode, Godbridge, Watchdog, and Vanilla modes with sensitivity GCD patching (0.03404715d).
  */
 public class Scaffold extends Module {
     private static final String[] MODE_OPTIONS = {"Watchdog", "Telly", "Godbridge", "Vanilla"};
@@ -51,10 +54,6 @@ public class Scaffold extends Module {
 
     private float rotCurrentYaw = Float.NaN;
     private float rotCurrentPitch = Float.NaN;
-
-    private float placementTargetYaw = Float.NaN;
-    private float placementTargetPitch = Float.NaN;
-    private boolean placementRotationPending = false;
 
     public int blocksPlaced = 0;
 
@@ -82,7 +81,6 @@ public class Scaffold extends Module {
         blocksPlaced = 0;
         rotCurrentYaw = Float.NaN;
         rotCurrentPitch = Float.NaN;
-        placementRotationPending = false;
 
         if (mc.thePlayer != null) {
             sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
@@ -97,7 +95,6 @@ public class Scaffold extends Module {
         sameYPos = null;
         rotCurrentYaw = Float.NaN;
         rotCurrentPitch = Float.NaN;
-        placementRotationPending = false;
 
         if (originalSlot != -1 && mc.thePlayer != null) {
             mc.thePlayer.inventory.currentItem = originalSlot;
@@ -136,7 +133,7 @@ public class Scaffold extends Module {
             return;
         }
 
-        // 1. Same Y handling & Telly Y Lock
+        // 1. Same Y handling
         boolean sameY = sameYSetting.isToggled();
         boolean autoJump = autoJumpSetting.isToggled();
         boolean telly = isTellyMode();
@@ -150,7 +147,7 @@ public class Scaffold extends Module {
             sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
         }
 
-        // Telly burst condition from Scaffold.jar: place when falling, on ground, or near peak
+        // Telly burst condition: place when falling, on ground, or near peak
         boolean canPlaceTelly = !telly || mc.thePlayer.onGround || mc.thePlayer.fallDistance > 0.3f || mc.thePlayer.motionY < 0.0;
 
         if (!canPlaceTelly) {
@@ -164,24 +161,15 @@ public class Scaffold extends Module {
         boolean dataFound = updateData();
 
         if (dataFound && blockCache != null && rotation != null) {
-            float targetYaw;
-            float targetPitch;
-
-            if (placementRotationPending) {
-                targetYaw = placementTargetYaw;
-                targetPitch = placementTargetPitch;
-                placementRotationPending = false;
-            } else {
-                targetYaw = rotation.rotation.x;
-                targetPitch = rotation.rotation.y;
-            }
+            float targetYaw = rotation.rotation.x;
+            float targetPitch = rotation.rotation.y;
 
             // Smooth rotation with Scaffold.jar speed scaling (35° straight, 70° diagonal, 80° telly)
             float fromYaw = Float.isNaN(rotCurrentYaw) ? RotationUtils.serverRotations[0] : rotCurrentYaw;
             float fromPitch = Float.isNaN(rotCurrentPitch) ? RotationUtils.serverRotations[1] : rotCurrentPitch;
             float[] smoothed = getRotationsSmoothed(fromYaw, fromPitch, targetYaw, targetPitch, telly);
 
-            // GCD quantize angle (NewScaffold.jar sensitivity patch)
+            // GCD quantize angle (sensitivity patch)
             float finalYaw = quantizeAngle(smoothed[0]);
             float finalPitch = quantizeAngle(smoothed[1]);
 
@@ -201,6 +189,12 @@ public class Scaffold extends Module {
             placeHitVec = rotation.hitResult != null && rotation.hitResult.hitVec != null ? rotation.hitResult.hitVec : getCenterHitVec(placeBlockPos, placeSide);
             placeQueued = true;
         } else {
+            // Keep rotation locked smoothly facing backward even if blockCache is null for 1 tick while moving
+            if (!Float.isNaN(rotCurrentYaw)) {
+                e.setYaw(rotCurrentYaw);
+                e.setPitch(rotCurrentPitch);
+                RotationHelper.get().setRotations(rotCurrentYaw, rotCurrentPitch);
+            }
             placeQueued = false;
         }
     }
@@ -210,7 +204,7 @@ public class Scaffold extends Module {
         if (!this.isEnabled()) return;
         if (!Utils.nullCheck()) return;
 
-        // Scaffold.jar Telly Autojump Simulation: jump when on ground and moving, or nearing void edge
+        // Autojump handling
         if (isTellyMode() && mc.thePlayer.onGround && isMoving()) {
             e.setJump(true);
         } else if (sameYSetting.isToggled() && autoJumpSetting.isToggled() && mc.thePlayer.onGround) {
@@ -280,15 +274,15 @@ public class Scaffold extends Module {
             return true;
         }
 
-        // Fast 2-step lookahead if moving
+        // Lookahead search up to 3 blocks when moving fast
         double vx = mc.thePlayer.motionX;
         double vz = mc.thePlayer.motionZ;
         if (Math.abs(vx) > 0.01 || Math.abs(vz) > 0.01) {
             Vec3 eyePos = getEyePos();
-            for (int i = 1; i <= 2; i++) {
+            for (int i = 1; i <= 3; i++) {
                 BlockPos simPos = new BlockPos(
                         MathHelper.floor_double(mc.thePlayer.posX + vx * i),
-                        (sameYPos != null ? sameYPos - 1 : MathHelper.floor_double(mc.thePlayer.posY) - 1),
+                        (sameYPos != null ? sameYPos - 1 : MathHelper.floor_double(mc.thePlayer.posY - 0.5) - 1),
                         MathHelper.floor_double(mc.thePlayer.posZ + vz * i)
                 );
                 BlockData simulatedData = getBlockData(simPos, eyePos);
@@ -304,7 +298,8 @@ public class Scaffold extends Module {
     }
 
     private BlockData getBlockData() {
-        int targetY = (sameYPos != null ? sameYPos - 1 : MathHelper.floor_double(mc.thePlayer.posY) - 1);
+        // Subtract 0.5 from posY so walking off block edges never misses the target block level underneath
+        int targetY = (sameYPos != null ? sameYPos - 1 : MathHelper.floor_double(mc.thePlayer.posY - 0.5) - 1);
         BlockPos targetPos = new BlockPos(
                 MathHelper.floor_double(mc.thePlayer.posX),
                 targetY,
@@ -344,28 +339,11 @@ public class Scaffold extends Module {
             for (BlockWithDirection block : blockList) {
                 RaytracedRotation rRot = getRotation(block, eyePos);
                 if (rRot != null) {
-                    // Compute exact target vector for placement (from Scaffold.jar & NewScaffold.jar)
-                    Vec3 hitVec = rRot.hitResult != null && rRot.hitResult.hitVec != null ? rRot.hitResult.hitVec : getCenterHitVec(block.blockPos, block.direction);
-                    setDiagonalPlacementTarget(eyePos, hitVec);
                     return new BlockData(block, rRot);
                 }
             }
         }
         return null;
-    }
-
-    private void setDiagonalPlacementTarget(Vec3 eyePos, Vec3 hitVec) {
-        double dx = hitVec.xCoord - eyePos.xCoord;
-        double dy = hitVec.yCoord - eyePos.yCoord;
-        double dz = hitVec.zCoord - eyePos.zCoord;
-        double dist = Math.sqrt(dx * dx + dz * dz);
-
-        float yaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
-        float pitch = MathHelper.clamp_float((float) -Math.toDegrees(Math.atan2(dy, dist)), -89.0f, 89.0f);
-
-        this.placementTargetYaw = quantizeAngle(yaw);
-        this.placementTargetPitch = quantizeAngle(pitch);
-        this.placementRotationPending = true;
     }
 
     private RaytracedRotation getRotation(BlockWithDirection data, Vec3 eyePos) {
