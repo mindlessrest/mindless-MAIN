@@ -10,10 +10,8 @@ import mindless.module.impl.movement.LongJump;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.BlockUtils;
-import mindless.utility.EnumFacingOffset;
 import mindless.utility.RotationUtils;
 import mindless.utility.ScaffoldUtils;
-import mindless.utility.ScaffoldPlayerUtils;
 import mindless.utility.SlotManager;
 import mindless.utility.Utils;
 import net.minecraft.client.settings.KeyBinding;
@@ -53,9 +51,6 @@ public class Scaffold extends Module {
     private final SliderSetting straightTicks = new SliderSetting("Telly Straight Ticks", 6, 0, 8, 1);
     private final SliderSetting diagonalTicks = new SliderSetting("Telly Diagonal Ticks", 4, 0, 8, 1);
     private final SliderSetting jumpDownTicks = new SliderSetting("Telly Jump Down Ticks", 1, 0, 8, 1);
-    private final ButtonSetting hypixelTelly = new ButtonSetting("Hypixel Telly", false);
-    private final ButtonSetting staticYaw = new ButtonSetting("Static Yaw", false);
-    private final SliderSetting sneakEvery = new SliderSetting("Sneak Every", 1, 0, 10, 1);
     public final ButtonSetting safeWalk = new ButtonSetting("Safe Walk", false);
     public final ButtonSetting autoSwap = new ButtonSetting("Auto Swap", true);
     public final ButtonSetting autoJump = new ButtonSetting("Auto Jump", false);
@@ -83,8 +78,7 @@ public class Scaffold extends Module {
         registerSetting(mode); registerSetting(sprintMode); registerSetting(search); registerSetting(raycast);
         registerSetting(swap); registerSetting(towerMode); registerSetting(minRotation); registerSetting(maxRotation);
         registerSetting(placeDelay); registerSetting(expand); registerSetting(straightTicks);
-        registerSetting(diagonalTicks); registerSetting(jumpDownTicks); registerSetting(hypixelTelly);
-        registerSetting(staticYaw); registerSetting(sneakEvery); registerSetting(safeWalk);
+        registerSetting(diagonalTicks); registerSetting(jumpDownTicks); registerSetting(safeWalk);
         registerSetting(autoSwap); registerSetting(autoJump); registerSetting(keepY); registerSetting(showBlockCount);
         registerSetting(sneak); registerSetting(swing); registerSetting(moveFix); registerSetting(towerMove); registerSetting(sendPacket);
         alwaysOn = true;
@@ -121,7 +115,7 @@ public class Scaffold extends Module {
     @SubscribeEvent public void onInput(PrePlayerInputEvent e) {
         if (!Utils.nullCheck() || !moduleEnabled) return;
         if ((autoJump.isToggled() || mode.getInput() == 1) && mc.thePlayer.onGround && Utils.isMoving() && holdingBlocks()) e.setJump(true);
-        if (sneak.isToggled() && (sneakEvery.getInput() <= 0 || placed >= (int)sneakEvery.getInput())) e.setSneak(true);
+        if (sneak.isToggled()) e.setSneak(true);
     }
 
     @SubscribeEvent public void onRotation(ClientRotationEvent e) {
@@ -136,34 +130,12 @@ public class Scaffold extends Module {
         if (!BlockUtils.replaceable(feet) && mc.thePlayer.onGround) { active = false; return; }
         float yaw = e.yaw == null ? RotationUtils.serverRotations[0] : e.yaw;
         float pitch = e.pitch == null ? RotationUtils.serverRotations[1] : e.pitch;
-        int forward = mc.gameSettings.keyBindForward.isKeyDown() ? 1 : mc.gameSettings.keyBindBack.isKeyDown() ? -1 : 0;
-        int strafe = mc.gameSettings.keyBindRight.isKeyDown() ? -1 : mc.gameSettings.keyBindLeft.isKeyDown() ? 1 : 0;
-        double direction = mindless.helper.RotationHelper.getDirection(mc.thePlayer.rotationYaw, forward, strafe);
-        int ox = (int) (-Math.sin(direction));
-        int oz = (int) Math.cos(direction);
-        Vec3 targetPos = ScaffoldPlayerUtils.getPlacePossibility(ox, 0, oz,
-                keepY.isToggled() && !mc.gameSettings.keyBindJump.isKeyDown() ? startY : null);
-        if (targetPos == null && keepY.isToggled()) targetPos = ScaffoldPlayerUtils.getPlacePossibility(ox, 0, oz, null);
-        EnumFacingOffset targetFacing = targetPos == null ? null : ScaffoldPlayerUtils.getEnumFacing(targetPos, true);
-        Target target = targetPos == null || targetFacing == null ? null : new Target(
-                new BlockPos(targetPos.xCoord + targetFacing.getOffset().xCoord,
-                        targetPos.yCoord + targetFacing.getOffset().yCoord,
-                        targetPos.zCoord + targetFacing.getOffset().zCoord),
-                targetFacing.getEnumFacing(), yaw, pitch);
-        if (target != null) {
-            float[] rotations = ScaffoldUtils.computeRotations(target.support, target.face, yaw, pitch,
-                    mc.playerController.getBlockReachDistance(), (int) search.getInput(), (int) raycast.getInput() == 2);
-            if (rotations != null) target = new Target(target.support, target.face, rotations[0], rotations[1]);
-        }
+        Target target = findTarget(yaw, pitch);
         if (target == null) { active = false; return; }
         active = hasSwapped = true; moduleEnabled = isEnabled = true; support = target.support; face = target.face;
         targetYaw = target.yaw; targetPitch = target.pitch;
-        if (mode.getInput() == 1 && mc.thePlayer.onGround && Utils.isMoving()) {
-            targetYaw = mc.thePlayer.rotationYaw; targetPitch = 68 + (float)(Math.random() * 22);
-            if (hypixelTelly.isToggled()) targetPitch = 82.5f;
-        }
+        if (mode.getInput() == 1 && mc.thePlayer.onGround && Utils.isMoving()) { targetYaw = mc.thePlayer.rotationYaw; targetPitch = 68 + (float)(Math.random() * 22); }
         if (mode.getInput() == 2) { targetYaw = breezilyYaw(); targetPitch = 80; }
-        if (staticYaw.isToggled() && mode.getInput() != 1) targetYaw = mc.thePlayer.rotationYaw - 180.0f;
         float speed = (float)(minRotation.getInput() + Math.random() * (maxRotation.getInput() - minRotation.getInput()));
         float[] smooth = RotationUtils.smoothRotation(yaw, pitch, targetYaw, targetPitch, Math.max(0, (int)speed), 0);
         e.setYaw(smooth[0]); e.setPitch(smooth[1]);

@@ -67,7 +67,7 @@ public final class ScaffoldUtils {
                 float yaw = baseYaw + MathHelper.wrapAngleTo180_float(centerYaw + yawOffset - baseYaw);
                 float pitch = MathHelper.clamp_float(centerPitch + pitchOffset, -90.0f, 90.0f);
                 MovingObjectPosition hit = RotationUtils.rayCastBlock(reach, yaw, pitch);
-                if (hit == null || !block.equals(hit.getBlockPos()) || (strict && hit.sideHit != face)) continue;
+                if (hit == null || !block.equals(hit.getBlockPos()) || hit.sideHit != face) continue;
                 float dy = Math.abs(MathHelper.wrapAngleTo180_float(yaw - baseYaw));
                 float dp = Math.abs(pitch - basePitch);
                 open.add(new Node(yaw, pitch, dy * dy + dp * dp));
