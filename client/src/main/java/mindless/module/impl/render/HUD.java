@@ -51,11 +51,21 @@ public class HUD extends Module {
     private static SliderSetting outline;
     public static ButtonSetting alphabeticalSort;
     private static ButtonSetting drawBackground;
+    private static SliderSetting backgroundMode;
     private static ButtonSetting roundedBackground;
+    private static SliderSetting cornerRadius;
+    private static SliderSetting backgroundOpacity;
+    private static ButtonSetting backgroundBlur;
     private static ButtonSetting textShadow;
+    private static SliderSetting shadowStyle;
+    private static SliderSetting shadowOpacity;
+    private static SliderSetting lineSpacing;
     private static ButtonSetting alignRight;
     private static ButtonSetting lowercase;
     public static ButtonSetting showInfo;
+    private static SliderSetting infoSeparator;
+    private static ButtonSetting infoMatchName;
+    private static ColorSetting infoColor;
     private static final float DEFAULT_POS_X = 5.0f;
     private static final float DEFAULT_POS_Y = 70.0f;
     public static float posX = DEFAULT_POS_X;
@@ -64,8 +74,16 @@ public class HUD extends Module {
     private static float relativePosY = Float.NaN;
 
     private static final String[] OUTLINE_MODES = new String[] { "None", "Full", "Side" };
+    private static final String[] BACKGROUND_MODES = new String[] { "Per line", "Panel" };
+    private static final String[] SHADOW_STYLES = new String[] { "Drop", "Outline" };
+    private static final String[] INFO_SEPARATORS = new String[] { "Space", "Brackets", "Dash" };
+    /** Eight neighbours, so an outlined glyph is enclosed on the diagonals as well as the sides. */
+    private static final int[][] OUTLINE_OFFSETS = {
+            { -1, -1 }, { 0, -1 }, { 1, -1 },
+            { -1,  0 },            { 1,  0 },
+            { -1,  1 }, { 0,  1 }, { 1,  1 }
+    };
     private static final String[] HUD_FONT_OPTIONS = FontManager.getHudFontOptions();
-    private static final int BACKGROUND_COLOR = new Color(0, 0, 0, 110).getRGB();
 
     private boolean isAlphabeticalSort;
     private boolean canShowInfo;
@@ -92,11 +110,24 @@ public class HUD extends Module {
         this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));
         this.registerSetting(alignRight = new ButtonSetting("Align right", false));
         this.registerSetting(alphabeticalSort = new ButtonSetting("Alphabetical sort", false));
+        this.registerSetting(lineSpacing = new SliderSetting("Line spacing", 0.0, -2.0, 8.0, 0.5));
         this.registerSetting(drawBackground = new ButtonSetting("Draw background", false));
+        // "Rounded background" used to be the only rounding control and it silently switched the
+        // whole list onto one panel behind the rows, which is not what rounding a background means
+        // and is why it looked broken. The shape is its own choice now.
+        this.registerSetting(backgroundMode = new SliderSetting("Background mode", 0, BACKGROUND_MODES));
         this.registerSetting(roundedBackground = new ButtonSetting("Rounded background", false));
+        this.registerSetting(cornerRadius = new SliderSetting("Corner radius", 4.0, 0.0, 12.0, 0.5));
+        this.registerSetting(backgroundOpacity = new SliderSetting("Background opacity", 43.0, 0.0, 100.0, 1.0));
+        this.registerSetting(backgroundBlur = new ButtonSetting("Background blur", false));
         this.registerSetting(textShadow = new ButtonSetting("Text shadow", true));
+        this.registerSetting(shadowStyle = new SliderSetting("Shadow style", 0, SHADOW_STYLES));
+        this.registerSetting(shadowOpacity = new SliderSetting("Shadow opacity", 100.0, 5.0, 100.0, 5.0));
         this.registerSetting(lowercase = new ButtonSetting("Lowercase", false));
         this.registerSetting(showInfo = new ButtonSetting("Show module info", true));
+        this.registerSetting(infoSeparator = new SliderSetting("Info separator", 0, INFO_SEPARATORS));
+        this.registerSetting(infoMatchName = new ButtonSetting("Info matches name color", false));
+        this.registerSetting(infoColor = new ColorSetting("Info color", 170, 170, 170));
     }
 
     @Override
@@ -125,6 +156,42 @@ public class HUD extends Module {
         if (waveLength != null) {
             waveLength.setVisible(showWaveSettings, this);
         }
+
+        boolean background = drawBackground != null && drawBackground.isToggled();
+        if (backgroundMode != null) {
+            backgroundMode.setVisible(background, this);
+        }
+        if (roundedBackground != null) {
+            roundedBackground.setVisible(background, this);
+        }
+        if (cornerRadius != null) {
+            cornerRadius.setVisible(background && roundedBackground != null && roundedBackground.isToggled(), this);
+        }
+        if (backgroundOpacity != null) {
+            backgroundOpacity.setVisible(background, this);
+        }
+        if (backgroundBlur != null) {
+            backgroundBlur.setVisible(background, this);
+        }
+
+        boolean shadow = textShadow != null && textShadow.isToggled();
+        if (shadowStyle != null) {
+            shadowStyle.setVisible(shadow, this);
+        }
+        if (shadowOpacity != null) {
+            shadowOpacity.setVisible(shadow, this);
+        }
+
+        boolean info = showInfo != null && showInfo.isToggled();
+        if (infoSeparator != null) {
+            infoSeparator.setVisible(info, this);
+        }
+        if (infoMatchName != null) {
+            infoMatchName.setVisible(info, this);
+        }
+        if (infoColor != null) {
+            infoColor.setVisible(info && infoMatchName != null && !infoMatchName.isToggled(), this);
+        }
     }
 
     @Override
@@ -138,6 +205,7 @@ public class HUD extends Module {
         if (buttonSetting == alphabeticalSort || buttonSetting == showInfo) {
             ModuleManager.sort();
         }
+        guiUpdate();
     }
 
     @SubscribeEvent
@@ -200,7 +268,9 @@ public class HUD extends Module {
         double lastBackgroundBottom = 0.0;
         boolean removeVelocity = ModuleManager.antiKnockback.isEnabled();
 
-        if (roundedBackground.isToggled()) {
+        // The panel is measured from the same rows the loop below draws, and with the same widths,
+        // so the two can no longer disagree about how tall or wide the list is.
+        if (drawBackground.isToggled() && isPanelBackground()) {
             float maxWidth = 0;
             int visibleCount = 0;
             for (Module module : ModuleManager.organizedModules) {
@@ -209,19 +279,12 @@ public class HUD extends Module {
                 visibleCount++;
             }
             if (visibleCount > 0) {
-                float pad = 5.0f;
-                float bgLeft = posX - horizontalTextPadding - pad;
-                float bgTop = posY - pad;
-                float bgW = maxWidth + horizontalTextPadding * 2 + pad * 2;
-                float bgH = visibleCount * rowHeight + pad * 2;
-                if (alignRight.isToggled()) {
-                    bgLeft = posX - maxWidth - horizontalTextPadding - pad;
-                }
-                float hudBgRadius = 8.0f * mindless.module.impl.theme.ThemeManager.roundingScale();
-                BlurUtils.prepareBlur();
-                RoundedUtils.drawRound(bgLeft, bgTop, bgW, bgH, hudBgRadius, 0xFF000000);
-                BlurUtils.blurEnd(1, 1.4f, 0.60f);
-                RoundedUtils.drawRound(bgLeft, bgTop, bgW, bgH, hudBgRadius, BACKGROUND_COLOR);
+                float bgLeft = alignRight.isToggled()
+                        ? posX - maxWidth - horizontalTextPadding
+                        : posX - horizontalTextPadding;
+                float bgW = maxWidth + horizontalTextPadding * 2;
+                float bgH = visibleCount * rowHeight;
+                drawHudBackground(bgLeft, posY, bgW, bgH);
             }
         }
 
@@ -255,8 +318,10 @@ public class HUD extends Module {
                 double wavePhase = hudWavePhase(verticalWaveAccum, rowCenterX);
                 int color = getHudColor(wavePhase);
 
-                if (drawBackground.isToggled() && !roundedBackground.isToggled()) {
-                    RenderUtils.drawRect(backgroundLeft, backgroundTop, backgroundRight, backgroundBottom, BACKGROUND_COLOR);
+                if (drawBackground.isToggled() && !isPanelBackground()) {
+                    drawHudBackground((float) backgroundLeft, (float) backgroundTop,
+                            (float) (backgroundRight - backgroundLeft),
+                            (float) (backgroundBottom - backgroundTop));
                 }
 
                 if (outline.getInput() == 1 && firstVisibleRow) {
@@ -299,7 +364,7 @@ public class HUD extends Module {
                     }
                 }
 
-                drawHudText(hudFont, moduleName, xPos, textY, color);
+                drawHudRow(hudFont, module, xPos, textY, color);
                 previousModule = moduleName;
                 previousModuleWidth = moduleWidth;
                 lastOutlineLeft = outlineLeft;
@@ -535,7 +600,9 @@ public class HUD extends Module {
                     firstVisibleRow = false;
 
                     if (drawBackground.isToggled()) {
-                        RenderUtils.drawRect(backgroundLeft, backgroundTop, backgroundRight, backgroundBottom, BACKGROUND_COLOR);
+                        drawHudBackground((float) backgroundLeft, (float) backgroundTop,
+                                (float) (backgroundRight - backgroundLeft),
+                                (float) (backgroundBottom - backgroundTop));
                     }
 
                     if (outline.getInput() == 1 && !previousModule.isEmpty()) {
@@ -569,7 +636,7 @@ public class HUD extends Module {
                         }
                     }
 
-                    drawHudText(hudFont, moduleName, xPos, textY, color);
+                    drawHudRow(hudFont, module, xPos, textY, color);
                     previousModule = moduleName;
                     previousModuleWidth = moduleWidth;
                     lastOutlineLeft = outlineLeft;
@@ -664,15 +731,46 @@ public class HUD extends Module {
     }
 
     public static String getHudRenderText(Module module) {
-        String moduleName = getHudText(module);
+        return getHudText(module) + getHudInfoText(module);
+    }
+
+    /**
+     * The module's value with its separator, or "" when there is nothing to show.
+     *
+     * The colour code that used to be baked in here (a literal section-7) fixed the value at
+     * Minecraft's grey and could not be changed, which is what stopped the list from being able to
+     * do a dim name against a bright value. The two halves are drawn separately now and this
+     * carries no colour at all.
+     */
+    private static String getHudInfoText(Module module) {
+        if (showInfo == null || !showInfo.isToggled()) {
+            return "";
+        }
         String info = module.getInfo();
-        if (showInfo != null && showInfo.isToggled() && info != null && !info.isEmpty()) {
-            moduleName += " \u00a77" + info;
+        if (info == null || info.isEmpty()) {
+            return "";
         }
         if (lowercase != null && lowercase.isToggled()) {
-            moduleName = moduleName.toLowerCase();
+            info = info.toLowerCase();
         }
-        return moduleName;
+        switch (infoSeparator == null ? 0 : (int) infoSeparator.getInput()) {
+            case 1:  return " [" + info + "]";
+            case 2:  return " - " + info;
+            default: return " " + info;
+        }
+    }
+
+    /** Colour for the value half of a row, given the colour the name was drawn in. */
+    private static int getHudInfoColor(int nameColor) {
+        if (infoMatchName != null && infoMatchName.isToggled()) {
+            return nameColor;
+        }
+        if (infoColor == null) {
+            return 0xFFAAAAAA;
+        }
+        // Carry the name's alpha across so both halves fade together.
+        int alpha = (nameColor >>> 24) & 0xFF;
+        return ((alpha == 0 ? 0xFF : alpha) << 24) | (infoColor.getRGB() & 0xFFFFFF);
     }
 
     public static String getSelectedFontName() {
@@ -763,7 +861,52 @@ public class HUD extends Module {
 
     private static int getHudRowHeight(int textTopOffset, int textBottomOffset, int textTopPadding, int textBottomPadding) {
         int textBoxHeight = Math.max(1, textBottomOffset - textTopOffset);
-        return Math.max(1, textBoxHeight + textTopPadding + textBottomPadding);
+        int spacing = lineSpacing == null ? 0 : (int) Math.round(lineSpacing.getInput());
+        return Math.max(1, textBoxHeight + textTopPadding + textBottomPadding + spacing);
+    }
+
+    private static boolean isPanelBackground() {
+        return backgroundMode != null && (int) backgroundMode.getInput() == 1;
+    }
+
+    /**
+     * One background box, rounded or square, blurred or not.
+     *
+     * Both call sites go through here so a per-line background and a panel behind the whole list
+     * pick up the same radius, opacity and blur rather than each carrying its own hardcoded look.
+     */
+    private static void drawHudBackground(float left, float top, float width, float height) {
+        if (width <= 0.0f || height <= 0.0f) {
+            return;
+        }
+        int alpha = Math.max(0, Math.min(255,
+                (int) Math.round((backgroundOpacity == null ? 43.0 : backgroundOpacity.getInput()) * 2.55)));
+        if (alpha == 0 && !(backgroundBlur != null && backgroundBlur.isToggled())) {
+            return;
+        }
+        int color = new Color(0, 0, 0, alpha).getRGB();
+
+        boolean rounded = roundedBackground != null && roundedBackground.isToggled();
+        float radius = !rounded ? 0.0f
+                : (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
+                        * mindless.module.impl.theme.ThemeManager.roundingScale();
+        // A radius past half the shorter side makes the SDF fold in on itself and the box comes
+        // out pinched, which is what a tall thin row looked like at the old fixed radius of eight.
+        radius = Math.max(0.0f, Math.min(radius, Math.min(width, height) * 0.5f));
+
+        if (backgroundBlur != null && backgroundBlur.isToggled()) {
+            BlurUtils.prepareBlur();
+            RoundedUtils.drawRound(left, top, width, height, radius, 0xFF000000);
+            BlurUtils.blurEnd(1, 1.4f, 0.60f);
+        }
+        if (alpha > 0) {
+            if (radius <= 0.0f) {
+                RenderUtils.drawRect(left, top, left + width, top + height, color);
+            }
+            else {
+                RoundedUtils.drawRound(left, top, width, height, radius, new Color(color, true));
+            }
+        }
     }
 
     private static float getHudTextY(float rowTop, int textTopOffset, int textTopPadding) {
@@ -789,21 +932,62 @@ public class HUD extends Module {
         return rowCenterX * (HUD_WAVE_HORIZONTAL_X_SCALE / getWaveLengthMultiplier()) * getHorizontalWaveDirectionSign();
     }
 
+    /** Draws one row as a name and a value, each in its own colour. */
+    private static void drawHudRow(RavenFontRenderer hudFont, Module module, float xPos, float textY, int color) {
+        String name = getHudText(module);
+        String info = getHudInfoText(module);
+        if (info.isEmpty()) {
+            drawHudText(hudFont, name, xPos, textY, color);
+            return;
+        }
+        drawHudText(hudFont, name, xPos, textY, color);
+        drawHudText(hudFont, info, xPos + hudFont.getStringWidth(name), textY, getHudInfoColor(color));
+    }
+
     private static void drawHudText(RavenFontRenderer hudFont, String moduleName, float xPos, float textY, int fallbackColor) {
         if (Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled()) {
             TextGlowUtils.drawGlow(hudFont, moduleName, xPos, textY, fallbackColor);
         }
-        if (!shouldUseHorizontalWaveText()) {
-            hudFont.drawString(moduleName, xPos, textY, fallbackColor, shouldDrawTextShadow());
+
+        // Outline mode draws its own border and then the text unshadowed, because the renderer's
+        // built-in shadow is a single offset copy -- fine over dark ground, but over a bright sky
+        // it just smears the glyph rather than separating it from the background.
+        if (shouldDrawTextShadow() && shadowStyle != null && (int) shadowStyle.getInput() == 1) {
+            String plain = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(moduleName);
+            if (plain == null) {
+                plain = moduleName;
+            }
+            int border = getShadowAlpha() << 24;
+            for (int[] offset : OUTLINE_OFFSETS) {
+                // Straight to drawString, never through the wave path -- the border has to stay
+                // black, and the per-glyph colour provider would paint it with the row's gradient.
+                hudFont.drawString(plain, xPos + offset[0], textY + offset[1], border, false);
+            }
+            drawTextSegment(hudFont, moduleName, xPos, textY, fallbackColor, false);
             return;
         }
 
-        hudFont.drawGlyphString(moduleName, xPos, textY, (character, xOffset, width, formattingColor) -> {
+        drawTextSegment(hudFont, moduleName, xPos, textY, fallbackColor, shouldDrawTextShadow());
+    }
+
+    private static void drawTextSegment(RavenFontRenderer hudFont, String text, float xPos, float textY,
+                                        int color, boolean shadow) {
+        if (!shouldUseHorizontalWaveText()) {
+            hudFont.drawString(text, xPos, textY, color, shadow);
+            return;
+        }
+
+        hudFont.drawGlyphString(text, xPos, textY, (character, xOffset, width, formattingColor) -> {
             if (formattingColor != null) {
                 return formattingColor;
             }
             return getHudColor(hudWavePhase(0.0, xPos + xOffset + width * 0.5f));
-        }, shouldDrawTextShadow());
+        }, shadow);
+    }
+
+    private static int getShadowAlpha() {
+        double percent = shadowOpacity == null ? 100.0 : shadowOpacity.getInput();
+        return Math.max(0, Math.min(255, (int) Math.round(percent * 2.55)));
     }
 
     private static boolean shouldUseHorizontalWaveText() {
