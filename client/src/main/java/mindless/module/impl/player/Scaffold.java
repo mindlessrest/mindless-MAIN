@@ -592,13 +592,16 @@ public class Scaffold extends Module {
         rotation = null;
 
         Vec3 eyePos = getEyePos();
+        double[] travel = travelDirection();
 
-        if (isTowering()) {
-            // Straight down, and nowhere else -- a tower has no reason to reach outward.
-            return accept(getBlockData(new BlockPos(
-                    MathHelper.floor_double(mc.thePlayer.posX),
-                    MathHelper.floor_double(mc.thePlayer.posY) - 1,
-                    MathHelper.floor_double(mc.thePlayer.posZ)), eyePos));
+        // A tower is the block directly under you, and it takes priority: if you are holding
+        // jump you want to go up. It no longer returns outright though -- towering while walking
+        // is a normal thing to do, and the bridge underneath you still has to keep up.
+        if (isTowering() && accept(getBlockData(new BlockPos(
+                MathHelper.floor_double(mc.thePlayer.posX),
+                MathHelper.floor_double(mc.thePlayer.posY) - 1,
+                MathHelper.floor_double(mc.thePlayer.posZ)), eyePos))) {
+            return true;
         }
 
         int targetY = targetY();
@@ -610,26 +613,32 @@ public class Scaffold extends Module {
             return true;
         }
 
-        // Any corner of the hitbox over a gap counts, not just the block the middle of you is
-        // above. Waiting for the centre to cross means the block only goes down once you are
-        // already dropping off the edge, which is most of why bridging felt like walk, stop,
-        // place, walk.
-        for (double[] corner : FOOTPRINT_CORNERS) {
-            if (accept(getBlockData(new BlockPos(
-                    MathHelper.floor_double(mc.thePlayer.posX + corner[0]),
-                    targetY,
-                    MathHelper.floor_double(mc.thePlayer.posZ + corner[1])), eyePos))) {
-                return true;
+        // Corners of the hitbox, but only the ones you are walking towards.
+        //
+        // All four meant a corner hanging off the side of the bridge asked for a block beside
+        // you, and you are not going to fall off the side of a block you are walking along -- so
+        // that was just a second lane being laid the whole way. Standing on nothing at all is
+        // already covered by the centre check above.
+        if (travel != null) {
+            for (double[] corner : FOOTPRINT_CORNERS) {
+                if (corner[0] * travel[0] + corner[1] * travel[1] <= 0.0) continue;
+                if (accept(getBlockData(new BlockPos(
+                        MathHelper.floor_double(mc.thePlayer.posX + corner[0]),
+                        targetY,
+                        MathHelper.floor_double(mc.thePlayer.posZ + corner[1])), eyePos))) {
+                    return true;
+                }
             }
         }
 
-        // Going diagonally you step into a cell whose only face-adjacent neighbours are the
-        // two orthogonal cells either side of it. If neither has been filled there is no face to
-        // click, nothing goes down, and you drop through the corner -- which is the falling
-        // after a few diagonal blocks. Fill those two first and the diagonal has something to
-        // build off.
-        double[] travel = travelDirection();
-        if (travel != null && Math.abs(travel[0]) > 1.0E-4 && Math.abs(travel[1]) > 1.0E-4) {
+        // Going diagonally you step into a cell whose only face-adjacent neighbours are the two
+        // orthogonal cells either side of it. With neither filled there is no face to click,
+        // nothing goes down, and you drop through the corner.
+        //
+        // Keyed off the keys rather than the motion vector: motion is never exactly square, so
+        // testing it against a small epsilon called almost every step diagonal and laid both
+        // orthogonal blocks every time. That is the other half of the double-wide bridge.
+        if (travel != null && rawForward() != 0.0f && rawStrafe() != 0.0f) {
             int aheadX = MathHelper.floor_double(
                     mc.thePlayer.posX + Math.signum(travel[0]) * DIAGONAL_FILL);
             int aheadZ = MathHelper.floor_double(
