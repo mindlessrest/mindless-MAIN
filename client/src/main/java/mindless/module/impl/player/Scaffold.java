@@ -209,9 +209,6 @@ public class Scaffold extends Module {
             e.setYaw(finalRots[0]);
             e.setPitch(finalRots[1]);
 
-            // The rotation faces back down the bridge, so without this the movement fix would
-            // steer by it and W would walk off the edge behind you.
-            RotationHelper.get().forceMovementFix = true;
             RotationHelper.get().setRotations(finalRots[0], finalRots[1]);
 
             // Queue block placement
@@ -224,7 +221,6 @@ public class Scaffold extends Module {
             if (!Float.isNaN(rotCurrentYaw)) {
                 e.setYaw(rotCurrentYaw);
                 e.setPitch(rotCurrentPitch);
-                RotationHelper.get().forceMovementFix = true;
                 RotationHelper.get().setRotations(rotCurrentYaw, rotCurrentPitch);
             }
             placeQueued = false;
