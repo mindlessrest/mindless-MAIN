@@ -619,14 +619,41 @@ public class Scaffold extends Module {
         int px = MathHelper.floor_double(mc.thePlayer.posX);
         int pz = MathHelper.floor_double(mc.thePlayer.posZ);
 
+        // Where the body will be when the click is sent, not where it is now. A cell the player
+        // is standing in cannot be filled -- the game refuses it -- and every tick spent asking
+        // is a tick not spent on a cell that would have worked.
+        AxisAlignedBB body = mc.thePlayer.getEntityBoundingBox().offset(
+                mc.thePlayer.motionX, mc.thePlayer.motionY, mc.thePlayer.motionZ);
+
+        // Whether this is a genuinely diagonal step, and which way it leans.
+        //
+        // Read off the motion rather than the keys, so it still works when the diagonal comes
+        // from looking at 45 degrees and holding nothing but forward, which is how most people do
+        // it. And off a ratio rather than an epsilon: motion is never exactly square, so an
+        // epsilon called nearly every straight step diagonal and laid a second lane the whole way.
+        int sx = 0;
+        int sz = 0;
+        if (travel != null) {
+            double ax = Math.abs(travel[0]);
+            double az = Math.abs(travel[1]);
+            double major = Math.max(ax, az);
+            if (major > 1.0E-6 && Math.min(ax, az) >= major * DIAGONAL_RATIO) {
+                sx = travel[0] >= 0.0 ? 1 : -1;
+                sz = travel[1] >= 0.0 ? 1 : -1;
+            }
+        }
+
         // A tower is the block straight under you, and it comes first: holding jump means up.
+        // Taken from where the jump will have carried you by the time the click goes out, since
+        // reading it from the position the tick started at spends the first tick of every hop
+        // looking at the block already under your feet.
         if (isTowering()) {
-            addTarget(targets, new BlockPos(
-                    px, MathHelper.floor_double(mc.thePlayer.posY) - 1, pz));
+            addTarget(targets, body, new BlockPos(px, MathHelper.floor_double(
+                    mc.thePlayer.posY + mc.thePlayer.motionY) - 1, pz));
         }
 
         int targetY = targetY();
-        addTarget(targets, new BlockPos(px, targetY, pz));
+        addBridgeTarget(targets, body, new BlockPos(px, targetY, pz), sx, sz);
 
         // Corners of the hitbox, but only the ones you are walking towards. All four meant a
         // corner hanging off the side of the bridge asked for a block beside you, and you do not
@@ -635,9 +662,9 @@ public class Scaffold extends Module {
         if (travel != null) {
             for (double[] corner : FOOTPRINT_CORNERS) {
                 if (corner[0] * travel[0] + corner[1] * travel[1] <= 0.0) continue;
-                addTarget(targets, new BlockPos(
+                addBridgeTarget(targets, body, new BlockPos(
                         MathHelper.floor_double(mc.thePlayer.posX + corner[0]), targetY,
-                        MathHelper.floor_double(mc.thePlayer.posZ + corner[1])));
+                        MathHelper.floor_double(mc.thePlayer.posZ + corner[1])), sx, sz);
             }
         }
 
@@ -650,47 +677,38 @@ public class Scaffold extends Module {
                 if (x == lastX && z == lastZ) continue;
                 lastX = x;
                 lastZ = z;
-                addTarget(targets, new BlockPos(x, targetY, z));
-            }
-        }
-
-        // Diagonal step-backs, last, because they only matter when the cell they lead to cannot
-        // be reached yet.
-        //
-        // A cell you enter diagonally has no solid face anywhere on it: the block you came from
-        // touches it at a corner, and a corner is not something you can right click. The two
-        // orthogonal cells either side are what a person fills first, and then the diagonal has
-        // something to build off. Without them you walk into a cell nothing can be placed in and
-        // drop through it, which is the falling after a few diagonal blocks.
-        //
-        // Gated on the motion being genuinely diagonal rather than on a small epsilon. Motion is
-        // never exactly square, so an epsilon called nearly every straight step diagonal and laid
-        // both orthogonals every time -- the other half of the double-wide bridge. Reading the
-        // motion rather than the keys keeps it working when the diagonal comes from looking at
-        // 45 degrees and holding nothing but forward, which is how most people do it.
-        if (travel != null) {
-            double ax = Math.abs(travel[0]);
-            double az = Math.abs(travel[1]);
-            double major = Math.max(ax, az);
-            if (major > 1.0E-6 && Math.min(ax, az) >= major * DIAGONAL_RATIO) {
-                int sx = travel[0] >= 0.0 ? 1 : -1;
-                int sz = travel[1] >= 0.0 ? 1 : -1;
-                for (BlockPos target : new ArrayList<>(targets)) {
-                    if (target.getY() != targetY) continue;
-                    addTarget(targets, new BlockPos(
-                            target.getX() - sx, targetY, target.getZ()));
-                    addTarget(targets, new BlockPos(
-                            target.getX(), targetY, target.getZ() - sz));
-                }
+                addBridgeTarget(targets, body, new BlockPos(x, targetY, z), sx, sz);
             }
         }
 
         return targets;
     }
 
-    private void addTarget(List<BlockPos> targets, BlockPos pos) {
+    /**
+     * A cell, followed straight away by the two cells a diagonal step needs under it.
+     *
+     * A cell entered diagonally has no solid face anywhere on it: the block you came from touches
+     * it at a corner, and a corner is not something you can right click. The two orthogonal cells
+     * either side are what a person fills first, and then the diagonal has something to build
+     * off. They sit directly behind the cell they serve rather than at the end of the list,
+     * because a diagonal step only leaves about two ticks to get both blocks down and trying
+     * every cell further along first spends them.
+     */
+    private void addBridgeTarget(List<BlockPos> targets, AxisAlignedBB body, BlockPos pos,
+                                 int sx, int sz) {
+        addTarget(targets, body, pos);
+        if (sx == 0 || sz == 0) return;
+        addTarget(targets, body, pos.add(-sx, 0, 0));
+        addTarget(targets, body, pos.add(0, 0, -sz));
+    }
+
+    private void addTarget(List<BlockPos> targets, AxisAlignedBB body, BlockPos pos) {
         if (targets.contains(pos)) return;
         if (!BlockUtils.replaceable(pos)) return;
+        if (new AxisAlignedBB(pos.getX(), pos.getY(), pos.getZ(),
+                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).intersectsWith(body)) {
+            return;
+        }
         targets.add(pos);
     }
 
