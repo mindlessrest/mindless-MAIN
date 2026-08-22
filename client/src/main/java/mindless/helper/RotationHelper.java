@@ -225,12 +225,6 @@ public class RotationHelper {
 
     @SubscribeEvent
     public void onRunTick(GameTickEvent e) {
-        if (this.setRotations && this.serverYaw != null && mc.thePlayer != null) {
-            float serverYawVal = RotationUtils.serverRotations[0];
-            float unwrapped = unwrapYaw(MathHelper.wrapAngleTo180_float(mc.thePlayer.rotationYaw), serverYawVal);
-            mc.thePlayer.rotationYaw = unwrapped;
-            mc.thePlayer.prevRotationYaw = unwrapped;
-        }
         this.serverYaw = this.serverPitch = null;
         this.setRotations = false;
         this.serverRelativeMovementInputs = false;
