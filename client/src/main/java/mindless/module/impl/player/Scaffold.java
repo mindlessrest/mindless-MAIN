@@ -622,8 +622,14 @@ public class Scaffold extends Module {
         // Where the body will be when the click is sent, not where it is now. A cell the player
         // is standing in cannot be filled -- the game refuses it -- and every tick spent asking
         // is a tick not spent on a cell that would have worked.
+        //
+        // Downward motion is deliberately not carried into it. A tick of falling drops the box a
+        // twelfth of a block into the layer being bridged, so every target read as blocked the
+        // moment the player left the ground -- which is the whole time it matters. Falling is
+        // also the case where the block is the thing that stops the fall, so it is not a reason
+        // to hold off. Only rising is, and that is the towering case this guards.
         AxisAlignedBB body = mc.thePlayer.getEntityBoundingBox().offset(
-                mc.thePlayer.motionX, mc.thePlayer.motionY, mc.thePlayer.motionZ);
+                mc.thePlayer.motionX, Math.max(0.0, mc.thePlayer.motionY), mc.thePlayer.motionZ);
 
         // Whether this is a genuinely diagonal step, and which way it leans.
         //
@@ -705,11 +711,23 @@ public class Scaffold extends Module {
     private void addTarget(List<BlockPos> targets, AxisAlignedBB body, BlockPos pos) {
         if (targets.contains(pos)) return;
         if (!BlockUtils.replaceable(pos)) return;
-        if (new AxisAlignedBB(pos.getX(), pos.getY(), pos.getZ(),
-                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0).intersectsWith(body)) {
-            return;
-        }
+        if (intersectsBody(pos, body)) return;
         targets.add(pos);
+    }
+
+    /**
+     * Whether a cell is one the player is standing in rather than one they can fill.
+     *
+     * The slack matters: standing on a block puts the top of that cell exactly at the sole of the
+     * foot, and a bare overlap test calls exactly-touching an overlap the moment a float lands a
+     * hair the wrong side of the boundary. Anything less than a fifth of a block of genuine
+     * overlap is the player resting on the cell, not occupying it.
+     */
+    private boolean intersectsBody(BlockPos pos, AxisAlignedBB body) {
+        final double slack = 0.02;
+        return pos.getX() + 1.0 > body.minX + slack && pos.getX() < body.maxX - slack
+                && pos.getY() + 1.0 > body.minY + slack && pos.getY() < body.maxY - slack
+                && pos.getZ() + 1.0 > body.minZ + slack && pos.getZ() < body.maxZ - slack;
     }
 
     /**
