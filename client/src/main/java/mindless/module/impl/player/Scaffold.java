@@ -159,7 +159,7 @@ public class Scaffold extends Module {
     public void rotateForward() {}
 
     public boolean holdingBlocks() {
-        if (!autoSwap.isToggled()) return isBlockItem(actualHeldStack());
+        if (!autoSwap.isToggled()) return isBlockItem(mc.thePlayer.getHeldItem());
         return getBlockSlot() != -1;
     }
 
@@ -317,7 +317,7 @@ public class Scaffold extends Module {
 
         if (queuedBlock == null || queuedFace == null || queuedHitVec == null) return;
 
-        ItemStack held = actualHeldStack();
+        ItemStack held = mc.thePlayer.getHeldItem();
         if (!isBlockItem(held)) return;
 
         if (!canPlaceNow()) return;
@@ -543,12 +543,7 @@ public class Scaffold extends Module {
         if (slot == -1) return false;
         if (lastSlot.get() == -1) lastSlot.set(mc.thePlayer.inventory.currentItem);
         if (autoSwap.isToggled()) SlotManager.swap(slot, (int) swapMode.getInput() == 1);
-        return isBlockItem(actualHeldStack());
-    }
-
-    private ItemStack actualHeldStack() {
-        if (mc.thePlayer == null) return null;
-        return mc.thePlayer.inventory.getStackInSlot(mc.thePlayer.inventory.currentItem);
+        return isBlockItem(mc.thePlayer.getHeldItem());
     }
 
     private static boolean isBlockItem(ItemStack stack) {
