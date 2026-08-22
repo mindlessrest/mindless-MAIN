@@ -7,6 +7,11 @@ import mindless.module.setting.impl.ColorSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.Timer;
 import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.shader.RoundedUtils;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.WorldRenderer;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
@@ -31,17 +36,37 @@ public class ColorComponent extends Component {
     private static final float ANIMATION_DURATION = 250f;
 
     private static final float LABEL_HEIGHT = 12f;
-    private static final float SQUARE_SIZE = 50f;
-    private static final float HUE_BAR_WIDTH = 10f;
-    private static final float HUE_GAP = 4f;
+    private static final float SQUARE_SIZE = 62f;
+    private static final float BAR_WIDTH = 7f;
+    private static final float HUE_GAP = 6f;
+    private static final float ALPHA_GAP = 5f;
     private static final float BLACK_BRI_EPSILON = 0.001f;
     private static final float GREY_SAT_EPSILON = 0.001f;
-    private static final float ALPHA_BAR_WIDTH = 10f;
-    private static final float ALPHA_GAP = 4f;
-    private static final float SQUARE_TOP_PAD = 2f;
-    private static final float BOTTOM_PAD = 2f;
-    private static final int HUE_STEPS = 20;
+    private static final float SQUARE_TOP_PAD = 3f;
+    private static final float SWATCH_GAP = 5f;
+    private static final float SWATCH_SIZE = 8f;
+    private static final float SWATCH_SPACING = 2f;
+    private static final float HEX_GAP = 4f;
+    private static final float HEX_HEIGHT = 7f;
+    private static final float BOTTOM_PAD = 3f;
     private static final float PREVIEW_BOX_SIZE = 5f;
+
+    private static final int BORDER = 0xFF23252C;
+    private static final int PANEL = 0xFF1A1C21;
+
+    /**
+     * Hue in RGB is piecewise linear between these six corners, so interpolating straight between
+     * them is exact. The bar used to be twenty HSB samples with a gradient between each pair,
+     * which is an approximation of a function that did not need approximating -- and it banded.
+     */
+    private static final int[] HUE_CORNERS = {
+            0xFFFF0000, 0xFFFFFF00, 0xFF00FF00, 0xFF00FFFF, 0xFF0000FF, 0xFFFF00FF, 0xFFFF0000
+    };
+
+    private static final int[] SWATCHES = {
+            0xFFFFFFFF, 0xFF9AA0AC, 0xFF2B2F36, 0xFFE8455F,
+            0xFFF5A623, 0xFF4BD07E, 0xFF3FA9F5, 0xFFA94DFF
+    };
 
     public ColorComponent(ColorSetting colorSetting, ModuleComponent moduleComponent, float o) {
         this.colorSetting = colorSetting;
@@ -53,7 +78,8 @@ public class ColorComponent extends Component {
     }
 
     public float getExpandedHeight() {
-        return LABEL_HEIGHT + SQUARE_TOP_PAD + SQUARE_SIZE + BOTTOM_PAD;
+        return LABEL_HEIGHT + SQUARE_TOP_PAD + SQUARE_SIZE
+                + SWATCH_GAP + SWATCH_SIZE + HEX_GAP + HEX_HEIGHT + BOTTOM_PAD;
     }
 
     public float getAnimationProgress() {
@@ -145,68 +171,135 @@ public class ColorComponent extends Component {
         float hue = useCachedHue ? cachedHue / 360f : colorSetting.getHue() / 360f;
         float sat = (dragMode != 0 || isBlack) ? cachedSat : satFromSetting;
 
+        // Saturation/brightness field.
         int hueRGB = Color.HSBtoRGB(hue, 1f, 1f) | 0xFF000000;
+        border(areaLeft, sqTop, sqRight, sqBottom);
         RenderUtils.drawRect(areaLeft, sqTop, sqRight, sqBottom, hueRGB);
         RenderUtils.drawHorizontalGradientRect(areaLeft, sqTop, sqRight, sqBottom,
                 0xFFFFFFFF, 0x00FFFFFF);
         RenderUtils.drawVerticalGradientRect(areaLeft, sqTop, sqRight, sqBottom,
                 0x00000000, 0xFF000000);
 
-        RenderUtils.drawOutline(areaLeft - 1, sqTop - 1, sqRight + 1, sqBottom + 1,
-                1f, 0xFF3C3C46);
-
+        // A ring, not a pair of crossed bars. It reads against any colour underneath because the
+        // dark ring outside it carries the contrast wherever the light one loses it.
         float indX = areaLeft + sat * SQUARE_SIZE;
         float indY = sqTop + (1f - bri) * SQUARE_SIZE;
-        RenderUtils.drawRect(indX - 2, indY, indX + 3, indY + 1, 0xFFFFFFFF);
-        RenderUtils.drawRect(indX, indY - 2, indX + 1, indY + 3, 0xFFFFFFFF);
+        ring(indX, indY, 4.1f, 1.0f, 0x66000000);
+        ring(indX, indY, 3.2f, 1.4f, 0xFFFFFFFF);
 
+        // Hue bar.
         float hueLeft = sqRight + HUE_GAP;
-        float hueRight = hueLeft + HUE_BAR_WIDTH;
-        float stepH = SQUARE_SIZE / HUE_STEPS;
-        for (int i = 0; i < HUE_STEPS; i++) {
-            float h1 = (float) i / HUE_STEPS;
-            float h2 = (float) (i + 1) / HUE_STEPS;
-            int c1 = Color.HSBtoRGB(h1, 1f, 1f) | 0xFF000000;
-            int c2 = Color.HSBtoRGB(h2, 1f, 1f) | 0xFF000000;
-            RenderUtils.drawVerticalGradientRect(hueLeft, sqTop + i * stepH,
-                    hueRight, sqTop + (i + 1) * stepH, c1, c2);
+        float hueRight = hueLeft + BAR_WIDTH;
+        border(hueLeft, sqTop, hueRight, sqBottom);
+        float segment = SQUARE_SIZE / 6f;
+        for (int i = 0; i < 6; i++) {
+            RenderUtils.drawVerticalGradientRect(hueLeft, sqTop + i * segment,
+                    hueRight, sqTop + (i + 1) * segment, HUE_CORNERS[i], HUE_CORNERS[i + 1]);
         }
+        knob(hueLeft, hueRight, sqTop + Math.max(0f, Math.min(1f, hue)) * SQUARE_SIZE,
+                Color.HSBtoRGB(hue, 1f, 1f) | 0xFF000000);
 
-        RenderUtils.drawOutline(hueLeft - 1, sqTop - 1, hueRight + 1, sqBottom + 1,
-                1f, 0xFF3C3C46);
-
-        float hueIndY = sqTop + Math.max(0, Math.min(1, hue)) * SQUARE_SIZE;
-        RenderUtils.drawRect(hueLeft - 1, hueIndY - 1,
-                hueRight + 1, hueIndY + 2, 0xFFFFFFFF);
-
+        // Alpha bar.
         if (colorSetting.hasAlpha()) {
             float alphaLeft = hueRight + ALPHA_GAP;
-            float alphaRight = alphaLeft + ALPHA_BAR_WIDTH;
-
-            int checkSize = 4;
-            for (float ax = alphaLeft; ax < alphaRight; ax += checkSize) {
-                for (float ay = sqTop; ay < sqBottom; ay += checkSize) {
-                    int col = ((int) ((ax - alphaLeft) / checkSize)
-                            + (int) ((ay - sqTop) / checkSize)) % 2 == 0
-                            ? 0xFF666666 : 0xFF999999;
-                    RenderUtils.drawRect(ax, ay,
-                            Math.min(ax + checkSize, alphaRight),
-                            Math.min(ay + checkSize, sqBottom), col);
-                }
-            }
-
+            float alphaRight = alphaLeft + BAR_WIDTH;
+            border(alphaLeft, sqTop, alphaRight, sqBottom);
+            checkerboard(alphaLeft, sqTop, alphaRight, sqBottom, 3);
             int rgb = colorSetting.getRGB();
             RenderUtils.drawVerticalGradientRect(alphaLeft, sqTop, alphaRight, sqBottom,
                     rgb & 0x00FFFFFF, rgb | 0xFF000000);
-
-            RenderUtils.drawOutline(alphaLeft - 1, sqTop - 1, alphaRight + 1, sqBottom + 1,
-                    1f, 0xFF3C3C46);
-
             float alphaFrac = colorSetting.getAlpha() / 255f;
-            float alphaIndY = sqTop + alphaFrac * SQUARE_SIZE;
-            RenderUtils.drawRect(alphaLeft - 1, alphaIndY - 1,
-                    alphaRight + 1, alphaIndY + 2, 0xFFFFFFFF);
+            knob(alphaLeft, alphaRight, sqTop + alphaFrac * SQUARE_SIZE,
+                    (Math.round(alphaFrac * 255) << 24) | (rgb & 0xFFFFFF));
         }
+
+        // Preset swatches, so the common colours are one click rather than a hunt around the field.
+        float swatchTop = sqBottom + SWATCH_GAP;
+        for (int i = 0; i < SWATCHES.length; i++) {
+            float left = areaLeft + i * (SWATCH_SIZE + SWATCH_SPACING);
+            RenderUtils.drawRect(left - 0.5f, swatchTop - 0.5f,
+                    left + SWATCH_SIZE + 0.5f, swatchTop + SWATCH_SIZE + 0.5f, BORDER);
+            RenderUtils.drawRect(left, swatchTop, left + SWATCH_SIZE, swatchTop + SWATCH_SIZE,
+                    SWATCHES[i]);
+        }
+
+        // Hex readout, so the value is legible and copyable by eye instead of guessed at.
+        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        String hex = String.format("#%06X", colorSetting.getRGB() & 0xFFFFFF);
+        if (colorSetting.hasAlpha()) {
+            hex = hex + "  " + Math.round(colorSetting.getAlpha() / 2.55f) + "%";
+        }
+        GL11.glPushMatrix();
+        GL11.glScaled(0.5, 0.5, 0.5);
+        renderer.drawString(hex, areaLeft * 2f, (swatchTop + SWATCH_SIZE + HEX_GAP) * 2f,
+                0xFF9AA0AC, false);
+        GL11.glPopMatrix();
+    }
+
+    /** A hairline frame with the panel colour behind it, drawn before whatever fills the box. */
+    private static void border(float left, float top, float right, float bottom) {
+        RenderUtils.drawRect(left - 1, top - 1, right + 1, bottom + 1, BORDER);
+        RenderUtils.drawRect(left, top, right, bottom, PANEL);
+    }
+
+    private static void checkerboard(float left, float top, float right, float bottom, int cell) {
+        for (float px = left; px < right; px += cell) {
+            for (float py = top; py < bottom; py += cell) {
+                int col = ((int) ((px - left) / cell) + (int) ((py - top) / cell)) % 2 == 0
+                        ? 0xFF5A5C63 : 0xFF8B8E96;
+                RenderUtils.drawRect(px, py, Math.min(px + cell, right), Math.min(py + cell, bottom), col);
+            }
+        }
+    }
+
+    /**
+     * The marker on a vertical bar: a rounded chip carrying the value it points at, rather than
+     * the full-width white slab that used to hide the colour it was selecting.
+     */
+    private static void knob(float left, float right, float centerY, int color) {
+        float x1 = left - 1.5f, x2 = right + 1.5f;
+        float y1 = centerY - 2.0f, y2 = centerY + 2.0f;
+        RoundedUtils.drawRound(x1 - 0.6f, y1 - 0.6f, (x2 - x1) + 1.2f, (y2 - y1) + 1.2f,
+                2.6f, new Color(0, 0, 0, 150));
+        RoundedUtils.drawRound(x1, y1, x2 - x1, y2 - y1, 2.0f, new Color(0xFFFFFFFF, true));
+        RoundedUtils.drawRound(x1 + 1.1f, y1 + 1.1f, (x2 - x1) - 2.2f, (y2 - y1) - 2.2f,
+                1.0f, new Color(color, true));
+    }
+
+    /** An anti-aliased ring. Nothing in this path smooths geometry, so the edges are feathered. */
+    private static void ring(float cx, float cy, float radius, float thickness, int color) {
+        float inner = radius - thickness * 0.5f;
+        float outer = radius + thickness * 0.5f;
+        ringBand(cx, cy, inner, 1f, outer, 1f, color);
+        ringBand(cx, cy, Math.max(0f, inner - 0.6f), 0f, inner, 1f, color);
+        ringBand(cx, cy, outer, 1f, outer + 0.6f, 0f, color);
+    }
+
+    private static void ringBand(float cx, float cy, float r0, float a0, float r1, float a1, int color) {
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+        int alpha = (color >>> 24) & 0xFF;
+        int c0 = Math.round(alpha * a0), c1 = Math.round(alpha * a1);
+        if (c0 <= 0 && c1 <= 0) {
+            return;
+        }
+
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableTexture2D();
+        GlStateManager.color(1f, 1f, 1f, 1f);
+
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer worldRenderer = tessellator.getWorldRenderer();
+        worldRenderer.begin(GL11.GL_TRIANGLE_STRIP, DefaultVertexFormats.POSITION_COLOR);
+        for (int i = 0; i <= 28; i++) {
+            double t = Math.PI * 2 * i / 28.0;
+            double sin = Math.sin(t), cos = Math.cos(t);
+            worldRenderer.pos(cx + sin * r1, cy - cos * r1, 0.0D).color(r, g, b, c1).endVertex();
+            worldRenderer.pos(cx + sin * r0, cy - cos * r0, 0.0D).color(r, g, b, c0).endVertex();
+        }
+        tessellator.draw();
+        GlStateManager.enableTexture2D();
     }
 
     @Override
@@ -221,7 +314,7 @@ public class ColorComponent extends Component {
         float sqRight = areaLeft + SQUARE_SIZE;
         float sqBottom = sqTop + SQUARE_SIZE;
         float hueLeft = sqRight + HUE_GAP;
-        float hueRight = hueLeft + HUE_BAR_WIDTH;
+        float hueRight = hueLeft + BAR_WIDTH;
 
         if (dragMode == 1) {
             cachedSat = Math.max(0, Math.min(1, (mouseX - areaLeft) / SQUARE_SIZE));
@@ -268,7 +361,7 @@ public class ColorComponent extends Component {
         float sqRight = areaLeft + SQUARE_SIZE;
         float sqBottom = sqTop + SQUARE_SIZE;
         float hueLeft = sqRight + HUE_GAP;
-        float hueRight = hueLeft + HUE_BAR_WIDTH;
+        float hueRight = hueLeft + BAR_WIDTH;
 
         if (mouseX >= areaLeft && mouseX <= sqRight
                 && mouseY >= sqTop && mouseY <= sqBottom) {
@@ -286,12 +379,26 @@ public class ColorComponent extends Component {
 
         if (colorSetting.hasAlpha()) {
             float alphaLeft = hueRight + ALPHA_GAP;
-            float alphaRight = alphaLeft + ALPHA_BAR_WIDTH;
+            float alphaRight = alphaLeft + BAR_WIDTH;
             if (mouseX >= alphaLeft - 2 && mouseX <= alphaRight + 2
                     && mouseY >= sqTop && mouseY <= sqBottom) {
                 cacheHSB();
                 dragMode = 3;
                 return false;
+            }
+        }
+
+        float swatchTop = sqBottom + SWATCH_GAP;
+        if (mouseY >= swatchTop && mouseY <= swatchTop + SWATCH_SIZE) {
+            for (int i = 0; i < SWATCHES.length; i++) {
+                float left = areaLeft + i * (SWATCH_SIZE + SWATCH_SPACING);
+                if (mouseX >= left && mouseX <= left + SWATCH_SIZE) {
+                    int swatch = SWATCHES[i];
+                    colorSetting.setColor((swatch >> 16) & 0xFF, (swatch >> 8) & 0xFF, swatch & 0xFF);
+                    cacheHSB();
+                    markUnsaved();
+                    return true;
+                }
             }
         }
 
