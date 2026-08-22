@@ -74,7 +74,7 @@ public class HUD extends Module {
     private static float relativePosY = Float.NaN;
 
     private static final String[] OUTLINE_MODES = new String[] { "None", "Full", "Side" };
-    private static final String[] BACKGROUND_MODES = new String[] { "Per line", "Panel" };
+    private static final String[] BACKGROUND_MODES = new String[] { "Connected", "Per line", "Panel" };
     private static final String[] SHADOW_STYLES = new String[] { "Drop", "Outline" };
     private static final String[] INFO_SEPARATORS = new String[] { "Space", "Brackets", "Dash" };
     /** Eight neighbours, so an outlined glyph is enclosed on the diagonals as well as the sides. */
@@ -171,7 +171,7 @@ public class HUD extends Module {
             backgroundOpacity.setVisible(background, this);
         }
         if (backgroundBlur != null) {
-            backgroundBlur.setVisible(background, this);
+            backgroundBlur.setVisible(background && getBackgroundMode() == 2, this);
         }
 
         boolean shadow = textShadow != null && textShadow.isToggled();
@@ -268,24 +268,11 @@ public class HUD extends Module {
         double lastBackgroundBottom = 0.0;
         boolean removeVelocity = ModuleManager.antiKnockback.isEnabled();
 
-        // The panel is measured from the same rows the loop below draws, and with the same widths,
-        // so the two can no longer disagree about how tall or wide the list is.
-        if (drawBackground.isToggled() && isPanelBackground()) {
-            float maxWidth = 0;
-            int visibleCount = 0;
-            for (Module module : ModuleManager.organizedModules) {
-                if (!module.isEnabled() || module == this || shouldSkipModule(module, removeVelocity)) continue;
-                maxWidth = Math.max(maxWidth, hudFont.getStringWidth(getHudRenderText(module)));
-                visibleCount++;
-            }
-            if (visibleCount > 0) {
-                float bgLeft = alignRight.isToggled()
-                        ? posX - maxWidth - horizontalTextPadding
-                        : posX - horizontalTextPadding;
-                float bgW = maxWidth + horizontalTextPadding * 2;
-                float bgH = visibleCount * rowHeight;
-                drawHudBackground(bgLeft, posY, bgW, bgH);
-            }
+        // Backgrounds are drawn up front, from the same widths the loop below lays the rows out
+        // with, so the two can never disagree about how wide or tall the list is.
+        if (drawBackground.isToggled()) {
+            drawArrayListBackground(collectRowWidths(hudFont, removeVelocity),
+                    posY, horizontalTextPadding, rowHeight);
         }
 
         try {
@@ -317,12 +304,6 @@ public class HUD extends Module {
                 double rowCenterX = (backgroundLeft + backgroundRight) * 0.5;
                 double wavePhase = hudWavePhase(verticalWaveAccum, rowCenterX);
                 int color = getHudColor(wavePhase);
-
-                if (drawBackground.isToggled() && !isPanelBackground()) {
-                    drawHudBackground((float) backgroundLeft, (float) backgroundTop,
-                            (float) (backgroundRight - backgroundLeft),
-                            (float) (backgroundBottom - backgroundTop));
-                }
 
                 if (outline.getInput() == 1 && firstVisibleRow) {
                     RenderUtils.drawRect(outlineLeft, outlineTop, outlineRight, backgroundTop, color);
@@ -560,6 +541,11 @@ public class HUD extends Module {
             int outlineThickness = getHudOutlineThickness();
             int rowHeight = getHudRowHeight(textTopOffset, textBottomOffset, textTopPadding, textBottomPadding);
 
+            if (drawBackground.isToggled()) {
+                drawArrayListBackground(collectRowWidths(hudFont, removeVelocity),
+                        y, horizontalTextPadding, rowHeight);
+            }
+
             try {
                 for (Module module : ModuleManager.organizedModules) {
                     if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
@@ -598,12 +584,6 @@ public class HUD extends Module {
                         verticalWaveAccum += getVerticalWaveStep();
                     }
                     firstVisibleRow = false;
-
-                    if (drawBackground.isToggled()) {
-                        drawHudBackground((float) backgroundLeft, (float) backgroundTop,
-                                (float) (backgroundRight - backgroundLeft),
-                                (float) (backgroundBottom - backgroundTop));
-                    }
 
                     if (outline.getInput() == 1 && !previousModule.isEmpty()) {
                         double difference = previousModuleWidth - moduleWidth;
@@ -865,8 +845,118 @@ public class HUD extends Module {
         return Math.max(1, textBoxHeight + textTopPadding + textBottomPadding + spacing);
     }
 
-    private static boolean isPanelBackground() {
-        return backgroundMode != null && (int) backgroundMode.getInput() == 1;
+    private static int getBackgroundMode() {
+        return backgroundMode == null ? 0 : (int) backgroundMode.getInput();
+    }
+
+    /** Widths of every row the list will draw, in the order it will draw them. */
+    private static int[] collectRowWidths(RavenFontRenderer hudFont, boolean removeVelocity) {
+        java.util.List<Integer> widths = new java.util.ArrayList<Integer>();
+        for (Module module : ModuleManager.organizedModules) {
+            if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
+                continue;
+            }
+            widths.add(hudFont.getStringWidth(getHudRenderText(module)));
+        }
+        int[] result = new int[widths.size()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = widths.get(i);
+        }
+        return result;
+    }
+
+    private static void drawArrayListBackground(int[] widths, float top, int horizontalTextPadding, int rowHeight) {
+        if (widths.length == 0) {
+            return;
+        }
+        int mode = getBackgroundMode();
+
+        if (mode == 2) {
+            int maxWidth = 0;
+            for (int width : widths) {
+                maxWidth = Math.max(maxWidth, width);
+            }
+            float left = alignRight.isToggled()
+                    ? posX - maxWidth - horizontalTextPadding
+                    : posX - horizontalTextPadding;
+            drawHudBackground(left, top, maxWidth + horizontalTextPadding * 2f, widths.length * (float) rowHeight);
+            return;
+        }
+
+        if (mode == 1) {
+            for (int i = 0; i < widths.length; i++) {
+                float left = alignRight.isToggled()
+                        ? posX - widths[i] - horizontalTextPadding
+                        : posX - horizontalTextPadding;
+                drawHudBackground(left, top + i * rowHeight, widths[i] + horizontalTextPadding * 2f, rowHeight);
+            }
+            return;
+        }
+
+        drawConnectedBackground(widths, top, horizontalTextPadding, rowHeight);
+    }
+
+    /**
+     * One continuous shape behind the whole list, following its stepped edge.
+     *
+     * Rounding every row on all four corners leaves a notch wherever two rows meet, because each
+     * one curves away from a neighbour that is flush against it. Here a corner is only rounded
+     * when it is genuinely on the outside of the silhouette -- the ends of the list, and the steps
+     * where a row sticks out past the one above or below it. Everything else is squared off, so
+     * the rows fuse into a single outline.
+     */
+    private static void drawConnectedBackground(int[] widths, float top, int horizontalTextPadding, int rowHeight) {
+        boolean right = alignRight.isToggled();
+        int alpha = getBackgroundAlpha();
+        if (alpha <= 0) {
+            return;
+        }
+        int color = new Color(0, 0, 0, alpha).getRGB();
+        float radius = getBackgroundRadius(rowHeight);
+
+        for (int i = 0; i < widths.length; i++) {
+            float width = widths[i] + horizontalTextPadding * 2f;
+            float left = right ? posX - widths[i] - horizontalTextPadding : posX - horizontalTextPadding;
+            float rowTop = top + i * rowHeight;
+
+            boolean firstRow = i == 0;
+            boolean lastRow = i == widths.length - 1;
+            // A step is only convex where the neighbour is narrower; where it is wider this row is
+            // tucked inside it and the corner has to stay square or a bite appears in the edge.
+            boolean stepAbove = firstRow || widths[i - 1] < widths[i];
+            boolean stepBelow = lastRow || widths[i + 1] < widths[i];
+
+            boolean topLeft = right ? stepAbove : firstRow;
+            boolean bottomLeft = right ? stepBelow : lastRow;
+            boolean topRight = right ? firstRow : stepAbove;
+            boolean bottomRight = right ? lastRow : stepBelow;
+
+            if (radius <= 0.0f) {
+                RenderUtils.drawRect(left, rowTop, left + width, rowTop + rowHeight, color);
+                continue;
+            }
+            // The parameter names on drawRoundedRectRise are flipped vertically against the screen:
+            // its texture runs y=0 at the top, while the shader treats y>0.5 as the "top" pair. The
+            // arguments are ordered here for what actually lands on screen.
+            RoundedUtils.drawRoundedRectRise(left, rowTop, width, rowHeight, radius, color,
+                    bottomLeft, bottomRight, topRight, topLeft);
+        }
+    }
+
+    private static int getBackgroundAlpha() {
+        return Math.max(0, Math.min(255,
+                (int) Math.round((backgroundOpacity == null ? 43.0 : backgroundOpacity.getInput()) * 2.55)));
+    }
+
+    private static float getBackgroundRadius(float height) {
+        if (roundedBackground == null || !roundedBackground.isToggled()) {
+            return 0.0f;
+        }
+        float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
+                * mindless.module.impl.theme.ThemeManager.roundingScale();
+        // Past half the shorter side the rounding folds in on itself and the box comes out
+        // pinched, which is what a tall thin row looked like at the old fixed radius of eight.
+        return Math.max(0.0f, Math.min(radius, height * 0.5f));
     }
 
     /**
@@ -879,22 +969,16 @@ public class HUD extends Module {
         if (width <= 0.0f || height <= 0.0f) {
             return;
         }
-        int alpha = Math.max(0, Math.min(255,
-                (int) Math.round((backgroundOpacity == null ? 43.0 : backgroundOpacity.getInput()) * 2.55)));
+        int alpha = getBackgroundAlpha();
         if (alpha == 0 && !(backgroundBlur != null && backgroundBlur.isToggled())) {
             return;
         }
         int color = new Color(0, 0, 0, alpha).getRGB();
+        float radius = getBackgroundRadius(Math.min(width, height));
 
-        boolean rounded = roundedBackground != null && roundedBackground.isToggled();
-        float radius = !rounded ? 0.0f
-                : (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
-                        * mindless.module.impl.theme.ThemeManager.roundingScale();
-        // A radius past half the shorter side makes the SDF fold in on itself and the box comes
-        // out pinched, which is what a tall thin row looked like at the old fixed radius of eight.
-        radius = Math.max(0.0f, Math.min(radius, Math.min(width, height) * 0.5f));
-
-        if (backgroundBlur != null && backgroundBlur.isToggled()) {
+        // Blur is a full-screen pass per box, so it is offered on the single panel only. Behind
+        // fifteen separate rows it would be fifteen of them every frame.
+        if (backgroundBlur != null && backgroundBlur.isToggled() && getBackgroundMode() == 2) {
             BlurUtils.prepareBlur();
             RoundedUtils.drawRound(left, top, width, height, radius, 0xFF000000);
             BlurUtils.blurEnd(1, 1.4f, 0.60f);
