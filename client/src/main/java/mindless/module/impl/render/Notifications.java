@@ -321,11 +321,98 @@ public class Notifications extends Module {
             polyline(new float[] { cx - s, cx - s * 0.28f, cx + s * 1.02f },
                      new float[] { cy + 0.1f, cy + s * 0.72f, cy - s * 0.78f }, 1.7f, line);
         } else {
-            polyline(new float[] { cx - s * 0.72f, cx + s * 0.72f },
-                     new float[] { cy - s * 0.72f, cy + s * 0.72f }, 1.7f, line);
-            polyline(new float[] { cx - s * 0.72f, cx + s * 0.72f },
-                     new float[] { cy + s * 0.72f, cy - s * 0.72f }, 1.7f, line);
+            cross(cx, cy, s * 1.08f, 1.35f, line);
         }
+    }
+
+    /**
+     * The cross, as one closed outline rather than two crossing strokes.
+     *
+     * Two strokes overlap where they meet, and everything here draws at less than full alpha, so
+     * that square in the middle blended twice. At full opacity it hid, but as a card faded the
+     * denser centre separated from the four arms and the glyph came apart into pieces. A single
+     * twelve sided outline has no overlap anywhere in it, so it fades as one shape.
+     *
+     * Longer arms and a thinner stroke than the two-stroke version, which sat noticeably shorter
+     * and heavier than the tick it alternates with.
+     */
+    private static void cross(float cx, float cy, float arm, float thickness, int color) {
+        float t = thickness * 0.5f;
+        // A plus sign's outline, then turned forty five degrees.
+        float[][] plus = {
+                { t, t }, { t, arm }, { -t, arm }, { -t, t },
+                { -arm, t }, { -arm, -t }, { -t, -t }, { -t, -arm },
+                { t, -arm }, { t, -t }, { arm, -t }, { arm, t }
+        };
+        float k = 0.70710678f;
+        float[] xs = new float[plus.length];
+        float[] ys = new float[plus.length];
+        for (int i = 0; i < plus.length; i++) {
+            xs[i] = cx + (plus[i][0] - plus[i][1]) * k;
+            ys[i] = cy + (plus[i][0] + plus[i][1]) * k;
+        }
+        polygon(cx, cy, xs, ys, color);
+    }
+
+    /**
+     * A closed polygon filled from a point it is star-shaped about, with a feathered rim.
+     *
+     * The rim is offset along the mitre of each vertex's two edge normals, so it follows the
+     * outline out of the concave corners as well as around the points.
+     */
+    private static void polygon(float centerX, float centerY, float[] xs, float[] ys, int color) {
+        int n = xs.length;
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+        int a = (color >>> 24) & 0xFF;
+        if (a <= 0) return;
+
+        WorldRenderer wr = begin2D(GL11.GL_TRIANGLE_FAN);
+        wr.pos(centerX, centerY, 0.0D).color(r, g, b, a).endVertex();
+        for (int i = 0; i <= n; i++) {
+            int j = i % n;
+            wr.pos(xs[j], ys[j], 0.0D).color(r, g, b, a).endVertex();
+        }
+        end2D();
+
+        float[] mx = new float[n], my = new float[n];
+        for (int i = 0; i < n; i++) {
+            int prev = (i + n - 1) % n;
+            int next = (i + 1) % n;
+            float ax = normalX(xs[prev], ys[prev], xs[i], ys[i]);
+            float ay = normalY(xs[prev], ys[prev], xs[i], ys[i]);
+            float bx = normalX(xs[i], ys[i], xs[next], ys[next]);
+            float by = normalY(xs[i], ys[i], xs[next], ys[next]);
+            float vx = ax + bx, vy = ay + by;
+            float len = (float) Math.sqrt(vx * vx + vy * vy);
+            if (len < 1.0e-5f) { vx = bx; vy = by; len = 1.0f; }
+            vx /= len; vy /= len;
+            // Point it away from the middle; the edge normals alone have no agreed side.
+            if (vx * (xs[i] - centerX) + vy * (ys[i] - centerY) < 0.0f) { vx = -vx; vy = -vy; }
+            float d = Math.abs(vx * bx + vy * by);
+            float scale = d > 0.35f ? 1.0f / d : 1.0f / 0.35f;
+            mx[i] = vx * scale;
+            my[i] = vy * scale;
+        }
+
+        wr = begin2D(GL11.GL_TRIANGLE_STRIP);
+        for (int i = 0; i <= n; i++) {
+            int j = i % n;
+            wr.pos(xs[j], ys[j], 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(xs[j] + mx[j] * FEATHER, ys[j] + my[j] * FEATHER, 0.0D).color(r, g, b, 0).endVertex();
+        }
+        end2D();
+    }
+
+    private static float normalX(float x1, float y1, float x2, float y2) {
+        float dy = y2 - y1;
+        float len = (float) Math.sqrt((x2 - x1) * (x2 - x1) + dy * dy);
+        return len < 1.0e-5f ? 0.0f : -dy / len;
+    }
+
+    private static float normalY(float x1, float y1, float x2, float y2) {
+        float dx = x2 - x1;
+        float len = (float) Math.sqrt(dx * dx + (y2 - y1) * (y2 - y1));
+        return len < 1.0e-5f ? 0.0f : dx / len;
     }
 
     /**
