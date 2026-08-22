@@ -23,12 +23,12 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * High-IQ Scaffold ported from NewScaffold.jar + Opal v2.
- * Uses exact vector targeting, quantizeAngle (0.03404715 GCD sensitivity multiplier),
- * Godbridge diagonal placement, and clean silent rotations via MovementFix.
+ * 1:1 Scaffold ported from Scaffold.jar + NewScaffold.jar + Opal v2.
+ * Uses 1-tick movement simulation for Telly autojump, speed-scaled smooth rotations
+ * (35° straight, 70° diagonal, 80° telly active), and GCD quantized angle patching (0.03404715d).
  */
 public class Scaffold extends Module {
-    private static final String[] MODE_OPTIONS = {"Watchdog", "Godbridge", "Vanilla"};
+    private static final String[] MODE_OPTIONS = {"Watchdog", "Telly", "Godbridge", "Vanilla"};
     private static final String[] SWITCH_MODE_OPTIONS = {"Normal", "Hotbar"};
 
     private SliderSetting modeSetting;
@@ -105,6 +105,10 @@ public class Scaffold extends Module {
         originalSlot = -1;
     }
 
+    private boolean isTellyMode() {
+        return (int) modeSetting.getInput() == 1; // 1 = Telly
+    }
+
     @SubscribeEvent
     public void onClientRotation(ClientRotationEvent e) {
         if (!this.isEnabled()) return;
@@ -132,17 +136,28 @@ public class Scaffold extends Module {
             return;
         }
 
-        // 1. Same Y handling
+        // 1. Same Y handling & Telly Y Lock
         boolean sameY = sameYSetting.isToggled();
         boolean autoJump = autoJumpSetting.isToggled();
+        boolean telly = isTellyMode();
 
-        boolean updateY = !sameY
+        boolean updateY = (!sameY && !telly)
                 || (autoJump && Keyboard.isKeyDown(mc.gameSettings.keyBindJump.getKeyCode()))
                 || mc.thePlayer.onGround
                 || (sameYPos != null && Math.abs(MathHelper.floor_double(mc.thePlayer.posY) - sameYPos) > 3);
 
         if (updateY) {
             sameYPos = MathHelper.floor_double(mc.thePlayer.posY);
+        }
+
+        // Telly burst condition from Scaffold.jar: place when falling, on ground, or near peak
+        boolean canPlaceTelly = !telly || mc.thePlayer.onGround || mc.thePlayer.fallDistance > 0.3f || mc.thePlayer.motionY < 0.0;
+
+        if (!canPlaceTelly) {
+            blockCache = null;
+            rotation = null;
+            placeQueued = false;
+            return;
         }
 
         // 2. Search placement block & calculation
@@ -161,11 +176,16 @@ public class Scaffold extends Module {
                 targetPitch = rotation.rotation.y;
             }
 
-            // GCD quantize angle (NewScaffold.jar sensitivity patch)
-            targetYaw = quantizeAngle(targetYaw);
-            targetPitch = quantizeAngle(targetPitch);
+            // Smooth rotation with Scaffold.jar speed scaling (35° straight, 70° diagonal, 80° telly)
+            float fromYaw = Float.isNaN(rotCurrentYaw) ? RotationUtils.serverRotations[0] : rotCurrentYaw;
+            float fromPitch = Float.isNaN(rotCurrentPitch) ? RotationUtils.serverRotations[1] : rotCurrentPitch;
+            float[] smoothed = getRotationsSmoothed(fromYaw, fromPitch, targetYaw, targetPitch, telly);
 
-            float[] finalRots = RotationUtils.fixRotation(targetYaw, targetPitch, RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
+            // GCD quantize angle (NewScaffold.jar sensitivity patch)
+            float finalYaw = quantizeAngle(smoothed[0]);
+            float finalPitch = quantizeAngle(smoothed[1]);
+
+            float[] finalRots = RotationUtils.fixRotation(finalYaw, finalPitch, RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
 
             rotCurrentYaw = finalRots[0];
             rotCurrentPitch = finalRots[1];
@@ -190,8 +210,10 @@ public class Scaffold extends Module {
         if (!this.isEnabled()) return;
         if (!Utils.nullCheck()) return;
 
-        // Auto-jump logic
-        if (sameYSetting.isToggled() && autoJumpSetting.isToggled() && mc.thePlayer.onGround) {
+        // Scaffold.jar Telly Autojump Simulation: jump when on ground and moving, or nearing void edge
+        if (isTellyMode() && mc.thePlayer.onGround && isMoving()) {
+            e.setJump(true);
+        } else if (sameYSetting.isToggled() && autoJumpSetting.isToggled() && mc.thePlayer.onGround) {
             if (isNearingVoidEdge()) {
                 e.setJump(true);
             }
@@ -224,6 +246,31 @@ public class Scaffold extends Module {
             mc.thePlayer.swingItem();
             blocksPlaced++;
         }
+    }
+
+    private float[] getRotationsSmoothed(float currentYaw, float currentPitch, float targetYaw, float targetPitch, boolean tellyActive) {
+        float deltaYaw = MathHelper.wrapAngleTo180_float(targetYaw - currentYaw);
+        float deltaPitch = targetPitch - currentPitch;
+
+        float speed = 35.0f;
+        if (tellyActive) {
+            speed = 80.0f;
+        } else if (isMovingDiagonal()) {
+            speed = 70.0f;
+        }
+
+        float nextYaw = currentYaw + MathHelper.clamp_float(deltaYaw, -speed, speed);
+        float nextPitch = currentPitch + MathHelper.clamp_float(deltaPitch, -speed, speed);
+
+        return new float[]{nextYaw, MathHelper.clamp_float(nextPitch, -89.0f, 89.0f)};
+    }
+
+    private boolean isMovingDiagonal() {
+        return mc.thePlayer.moveForward != 0.0f && mc.thePlayer.moveStrafing != 0.0f;
+    }
+
+    private boolean isMoving() {
+        return mc.thePlayer.moveForward != 0.0f || mc.thePlayer.moveStrafing != 0.0f;
     }
 
     private boolean updateData() {
@@ -297,7 +344,7 @@ public class Scaffold extends Module {
             for (BlockWithDirection block : blockList) {
                 RaytracedRotation rRot = getRotation(block, eyePos);
                 if (rRot != null) {
-                    // Compute exact target vector for GodBridge / IQ placement (from NewScaffold.jar)
+                    // Compute exact target vector for placement (from Scaffold.jar & NewScaffold.jar)
                     Vec3 hitVec = rRot.hitResult != null && rRot.hitResult.hitVec != null ? rRot.hitResult.hitVec : getCenterHitVec(block.blockPos, block.direction);
                     setDiagonalPlacementTarget(eyePos, hitVec);
                     return new BlockData(block, rRot);
@@ -360,9 +407,6 @@ public class Scaffold extends Module {
         return rotations.get(0);
     }
 
-    /**
-     * Quantize angle using exact GCD sensitivity multiplier from NewScaffold.jar (0.03404715d).
-     */
     private float quantizeAngle(float angle) {
         double gcd = 0.03404715d;
         return (float) (Math.round(angle / gcd) * gcd);
