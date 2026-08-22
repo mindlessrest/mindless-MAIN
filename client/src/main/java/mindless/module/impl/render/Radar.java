@@ -55,6 +55,10 @@ public class Radar extends Module {
         renderRadar(false);
     }
 
+    public SliderSetting scaleSetting() {
+        return radarScale;
+    }
+
     public float getPosX() {
         syncPositionToResolution();
         return posX;

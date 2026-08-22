@@ -1,14 +1,14 @@
 package mindless.module.impl.client;
 
-import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.player.HideWindow;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
-import mindless.module.impl.render.TargetHUD;
+import mindless.module.setting.impl.SliderSetting;
 import mindless.runtime.GuiIngameState;
 import mindless.utility.RenderUtils;
 import mindless.utility.TextGlowUtils;
+import mindless.utility.gui.MindlessButton;
 import mindless.utility.media.SpotifyMiniPlayerRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
@@ -17,7 +17,6 @@ import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
-import mindless.utility.gui.MindlessButton;
 
 import java.awt.Color;
 import java.io.IOException;
@@ -29,6 +28,13 @@ public final class HudEditor {
     }
 
     public static final class Screen extends GuiScreen {
+        /** Corner and edge grips, clockwise from the top-left. */
+        private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W = 7;
+
+        private static final float HANDLE_HALF = 3.0f;
+        private static final float GRAB_HALF = 6.0f;
+        private static final float MIN_SPAN = 6.0f;
+
         private final List<Element> elements = new ArrayList<Element>();
         private MindlessButton doneButton;
         private MindlessButton resetButton;
@@ -37,6 +43,14 @@ public final class HudEditor {
         private Element dragging;
         private float dragOffsetX;
         private float dragOffsetY;
+
+        private Element resizing;
+        private int resizeHandle = -1;
+        private float resizeStartScale;
+        private float resizeStartWidth;
+        private float resizeStartHeight;
+        private float resizeAnchorX;
+        private float resizeAnchorY;
 
         @Override
         public void initGui() {
@@ -52,24 +66,34 @@ public final class HudEditor {
             drawRect(0, 0, width, height, 0x9A000000);
             drawCenteredString(fontRendererObj, "Mindless HUD Editor", width / 2, 9, 0xFFFFFFFF);
             drawCenteredString(fontRendererObj,
-                    "Drag an overlay to move it. Positions are saved with your profile.",
+                    "Drag to move. Pull a corner or edge to resize. Saved with your profile.",
                     width / 2, 21, 0xFFC9D1DA);
 
             if (elements.isEmpty()) buildElements();
             if (dragging != null) {
                 dragging.moveClamped(mouseX - dragOffsetX, mouseY - dragOffsetY, width, height);
             }
+            if (resizing != null) {
+                applyResize(mouseX, mouseY);
+            }
 
             for (Element element : elements) {
                 element.render();
-                element.ensureOnScreen(width, height);
+                // Clamping fights the resize anchor, which is deliberately allowed to run past
+                // the edge while the grip is being dragged.
+                if (element != resizing) element.ensureOnScreen(width, height);
             }
+            if (resizing != null) anchorResized();
+
             hovered = findTopmost(mouseX, mouseY);
 
             for (Element element : elements) {
-                boolean active = element == hovered || element == dragging;
+                boolean active = element == hovered || element == dragging || element == resizing;
                 drawOutline(element, active ? 0xFFFFFFFF : 0x70FFFFFF);
-                if (active) drawLabel(element);
+                if (active) {
+                    drawLabel(element);
+                    drawHandles(element, mouseX, mouseY);
+                }
             }
 
             resetButton.enabled = hovered != null;
@@ -80,11 +104,18 @@ public final class HudEditor {
         @Override
         protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
             if (mouseButton == 0) {
-                Element selected = findTopmost(mouseX, mouseY);
-                if (selected != null) {
-                    dragging = selected;
-                    dragOffsetX = mouseX - selected.left;
-                    dragOffsetY = mouseY - selected.top;
+                // Grips win over the body, so grabbing a corner never starts a move instead.
+                int handle = hovered != null ? hovered.handleAt(mouseX, mouseY) : -1;
+                if (handle >= 0) {
+                    beginResize(hovered, handle);
+                }
+                else {
+                    Element selected = findTopmost(mouseX, mouseY);
+                    if (selected != null) {
+                        dragging = selected;
+                        dragOffsetX = mouseX - selected.left;
+                        dragOffsetY = mouseY - selected.top;
+                    }
                 }
             }
             super.mouseClicked(mouseX, mouseY, mouseButton);
@@ -93,7 +124,11 @@ public final class HudEditor {
         @Override
         protected void mouseReleased(int mouseX, int mouseY, int state) {
             super.mouseReleased(mouseX, mouseY, state);
-            if (state == 0) dragging = null;
+            if (state == 0) {
+                dragging = null;
+                resizing = null;
+                resizeHandle = -1;
+            }
         }
 
         @Override
@@ -115,6 +150,93 @@ public final class HudEditor {
             return false;
         }
 
+        // -------------------------------------------------------------- resizing
+
+        /**
+         * These overlays size themselves from their own contents, so there is nothing to stretch
+         * independently in each axis. Every grip drives the same scale; what the grip chooses is
+         * which point stays still, so the overlay grows away from wherever it is not being held.
+         */
+        private void beginResize(Element element, int handle) {
+            SliderSetting slider = element.scaleSetting();
+            if (slider == null) return;
+
+            float elementWidth = element.right - element.left;
+            float elementHeight = element.bottom - element.top;
+            if (elementWidth < MIN_SPAN || elementHeight < MIN_SPAN) return;
+
+            resizing = element;
+            resizeHandle = handle;
+            resizeStartScale = (float) slider.getInput();
+            resizeStartWidth = elementWidth;
+            resizeStartHeight = elementHeight;
+            resizeAnchorX = anchorX(element, handle);
+            resizeAnchorY = anchorY(element, handle);
+        }
+
+        private void applyResize(float mouseX, float mouseY) {
+            SliderSetting slider = resizing.scaleSetting();
+            if (slider == null) return;
+
+            float dx = Math.abs(mouseX - resizeAnchorX);
+            float dy = Math.abs(mouseY - resizeAnchorY);
+
+            float ratio;
+            if (resizeHandle == N || resizeHandle == S) ratio = dy / resizeStartHeight;
+            else if (resizeHandle == E || resizeHandle == W) ratio = dx / resizeStartWidth;
+            else ratio = (dx / resizeStartWidth + dy / resizeStartHeight) * 0.5f;
+
+            if (Float.isNaN(ratio) || Float.isInfinite(ratio) || ratio <= 0.0f) return;
+            slider.setValue(resizeStartScale * ratio);
+        }
+
+        private void anchorResized() {
+            float elementWidth = resizing.right - resizing.left;
+            float elementHeight = resizing.bottom - resizing.top;
+
+            float left = resizeAnchorX;
+            float top = resizeAnchorY;
+            if (resizeHandle == NW || resizeHandle == SW || resizeHandle == W) left -= elementWidth;
+            if (resizeHandle == NW || resizeHandle == N || resizeHandle == NE) top -= elementHeight;
+
+            resizing.moveTo(left, top);
+        }
+
+        private static float anchorX(Element element, int handle) {
+            switch (handle) {
+                case NW: case W: case SW: return element.right;
+                case N: case S: case NE: case E: case SE: default: return element.left;
+            }
+        }
+
+        private static float anchorY(Element element, int handle) {
+            switch (handle) {
+                case NW: case N: case NE: return element.bottom;
+                case W: case E: case SW: case S: case SE: default: return element.top;
+            }
+        }
+
+        private void drawHandles(Element element, int mouseX, int mouseY) {
+            if (element.scaleSetting() == null || !element.hasBounds()) return;
+
+            for (int handle = 0; handle < 8; handle++) {
+                float hx = element.handleX(handle);
+                float hy = element.handleY(handle);
+                boolean hot = (resizing == element && resizeHandle == handle)
+                        || (resizing == null && Math.abs(mouseX - hx) <= GRAB_HALF
+                                             && Math.abs(mouseY - hy) <= GRAB_HALF);
+
+                float half = hot ? HANDLE_HALF + 1.0f : HANDLE_HALF;
+                RoundedUtils.drawRound(hx - half, hy - half, half * 2.0f, half * 2.0f, 1.5f,
+                        new Color(0, 0, 0, 200));
+                RoundedUtils.drawRound(hx - half + 1.0f, hy - half + 1.0f,
+                        half * 2.0f - 2.0f, half * 2.0f - 2.0f, 1.0f,
+                        hot ? new Color(255, 255, 255) : new Color(222, 225, 234));
+            }
+        }
+
+        // -------------------------------------------------------------- elements
+
         private void buildElements() {
             elements.clear();
 
@@ -133,6 +255,11 @@ public final class HudEditor {
                 @Override
                 void reset() {
                     HUD.resetPosition();
+                }
+
+                @Override
+                SliderSetting scaleSetting() {
+                    return HUD.fontSize;
                 }
             });
 
@@ -173,6 +300,11 @@ public final class HudEditor {
                     void reset() {
                         SpotifyMiniPlayer.clearCustomPosition();
                     }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return SpotifyMiniPlayer.scale;
+                    }
                 });
             }
 
@@ -193,6 +325,11 @@ public final class HudEditor {
                     void reset() {
                         potion.resetPosition();
                     }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return potion.scaleSetting();
+                    }
                 });
             }
 
@@ -212,6 +349,11 @@ public final class HudEditor {
                     @Override
                     void reset() {
                         session.resetPosition();
+                    }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return session.scaleSetting();
                     }
                 });
             }
@@ -235,9 +377,13 @@ public final class HudEditor {
                     void reset() {
                         hideWindow.resetPosition();
                     }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return hideWindow.scaleSetting();
+                    }
                 });
             }
-
         }
 
         private float[] renderScoreboardPreview(Float requestedX, Float requestedY) {
@@ -293,10 +439,18 @@ public final class HudEditor {
             return new float[] { left, top, right, bottom };
         }
 
+        /**
+         * Body hits win over grips, so a grip belonging to one overlay can never take priority
+         * over another overlay lying directly under the cursor.
+         */
         private Element findTopmost(float mouseX, float mouseY) {
             for (int i = elements.size() - 1; i >= 0; i--) {
                 Element element = elements.get(i);
                 if (element.contains(mouseX, mouseY)) return element;
+            }
+            for (int i = elements.size() - 1; i >= 0; i--) {
+                Element element = elements.get(i);
+                if (element.handleAt(mouseX, mouseY) >= 0) return element;
             }
             return null;
         }
@@ -310,11 +464,16 @@ public final class HudEditor {
         }
 
         private void drawLabel(Element element) {
-            int textWidth = fontRendererObj.getStringWidth(element.name);
+            String text = element.name;
+            SliderSetting slider = element.scaleSetting();
+            if (slider != null) {
+                text = text + "  " + String.format("%.2fx", slider.getInput());
+            }
+            int textWidth = fontRendererObj.getStringWidth(text);
             float labelTop = element.top >= 48.0F ? element.top - 14.0F : element.bottom + 4.0F;
             RoundedUtils.drawRound(element.left - 3.0F, labelTop - 2.0F,
                     textWidth + 6.0F, 12.0F, 4.0F, new Color(0, 0, 0, 190));
-            fontRendererObj.drawString(element.name, element.left, labelTop, 0xFFFFFFFF, true);
+            fontRendererObj.drawString(text, element.left, labelTop, 0xFFFFFFFF, true);
         }
 
         private abstract class Element {
@@ -331,6 +490,11 @@ public final class HudEditor {
             abstract void render();
             abstract void moveTo(float left, float top);
             abstract void reset();
+
+            /** The slider a resize drives, or null when the overlay has no scale of its own. */
+            SliderSetting scaleSetting() {
+                return null;
+            }
 
             void setBounds(float[] bounds) {
                 if (bounds == null || bounds.length < 4) {
@@ -349,6 +513,33 @@ public final class HudEditor {
 
             boolean contains(float mouseX, float mouseY) {
                 return hasBounds() && mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
+            }
+
+            float handleX(int handle) {
+                switch (handle) {
+                    case NW: case W: case SW: return left;
+                    case N: case S: return (left + right) * 0.5F;
+                    default: return right;
+                }
+            }
+
+            float handleY(int handle) {
+                switch (handle) {
+                    case NW: case N: case NE: return top;
+                    case W: case E: return (top + bottom) * 0.5F;
+                    default: return bottom;
+                }
+            }
+
+            int handleAt(float mouseX, float mouseY) {
+                if (scaleSetting() == null || !hasBounds()) return -1;
+                for (int handle = 0; handle < 8; handle++) {
+                    if (Math.abs(mouseX - handleX(handle)) <= GRAB_HALF
+                            && Math.abs(mouseY - handleY(handle)) <= GRAB_HALF) {
+                        return handle;
+                    }
+                }
+                return -1;
             }
 
             void moveClamped(float requestedLeft, float requestedTop, int screenWidth, int screenHeight) {
@@ -379,4 +570,3 @@ public final class HudEditor {
         }
     }
 }
-

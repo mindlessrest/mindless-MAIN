@@ -8,6 +8,7 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Theme;
 import mindless.utility.Utils;
+import mindless.utility.font.FontManager;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
@@ -20,56 +21,69 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.opengl.GL20;
 
 import java.awt.Color;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class SessionInfo extends Module {
-    private static final DecimalFormat RATIO_FORMAT = new DecimalFormat("0.00");
-
     private static final float DEFAULT_RELATIVE_X = 0.985f;
     private static final float DEFAULT_RELATIVE_Y = 0.5f;
 
-    private static final float PAD_X = 8.0f;
-    private static final float PAD_Y = 7.0f;
-    private static final float COL_GAP = 16.0f;
-    private static final float ROW_GAP = 2.0f;
+    private static final float PAD_X = 10.0f;
+    private static final float PAD_Y = 8.0f;
     private static final float RULE_GAP = 5.0f;
+    private static final float GRID_TOP = 8.0f;
+    private static final float COL_GAP = 22.0f;
+    private static final float ROW_GAP = 9.0f;
+    private static final float VALUE_GAP = 1.0f;
 
-    private static final int COL_LABEL  = new Color(150, 152, 163).getRGB();
-    private static final int COL_VALUE  = new Color(238, 239, 245).getRGB();
-    private static final int COL_TITLE  = new Color(255, 255, 255).getRGB();
-    private static final int COL_CLOCK  = new Color(160, 162, 174).getRGB();
-    private static final int COL_GOOD   = new Color(88, 214, 141).getRGB();
-    private static final int COL_BAD    = new Color(232, 104, 104).getRGB();
+    private static final int COL_LABEL = new Color(140, 143, 154).getRGB();
+    private static final int COL_TITLE = new Color(255, 255, 255).getRGB();
+    private static final int COL_CLOCK = new Color(150, 153, 165).getRGB();
+    private static final int COL_UP    = new Color(122, 214, 168).getRGB();
+    private static final int COL_DOWN  = new Color(224, 122, 122).getRGB();
 
-    private final ButtonSetting showKDR;
-    private final ButtonSetting showFKDR;
-    private final ButtonSetting showWL;
-    private final ButtonSetting colorRatios;
+    /** Ranks, guild tags and the like, so a name can be read off the front of a line. */
+    private static final Pattern RANK_TAG = Pattern.compile("\\[[^\\]]*\\]\\s*");
+    private static final Pattern LEADING_NAME = Pattern.compile("^([A-Za-z0-9_]{1,16})\\b");
+    private static final Pattern KILLED_BY = Pattern.compile("\\bby ([A-Za-z0-9_]{1,16})\\b");
+    private static final Pattern DUEL_WINNER = Pattern.compile("^Winner: ([A-Za-z0-9_]{1,16})\\b");
+
+    /**
+     * Enough of Hypixel's death vocabulary to recognise a combat line without matching ordinary
+     * chatter. A line has to carry one of these before either counter is allowed to move.
+     */
+    private static final String[] DEATH_MARKERS = {
+            "was killed", "was shot", "was slain", "was thrown", "was knocked", "was void",
+            "was pricked", "was impaled", "was doomed", "was finished", "was smacked",
+            "was destroyed", "was defenestrated", "fell", "died", "burned", "drowned",
+            "suffocated", "blew up", "flames", "withered", "starved", "hit the ground",
+            "disconnected", "walked into", "popped"
+    };
+
+    /**
+     * Hypixel announces a result over several lines, and older parsing counted each of them. One
+     * result per window is enough; games never end twice this close together.
+     */
+    private static final long RESULT_COOLDOWN_MS = 20_000L;
+
     private final SliderSetting scale;
 
     // Anchored on the right edge: the panel sits in the top-right by default and grows leftward,
-    // so storing the left edge would make it drift as rows are toggled on and off.
+    // so storing the left edge would make it drift as the numbers get wider.
     private float posX = Float.NaN;
     private float posY = Float.NaN;
     private float relativePosX = Float.NaN;
     private float relativePosY = Float.NaN;
 
     private long sessionStartMs;
+    private long lastResultMs;
     private int kills;
     private int deaths;
-    private int finalKills;
-    private int finalDeaths;
     private int wins;
     private int losses;
 
     public SessionInfo() {
         super("Session Info", category.render);
-        this.registerSetting(showKDR = new ButtonSetting("Show KDR", true));
-        this.registerSetting(showFKDR = new ButtonSetting("Show FKDR", true));
-        this.registerSetting(showWL = new ButtonSetting("Show W/L", true));
-        this.registerSetting(colorRatios = new ButtonSetting("Color ratios", true));
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.6, 1.6, 0.05));
         this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new HudEditor.Screen())));
         this.registerSetting(new ButtonSetting("Reset", this::resetSession));
@@ -82,12 +96,15 @@ public class SessionInfo extends Module {
 
     private void resetSession() {
         sessionStartMs = System.currentTimeMillis();
+        lastResultMs = 0L;
         kills = 0;
         deaths = 0;
-        finalKills = 0;
-        finalDeaths = 0;
         wins = 0;
         losses = 0;
+    }
+
+    public SliderSetting scaleSetting() {
+        return scale;
     }
 
     // ------------------------------------------------------------------ position
@@ -170,46 +187,70 @@ public class SessionInfo extends Module {
 
     // ------------------------------------------------------------------ tracking
 
+    /**
+     * Hypixel names the victim at the front of a death line and the killer after "by". Reading
+     * both out of that one structure is what keeps a kill from also registering as a death, and
+     * a final kill from registering twice; the old version tested a pile of loose substrings
+     * against the whole line and double-counted whenever two of them overlapped.
+     */
     @SubscribeEvent
     public void onChat(ClientChatReceivedEvent event) {
-        if (event.type == 2) return;
-        String msg = EnumChatFormatting.getTextWithoutFormattingCodes(event.message.getUnformattedText());
-        if (msg == null) return;
+        if (event.type == 2 || mc.thePlayer == null) return;
 
-        String playerName = mc.thePlayer != null ? mc.thePlayer.getName() : "";
+        String raw = EnumChatFormatting.getTextWithoutFormattingCodes(event.message.getUnformattedText());
+        if (raw == null) return;
 
-        if (msg.contains("killed by " + playerName) || msg.contains("was killed by " + playerName)
-                || msg.contains("by " + playerName + ".") || msg.contains("by " + playerName + " ")) {
-            kills++;
+        String line = RANK_TAG.matcher(raw).replaceAll("").trim();
+        if (line.isEmpty()) return;
+
+        String me = mc.thePlayer.getName();
+
+        Matcher duel = DUEL_WINNER.matcher(line);
+        if (duel.find()) {
+            recordResult(duel.group(1).equalsIgnoreCase(me));
+            return;
+        }
+        if (line.contains("VICTORY!") || line.contains("You won")) {
+            recordResult(true);
+            return;
+        }
+        if (line.contains("GAME OVER") || line.contains("You lost")) {
+            recordResult(false);
+            return;
         }
 
-        if (msg.contains(playerName + " was killed") || msg.contains(playerName + " was shot")
-                || msg.contains(playerName + " was thrown") || msg.contains(playerName + " fell")
-                || msg.contains(playerName + " was knocked") || msg.contains(playerName + " burned")
-                || msg.contains(playerName + " drowned") || msg.contains(playerName + " died")
-                || msg.contains(playerName + " walked into") || msg.contains(playerName + " suffocated")
-                || msg.contains(playerName + " was slain")) {
-            deaths++;
-        }
+        Matcher head = LEADING_NAME.matcher(line);
+        if (!head.find()) return;
 
-        if (msg.contains("FINAL KILL!") && msg.contains(playerName)) {
-            finalKills++;
-        }
+        // "Name: message" is somebody talking, and players quote death messages all the time.
+        int colon = line.indexOf(':');
+        if (colon >= 0 && colon <= head.end()) return;
 
-        if (msg.contains("You died!") || (msg.contains(playerName) && msg.contains("FINAL DEATH!"))) {
-            finalDeaths++;
-        }
+        if (!isDeathLine(line)) return;
 
-        if (msg.contains("VICTORY!") || msg.contains("Winner") || msg.contains("1st Place")
-                || msg.contains(" won the game!") || msg.contains("You won!")) {
-            wins++;
-        }
+        String victim = head.group(1);
+        String killer = null;
+        Matcher by = KILLED_BY.matcher(line);
+        while (by.find()) killer = by.group(1);
 
-        if (msg.contains("GAME OVER!") || msg.contains("You lost!") || msg.contains(" has won")) {
-            if (!msg.contains("VICTORY!") && !msg.contains("You won!")) {
-                losses++;
-            }
+        if (victim.equalsIgnoreCase(me)) deaths++;
+        else if (killer != null && killer.equalsIgnoreCase(me)) kills++;
+    }
+
+    private static boolean isDeathLine(String line) {
+        String lower = line.toLowerCase();
+        for (String marker : DEATH_MARKERS) {
+            if (lower.contains(marker)) return true;
         }
+        return false;
+    }
+
+    private void recordResult(boolean won) {
+        long now = System.currentTimeMillis();
+        if (now - lastResultMs < RESULT_COOLDOWN_MS) return;
+        lastResultMs = now;
+        if (won) wins++;
+        else losses++;
     }
 
     // ------------------------------------------------------------------ rendering
@@ -221,81 +262,64 @@ public class SessionInfo extends Module {
         draw();
     }
 
-    private static final class Row {
-        final String label;
-        final String value;
-        final int color;
-
-        Row(String label, String value, int color) {
-            this.label = label;
-            this.value = value;
-            this.color = color;
-        }
+    /** The larger face used for the numbers, so the grid has a hierarchy without being upscaled. */
+    private static RavenFontRenderer valueFont() {
+        return FontManager.getHudRenderer(HUD.getSelectedFontName(),
+                Math.min(2.0f, HUD.getSelectedFontScale() * 1.6f));
     }
 
-    private List<Row> buildRows() {
-        List<Row> rows = new ArrayList<Row>();
-        rows.add(new Row("K / D", kills + " / " + deaths, COL_VALUE));
-        if (showKDR.isToggled()) {
-            double kdr = deaths == 0 ? kills : (double) kills / deaths;
-            rows.add(new Row("KDR", RATIO_FORMAT.format(kdr), ratioColor(kdr)));
-        }
-        if (showFKDR.isToggled()) {
-            double fkdr = finalDeaths == 0 ? finalKills : (double) finalKills / finalDeaths;
-            rows.add(new Row("FK / FD", finalKills + " / " + finalDeaths, COL_VALUE));
-            rows.add(new Row("FKDR", RATIO_FORMAT.format(fkdr), ratioColor(fkdr)));
-        }
-        if (showWL.isToggled()) {
-            double wl = losses == 0 ? wins : (double) wins / losses;
-            rows.add(new Row("W / L", wins + " / " + losses, ratioColor(wl)));
-        }
-        return rows;
+    private String[] values() {
+        return new String[] {
+                Integer.toString(kills), Integer.toString(deaths),
+                Integer.toString(wins), Integer.toString(losses)
+        };
     }
 
-    private int ratioColor(double ratio) {
-        if (!colorRatios.isToggled()) return COL_VALUE;
-        return ratio >= 1.0 ? COL_GOOD : COL_BAD;
-    }
+    private static final String[] LABELS = { "KILLS", "DEATHS", "WINS", "LOSSES" };
+    private static final int[] VALUE_COLORS = { COL_UP, COL_DOWN, COL_UP, COL_DOWN };
 
     /** Panel size for the current contents, as {width, height}, or null when it cannot be drawn. */
     private float[] measure() {
-        RavenFontRenderer font = HUD.getHudFontRenderer();
-        if (font == null) return null;
+        RavenFontRenderer small = HUD.getHudFontRenderer();
+        RavenFontRenderer big = valueFont();
+        if (small == null || big == null) return null;
 
         float s = (float) scale.getInput();
-        float lineHeight = font.getFontHeight() * s;
-        List<Row> rows = buildRows();
+        String[] vals = values();
 
-        float labelWidth = 0.0f;
-        float valueWidth = 0.0f;
-        for (Row row : rows) {
-            labelWidth = Math.max(labelWidth, font.getStringWidth(row.label) * s);
-            valueWidth = Math.max(valueWidth, font.getStringWidth(row.value) * s);
+        // Two columns of two: kills over wins on the left, deaths over losses on the right.
+        float leftCol = 0.0f;
+        float rightCol = 0.0f;
+        for (int i = 0; i < 4; i++) {
+            float cell = Math.max(big.getStringWidth(vals[i]), small.getStringWidth(LABELS[i]));
+            if (i % 2 == 0) leftCol = Math.max(leftCol, cell);
+            else rightCol = Math.max(rightCol, cell);
         }
-        float headerWidth = (font.getStringWidth("SESSION") + 6 + font.getStringWidth(clock())) * s;
-        float content = Math.max(headerWidth, labelWidth + COL_GAP + valueWidth);
 
-        float height = PAD_Y * 2 + lineHeight + RULE_GAP * 2 + 1.0f
-                + rows.size() * lineHeight + (rows.size() - 1) * ROW_GAP;
-        return new float[] { content + PAD_X * 2, height };
+        float header = small.getStringWidth("SESSION") + 12 + small.getStringWidth(clock());
+        float content = Math.max(header, leftCol + COL_GAP + rightCol);
+
+        float cellH = big.getFontHeight() + VALUE_GAP + small.getFontHeight();
+        float height = PAD_Y + small.getFontHeight() + RULE_GAP + 1.0f + GRID_TOP
+                + cellH * 2 + ROW_GAP + PAD_Y;
+
+        return new float[] { (content + PAD_X * 2) * s, height * s };
     }
 
     /** Draws the panel and returns its bounds as {left, top, right, bottom}. */
     private float[] draw() {
-        RavenFontRenderer font = HUD.getHudFontRenderer();
-        if (font == null) return null;
+        RavenFontRenderer small = HUD.getHudFontRenderer();
+        RavenFontRenderer big = valueFont();
+        if (small == null || big == null) return null;
         float[] size = measure();
         if (size == null) return null;
 
         syncPositionToResolution();
+        float s = (float) scale.getInput();
         float w = size[0];
         float h = size[1];
         float left = posX - w;
         float top = posY;
-
-        float s = (float) scale.getInput();
-        float lineHeight = font.getFontHeight() * s;
-        List<Row> rows = buildRows();
 
         float radius = 8.0f * mindless.module.impl.theme.ThemeManager.roundingScale();
         BlurUtils.prepareBlur();
@@ -307,12 +331,9 @@ public class SessionInfo extends Module {
         RoundedUtils.drawGradientVertical(left, top, w, h, radius,
                 new Color(255, 255, 255, 17), new Color(255, 255, 255, 3));
 
-        // Hairline under the header, in the profile's theme gradient. It is what separates the
-        // title row from the numbers; without it every line carried equal weight and the panel
-        // read as an undifferentiated list.
         int[] gradient = Theme.getGradients((int) Settings.defaultTheme.getInput());
-        float ruleY = top + PAD_Y + lineHeight + RULE_GAP;
-        RoundedUtils.drawGradientHorizontal(left + PAD_X, ruleY, w - PAD_X * 2, 1.0f, 0.5f,
+        float ruleY = top + (PAD_Y + small.getFontHeight() + RULE_GAP) * s;
+        RoundedUtils.drawGradientHorizontal(left + PAD_X * s, ruleY, w - PAD_X * 2 * s, 1.0f, 0.5f,
                 new Color((gradient[0] >> 16) & 0xFF, (gradient[0] >> 8) & 0xFF, gradient[0] & 0xFF, 210),
                 new Color((gradient[1] >> 16) & 0xFF, (gradient[1] >> 8) & 0xFF, gradient[1] & 0xFF, 40));
 
@@ -327,27 +348,43 @@ public class SessionInfo extends Module {
         GlStateManager.scale(s, s, 1.0f);
         float inv = 1.0f / s;
 
-        float textLeft = left + PAD_X;
-        float textRight = left + w - PAD_X;
+        float textLeft = left * inv + PAD_X;
+        float textRight = (left + w) * inv - PAD_X;
         String clock = clock();
 
-        font.drawString("SESSION", Math.round(textLeft * inv), Math.round((top + PAD_Y) * inv), COL_TITLE, false);
-        font.drawString(clock, Math.round(textRight * inv) - font.getStringWidth(clock),
-                Math.round((top + PAD_Y) * inv), COL_CLOCK, false);
+        font(small, "SESSION", textLeft, top * inv + PAD_Y, COL_TITLE);
+        font(small, clock, textRight - small.getStringWidth(clock), top * inv + PAD_Y, COL_CLOCK);
 
-        float rowY = ruleY + 1.0f + RULE_GAP;
-        for (Row row : rows) {
-            font.drawString(row.label, Math.round(textLeft * inv), Math.round(rowY * inv), COL_LABEL, false);
-            // Values are right-aligned into a column. Left-aligning them next to the labels was
-            // what made the old panel look ragged, since "4 / 2" and "12.00" are different widths.
-            font.drawString(row.value, Math.round(textRight * inv) - font.getStringWidth(row.value),
-                    Math.round(rowY * inv), row.color, false);
-            rowY += lineHeight + ROW_GAP;
+        String[] vals = values();
+        float cellH = big.getFontHeight() + VALUE_GAP + small.getFontHeight();
+        float gridTop = ruleY * inv + 1.0f + GRID_TOP;
+
+        float leftCol = 0.0f;
+        float rightCol = 0.0f;
+        for (int i = 0; i < 4; i++) {
+            float cell = Math.max(big.getStringWidth(vals[i]), small.getStringWidth(LABELS[i]));
+            if (i % 2 == 0) leftCol = Math.max(leftCol, cell);
+            else rightCol = Math.max(rightCol, cell);
+        }
+        // Right column is pinned to the right edge so the grid stretches with the panel instead
+        // of leaving a gap when the header is the widest thing in it.
+        float colX0 = textLeft;
+        float colX1 = textRight - rightCol;
+
+        for (int i = 0; i < 4; i++) {
+            float x = (i % 2 == 0) ? colX0 : colX1;
+            float y = gridTop + (i / 2) * (cellH + ROW_GAP);
+            font(big, vals[i], x, y, VALUE_COLORS[i]);
+            font(small, LABELS[i], x, y + big.getFontHeight() + VALUE_GAP, COL_LABEL);
         }
 
         GlStateManager.popMatrix();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         return new float[] { left, top, left + w, top + h };
+    }
+
+    private static void font(RavenFontRenderer renderer, String text, float x, float y, int color) {
+        renderer.drawString(text, Math.round(x), Math.round(y), color, false);
     }
 
     private String clock() {

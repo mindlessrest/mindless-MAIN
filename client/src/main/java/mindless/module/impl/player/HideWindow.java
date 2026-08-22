@@ -128,6 +128,10 @@ public class HideWindow extends Module {
         renderIcon(false);
     }
 
+    public SliderSetting scaleSetting() {
+        return iconScale;
+    }
+
     public float getPosX() {
         syncPosition();
         return posX;

@@ -87,6 +87,10 @@ public class PotionHUD extends Module {
         render(false);
     }
 
+    public SliderSetting scaleSetting() {
+        return scale;
+    }
+
     public float getPosX() {
         syncPositionToResolution();
         return posX;
