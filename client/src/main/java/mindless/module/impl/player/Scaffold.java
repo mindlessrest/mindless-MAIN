@@ -1,6 +1,7 @@
 package mindless.module.impl.player;
 
 import mindless.event.ClientRotationEvent;
+import mindless.event.PostMotionEvent;
 import mindless.event.PrePlayerInputEvent;
 import mindless.helper.RotationHelper;
 import mindless.module.Module;
@@ -212,6 +213,23 @@ public class Scaffold extends Module {
                 e.setJump(true);
             }
         }
+    }
+
+    /**
+     * Sends the placement, after the look packet rather than before it.
+     *
+     * <p>This used to sit in the movement-input event. Both events run in the same tick, but the
+     * input one runs from onLivingUpdate, which is before onUpdateWalkingPlayer sends the C03
+     * carrying the rotation this placement was aimed with. So the order on the wire was place,
+     * then look -- the server checked every placement against the rotation from the tick before,
+     * which is exactly the mismatch Watchdog and Grim look for, and is why blocks would quietly
+     * fail to appear when turning. PostMotionEvent fires immediately after that C03 goes out, so
+     * the server now has the right rotation before the placement arrives.
+     */
+    @SubscribeEvent
+    public void onPostMotion(PostMotionEvent e) {
+        if (!this.isEnabled()) return;
+        if (!Utils.nullCheck()) return;
 
         if (!placeQueued) return;
         placeQueued = false;
@@ -220,6 +238,9 @@ public class Scaffold extends Module {
         if (held == null || !(held.getItem() instanceof ItemBlock)) return;
 
         if (placeBlockPos != null && placeSide != null && placeHitVec != null) {
+            // A tick has passed since the target was picked; something else may have filled it.
+            if (!BlockUtils.replaceable(placeBlockPos.offset(placeSide))) return;
+
             float fX, fY, fZ;
             if (precisionHitVecSetting.isToggled()) {
                 fX = MathHelper.clamp_float((float) (placeHitVec.xCoord - placeBlockPos.getX()), 0.001f, 0.999f);
@@ -249,7 +270,7 @@ public class Scaffold extends Module {
         float speed = 35.0f;
         if (tellyActive) {
             speed = 80.0f;
-        } else if (isMovingDiagonal()) {
+        } else if (diagonalSetting.isToggled() && isMovingDiagonal()) {
             speed = 70.0f;
         }
 
@@ -275,6 +296,8 @@ public class Scaffold extends Module {
         }
 
         // Lookahead search up to 3 blocks when moving fast
+        if (!movementIntelSetting.isToggled()) return false;
+
         double vx = mc.thePlayer.motionX;
         double vz = mc.thePlayer.motionZ;
         if (Math.abs(vx) > 0.01 || Math.abs(vz) > 0.01) {
@@ -360,10 +383,37 @@ public class Scaffold extends Module {
 
         Vec3 centerVec = getCenterHitVec(blockPos, side);
 
-        double[][] faceOffsets = new double[][]{{0, 0, 0}, {-0.35, -0.35, 0}, {0.35, -0.35, 0}, {-0.35, 0.35, 0}, {0.35, 0.35, 0}};
+        // Offsets across the face, in the face's own plane.
+        //
+        // These used to be world-space XY offsets applied to every face. On a face whose normal
+        // is X or Y -- four of the six -- that pushes the point along the normal, off the face
+        // and into the block, so only the centre point was ever a real candidate there. Four
+        // fewer angles to choose from means more ticks where nothing lines up and no block goes
+        // down. Deriving the two in-plane axes from the normal makes all five usable on any face.
+        Vec3 axisU;
+        Vec3 axisV;
+        switch (side.getAxis()) {
+            case Y:
+                axisU = new Vec3(1.0, 0.0, 0.0);
+                axisV = new Vec3(0.0, 0.0, 1.0);
+                break;
+            case X:
+                axisU = new Vec3(0.0, 0.0, 1.0);
+                axisV = new Vec3(0.0, 1.0, 0.0);
+                break;
+            default:
+                axisU = new Vec3(1.0, 0.0, 0.0);
+                axisV = new Vec3(0.0, 1.0, 0.0);
+                break;
+        }
+
+        double[][] faceOffsets = new double[][]{{0, 0}, {-0.35, -0.35}, {0.35, -0.35}, {-0.35, 0.35}, {0.35, 0.35}};
 
         for (double[] off : faceOffsets) {
-            Vec3 testPoint = centerVec.addVector(off[0], off[1], off[2]);
+            Vec3 testPoint = centerVec.addVector(
+                    axisU.xCoord * off[0] + axisV.xCoord * off[1],
+                    axisU.yCoord * off[0] + axisV.yCoord * off[1],
+                    axisU.zCoord * off[0] + axisV.zCoord * off[1]);
             Vec2f rawRot = getRotationFromPosition(eyePos, testPoint);
             Vec2f raytraceRotation = new Vec2f(quantizeAngle(rawRot.x), quantizeAngle(rawRot.y));
 
