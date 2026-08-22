@@ -409,7 +409,7 @@ public final class HudEditor {
             float right = left + panelWidth;
             float bottom = top + panelHeight;
 
-            BlurUtils.prepareBlur();
+            BlurUtils.prepareBlur(left, top, panelWidth, panelHeight);
             RoundedUtils.drawRound(left, top, panelWidth, panelHeight,
                     GuiIngameState.panelRadius(), 0xFF000000);
             BlurUtils.blurEndRegion(2, 2.4f, GuiIngameState.PANEL_BLUR_OPACITY,

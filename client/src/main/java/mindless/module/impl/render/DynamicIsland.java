@@ -71,9 +71,9 @@ public class DynamicIsland extends Module {
         float y = 4.0f;
 
         float radius = RADIUS * ThemeManager.roundingScale();
-        BlurUtils.prepareBlur();
+        BlurUtils.prepareBlur(x, y, totalW, totalH);
         RoundedUtils.drawRound(x, y, totalW, totalH, radius, 0xFF000000);
-        BlurUtils.blurEnd(3, 3.0f, 0.85f);
+        BlurUtils.blurEndRegion(3, 3.0f, 0.85f, x - 2.0f, y - 2.0f, totalW + 4.0f, totalH + 4.0f);
         RoundedUtils.drawRound(x, y, totalW, totalH, radius, FILL_COLOR);
 
         GL20.glUseProgram(0);

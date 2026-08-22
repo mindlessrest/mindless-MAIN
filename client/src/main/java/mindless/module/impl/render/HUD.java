@@ -1087,9 +1087,10 @@ public class HUD extends Module {
         // Blur is a full-screen pass per box, so it is offered on the single panel only. Behind
         // fifteen separate rows it would be fifteen of them every frame.
         if (backgroundBlur != null && backgroundBlur.isToggled() && getBackgroundMode() == 2) {
-            BlurUtils.prepareBlur();
+            BlurUtils.prepareBlur(left, top, width, height);
             RoundedUtils.drawRound(left, top, width, height, radius, 0xFF000000);
-            BlurUtils.blurEnd(1, 1.4f, 0.60f);
+            BlurUtils.blurEndRegion(1, 1.4f, 0.60f, left - 2.0f, top - 2.0f,
+                    width + 4.0f, height + 4.0f);
         }
         if (alpha > 0) {
             if (radius <= 0.0f) {

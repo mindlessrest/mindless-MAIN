@@ -10,7 +10,9 @@ import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.EXTFramebufferObject;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.lwjgl.opengl.GL11.*;
 
@@ -20,48 +22,90 @@ public class KawaseBlur {
     private static final int MASK_TEXTURE_UNIT = GL13.GL_TEXTURE1;
     public static ShaderUtils kawaseDown = new ShaderUtils("kawaseDown");
     public static ShaderUtils kawaseUp = new ShaderUtils("kawaseUp");
-    public static Framebuffer framebuffer = new Framebuffer(1, 1, false);
-    private static int currentIterations;
-    private static int smoothCurrentIterations;
-    private static long regularPreparedFrame = Long.MIN_VALUE;
-    private static long smoothPreparedFrame = Long.MIN_VALUE;
-    private static int regularPreparedIterations = -1;
-    private static int smoothPreparedIterations = -1;
-    private static int regularPreparedOffsetBits;
-    private static int smoothPreparedOffsetBits;
-    private static int regularPreparedSourceTexture = -1;
-    private static int smoothPreparedSourceTexture = -1;
 
-    private static final List<Framebuffer> framebufferList = new ArrayList<>();
-    private static final List<Framebuffer> smoothFramebufferList = new ArrayList<>();
+    /**
+     * One downsample chain per blur strength.
+     *
+     * <p>There used to be a single chain and an int remembering which strength it was built for.
+     * Any panel asking for a different strength tore the whole chain down and allocated a new
+     * one, full-resolution buffer included. On a HUD with panels at three different strengths
+     * that is several full-screen texture allocations and frees <em>every frame</em>, which costs
+     * far more than the blur it was there to serve. Keeping a chain per strength means each is
+     * built once and then simply reused.
+     */
+    private static final Map<Integer, Pyramid> pyramids = new HashMap<>();
 
-    private static void initFrameBuffers(List<Framebuffer> buffers, int iterations, int downsampleFactor) {
-        for (Framebuffer buffer : buffers) {
-            buffer.deleteFramebuffer();
+    /** Full-resolution scratch for the whole-screen composite path, shared by every chain. */
+    private static Framebuffer compositeBuffer;
+
+    private static int builtWidth;
+    private static int builtHeight;
+
+    /** A downsample chain: index 1 is half-ish size, index n is the smallest. */
+    private static final class Pyramid {
+        private final int iterations;
+        private final List<Framebuffer> levels = new ArrayList<>();
+        private long preparedFrame = Long.MIN_VALUE;
+        private int preparedOffsetBits;
+        private int preparedSourceTexture = -1;
+
+        private Pyramid(int iterations, int downsampleFactor) {
+            this.iterations = iterations;
+            this.levels.add(null); // index 0 is the full-size slot, which lives in compositeBuffer
+            for (int i = 1; i <= iterations; i++) {
+                Framebuffer level = new Framebuffer(
+                        Math.max(1, (int) (mc.displayWidth / Math.pow(downsampleFactor, i))),
+                        Math.max(1, (int) (mc.displayHeight / Math.pow(downsampleFactor, i))), false);
+                level.setFramebufferFilter(GL_LINEAR);
+                GlStateManager.bindTexture(level.framebufferTexture);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL14.GL_MIRRORED_REPEAT);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL14.GL_MIRRORED_REPEAT);
+                GlStateManager.bindTexture(0);
+                this.levels.add(level);
+            }
         }
-        buffers.clear();
 
-        Framebuffer fullSize = RenderUtils.createFrameBuffer(null);
-        buffers.add(fullSize);
-        if (buffers == framebufferList) {
-            framebuffer = fullSize;
-            regularPreparedFrame = Long.MIN_VALUE;
-        } else {
-            smoothPreparedFrame = Long.MIN_VALUE;
+        private Framebuffer level(int index) {
+            return this.levels.get(index);
         }
 
-        for (int i = 1; i <= iterations; i++) {
-            Framebuffer currentBuffer = new Framebuffer(
-                    Math.max(1, (int) (mc.displayWidth / Math.pow(downsampleFactor, i))),
-                    Math.max(1, (int) (mc.displayHeight / Math.pow(downsampleFactor, i))), false);
-            currentBuffer.setFramebufferFilter(GL_LINEAR);
-            GlStateManager.bindTexture(currentBuffer.framebufferTexture);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL14.GL_MIRRORED_REPEAT);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL14.GL_MIRRORED_REPEAT);
-            GlStateManager.bindTexture(0);
-
-            buffers.add(currentBuffer);
+        private void delete() {
+            for (int i = 1; i < this.levels.size(); i++) {
+                this.levels.get(i).deleteFramebuffer();
+            }
+            this.levels.clear();
         }
+    }
+
+    /** Fetches the chain for this strength, building it only the first time it is asked for. */
+    private static Pyramid pyramid(int iterations, int downsampleFactor) {
+        if (builtWidth != mc.displayWidth || builtHeight != mc.displayHeight) {
+            for (Pyramid stale : pyramids.values()) {
+                stale.delete();
+            }
+            pyramids.clear();
+            if (compositeBuffer != null) {
+                compositeBuffer.deleteFramebuffer();
+                compositeBuffer = null;
+            }
+            builtWidth = mc.displayWidth;
+            builtHeight = mc.displayHeight;
+        }
+
+        int key = iterations * 8 + downsampleFactor;
+        Pyramid pyramid = pyramids.get(key);
+        if (pyramid == null) {
+            pyramid = new Pyramid(iterations, downsampleFactor);
+            pyramids.put(key, pyramid);
+        }
+        return pyramid;
+    }
+
+    private static Framebuffer compositeBuffer() {
+        if (compositeBuffer == null) {
+            compositeBuffer = RenderUtils.createFrameBuffer(null);
+        }
+        return compositeBuffer;
     }
 
     public static void renderBlur(int stencilFrameBufferTexture, int iterations, float offset) {
@@ -78,29 +122,18 @@ public class KawaseBlur {
     public static void renderBlur(int stencilFrameBufferTexture, int sourceTexture,
                                   int targetFramebuffer, int iterations, float offset,
                                   float compositeOpacity) {
-        if (currentIterations != iterations || framebufferList.isEmpty()
-                || framebufferList.get(0).framebufferWidth != mc.displayWidth
-                || framebufferList.get(0).framebufferHeight != mc.displayHeight) {
-            initFrameBuffers(framebufferList, iterations, 3);
-            currentIterations = iterations;
-        }
         renderBlur(stencilFrameBufferTexture, sourceTexture, targetFramebuffer,
-                iterations, offset, compositeOpacity, framebufferList);
+                iterations, offset, compositeOpacity, pyramid(iterations, 3));
     }
 
     public static void renderBlurRegion(int stencilFrameBufferTexture, int sourceTexture,
                                         int targetFramebuffer, int iterations, float offset,
                                         float compositeOpacity, float x, float y,
                                         float width, float height) {
-        if (currentIterations != iterations || framebufferList.isEmpty()
-                || framebufferList.get(0).framebufferWidth != mc.displayWidth
-                || framebufferList.get(0).framebufferHeight != mc.displayHeight) {
-            initFrameBuffers(framebufferList, iterations, 3);
-            currentIterations = iterations;
-        }
-        prepareBlurredTexture(sourceTexture, iterations, offset, framebufferList);
+        Pyramid pyramid = pyramid(iterations, 3);
+        prepareBlurredTexture(sourceTexture, offset, pyramid);
         compositeRegion(stencilFrameBufferTexture, targetFramebuffer, offset,
-                compositeOpacity, x, y, width, height, framebufferList);
+                compositeOpacity, x, y, width, height, pyramid);
     }
 
     public static void renderSmoothBlur(int stencilFrameBufferTexture, int iterations, float offset) {
@@ -110,23 +143,16 @@ public class KawaseBlur {
 
     public static void renderSmoothBlur(int stencilFrameBufferTexture, int sourceTexture,
                                         int targetFramebuffer, int iterations, float offset) {
-        if (smoothCurrentIterations != iterations || smoothFramebufferList.isEmpty()
-                || smoothFramebufferList.get(0).framebufferWidth != mc.displayWidth
-                || smoothFramebufferList.get(0).framebufferHeight != mc.displayHeight) {
-            initFrameBuffers(smoothFramebufferList, iterations, 2);
-            smoothCurrentIterations = iterations;
-        }
         renderBlur(stencilFrameBufferTexture, sourceTexture, targetFramebuffer,
-                iterations, offset, 1.0F, smoothFramebufferList);
+                iterations, offset, 1.0F, pyramid(iterations, 2));
     }
 
     private static void renderBlur(int stencilFrameBufferTexture, int sourceTexture,
                                    int targetFramebuffer, int iterations, float offset,
-                                   float compositeOpacity,
-                                   List<Framebuffer> buffers) {
-        prepareBlurredTexture(sourceTexture, iterations, offset, buffers);
+                                   float compositeOpacity, Pyramid pyramid) {
+        prepareBlurredTexture(sourceTexture, offset, pyramid);
 
-        Framebuffer lastBuffer = buffers.get(0);
+        Framebuffer lastBuffer = compositeBuffer();
         lastBuffer.framebufferClear();
         lastBuffer.bindFramebuffer(false);
 
@@ -139,7 +165,7 @@ public class KawaseBlur {
         kawaseUp.setUniformf("halfpixel", 1.0f / lastBuffer.framebufferWidth, 1.0f / lastBuffer.framebufferHeight);
         kawaseUp.setUniformf("iResolution", lastBuffer.framebufferWidth, lastBuffer.framebufferHeight);
         TextureBindings previousTextures = bindCompositeTextures(
-                stencilFrameBufferTexture, buffers.get(1).framebufferTexture);
+                stencilFrameBufferTexture, pyramid.level(1).framebufferTexture);
         try {
             ShaderUtils.drawQuads();
         } finally {
@@ -150,7 +176,7 @@ public class KawaseBlur {
         EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, targetFramebuffer);
         GL11.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
-        GlStateManager.bindTexture(buffers.get(0).framebufferTexture);
+        GlStateManager.bindTexture(lastBuffer.framebufferTexture);
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT
                 | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_TEXTURE_BIT);
         GL11.glEnable(GL11.GL_BLEND);
@@ -168,46 +194,33 @@ public class KawaseBlur {
         RenderUtils.resetColor();
     }
 
-    private static void prepareBlurredTexture(int sourceTexture, int iterations, float offset,
-                                              List<Framebuffer> buffers) {
+    private static void prepareBlurredTexture(int sourceTexture, float offset, Pyramid pyramid) {
         long frame = BlurUtils.getFrameSerial();
         int offsetBits = Float.floatToIntBits(offset);
-        boolean smooth = buffers == smoothFramebufferList;
-        boolean cached = frame != 0L && (smooth
-                ? smoothPreparedFrame == frame
-                    && smoothPreparedIterations == iterations
-                    && smoothPreparedOffsetBits == offsetBits
-                    && smoothPreparedSourceTexture == sourceTexture
-                : regularPreparedFrame == frame
-                    && regularPreparedIterations == iterations
-                    && regularPreparedOffsetBits == offsetBits
-                    && regularPreparedSourceTexture == sourceTexture);
-        if (cached) return;
+        if (frame != 0L
+                && pyramid.preparedFrame == frame
+                && pyramid.preparedOffsetBits == offsetBits
+                && pyramid.preparedSourceTexture == sourceTexture) {
+            return;
+        }
 
-        renderFBO(buffers.get(1), sourceTexture, kawaseDown, offset);
+        int iterations = pyramid.iterations;
+        renderFBO(pyramid.level(1), sourceTexture, kawaseDown, offset);
         for (int i = 1; i < iterations; i++) {
-            renderFBO(buffers.get(i + 1), buffers.get(i).framebufferTexture, kawaseDown, offset);
+            renderFBO(pyramid.level(i + 1), pyramid.level(i).framebufferTexture, kawaseDown, offset);
         }
         for (int i = iterations; i > 1; i--) {
-            renderFBO(buffers.get(i - 1), buffers.get(i).framebufferTexture, kawaseUp, offset);
+            renderFBO(pyramid.level(i - 1), pyramid.level(i).framebufferTexture, kawaseUp, offset);
         }
 
-        if (smooth) {
-            smoothPreparedFrame = frame;
-            smoothPreparedIterations = iterations;
-            smoothPreparedOffsetBits = offsetBits;
-            smoothPreparedSourceTexture = sourceTexture;
-        } else {
-            regularPreparedFrame = frame;
-            regularPreparedIterations = iterations;
-            regularPreparedOffsetBits = offsetBits;
-            regularPreparedSourceTexture = sourceTexture;
-        }
+        pyramid.preparedFrame = frame;
+        pyramid.preparedOffsetBits = offsetBits;
+        pyramid.preparedSourceTexture = sourceTexture;
     }
 
     private static void compositeRegion(int stencilTexture, int targetFramebuffer, float offset,
                                         float opacity, float x, float y, float width, float height,
-                                        List<Framebuffer> buffers) {
+                                        Pyramid pyramid) {
         EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, targetFramebuffer);
         GL11.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
@@ -227,7 +240,7 @@ public class KawaseBlur {
         kawaseUp.setUniformf("halfpixel", 1.0F / mc.displayWidth, 1.0F / mc.displayHeight);
         kawaseUp.setUniformf("iResolution", mc.displayWidth, mc.displayHeight);
         TextureBindings previousTextures = bindCompositeTextures(
-                stencilTexture, buffers.get(1).framebufferTexture);
+                stencilTexture, pyramid.level(1).framebufferTexture);
         try {
             ShaderUtils.drawQuads(x - 2F, y - 2F, width + 4F, height + 4F);
         } finally {

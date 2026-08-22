@@ -657,7 +657,11 @@ public class SexyESP extends Module {
             if (showInvisible.isToggled()) player.setInvisible(false);
             mc.getRenderManager().renderEntityStatic(player, partialTicks, true);
             player.setInvisible(invis);
-            mindless.utility.Diagnostics.gl("esp: drew silhouette for " + player.getName());
+            // Built inside the check: the concatenation runs before the call, so leaving it
+            // bare pays for a string per player per frame with diagnostics switched off.
+            if (mindless.utility.Diagnostics.isEnabled()) {
+                mindless.utility.Diagnostics.gl("esp: drew silhouette for " + player.getName());
+            }
             glowShader.stop();
         }
         mindless.utility.Diagnostics.gl("esp: silhouette pass");

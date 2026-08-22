@@ -312,9 +312,10 @@ public class TargetHUD extends Module {
                 float w = Math.abs((float) n6 - n8);
                 float h = Math.abs((float) n7 - (n9 + 13));
                 float thudRadius = 8.0f * ThemeManager.roundingScale();
-                BlurUtils.prepareBlur();
+                BlurUtils.prepareBlur((float) n6, (float) n7, w, h);
                 RoundedUtils.drawRound((float) n6, (float) n7, w, h, thudRadius, new Color(0, 0, 0, 255));
-                BlurUtils.blurEnd(1, 1.4f, 0.60f);
+                BlurUtils.blurEndRegion(1, 1.4f, 0.60f, (float) n6 - 2.0f, (float) n7 - 2.0f,
+                        w + 4.0f, h + 4.0f);
                 RoundedUtils.drawRound((float) n6, (float) n7, w, h, thudRadius, new Color(0, 0, 0, (int)(maxAlphaBackground * 0.4f)));
                 break;
             }

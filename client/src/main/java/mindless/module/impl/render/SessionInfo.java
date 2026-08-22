@@ -367,7 +367,7 @@ public class SessionInfo extends Module {
         RoundedUtils.drawRound(left - 1.0f, top - 1.0f, w + 2.0f, h + 2.0f, radius + 1.0f,
                 new Color(255, 255, 255, 30));
 
-        BlurUtils.prepareBlur();
+        BlurUtils.prepareBlur(left, top, w, h);
         RoundedUtils.drawRound(left, top, w, h, radius, 0xFF000000);
         // Region-limited: the full-screen variant composites the whole framebuffer twice for a
         // panel this size.

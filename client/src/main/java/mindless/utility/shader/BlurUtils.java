@@ -1,7 +1,9 @@
 package mindless.utility.shader;
 
 import mindless.utility.RenderUtils;
+import mindless.utility.ScaledResolutionCache;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.shader.Framebuffer;
 import org.lwjgl.opengl.EXTFramebufferObject;
@@ -15,6 +17,8 @@ public class BlurUtils {
     private static int blurTargetFramebuffer;
     private static int blurSourceTexture;
     private static long frameSerial;
+    private static long sourceFrame = Long.MIN_VALUE;
+    private static int sourceFramebuffer = -1;
 
     /** Marks one HUD frame so panels can share the same blurred scene snapshot. */
     public static void beginFrame() {
@@ -26,11 +30,42 @@ public class BlurUtils {
         return frameSerial;
     }
     public static void prepareBlur() {
+        prepareBlur(Float.NaN, Float.NaN, Float.NaN, Float.NaN);
+    }
+
+    /**
+     * Same as {@link #prepareBlur()}, but only wipes the part of the shared mask the panel is
+     * about to draw into. Every panel on the HUD shares one screen-sized mask buffer, so wiping
+     * all of it once per panel is a full-screen clear per panel for the sake of a rectangle a
+     * few hundred pixels wide.
+     */
+    public static void prepareBlur(float x, float y, float width, float height) {
         // Lunar renders its HUD/world through a client-owned framebuffer. The
         // vanilla Minecraft framebuffer can therefore contain an old or black
         // image. Capture whichever framebuffer is actually bound at the call
         // site, and remember it as the destination for the finished glass.
-        blurTargetFramebuffer = GL11.glGetInteger(EXTFramebufferObject.GL_FRAMEBUFFER_BINDING_EXT);
+        int boundFramebuffer = GL11.glGetInteger(EXTFramebufferObject.GL_FRAMEBUFFER_BINDING_EXT);
+        blurTargetFramebuffer = boundFramebuffer;
+
+        // Which texture the scene lives in cannot change while a single frame is being drawn,
+        // and every driver query below flushes the state cache. Seven panels on the HUD meant
+        // seven identical lookups a frame, and on the copy fallback seven full-screen readbacks.
+        if (frameSerial == 0L || sourceFrame != frameSerial || sourceFramebuffer != boundFramebuffer) {
+            resolveSourceTexture(boundFramebuffer);
+            sourceFrame = frameSerial;
+            sourceFramebuffer = boundFramebuffer;
+        }
+
+        stencilFrameBufferBlur = RenderUtils.createFrameBuffer(stencilFrameBufferBlur);
+        if (Float.isNaN(x)) {
+            stencilFrameBufferBlur.framebufferClear();
+        } else {
+            clearRegion(stencilFrameBufferBlur, x, y, width, height);
+        }
+        stencilFrameBufferBlur.bindFramebuffer(false);
+    }
+
+    private static void resolveSourceTexture(int blurTargetFramebuffer) {
         blurSourceTexture = 0;
         if (blurTargetFramebuffer != 0) {
             int attachmentType = EXTFramebufferObject.glGetFramebufferAttachmentParameteriEXT(
@@ -66,10 +101,31 @@ public class BlurUtils {
         } else {
             GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         }
+    }
 
-        stencilFrameBufferBlur = RenderUtils.createFrameBuffer(stencilFrameBufferBlur);
-        stencilFrameBufferBlur.framebufferClear();
-        stencilFrameBufferBlur.bindFramebuffer(false);
+    /** Scissored version of {@code framebufferClear}, matching its clear colour exactly. */
+    private static void clearRegion(Framebuffer buffer, float x, float y, float width, float height) {
+        ScaledResolution sr = ScaledResolutionCache.get();
+        int scale = sr.getScaleFactor();
+        // Wider than the rectangle the composite reads back, so no stale mask can survive at the
+        // edge of the panel and bleed into it.
+        float margin = 8.0f;
+        int px = (int) Math.floor((x - margin) * scale);
+        int py = (int) Math.floor((y - margin) * scale);
+        int pw = (int) Math.ceil((width + margin * 2.0f) * scale);
+        int ph = (int) Math.ceil((height + margin * 2.0f) * scale);
+        int bottom = Minecraft.getMinecraft().displayHeight - (py + ph);
+
+        buffer.bindFramebuffer(false);
+        // glPushAttrib carries the scissor box as well as the enable bit, so a caller that had
+        // its own clip set up gets it back untouched.
+        GL11.glPushAttrib(GL11.GL_SCISSOR_BIT | GL11.GL_COLOR_BUFFER_BIT);
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor(px, bottom, Math.max(0, pw), Math.max(0, ph));
+        GlStateManager.clearColor(buffer.framebufferColor[0], buffer.framebufferColor[1],
+                buffer.framebufferColor[2], buffer.framebufferColor[3]);
+        GlStateManager.clear(GL11.GL_COLOR_BUFFER_BIT);
+        GL11.glPopAttrib();
     }
     public static void prepareBloom() {
         stencilFrameBufferBloom = RenderUtils.createFrameBuffer(stencilFrameBufferBloom);

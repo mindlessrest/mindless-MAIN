@@ -34,6 +34,22 @@ public abstract class TransformerGuiIngame {
     @CShadow
     public abstract FontRenderer getFontRenderer();
 
+    /**
+     * Opens the HUD frame so the blur can be shared between panels.
+     *
+     * <p>This only existed on {@code GuiIngameForge} and on the mixin copy of this class. Lunar
+     * has no {@code GuiIngameForge}, so on Lunar the frame counter never moved off zero, every
+     * cache keyed on it treated itself as invalid, and each panel rebuilt the entire blur
+     * downsample chain from scratch. That is most of a HUD's worth of full-screen shader work
+     * repeated per panel, per frame.
+     */
+    @CInline
+    @CInject(method = "renderGameOverlay", target = @CTarget("HEAD"))
+    private void raven$beginHudBlurFrame(float partialTicks, InjectionCallback callbackInfo) {
+        HudRenderBounds.clearScoreboard();
+        BlurUtils.beginFrame();
+    }
+
     @CInline
     @CInject(method = "renderScoreboard", target = @CTarget("HEAD"), cancellable = true)
     private void raven$renderUnifiedScoreboard(ScoreObjective objective, ScaledResolution resolution,

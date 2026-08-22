@@ -435,7 +435,7 @@ public final class SpotifyMiniPlayerRenderer {
         int shadowAlpha = Math.max(0, Math.min(0x72, Math.round(0x72 * visibility)));
         int surfaceAlpha = Math.max(0, Math.min(0xA8, Math.round(0xA8 * visibility)));
 
-        BlurUtils.prepareBlur();
+        BlurUtils.prepareBlur(x, y, width, height);
         RoundedUtils.drawRound(x, y, width, height, radius,
                 new Color(0, 0, 0, blurMaskAlpha));
         // Only composite the player rectangle. The blurred scene itself is

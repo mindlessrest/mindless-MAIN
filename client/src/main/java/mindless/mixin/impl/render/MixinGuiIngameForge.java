@@ -2,6 +2,7 @@ package mindless.mixin.impl.render;
 
 import mindless.utility.media.SpotifyMiniPlayerRenderer;
 import mindless.utility.HudRenderBounds;
+import mindless.utility.shader.BlurUtils;
 import net.minecraftforge.client.GuiIngameForge;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -16,6 +17,9 @@ public abstract class MixinGuiIngameForge {
     @Inject(method = "renderGameOverlay", at = @At("HEAD"))
     private void clearHudRenderBounds(float partialTicks, CallbackInfo callbackInfo) {
         HudRenderBounds.clearScoreboard();
+        // GuiIngameForge overrides renderGameOverlay without calling super, so the copy of this
+        // on GuiIngame never runs here and the shared blur frame was never opened.
+        BlurUtils.beginFrame();
     }
 
     @Inject(

@@ -252,9 +252,9 @@ public class Notifications extends Module {
         float x = rightEdge - w;
         float radius = R * mindless.module.impl.theme.ThemeManager.roundingScale();
 
-        BlurUtils.prepareBlur();
+        BlurUtils.prepareBlur(x, y, w, H);
         RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
-        BlurUtils.blurEnd(3, 3.0f, 0.85f);
+        BlurUtils.blurEndRegion(3, 3.0f, 0.85f, x - 2.0f, y - 2.0f, w + 4.0f, H + 4.0f);
         RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, (int)(120 * alpha)));
         // A faint top-down sheen. Cheaper than a border and it stops the card reading as a plain
         // flat slab, which was most of what made it feel unfinished.
