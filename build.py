@@ -13,6 +13,7 @@ LOADER_DIR  = ROOT / "loader"
 CLIENT_DIR  = ROOT / "client"
 NATIVE_DIR  = CLIENT_DIR / "native"
 PRESET_FILE = LOADER_DIR / "CMakePresets.json"
+PRESET_TEMPLATE = LOADER_DIR / "CMakePresets.template.json"
 BUILD_DIR   = LOADER_DIR / "out" / "build" / "windows-clang"
 OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
 
@@ -268,7 +269,14 @@ def run(cmd, cwd, env=None):
 
 
 def update_preset(clang, lld, ninja, vcpkg):
-    with open(PRESET_FILE, "r", encoding="utf-8-sig") as f:
+    # The preset carries absolute toolchain paths, so it is not tracked -- it used to flip back
+    # and forth in every commit as each contributor rebuilt. A fresh clone seeds it from the
+    # template instead, and every path below is overwritten anyway.
+    source = PRESET_FILE if PRESET_FILE.is_file() else PRESET_TEMPLATE
+    if not source.is_file():
+        err(f"{source.name} not found in loader/")
+        sys.exit(1)
+    with open(source, "r", encoding="utf-8-sig") as f:
         data = json.load(f)
     toolchain = str(vcpkg / "scripts" / "buildsystems" / "vcpkg.cmake").replace("\\", "/")
     for preset in data.get("configurePresets", []):

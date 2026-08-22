@@ -11,11 +11,11 @@
                 "strategy": "external"
             },
             "cacheVariables": {
-                "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
-                "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
-                "CMAKE_LINKER": "C:/Program Files/LLVM/bin/lld-link.exe",
-                "CMAKE_MAKE_PROGRAM": "C:/Users/qxod/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/ninja.EXE",
-                "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+                "CMAKE_C_COMPILER": "",
+                "CMAKE_CXX_COMPILER": "",
+                "CMAKE_LINKER": "",
+                "CMAKE_MAKE_PROGRAM": "",
+                "CMAKE_TOOLCHAIN_FILE": "",
                 "VCPKG_TARGET_TRIPLET": "x64-windows-static"
             },
             "condition": {
