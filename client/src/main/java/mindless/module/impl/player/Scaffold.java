@@ -43,14 +43,32 @@ public class Scaffold extends Module {
     private static final double MAX_REACH_SQ = 20.25;
     /** Degrees of yaw and pitch combined that the snapback closes per tick. */
     private static final float SNAPBACK_STEP = 100.0f;
-    /** Within this much of the target the yaw goes exactly there instead of easing. */
-    private static final float YAW_SNAP_WINDOW = 45.0f;
     /** How long to keep the aim through a gap in placements before letting go. */
     private static final int RELEASE_DELAY = 10;
     /** How far ahead, in blocks, an edge counts as near enough to start bridging for. */
     private static final double EDGE_LOOKAHEAD = 1.0;
-    /** How far to the side to look for the orthogonal cells a diagonal step needs under it. */
-    private static final double DIAGONAL_FILL = 0.7;
+
+    /**
+     * Yaw offsets from straight-back, in the order they are tried.
+     *
+     * Every one is a whole 45 degree step, and that is the point of them. The movement fix
+     * reproduces your intended direction by picking the best of eight -- forward, back, left,
+     * right and the four corners -- read against the yaw being sent. Those eight are exact
+     * matches only while the sent yaw is a 45 degree step from the camera; at any other angle the
+     * closest of them is up to 22 degrees out and you get shoved sideways. So the aim may choose
+     * an angle, but only from these.
+     */
+    private static final float[] YAW_OFFSETS = {0f, -45f, 45f, -90f, 90f, -135f, 135f, 180f};
+    /** Faces worth clicking. UP is absent: clicking a ceiling is not how anyone bridges. */
+    private static final EnumFacing[] SUPPORT_FACES = {
+            EnumFacing.DOWN, EnumFacing.NORTH, EnumFacing.SOUTH, EnumFacing.WEST, EnumFacing.EAST
+    };
+    /** Heights up a side face to aim at, as a fraction of the block. */
+    private static final double[] FACE_HEIGHTS = {0.5, 0.8, 0.2};
+    /** How far in from the rim of a face an aim point has to stay. */
+    private static final double FACE_MARGIN = 0.12;
+    /** A step is diagonal once the smaller motion axis is at least this much of the larger. */
+    private static final double DIAGONAL_RATIO = 0.3;
 
     private SliderSetting modeSetting;
     private SliderSetting switchModeSetting;
@@ -62,14 +80,12 @@ public class Scaffold extends Module {
     private ButtonSetting snapMovementSetting;
     private ButtonSetting precisionHitVecSetting;
 
-    private BlockData blockCache;
-    private RaytracedRotation rotation;
+    private Aim aim;
+    /** The yaw offset that worked last, tried first so the head does not hop between angles. */
+    private float lastYawOffset = 0.0f;
     private Integer sameYPos = null;
     private int originalSlot = -1;
     private boolean placeQueued = false;
-    private Vec3 placeHitVec;
-    private EnumFacing placeSide;
-    private BlockPos placeBlockPos;
 
     private float rotCurrentYaw = Float.NaN;
     private float rotCurrentPitch = Float.NaN;
@@ -100,8 +116,8 @@ public class Scaffold extends Module {
 
     @Override
     public void onEnable() {
-        blockCache = null;
-        rotation = null;
+        aim = null;
+        lastYawOffset = 0.0f;
         placeQueued = false;
         originalSlot = -1;
         blocksPlaced = 0;
@@ -118,8 +134,8 @@ public class Scaffold extends Module {
 
     @Override
     public void onDisable() {
-        blockCache = null;
-        rotation = null;
+        aim = null;
+        lastYawOffset = 0.0f;
         placeQueued = false;
         sameYPos = null;
         rotCurrentYaw = Float.NaN;
@@ -153,11 +169,15 @@ public class Scaffold extends Module {
             return;
         }
 
-        // A jump you pressed yourself means you want to go up, so let the level follow your feet
-        // for that hop instead of pinning the bridge to where you took off. Telly's autojump
-        // sets the input directly rather than the key, so it still keeps its level, which is
-        // the whole point of it.
-        if (mc.gameSettings.keyBindJump.isKeyDown()) {
+        // Towering means you want to go up, so let the level follow your feet for the hop
+        // instead of pinning the bridge to where you took off -- otherwise the block goes under
+        // the level you just left and you walk straight back down onto it.
+        //
+        // Gated on Tower rather than on the jump key. Releasing the level for any jump turns an
+        // ordinary hop across flat ground into a block placed under your feet, which is towering
+        // whether you asked for it or not. Telly's autojump sets the input rather than the key,
+        // so it keeps its level either way, which is the whole point of it.
+        if (isTowering()) {
             sameYPos = null;
             return;
         }
@@ -193,8 +213,7 @@ public class Scaffold extends Module {
         if (mc.thePlayer.onGround) {
             airborneTicks = 0;
             tellyEngaged = false;
-            blockCache = null;
-            rotation = null;
+            aim = null;
             placeQueued = false;
             releaseRotation(e);
             return false;
@@ -208,8 +227,7 @@ public class Scaffold extends Module {
             if (mc.gameSettings.keyBindJump.isKeyDown() || airborneTicks == 1) {
                 tellyEngaged = true;
             } else {
-                blockCache = null;
-                rotation = null;
+                aim = null;
                 placeQueued = false;
                 releaseRotation(e);
                 return false;
@@ -343,11 +361,19 @@ public class Scaffold extends Module {
                 MathHelper.floor_double(mc.thePlayer.posZ + travel[1] / length * EDGE_LOOKAHEAD)));
     }
 
-    /** The layer blocks are placed into. */
+    /**
+     * The layer blocks are placed into.
+     *
+     * The two branches used to disagree by one. sameYPos is the cell the feet are in, so the
+     * layer under it is one below -- but floor(posY - 0.5) already IS that layer, and taking one
+     * off it as well aimed a block beneath the bridge. It only showed while the lock was off,
+     * which is exactly while the jump key is held: so every towered block and every manual jump
+     * dropped the bridge a level instead of carrying it up, and you walked straight back down.
+     */
     private int targetY() {
-        return (sameYPos != null
-                ? sameYPos
-                : MathHelper.floor_double(mc.thePlayer.posY - 0.5)) - 1;
+        return sameYPos != null
+                ? sameYPos - 1
+                : MathHelper.floor_double(mc.thePlayer.posY - 0.5);
     }
 
     @SubscribeEvent
@@ -358,8 +384,7 @@ public class Scaffold extends Module {
 
         int blockSlot = getPlaceableBlockSlot();
         if (blockSlot == -1) {
-            blockCache = null;
-            rotation = null;
+            aim = null;
             placeQueued = false;
             return;
         }
@@ -371,8 +396,7 @@ public class Scaffold extends Module {
 
         ItemStack held = mc.thePlayer.inventory.getStackInSlot(blockSlot);
         if (held == null || !(held.getItem() instanceof ItemBlock)) {
-            blockCache = null;
-            rotation = null;
+            aim = null;
             placeQueued = false;
             return;
         }
@@ -386,54 +410,38 @@ public class Scaffold extends Module {
         // hunted for placements while walking across a solid floor, because the forward search
         // reaches far enough to find a hole several blocks away and start aiming at it.
         if (!isTowering() && !isNearEdge()) {
-            blockCache = null;
-            rotation = null;
+            aim = null;
             placeQueued = false;
             holdOrRelease(e);
             return;
         }
 
-        // 2. Search placement block & calculation
-        boolean dataFound = updateData();
+        aim = solveAim(collectTargets());
 
-        if (dataFound && blockCache != null && rotation != null) {
-            // Yaw comes from where you are walking, not from the block.
+        if (aim != null) {
+            // Yaw goes straight to the solved value instead of easing into it.
             //
-            // It used to be the yaw that points at the chosen hit point, and that point is one
-            // of five offsets across the support's face. The support sits about half a block
-            // behind your feet, so a 0.35 offset across it is tens of degrees of yaw, and which
-            // offset wins changes as you move. That jitter lands on the rotation we send, and
-            // the movement fix reads that rotation to decide which of eight directions your
-            // keys mean -- so a few degrees of wobble at a sector boundary throws your movement
-            // 45 degrees sideways, every tick, which is the left-right-left-right.
-            //
-            // Pinning it to the movement direction makes the sent yaw exactly camera + 180,
-            // which is an exact match in that eight-way choice: holding W resolves to straight
-            // forward with no strafe at all. The pitch still comes from the block, and the
-            // placement still carries its own hit vector, so nothing about aiming is lost.
-            float targetYaw = MathHelper.wrapAngleTo180_float(getDirection() + 180.0f);
-            float targetPitch = rotation.rotation.y;
-
-            // First tick of a bridge takes the target outright rather than easing into it.
-            //
-            // Easing in from wherever you were looking is up to 180 degrees, which at 35 a tick
-            // is five or six ticks spent part-way round. The movement fix reads that part-way
-            // yaw to decide which of eight directions your keys mean, so the whole way round it
-            // keeps landing in the wrong sector -- that is the wobble at the start that settles
-            // after a few blocks. One turn and it is over.
-            float[] smoothed;
-            if (Float.isNaN(rotCurrentYaw) || Float.isNaN(rotCurrentPitch)) {
-                smoothed = new float[]{targetYaw, MathHelper.clamp_float(targetPitch, -89.0f, 89.0f)};
+            // Every angle the solver can return is a whole 45 degree step from the camera, and
+            // those are the only angles the movement fix can reproduce exactly. Easing between
+            // two of them spends ticks on angles that are not, and each of those ticks is the fix
+            // picking the wrong one of its eight directions and throwing you sideways -- which is
+            // the left-right-left-right, and the wobble for the first few blocks of a bridge.
+            float targetPitch = aim.pitch;
+            float nextPitch;
+            if (Float.isNaN(rotCurrentPitch)) {
+                nextPitch = MathHelper.clamp_float(targetPitch, -89.0f, 89.0f);
             } else {
-                smoothed = getRotationsSmoothed(rotCurrentYaw, rotCurrentPitch,
-                        targetYaw, targetPitch, telly);
+                float speed = telly ? 80.0f
+                        : (diagonalSetting.isToggled() && isMovingDiagonal() ? 70.0f : 35.0f);
+                nextPitch = MathHelper.clamp_float(
+                        rotCurrentPitch + MathHelper.clamp_float(
+                                targetPitch - rotCurrentPitch, -speed, speed),
+                        -89.0f, 89.0f);
             }
 
-            // GCD quantize angle (sensitivity patch)
-            float finalYaw = quantizeAngle(smoothed[0]);
-            float finalPitch = quantizeAngle(smoothed[1]);
-
-            float[] finalRots = RotationUtils.fixRotation(finalYaw, finalPitch, RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
+            float[] finalRots = RotationUtils.fixRotation(
+                    quantizeAngle(aim.yaw), quantizeAngle(nextPitch),
+                    RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
 
             idleTicks = 0;
             rotCurrentYaw = finalRots[0];
@@ -443,11 +451,6 @@ public class Scaffold extends Module {
             e.setPitch(finalRots[1]);
 
             RotationHelper.get().setRotations(finalRots[0], finalRots[1]);
-
-            // Queue block placement
-            placeBlockPos = blockCache.blockWithDirection.blockPos;
-            placeSide = blockCache.blockWithDirection.direction;
-            placeHitVec = rotation.hitResult != null && rotation.hitResult.hitVec != null ? rotation.hitResult.hitVec : getCenterHitVec(placeBlockPos, placeSide);
             placeQueued = true;
         } else {
             holdOrRelease(e);
@@ -488,27 +491,51 @@ public class Scaffold extends Module {
 
         if (!placeQueued) return;
         placeQueued = false;
+        if (aim == null) return;
 
         ItemStack held = mc.thePlayer.getHeldItem();
         if (held == null || !(held.getItem() instanceof ItemBlock)) return;
-
-        if (placeBlockPos == null || placeSide == null || placeHitVec == null) return;
         if (mc.playerController == null) return;
 
-        // A tick has passed since the target was picked; something else may have filled it.
-        if (!BlockUtils.replaceable(placeBlockPos.offset(placeSide))) return;
+        // Place into whatever the rotation that just went out actually hits.
+        //
+        // The look packet for this tick has already been sent, carrying the position the player
+        // moved to, so this ray is the same one the server will trace. Picking a block and then
+        // clicking a face that some other angle would have hit is the mismatch every anticheat
+        // watches for, and it is why blocks quietly failed to stick going diagonally while
+        // holding right click by hand was fine -- by hand, the aim and the click are one ray.
+        double reach = mc.playerController.getBlockReachDistance();
+        MovingObjectPosition mop = rayCast(getEyePos(),
+                RotationUtils.serverRotations[0], RotationUtils.serverRotations[1], reach);
+        if (mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) return;
 
-        double hitX = placeHitVec.xCoord - placeBlockPos.getX();
-        double hitY = placeHitVec.yCoord - placeBlockPos.getY();
-        double hitZ = placeHitVec.zCoord - placeBlockPos.getZ();
-        if (precisionHitVecSetting.isToggled()) {
-            hitX = MathHelper.clamp_double(hitX, 0.001, 0.999);
-            hitY = MathHelper.clamp_double(hitY, 0.001, 0.999);
-            hitZ = MathHelper.clamp_double(hitZ, 0.001, 0.999);
+        BlockPos support = mop.getBlockPos();
+        EnumFacing side = mop.sideHit;
+        if (!isUsableSupport(support)) return;
+        if (!BlockUtils.canPlaceBlockOnSide(held, support, side)) return;
+
+        BlockPos placed = support.offset(side);
+        if (!BlockUtils.replaceable(placed)) return;
+        // Never at or above the feet: that is walling yourself in, not bridging.
+        if (placed.getY() > MathHelper.floor_double(
+                mc.thePlayer.getEntityBoundingBox().minY) - 1) {
+            return;
         }
-        Vec3 hitVec = new Vec3(placeBlockPos.getX() + hitX,
-                placeBlockPos.getY() + hitY,
-                placeBlockPos.getZ() + hitZ);
+        // The ray is allowed to have drifted sideways over the tick of movement between aiming
+        // and sending -- that is the point of re-tracing it -- but not to have found a different
+        // layer, which would leave blocks hanging under the bridge.
+        if (placed.getY() != aim.support.offset(aim.side).getY()) return;
+
+        Vec3 hitVec = mop.hitVec;
+        if (precisionHitVecSetting.isToggled()) {
+            hitVec = new Vec3(
+                    support.getX() + MathHelper.clamp_double(
+                            hitVec.xCoord - support.getX(), 0.001, 0.999),
+                    support.getY() + MathHelper.clamp_double(
+                            hitVec.yCoord - support.getY(), 0.001, 0.999),
+                    support.getZ() + MathHelper.clamp_double(
+                            hitVec.zCoord - support.getZ(), 0.001, 0.999));
+        }
 
         // Go through the same call a real right click makes instead of putting the packet on the
         // wire by hand.
@@ -521,37 +548,10 @@ public class Scaffold extends Module {
         // that path runs onItemUse and the block is simply there. This also syncs the held slot,
         // which the hand-rolled version never did.
         if (mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held,
-                placeBlockPos, placeSide, hitVec)) {
+                support, side, hitVec)) {
             mc.thePlayer.swingItem();
             blocksPlaced++;
         }
-    }
-
-    private float[] getRotationsSmoothed(float currentYaw, float currentPitch, float targetYaw, float targetPitch, boolean tellyActive) {
-        float deltaYaw = MathHelper.wrapAngleTo180_float(targetYaw - currentYaw);
-        float deltaPitch = targetPitch - currentPitch;
-
-        float speed = 35.0f;
-        if (tellyActive) {
-            speed = 80.0f;
-        } else if (diagonalSetting.isToggled() && isMovingDiagonal()) {
-            speed = 70.0f;
-        }
-
-        // Land exactly on the target once it is close, rather than easing in forever.
-        //
-        // The yaw we send is what the movement fix reads to decide which of eight directions
-        // your keys mean. Sitting a few degrees short of the target is enough to fall on the
-        // wrong side of a sector boundary, and that is a 45 degree sideways shove. Landing
-        // exactly on camera + 180 makes one of those eight an exact match, so there is no
-        // sideways component at all -- in every mode, not just when the easing happened to have
-        // caught up.
-        float nextYaw = Math.abs(deltaYaw) <= YAW_SNAP_WINDOW
-                ? targetYaw
-                : currentYaw + MathHelper.clamp_float(deltaYaw, -speed, speed);
-        float nextPitch = currentPitch + MathHelper.clamp_float(deltaPitch, -speed, speed);
-
-        return new float[]{nextYaw, MathHelper.clamp_float(nextPitch, -89.0f, 89.0f)};
     }
 
     /**
@@ -587,233 +587,275 @@ public class Scaffold extends Module {
         return rawForward() != 0.0f || rawStrafe() != 0.0f;
     }
 
-    private boolean updateData() {
-        blockCache = null;
-        rotation = null;
-
-        Vec3 eyePos = getEyePos();
+    /**
+     * The cells worth filling this tick, best first.
+     *
+     * Nothing here works out how to reach them -- that is the aim solver's job -- so a cell with
+     * no face to click simply loses to the next one down the list.
+     */
+    private List<BlockPos> collectTargets() {
+        List<BlockPos> targets = new ArrayList<>();
         double[] travel = travelDirection();
+        int px = MathHelper.floor_double(mc.thePlayer.posX);
+        int pz = MathHelper.floor_double(mc.thePlayer.posZ);
 
-        // A tower is the block directly under you, and it takes priority: if you are holding
-        // jump you want to go up. It no longer returns outright though -- towering while walking
-        // is a normal thing to do, and the bridge underneath you still has to keep up.
-        if (isTowering() && accept(getBlockData(new BlockPos(
-                MathHelper.floor_double(mc.thePlayer.posX),
-                MathHelper.floor_double(mc.thePlayer.posY) - 1,
-                MathHelper.floor_double(mc.thePlayer.posZ)), eyePos))) {
-            return true;
+        // A tower is the block straight under you, and it comes first: holding jump means up.
+        if (isTowering()) {
+            addTarget(targets, new BlockPos(
+                    px, MathHelper.floor_double(mc.thePlayer.posY) - 1, pz));
         }
 
         int targetY = targetY();
+        addTarget(targets, new BlockPos(px, targetY, pz));
 
-        if (accept(getBlockData(new BlockPos(
-                MathHelper.floor_double(mc.thePlayer.posX),
-                targetY,
-                MathHelper.floor_double(mc.thePlayer.posZ)), eyePos))) {
-            return true;
-        }
-
-        // Corners of the hitbox, but only the ones you are walking towards.
-        //
-        // All four meant a corner hanging off the side of the bridge asked for a block beside
-        // you, and you are not going to fall off the side of a block you are walking along -- so
-        // that was just a second lane being laid the whole way. Standing on nothing at all is
-        // already covered by the centre check above.
+        // Corners of the hitbox, but only the ones you are walking towards. All four meant a
+        // corner hanging off the side of the bridge asked for a block beside you, and you do not
+        // fall off the side of a block you are walking along -- that was a second lane the whole
+        // way. Standing on nothing at all is already the centre cell above.
         if (travel != null) {
             for (double[] corner : FOOTPRINT_CORNERS) {
                 if (corner[0] * travel[0] + corner[1] * travel[1] <= 0.0) continue;
-                if (accept(getBlockData(new BlockPos(
-                        MathHelper.floor_double(mc.thePlayer.posX + corner[0]),
-                        targetY,
-                        MathHelper.floor_double(mc.thePlayer.posZ + corner[1])), eyePos))) {
-                    return true;
-                }
+                addTarget(targets, new BlockPos(
+                        MathHelper.floor_double(mc.thePlayer.posX + corner[0]), targetY,
+                        MathHelper.floor_double(mc.thePlayer.posZ + corner[1])));
             }
         }
 
-        // Going diagonally you step into a cell whose only face-adjacent neighbours are the two
-        // orthogonal cells either side of it. With neither filled there is no face to click,
-        // nothing goes down, and you drop through the corner.
+        if (travel != null && movementIntelSetting.isToggled()) {
+            int lastX = px;
+            int lastZ = pz;
+            for (double multiplier : PROJECTION) {
+                int x = MathHelper.floor_double(mc.thePlayer.posX + travel[0] * multiplier);
+                int z = MathHelper.floor_double(mc.thePlayer.posZ + travel[1] * multiplier);
+                if (x == lastX && z == lastZ) continue;
+                lastX = x;
+                lastZ = z;
+                addTarget(targets, new BlockPos(x, targetY, z));
+            }
+        }
+
+        // Diagonal step-backs, last, because they only matter when the cell they lead to cannot
+        // be reached yet.
         //
-        // Keyed off the keys rather than the motion vector: motion is never exactly square, so
-        // testing it against a small epsilon called almost every step diagonal and laid both
-        // orthogonal blocks every time. That is the other half of the double-wide bridge.
-        if (travel != null && rawForward() != 0.0f && rawStrafe() != 0.0f) {
-            int aheadX = MathHelper.floor_double(
-                    mc.thePlayer.posX + Math.signum(travel[0]) * DIAGONAL_FILL);
-            int aheadZ = MathHelper.floor_double(
-                    mc.thePlayer.posZ + Math.signum(travel[1]) * DIAGONAL_FILL);
-
-            if (accept(getBlockData(new BlockPos(
-                    aheadX, targetY, MathHelper.floor_double(mc.thePlayer.posZ)), eyePos))) {
-                return true;
-            }
-            if (accept(getBlockData(new BlockPos(
-                    MathHelper.floor_double(mc.thePlayer.posX), targetY, aheadZ), eyePos))) {
-                return true;
-            }
-        }
-
-        if (!movementIntelSetting.isToggled()) return false;
-
-        // Where you are about to be. This used to step one tick of motion at a time up to three,
-        // which at sprint speed is well under a block, so the next block along was only ever
-        // found at the last possible moment.
-        if (travel == null) return false;
-        double px = travel[0];
-        double pz = travel[1];
-
-        int lastX = MathHelper.floor_double(mc.thePlayer.posX);
-        int lastZ = MathHelper.floor_double(mc.thePlayer.posZ);
-        for (double multiplier : PROJECTION) {
-            int projectedX = MathHelper.floor_double(mc.thePlayer.posX + px * multiplier);
-            int projectedZ = MathHelper.floor_double(mc.thePlayer.posZ + pz * multiplier);
-            if (projectedX == lastX && projectedZ == lastZ) continue;
-            lastX = projectedX;
-            lastZ = projectedZ;
-            if (accept(getBlockData(new BlockPos(projectedX, targetY, projectedZ), eyePos))) {
-                return true;
+        // A cell you enter diagonally has no solid face anywhere on it: the block you came from
+        // touches it at a corner, and a corner is not something you can right click. The two
+        // orthogonal cells either side are what a person fills first, and then the diagonal has
+        // something to build off. Without them you walk into a cell nothing can be placed in and
+        // drop through it, which is the falling after a few diagonal blocks.
+        //
+        // Gated on the motion being genuinely diagonal rather than on a small epsilon. Motion is
+        // never exactly square, so an epsilon called nearly every straight step diagonal and laid
+        // both orthogonals every time -- the other half of the double-wide bridge. Reading the
+        // motion rather than the keys keeps it working when the diagonal comes from looking at
+        // 45 degrees and holding nothing but forward, which is how most people do it.
+        if (travel != null) {
+            double ax = Math.abs(travel[0]);
+            double az = Math.abs(travel[1]);
+            double major = Math.max(ax, az);
+            if (major > 1.0E-6 && Math.min(ax, az) >= major * DIAGONAL_RATIO) {
+                int sx = travel[0] >= 0.0 ? 1 : -1;
+                int sz = travel[1] >= 0.0 ? 1 : -1;
+                for (BlockPos target : new ArrayList<>(targets)) {
+                    if (target.getY() != targetY) continue;
+                    addTarget(targets, new BlockPos(
+                            target.getX() - sx, targetY, target.getZ()));
+                    addTarget(targets, new BlockPos(
+                            target.getX(), targetY, target.getZ() - sz));
+                }
             }
         }
 
-        return false;
+        return targets;
     }
 
-    private boolean accept(BlockData data) {
-        if (data == null) return false;
-        blockCache = data;
-        rotation = data.rotation;
-        return true;
+    private void addTarget(List<BlockPos> targets, BlockPos pos) {
+        if (targets.contains(pos)) return;
+        if (!BlockUtils.replaceable(pos)) return;
+        targets.add(pos);
     }
 
-    private BlockData getBlockData(BlockPos targetBlockPos, Vec3 eyePos) {
-        if (BlockUtils.replaceable(targetBlockPos)) {
-            List<BlockWithDirection> blockList = new ArrayList<>();
+    /**
+     * Finds a rotation that genuinely reaches one of the wanted cells.
+     *
+     * Two things pin it down. The yaw has to sit on a 45 degree step from the camera, or the
+     * movement fix cannot reproduce your intended direction and shoves you sideways. And the
+     * rotation has to be one that really does hit the face, because what the server checks the
+     * placement against is the rotation the client sent, not the rotation the block would have
+     * needed.
+     *
+     * So it walks those 45 degree steps outward from straight back, and for each one works out
+     * where that yaw's vertical plane crosses the face. That gives an exact pitch rather than a
+     * sampled sweep, which matters: a step just past an edge leaves a visible band well under a
+     * degree wide, and a sweep walks straight over it.
+     */
+    private Aim solveAim(List<BlockPos> targets) {
+        if (targets.isEmpty()) return null;
 
-            for (EnumFacing facing : EnumFacing.values()) {
-                BlockPos neighbor = targetBlockPos.offset(facing);
-                if (!BlockUtils.replaceable(neighbor)) {
-                    blockList.add(new BlockWithDirection(neighbor, facing.getOpposite()));
-                }
-            }
+        ItemStack held = mc.thePlayer.getHeldItem();
+        if (held == null || !(held.getItem() instanceof ItemBlock)) return null;
+        if (mc.playerController == null) return null;
 
-            // Fallback 2-block extend neighbors
-            if (blockList.isEmpty()) {
-                for (EnumFacing facing : EnumFacing.values()) {
-                    BlockPos neighbor = targetBlockPos.offset(facing);
-                    for (EnumFacing secondFacing : EnumFacing.values()) {
-                        BlockPos secondNeighbor = neighbor.offset(secondFacing);
-                        if (!BlockUtils.replaceable(secondNeighbor)) {
-                            blockList.add(new BlockWithDirection(secondNeighbor, secondFacing.getOpposite()));
-                        }
-                    }
-                }
-            }
+        Vec3 eye = predictedEyePos();
+        double reach = mc.playerController.getBlockReachDistance();
+        float pinYaw = MathHelper.wrapAngleTo180_float(getDirection() + 180.0f);
 
-            if (blockList.isEmpty()) return null;
+        for (BlockPos target : targets) {
+            for (int i = -1; i < YAW_OFFSETS.length; i++) {
+                float offset = i < 0 ? lastYawOffset : YAW_OFFSETS[i];
+                if (i >= 0 && offset == lastYawOffset) continue;
+                float yaw = MathHelper.wrapAngleTo180_float(pinYaw + offset);
 
-            // Nearest and best lined up with where we are already looking.
-            //
-            // The old comparator measured blockPos.offset(direction) against the target, but by
-            // construction that IS the target, so every candidate scored zero and the order was
-            // whatever EnumFacing.values() happened to be. Picking a support on the far side of
-            // the gap costs a longer reach and a bigger turn for the same block.
-            blockList.sort(Comparator.comparingDouble(data -> supportScore(data, eyePos)));
+                for (EnumFacing facing : SUPPORT_FACES) {
+                    BlockPos support = target.offset(facing);
+                    if (BlockUtils.replaceable(support)) continue;
+                    if (!isUsableSupport(support)) continue;
 
-            for (BlockWithDirection block : blockList) {
-                RaytracedRotation rRot = getRotation(block, eyePos);
-                if (rRot != null) {
-                    return new BlockData(block, rRot);
+                    EnumFacing side = facing.getOpposite();
+                    // The same question the game asks before a real right click. Without it the
+                    // search can settle on a face the block cannot legally go on, the click is
+                    // refused, and the tick is spent for nothing.
+                    if (!BlockUtils.canPlaceBlockOnSide(held, support, side)) continue;
+
+                    Float pitch = pitchOntoFace(support, side, eye, yaw, reach);
+                    if (pitch == null) continue;
+
+                    lastYawOffset = offset;
+                    return new Aim(yaw, pitch, support, side);
                 }
             }
         }
+
         return null;
     }
 
-    private double supportScore(BlockWithDirection data, Vec3 eyePos) {
-        Vec3 hit = getCenterHitVec(data.blockPos, data.direction);
-        double dx = hit.xCoord - eyePos.xCoord;
-        double dy = hit.yCoord - eyePos.yCoord;
-        double dz = hit.zCoord - eyePos.zCoord;
-        double distanceSq = dx * dx + dy * dy + dz * dz;
-        if (distanceSq > MAX_REACH_SQ) return Double.MAX_VALUE;
+    /**
+     * The pitch that puts a ray at exactly this yaw onto a face, or null when the vertical plane
+     * that yaw sweeps misses the face, the face is out of reach, or something is in the way.
+     */
+    private Float pitchOntoFace(BlockPos support, EnumFacing side, Vec3 eye, float yaw,
+                                double reach) {
+        double dirX = -Math.sin(Math.toRadians(yaw));
+        double dirZ = Math.cos(Math.toRadians(yaw));
+        double limit = Math.min(MAX_REACH_SQ, reach * reach);
 
-        double length = Math.sqrt(distanceSq);
-        Vec3 look = getVectorForRotation(
-                Float.isNaN(rotCurrentPitch) ? mc.thePlayer.rotationPitch : rotCurrentPitch,
-                Float.isNaN(rotCurrentYaw) ? mc.thePlayer.rotationYaw : rotCurrentYaw);
-        double alignment = length > 0.0
-                ? (look.xCoord * dx + look.yCoord * dy + look.zCoord * dz) / length
-                : -1.0;
-        return distanceSq + (1.0 - alignment) * 0.25;
-    }
+        // A top or bottom face has no height to choose between; a side face does, and the middle
+        // of it is the point with the most room either side before the ray slides off.
+        double[] heights = side.getAxis() == EnumFacing.Axis.Y
+                ? new double[]{0.5} : FACE_HEIGHTS;
 
-    private RaytracedRotation getRotation(BlockWithDirection data, Vec3 eyePos) {
-        float moveDir = getDirection();
-        float baseYaw = MathHelper.wrapAngleTo180_float(moveDir + 180.0f);
-        Vec2f sortingAngle = new Vec2f(baseYaw, 85.0f);
+        for (double height : heights) {
+            Vec3 point = facePoint(support, side, eye, dirX, dirZ, height);
+            if (point == null) continue;
 
-        return getRotationFromRaycastedBlock(data.blockPos, data.direction, sortingAngle, eyePos);
-    }
+            double dx = point.xCoord - eye.xCoord;
+            double dy = point.yCoord - eye.yCoord;
+            double dz = point.zCoord - eye.zCoord;
+            if (dx * dx + dy * dy + dz * dz > limit) continue;
 
-    private RaytracedRotation getRotationFromRaycastedBlock(BlockPos blockPos, EnumFacing side, Vec2f priorityRotations, Vec3 eyePos) {
-        double reach = mc.playerController.getBlockReachDistance();
-        List<RaytracedRotation> rotations = new ArrayList<>();
+            float pitch = quantizeAngle(MathHelper.clamp_float(
+                    getRotationFromPosition(eye, point).y, -89.0f, 89.0f));
 
-        Vec3 centerVec = getCenterHitVec(blockPos, side);
-
-        // Offsets across the face, in the face's own plane.
-        //
-        // These used to be world-space XY offsets applied to every face. On a face whose normal
-        // is X or Y -- four of the six -- that pushes the point along the normal, off the face
-        // and into the block, so only the centre point was ever a real candidate there. Four
-        // fewer angles to choose from means more ticks where nothing lines up and no block goes
-        // down. Deriving the two in-plane axes from the normal makes all five usable on any face.
-        Vec3 axisU;
-        Vec3 axisV;
-        switch (side.getAxis()) {
-            case Y:
-                axisU = new Vec3(1.0, 0.0, 0.0);
-                axisV = new Vec3(0.0, 0.0, 1.0);
-                break;
-            case X:
-                axisU = new Vec3(0.0, 0.0, 1.0);
-                axisV = new Vec3(0.0, 1.0, 0.0);
-                break;
-            default:
-                axisU = new Vec3(1.0, 0.0, 0.0);
-                axisV = new Vec3(0.0, 1.0, 0.0);
-                break;
+            MovingObjectPosition mop = rayCast(eye, quantizeAngle(yaw), pitch, reach);
+            if (mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
+                continue;
+            }
+            if (!mop.getBlockPos().equals(support) || mop.sideHit != side) continue;
+            return pitch;
         }
 
-        double[][] faceOffsets = new double[][]{{0, 0}, {-0.35, -0.35}, {0.35, -0.35}, {-0.35, 0.35}, {0.35, 0.35}};
+        return null;
+    }
 
-        for (double[] off : faceOffsets) {
-            Vec3 testPoint = centerVec.addVector(
-                    axisU.xCoord * off[0] + axisV.xCoord * off[1],
-                    axisU.yCoord * off[0] + axisV.yCoord * off[1],
-                    axisU.zCoord * off[0] + axisV.zCoord * off[1]);
-            Vec2f rawRot = getRotationFromPosition(eyePos, testPoint);
-            Vec2f raytraceRotation = new Vec2f(quantizeAngle(rawRot.x), quantizeAngle(rawRot.y));
+    /** Where the vertical plane swept by a fixed yaw crosses a face, or null if it misses it. */
+    private Vec3 facePoint(BlockPos pos, EnumFacing side, Vec3 eye,
+                           double dirX, double dirZ, double height) {
+        double minX = pos.getX();
+        double maxX = minX + 1.0;
+        double minY = pos.getY();
+        double maxY = minY + 1.0;
+        double minZ = pos.getZ();
+        double maxZ = minZ + 1.0;
 
-            Vec3 lookVec = getVectorForRotation(raytraceRotation.y, raytraceRotation.x);
-            Vec3 rayEnd = eyePos.addVector(lookVec.xCoord * reach, lookVec.yCoord * reach, lookVec.zCoord * reach);
-
-            MovingObjectPosition mop = mc.theWorld.rayTraceBlocks(eyePos, rayEnd, false, false, true);
-
-            if (mop != null && mop.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK) {
-                if (mop.getBlockPos().equals(blockPos) && mop.sideHit == side) {
-                    rotations.add(new RaytracedRotation(raytraceRotation, mop));
+        switch (side.getAxis()) {
+            case X: {
+                if (Math.abs(dirX) < 1.0E-6) return null;
+                double planeX = side == EnumFacing.EAST ? maxX : minX;
+                double distance = (planeX - eye.xCoord) / dirX;
+                if (distance <= 0.0) return null;
+                double z = eye.zCoord + dirZ * distance;
+                if (z < minZ + FACE_MARGIN || z > maxZ - FACE_MARGIN) return null;
+                return new Vec3(planeX, minY + height, z);
+            }
+            case Z: {
+                if (Math.abs(dirZ) < 1.0E-6) return null;
+                double planeZ = side == EnumFacing.SOUTH ? maxZ : minZ;
+                double distance = (planeZ - eye.zCoord) / dirZ;
+                if (distance <= 0.0) return null;
+                double x = eye.xCoord + dirX * distance;
+                if (x < minX + FACE_MARGIN || x > maxX - FACE_MARGIN) return null;
+                return new Vec3(x, minY + height, planeZ);
+            }
+            default: {
+                // Horizontal faces: the plane runs across the footprint rather than through one
+                // edge of it, so take the middle of the stretch that is over the block.
+                double planeY = side == EnumFacing.UP ? maxY : minY;
+                double enter = 0.0;
+                double exit = Double.MAX_VALUE;
+                double[][] spans = {
+                        {eye.xCoord, dirX, minX + FACE_MARGIN, maxX - FACE_MARGIN},
+                        {eye.zCoord, dirZ, minZ + FACE_MARGIN, maxZ - FACE_MARGIN}
+                };
+                for (double[] span : spans) {
+                    if (Math.abs(span[1]) < 1.0E-6) {
+                        if (span[0] < span[2] || span[0] > span[3]) return null;
+                        continue;
+                    }
+                    double a = (span[2] - span[0]) / span[1];
+                    double b = (span[3] - span[0]) / span[1];
+                    enter = Math.max(enter, Math.min(a, b));
+                    exit = Math.min(exit, Math.max(a, b));
                 }
+                if (exit <= enter) return null;
+                double distance = (enter + exit) * 0.5;
+                return new Vec3(eye.xCoord + dirX * distance, planeY,
+                        eye.zCoord + dirZ * distance);
             }
         }
-
-        if (rotations.isEmpty()) return null;
-
-        rotations.sort(Comparator.comparingDouble(r -> getRotationDifference(r.rotation, priorityRotations)));
-        return rotations.get(0);
     }
 
+    private MovingObjectPosition rayCast(Vec3 eye, float yaw, float pitch, double reach) {
+        Vec3 look = getVectorForRotation(pitch, yaw);
+        return mc.theWorld.rayTraceBlocks(eye, eye.addVector(
+                look.xCoord * reach, look.yCoord * reach, look.zCoord * reach), false, false, true);
+    }
+
+    /**
+     * Where the eyes will be when the packet goes out, not where they are now.
+     *
+     * A tick's rotation is decided before the player moves, but the position the server checks it
+     * against is the one after. Stepping just past an edge, that is the difference between a face
+     * being visible and not -- the band is a fraction of a degree wide there -- so the aim is
+     * worked out from where the step lands rather than from where it started.
+     */
+    private Vec3 predictedEyePos() {
+        return new Vec3(
+                mc.thePlayer.posX + mc.thePlayer.motionX,
+                mc.thePlayer.posY + mc.thePlayer.motionY + mc.thePlayer.getEyeHeight(),
+                mc.thePlayer.posZ + mc.thePlayer.motionZ);
+    }
+
+    /**
+     * Whether a block is worth clicking as support.
+     *
+     * Right-clicking a chest, a workbench or a fence gate opens it rather than placing anything,
+     * which costs the tick and pops a screen mid-bridge. Slabs, fences and the rest have hit
+     * boxes that do not fill the cell, so the face is not where the arithmetic says it is.
+     */
+    private boolean isUsableSupport(BlockPos pos) {
+        net.minecraft.block.Block block = BlockUtils.getBlock(pos);
+        if (block == null) return false;
+        return !BlockUtils.isInteractable(block) && !BlockUtils.notFull(block);
+    }
     private float quantizeAngle(float angle) {
         double gcd = 0.03404715d;
         return (float) (Math.round(angle / gcd) * gcd);
@@ -908,33 +950,18 @@ public class Scaffold extends Module {
         }
     }
 
-    private static class BlockWithDirection {
-        final BlockPos blockPos;
-        final EnumFacing direction;
+    /** A rotation that has been proven to reach a face, and the face it reaches. */
+    private static class Aim {
+        final float yaw;
+        final float pitch;
+        final BlockPos support;
+        final EnumFacing side;
 
-        public BlockWithDirection(BlockPos blockPos, EnumFacing direction) {
-            this.blockPos = blockPos;
-            this.direction = direction;
-        }
-    }
-
-    private static class RaytracedRotation {
-        final Vec2f rotation;
-        final MovingObjectPosition hitResult;
-
-        public RaytracedRotation(Vec2f rotation, MovingObjectPosition hitResult) {
-            this.rotation = rotation;
-            this.hitResult = hitResult;
-        }
-    }
-
-    private static class BlockData {
-        final BlockWithDirection blockWithDirection;
-        final RaytracedRotation rotation;
-
-        public BlockData(BlockWithDirection blockWithDirection, RaytracedRotation rotation) {
-            this.blockWithDirection = blockWithDirection;
-            this.rotation = rotation;
+        Aim(float yaw, float pitch, BlockPos support, EnumFacing side) {
+            this.yaw = yaw;
+            this.pitch = pitch;
+            this.support = support;
+            this.side = side;
         }
     }
 }
