@@ -819,28 +819,59 @@ public class Utils implements IMinecraftInstance {
         return darkenedColor;
     }
 
+    /**
+     * Whether the entity is on our side.
+     *
+     * The old fallback took the first two characters of the unformatted display name and treated
+     * a match as a shared team tag. On Hypixel those two characters are the start of the rank
+     * prefix far more often than a team tag: "[MVP+] Someone" and "[MVP++] SomeoneElse" both
+     * reduce to "[M", so every player holding the same rank as us counted as a teammate. With no
+     * rank it was worse -- the tag became the first two letters of a username. That is what made
+     * KillAura skip one or two enemies on a team while attacking the rest of it.
+     *
+     * Team colour is the signal that actually carries meaning. Hypixel colours nametags through
+     * the scoreboard, either with one team per side or -- where tab sorting needs it -- one team
+     * per player that still carries the side's colour in its prefix, so the colour is compared
+     * as well as the team identity.
+     */
     public static boolean isTeammate(Entity entity) {
         try {
             if (mc.thePlayer == null || !(entity instanceof EntityLivingBase) || entity == mc.thePlayer) {
                 return false;
             }
-            // 1. Scoreboard team (works on gamemodes that use proper MC teams)
             if (mc.thePlayer.isOnSameTeam((EntityLivingBase) entity)) {
                 return true;
             }
-            // 2+3. Display-name prefix match — on Hypixel, teammates share the same
-            //      team tag at the start of their display name (e.g. "[RED] ").
-            //      Compare the first 2 characters of the unformatted display name.
-            String targetPrefix = entity.getDisplayName().getUnformattedText();
-            if (targetPrefix.length() >= 2) {
-                String tag = targetPrefix.substring(0, 2);
-                if (mc.thePlayer.getDisplayName().getUnformattedText().startsWith(tag)
-                        || getNetworkDisplayName().startsWith(tag)) {
-                    return true;
-                }
-            }
+            String own = teamColorCode(mc.thePlayer);
+            return !own.isEmpty() && own.equals(teamColorCode((EntityLivingBase) entity));
         } catch (Exception ignored) {}
         return false;
+    }
+
+    /**
+     * The colour code from an entity's scoreboard team prefix, or "" when there is nothing to
+     * read. White is treated as nothing: it is the default nametag colour and says no more about
+     * sides than an absent team does.
+     */
+    private static String teamColorCode(EntityLivingBase entity) {
+        net.minecraft.scoreboard.Team team = entity.getTeam();
+        if (!(team instanceof ScorePlayerTeam)) {
+            return "";
+        }
+        String prefix = ((ScorePlayerTeam) team).getColorPrefix();
+        char color = 0;
+        // Last colour code wins, and style codes are skipped -- bold or italic in a prefix says
+        // nothing about which side the player is on.
+        for (int i = 0; i + 1 < prefix.length(); i++) {
+            if (prefix.charAt(i) != '§') {
+                continue;
+            }
+            char c = Character.toLowerCase(prefix.charAt(i + 1));
+            if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+                color = c;
+            }
+        }
+        return color == 0 || color == 'f' ? "" : String.valueOf(color);
     }
 
     public static String getNetworkDisplayName() {
