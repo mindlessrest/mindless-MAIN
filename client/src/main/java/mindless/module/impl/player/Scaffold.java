@@ -188,7 +188,21 @@ public class Scaffold extends Module {
         boolean dataFound = updateData();
 
         if (dataFound && blockCache != null && rotation != null) {
-            float targetYaw = rotation.rotation.x;
+            // Yaw comes from where you are walking, not from the block.
+            //
+            // It used to be the yaw that points at the chosen hit point, and that point is one
+            // of five offsets across the support's face. The support sits about half a block
+            // behind your feet, so a 0.35 offset across it is tens of degrees of yaw, and which
+            // offset wins changes as you move. That jitter lands on the rotation we send, and
+            // the movement fix reads that rotation to decide which of eight directions your
+            // keys mean -- so a few degrees of wobble at a sector boundary throws your movement
+            // 45 degrees sideways, every tick, which is the left-right-left-right.
+            //
+            // Pinning it to the movement direction makes the sent yaw exactly camera + 180,
+            // which is an exact match in that eight-way choice: holding W resolves to straight
+            // forward with no strafe at all. The pitch still comes from the block, and the
+            // placement still carries its own hit vector, so nothing about aiming is lost.
+            float targetYaw = MathHelper.wrapAngleTo180_float(getDirection() + 180.0f);
             float targetPitch = rotation.rotation.y;
 
             // Smooth rotation with Scaffold.jar speed scaling (35° straight, 70° diagonal, 80° telly)
