@@ -47,11 +47,14 @@ public class Scaffold extends Module {
     private static final float YAW_SNAP_WINDOW = 45.0f;
     /** How far ahead, in blocks, an edge counts as near enough to start bridging for. */
     private static final double EDGE_LOOKAHEAD = 1.0;
+    /** How far to the side to look for the orthogonal cells a diagonal step needs under it. */
+    private static final double DIAGONAL_FILL = 0.7;
 
     private SliderSetting modeSetting;
     private SliderSetting switchModeSetting;
     private ButtonSetting sameYSetting;
     private ButtonSetting autoJumpSetting;
+    private ButtonSetting towerSetting;
     private ButtonSetting movementIntelSetting;
     private ButtonSetting diagonalSetting;
     private ButtonSetting snapMovementSetting;
@@ -83,6 +86,7 @@ public class Scaffold extends Module {
         this.registerSetting(switchModeSetting = new SliderSetting("Switch Mode", 0, SWITCH_MODE_OPTIONS));
         this.registerSetting(sameYSetting = new ButtonSetting("Same Y", true));
         this.registerSetting(autoJumpSetting = new ButtonSetting("Auto Jump", true));
+        this.registerSetting(towerSetting = new ButtonSetting("Tower", false));
         this.registerSetting(new DescriptionSetting("Intelligence"));
         this.registerSetting(movementIntelSetting = new ButtonSetting("Movement Intelligence", true));
         this.registerSetting(diagonalSetting = new ButtonSetting("Diagonal Movement", true));
@@ -248,6 +252,37 @@ public class Scaffold extends Module {
     }
 
     /**
+     * Holding jump with Tower on builds straight up under you instead of bridging outward.
+     *
+     * Nothing else is needed to make it work: holding jump already releases the Y lock, so the
+     * layer follows your feet, and once you rise clear of the block you took off from the cell
+     * you were stood in reads as empty and gets filled.
+     */
+    private boolean isTowering() {
+        return towerSetting.isToggled()
+                && mc.gameSettings.keyBindJump.isKeyDown()
+                && !mc.thePlayer.capabilities.isFlying;
+    }
+
+    /** Where the player is heading: their motion, or the keys when they are not moving yet. */
+    private double[] travelDirection() {
+        double px = mc.thePlayer.motionX;
+        double pz = mc.thePlayer.motionZ;
+        if (px * px + pz * pz > 1.0E-6) return new double[]{px, pz};
+
+        float forward = rawForward();
+        float strafe = rawStrafe();
+        double length = Math.sqrt(forward * forward + strafe * strafe);
+        if (length <= 0.01) return null;
+
+        double yaw = Math.toRadians(mc.thePlayer.rotationYaw);
+        return new double[]{
+                (-Math.sin(yaw) * forward + Math.cos(yaw) * strafe) / length * 0.75,
+                (Math.cos(yaw) * forward + Math.sin(yaw) * strafe) / length * 0.75
+        };
+    }
+
+    /**
      * Whether there is actually a gap worth bridging: under your feet, under any corner of
      * them, or one block along the way you are heading.
      */
@@ -268,15 +303,16 @@ public class Scaffold extends Module {
             }
         }
 
-        double px = mc.thePlayer.motionX;
-        double pz = mc.thePlayer.motionZ;
-        double lengthSq = px * px + pz * pz;
-        if (lengthSq <= 1.0E-6) return false;
+        double[] travel = travelDirection();
+        if (travel == null) return false;
 
-        double length = Math.sqrt(lengthSq);
+        double length = Math.sqrt(travel[0] * travel[0] + travel[1] * travel[1]);
+        if (length <= 1.0E-6) return false;
+
         return BlockUtils.replaceable(new BlockPos(
-                MathHelper.floor_double(mc.thePlayer.posX + px / length * EDGE_LOOKAHEAD), targetY,
-                MathHelper.floor_double(mc.thePlayer.posZ + pz / length * EDGE_LOOKAHEAD)));
+                MathHelper.floor_double(mc.thePlayer.posX + travel[0] / length * EDGE_LOOKAHEAD),
+                targetY,
+                MathHelper.floor_double(mc.thePlayer.posZ + travel[1] / length * EDGE_LOOKAHEAD)));
     }
 
     /** The layer blocks are placed into. */
@@ -321,7 +357,7 @@ public class Scaffold extends Module {
         // Nothing to bridge means nothing to do. Without this it kept a bridging rotation and
         // hunted for placements while walking across a solid floor, because the forward search
         // reaches far enough to find a hole several blocks away and start aiming at it.
-        if (!isNearEdge()) {
+        if (!isTowering() && !isNearEdge()) {
             blockCache = null;
             rotation = null;
             placeQueued = false;
@@ -350,10 +386,20 @@ public class Scaffold extends Module {
             float targetYaw = MathHelper.wrapAngleTo180_float(getDirection() + 180.0f);
             float targetPitch = rotation.rotation.y;
 
-            // Smooth rotation with Scaffold.jar speed scaling (35° straight, 70° diagonal, 80° telly)
-            float fromYaw = Float.isNaN(rotCurrentYaw) ? RotationUtils.serverRotations[0] : rotCurrentYaw;
-            float fromPitch = Float.isNaN(rotCurrentPitch) ? RotationUtils.serverRotations[1] : rotCurrentPitch;
-            float[] smoothed = getRotationsSmoothed(fromYaw, fromPitch, targetYaw, targetPitch, telly);
+            // First tick of a bridge takes the target outright rather than easing into it.
+            //
+            // Easing in from wherever you were looking is up to 180 degrees, which at 35 a tick
+            // is five or six ticks spent part-way round. The movement fix reads that part-way
+            // yaw to decide which of eight directions your keys mean, so the whole way round it
+            // keeps landing in the wrong sector -- that is the wobble at the start that settles
+            // after a few blocks. One turn and it is over.
+            float[] smoothed;
+            if (Float.isNaN(rotCurrentYaw) || Float.isNaN(rotCurrentPitch)) {
+                smoothed = new float[]{targetYaw, MathHelper.clamp_float(targetPitch, -89.0f, 89.0f)};
+            } else {
+                smoothed = getRotationsSmoothed(rotCurrentYaw, rotCurrentPitch,
+                        targetYaw, targetPitch, telly);
+            }
 
             // GCD quantize angle (sensitivity patch)
             float finalYaw = quantizeAngle(smoothed[0]);
@@ -375,12 +421,13 @@ public class Scaffold extends Module {
             placeHitVec = rotation.hitResult != null && rotation.hitResult.hitVec != null ? rotation.hitResult.hitVec : getCenterHitVec(placeBlockPos, placeSide);
             placeQueued = true;
         } else {
-            // Keep rotation locked smoothly facing backward even if blockCache is null for 1 tick while moving
-            if (!Float.isNaN(rotCurrentYaw)) {
-                e.setYaw(rotCurrentYaw);
-                e.setPitch(rotCurrentPitch);
-                RotationHelper.get().setRotations(rotCurrentYaw, rotCurrentPitch);
-            }
+            // Nothing to place: give the rotation back instead of sitting on the last one.
+            //
+            // It used to re-send the previous rotation every tick for as long as no target was
+            // found, so once a block went down and there was nothing else to do it stayed
+            // pointing back down the bridge -- including stood on flat ground with the module
+            // idle.
+            releaseRotation(e);
             placeQueued = false;
         }
     }
@@ -522,6 +569,15 @@ public class Scaffold extends Module {
         rotation = null;
 
         Vec3 eyePos = getEyePos();
+
+        if (isTowering()) {
+            // Straight down, and nowhere else -- a tower has no reason to reach outward.
+            return accept(getBlockData(new BlockPos(
+                    MathHelper.floor_double(mc.thePlayer.posX),
+                    MathHelper.floor_double(mc.thePlayer.posY) - 1,
+                    MathHelper.floor_double(mc.thePlayer.posZ)), eyePos));
+        }
+
         int targetY = targetY();
 
         if (accept(getBlockData(new BlockPos(
@@ -544,24 +600,36 @@ public class Scaffold extends Module {
             }
         }
 
+        // Going diagonally you step into a cell whose only face-adjacent neighbours are the
+        // two orthogonal cells either side of it. If neither has been filled there is no face to
+        // click, nothing goes down, and you drop through the corner -- which is the falling
+        // after a few diagonal blocks. Fill those two first and the diagonal has something to
+        // build off.
+        double[] travel = travelDirection();
+        if (travel != null && Math.abs(travel[0]) > 1.0E-4 && Math.abs(travel[1]) > 1.0E-4) {
+            int aheadX = MathHelper.floor_double(
+                    mc.thePlayer.posX + Math.signum(travel[0]) * DIAGONAL_FILL);
+            int aheadZ = MathHelper.floor_double(
+                    mc.thePlayer.posZ + Math.signum(travel[1]) * DIAGONAL_FILL);
+
+            if (accept(getBlockData(new BlockPos(
+                    aheadX, targetY, MathHelper.floor_double(mc.thePlayer.posZ)), eyePos))) {
+                return true;
+            }
+            if (accept(getBlockData(new BlockPos(
+                    MathHelper.floor_double(mc.thePlayer.posX), targetY, aheadZ), eyePos))) {
+                return true;
+            }
+        }
+
         if (!movementIntelSetting.isToggled()) return false;
 
         // Where you are about to be. This used to step one tick of motion at a time up to three,
         // which at sprint speed is well under a block, so the next block along was only ever
         // found at the last possible moment.
-        double px = mc.thePlayer.motionX;
-        double pz = mc.thePlayer.motionZ;
-        if (px * px + pz * pz <= 1.0E-6) {
-            // Standing still against a wall, or the first tick off a ledge: aim where the keys
-            // point instead, or there is no direction to project along at all.
-            float forward = rawForward();
-            float strafe = rawStrafe();
-            double length = Math.sqrt(forward * forward + strafe * strafe);
-            if (length <= 0.01) return false;
-            double yaw = Math.toRadians(mc.thePlayer.rotationYaw);
-            px = (-Math.sin(yaw) * forward + Math.cos(yaw) * strafe) / length * 0.75;
-            pz = (Math.cos(yaw) * forward + Math.sin(yaw) * strafe) / length * 0.75;
-        }
+        if (travel == null) return false;
+        double px = travel[0];
+        double pz = travel[1];
 
         int lastX = MathHelper.floor_double(mc.thePlayer.posX);
         int lastZ = MathHelper.floor_double(mc.thePlayer.posZ);
