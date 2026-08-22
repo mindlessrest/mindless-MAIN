@@ -14,7 +14,6 @@ import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
-import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
 import net.minecraft.util.*;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
@@ -264,27 +263,36 @@ public class Scaffold extends Module {
         ItemStack held = mc.thePlayer.getHeldItem();
         if (held == null || !(held.getItem() instanceof ItemBlock)) return;
 
-        if (placeBlockPos != null && placeSide != null && placeHitVec != null) {
-            // A tick has passed since the target was picked; something else may have filled it.
-            if (!BlockUtils.replaceable(placeBlockPos.offset(placeSide))) return;
+        if (placeBlockPos == null || placeSide == null || placeHitVec == null) return;
+        if (mc.playerController == null) return;
 
-            float fX, fY, fZ;
-            if (precisionHitVecSetting.isToggled()) {
-                fX = MathHelper.clamp_float((float) (placeHitVec.xCoord - placeBlockPos.getX()), 0.001f, 0.999f);
-                fY = MathHelper.clamp_float((float) (placeHitVec.yCoord - placeBlockPos.getY()), 0.001f, 0.999f);
-                fZ = MathHelper.clamp_float((float) (placeHitVec.zCoord - placeBlockPos.getZ()), 0.001f, 0.999f);
-            } else {
-                fX = (float) (placeHitVec.xCoord - placeBlockPos.getX());
-                fY = (float) (placeHitVec.yCoord - placeBlockPos.getY());
-                fZ = (float) (placeHitVec.zCoord - placeBlockPos.getZ());
-            }
+        // A tick has passed since the target was picked; something else may have filled it.
+        if (!BlockUtils.replaceable(placeBlockPos.offset(placeSide))) return;
 
-            mc.getNetHandler().addToSendQueue(new C08PacketPlayerBlockPlacement(
-                    placeBlockPos,
-                    placeSide.getIndex(),
-                    held,
-                    fX, fY, fZ
-            ));
+        double hitX = placeHitVec.xCoord - placeBlockPos.getX();
+        double hitY = placeHitVec.yCoord - placeBlockPos.getY();
+        double hitZ = placeHitVec.zCoord - placeBlockPos.getZ();
+        if (precisionHitVecSetting.isToggled()) {
+            hitX = MathHelper.clamp_double(hitX, 0.001, 0.999);
+            hitY = MathHelper.clamp_double(hitY, 0.001, 0.999);
+            hitZ = MathHelper.clamp_double(hitZ, 0.001, 0.999);
+        }
+        Vec3 hitVec = new Vec3(placeBlockPos.getX() + hitX,
+                placeBlockPos.getY() + hitY,
+                placeBlockPos.getZ() + hitZ);
+
+        // Go through the same call a real right click makes instead of putting the packet on the
+        // wire by hand.
+        //
+        // Sending only C08 meant the block never existed on this client until the server echoed
+        // it back a few ticks later. So you walked out over a hole the client still thought was
+        // air, started falling, got corrected when the block arrived, and the search picked the
+        // same cell again in the meantime because it still read as empty. That is the place,
+        // stop, go, place, stop -- and it is why holding right click by hand felt fine, because
+        // that path runs onItemUse and the block is simply there. This also syncs the held slot,
+        // which the hand-rolled version never did.
+        if (mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held,
+                placeBlockPos, placeSide, hitVec)) {
             mc.thePlayer.swingItem();
             blocksPlaced++;
         }
