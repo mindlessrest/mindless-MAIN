@@ -40,7 +40,16 @@ public final class FontManager {
             new BundledFont("Lato", "Lato-Regular.ttf"),
             new BundledFont("Varela Round", "VarelaRound-Regular.ttf"),
             new BundledFont("Titillium Web", "TitilliumWeb-Regular.ttf"),
-            new BundledFont("JetBrains Mono", "JetBrainsMono-Regular.ttf")
+            new BundledFont("JetBrains Mono", "JetBrainsMono-Regular.ttf"),
+            // Appended rather than inserted. Every font picker in the client is a slider over this
+            // array and profiles store the chosen index, so putting a new family anywhere but the
+            // end would silently move everyone onto a different font.
+            //
+            // Both faces are subset to Latin plus the symbols the UI actually draws -- Hypixel's
+            // stars, the ESP heart, arrows, box-drawing. Shipped whole they are 1.9MB each against
+            // 76KB here, and nothing in the client asks for the 6800 glyphs that were dropped.
+            new BundledFont("Google Sans", "GoogleSans-Regular.ttf"),
+            new BundledFont("Google Sans Medium", "GoogleSans-Medium.ttf")
     };
     private static final String[] HUD_FONT_OPTIONS = buildHudFontOptions();
     private static final Map<String, BundledFont> BUNDLED_FONT_MAP = buildBundledFontMap();

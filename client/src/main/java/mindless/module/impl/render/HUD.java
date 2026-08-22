@@ -73,7 +73,11 @@ public class HUD extends Module {
     private float lastHudFontScale = -1.0f;
 
     public HUD() {
-        super("HUD", Module.category.render);
+        // Named for what it is. "HUD" said nothing about the on-screen module list, so the
+        // settings that control it -- colours, sorting, alignment, position -- were sitting
+        // behind a name nobody would think to open. Old profiles still resolve through the
+        // legacy alias in ModuleManager.
+        super("ArrayList", Module.category.render);
         this.registerSetting(colorMode = new SliderSetting("Color mode", 0, COLOR_MODES));
         this.registerSetting(hudColor = new ColorSetting("Color", 255, 255, 255));
         this.registerSetting(hudColor2 = new ColorSetting("Color 2", 85, 85, 255));
@@ -633,7 +637,7 @@ public class HUD extends Module {
 
         private boolean empty() {
             for (Module module : ModuleManager.organizedModules) {
-                if (module.isEnabled() && !module.getName().equals("HUD")) {
+                if (module.isEnabled() && module != ModuleManager.hud) {
                     if (module.isHidden()) {
                         continue;
                     }

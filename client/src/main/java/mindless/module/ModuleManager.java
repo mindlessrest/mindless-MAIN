@@ -288,12 +288,31 @@ public class ModuleManager {
         return categoryModules;
     }
 
+    /**
+     * Names modules were saved under before they were renamed.
+     *
+     * Profiles key each module by its display name, so a rename would otherwise orphan every
+     * setting, keybind and position already stored against the old one.
+     */
+    private static final Map<String, String> LEGACY_MODULE_NAMES = buildLegacyModuleNames();
+
+    private static Map<String, String> buildLegacyModuleNames() {
+        Map<String, String> names = new HashMap<>();
+        names.put("HUD", "ArrayList");
+        return names;
+    }
+
     public static Module getModule(String moduleName) {
         Module module = modulesByName.get(moduleName);
         if (module != null) {
             return module;
         }
-        return modulesByNormalizedName.get(normalizeModuleName(moduleName));
+        module = modulesByNormalizedName.get(normalizeModuleName(moduleName));
+        if (module != null) {
+            return module;
+        }
+        String renamed = LEGACY_MODULE_NAMES.get(moduleName);
+        return renamed == null ? null : modulesByName.get(renamed);
     }
 
     public static Module getModule(Class<?> clazz) {

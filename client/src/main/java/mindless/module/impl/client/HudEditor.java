@@ -118,7 +118,7 @@ public final class HudEditor {
         private void buildElements() {
             elements.clear();
 
-            elements.add(new Element("Array List") {
+            elements.add(new Element("ArrayList") {
                 @Override
                 void render() {
                     setBounds(HUD.renderDesignerPreview());

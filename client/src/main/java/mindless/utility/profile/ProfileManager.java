@@ -336,7 +336,7 @@ public class ProfileManager implements IMinecraftInstance {
                     Module module = entry.getKey();
                     JsonObject moduleInformation = entry.getValue();
 
-                    if (module.getName().equals("HUD")) {
+                    if (module == ModuleManager.hud) {
                         if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
                             HUD.setRelativePosition(
                                     moduleInformation.get("relPosX").getAsFloat(),
