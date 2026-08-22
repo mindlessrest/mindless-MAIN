@@ -315,12 +315,37 @@ public class Scaffold extends Module {
         return new float[]{nextYaw, MathHelper.clamp_float(nextPitch, -89.0f, 89.0f)};
     }
 
+    /**
+     * The keys you are actually holding, not thePlayer's move fields.
+     *
+     * Those fields hold what the movement fix rewrote them to last tick: it re-picks
+     * forward/strafe so that, read against the rotation we are sending, you travel where the
+     * camera points. Holding W with a rotation 180 degrees behind you comes back out of that as
+     * moveForward = -1. Feeding it to getDirection, which reads it against the camera instead,
+     * turned the bridge direction around, which moved the rotation, which changed what the fix
+     * picked next tick. That loop is the veering left and right -- the module was steering off
+     * its own output. Reading the keybinds breaks it.
+     */
+    private float rawForward() {
+        float forward = 0.0f;
+        if (mc.gameSettings.keyBindForward.isKeyDown()) forward += 1.0f;
+        if (mc.gameSettings.keyBindBack.isKeyDown()) forward -= 1.0f;
+        return forward;
+    }
+
+    private float rawStrafe() {
+        float strafe = 0.0f;
+        if (mc.gameSettings.keyBindLeft.isKeyDown()) strafe += 1.0f;
+        if (mc.gameSettings.keyBindRight.isKeyDown()) strafe -= 1.0f;
+        return strafe;
+    }
+
     private boolean isMovingDiagonal() {
-        return mc.thePlayer.moveForward != 0.0f && mc.thePlayer.moveStrafing != 0.0f;
+        return rawForward() != 0.0f && rawStrafe() != 0.0f;
     }
 
     private boolean isMoving() {
-        return mc.thePlayer.moveForward != 0.0f || mc.thePlayer.moveStrafing != 0.0f;
+        return rawForward() != 0.0f || rawStrafe() != 0.0f;
     }
 
     private boolean updateData() {
@@ -360,8 +385,8 @@ public class Scaffold extends Module {
         if (px * px + pz * pz <= 1.0E-6) {
             // Standing still against a wall, or the first tick off a ledge: aim where the keys
             // point instead, or there is no direction to project along at all.
-            float forward = mc.thePlayer.moveForward;
-            float strafe = mc.thePlayer.moveStrafing;
+            float forward = rawForward();
+            float strafe = rawStrafe();
             double length = Math.sqrt(forward * forward + strafe * strafe);
             if (length <= 0.01) return false;
             double yaw = Math.toRadians(mc.thePlayer.rotationYaw);
@@ -569,19 +594,22 @@ public class Scaffold extends Module {
     }
 
     public float getDirection() {
+        float moveForward = rawForward();
+        float moveStrafing = rawStrafe();
+
         float direction = mc.thePlayer.rotationYaw;
         float forward = 1.0F;
 
-        if (mc.thePlayer.moveForward < 0.0F) {
+        if (moveForward < 0.0F) {
             direction += 180.0F;
             forward = -0.5F;
-        } else if (mc.thePlayer.moveForward > 0.0F) {
+        } else if (moveForward > 0.0F) {
             forward = 0.5F;
         }
 
-        if (mc.thePlayer.moveStrafing > 0.0F) {
+        if (moveStrafing > 0.0F) {
             direction -= 90.0F * forward;
-        } else if (mc.thePlayer.moveStrafing < 0.0F) {
+        } else if (moveStrafing < 0.0F) {
             direction += 90.0F * forward;
         }
 
