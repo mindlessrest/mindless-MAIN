@@ -51,14 +51,29 @@ static std::string detect_display(const std::string& windowTitle)
 
 static std::string detect_subtitle(const std::string& windowTitle, DWORD pid)
 {
-    char buf[32];
+    char buf[48];
     if (windowTitle.find("Lunar Client") != std::string::npos)
     {
         snprintf(buf, sizeof(buf), "PID %lu", pid);
         return buf;
     }
-    snprintf(buf, sizeof(buf), "javaw.exe  \xC2\xB7  PID %lu", pid);
+    snprintf(buf, sizeof(buf), "javaw.exe - PID %lu", pid);
     return buf;
+}
+
+// Lunar runs several helper JVMs alongside the game, and none of them own a window. Listing
+// every javaw process put four indistinguishable "Minecraft" rows on screen when only one of
+// them could actually be injected into, so a titled visible window is the requirement.
+static std::unordered_map<DWORD, std::string> scan_window_titles()
+{
+    WindowScanCtx ctx;
+    EnumWindows(enum_windows_proc, reinterpret_cast<LPARAM>(&ctx));
+    return std::move(ctx.titleByPid);
+}
+
+static bool is_game_process(const wchar_t* exeName)
+{
+    return _wcsicmp(exeName, L"javaw.exe") == 0;
 }
 
 static Image extract_process_icon(DWORD pid, ID3D11Device* device)
@@ -91,6 +106,8 @@ std::vector<uint32_t> enumerate_target_pids()
 {
     std::vector<uint32_t> result;
 
+    std::unordered_map<DWORD, std::string> titles = scan_window_titles();
+
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) return result;
 
@@ -101,8 +118,7 @@ std::vector<uint32_t> enumerate_target_pids()
     {
         do
         {
-            if (_wcsicmp(entry.szExeFile, L"javaw.exe") == 0 ||
-                _wcsicmp(entry.szExeFile, L"java.exe") == 0)
+            if (is_game_process(entry.szExeFile) && titles.count(entry.th32ProcessID))
                 result.push_back(entry.th32ProcessID);
         }
         while (Process32NextW(snap, &entry));
@@ -116,8 +132,7 @@ std::vector<ProcessEntry> enumerate_targets(ID3D11Device* device)
 {
     std::vector<ProcessEntry> result;
 
-    WindowScanCtx ctx;
-    EnumWindows(enum_windows_proc, reinterpret_cast<LPARAM>(&ctx));
+    std::unordered_map<DWORD, std::string> titles = scan_window_titles();
 
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) return result;
@@ -129,12 +144,12 @@ std::vector<ProcessEntry> enumerate_targets(ID3D11Device* device)
     {
         do
         {
-            if (_wcsicmp(entry.szExeFile, L"javaw.exe") != 0 &&
-                _wcsicmp(entry.szExeFile, L"java.exe") != 0) continue;
+            if (!is_game_process(entry.szExeFile)) continue;
 
             DWORD pid = entry.th32ProcessID;
-            auto it   = ctx.titleByPid.find(pid);
-            std::string title = (it != ctx.titleByPid.end()) ? it->second : "";
+            auto it   = titles.find(pid);
+            if (it == titles.end()) continue;
+            std::string title = it->second;
 
             ProcessEntry pe;
             pe.pid      = pid;

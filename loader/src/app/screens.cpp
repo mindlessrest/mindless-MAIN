@@ -209,6 +209,24 @@ static void draw_title_bar(DrawList& dl, ScreenFonts /*fonts*/,
     dl.draw_image(logo, { wr.x + pad, wr.y + 12.0f, logoW, iconSz }, alpha);
 }
 
+static const float kRowHeight = 48.0f;
+static const float kRowGap = 4.0f;
+static const float kListGap = 14.0f;
+static const int   kMaxVisibleRows = 4;
+
+static float list_top_offset(FontAtlas& font)
+{
+    return 48.0f + font.lineHeight() + 8.0f;
+}
+
+float process_select_panel_height(int rowCount, FontAtlas& font)
+{
+    int visible = rowCount <= 0 ? 2 : std::min(rowCount, kMaxVisibleRows);
+    float listH = visible * kRowHeight + (visible - 1) * kRowGap;
+    return list_top_offset(font) + listH + kListGap
+         + g_theme.buttonH + g_theme.windowPadding;
+}
+
 static void draw_process_select_content(DrawList& dl, AppState& state,
                                          const InputState& input, ScreenFonts fonts,
                                          const Rect& wr, float alpha, float dt)
@@ -226,13 +244,18 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
     dl.draw_text("Select Minecraft", { listX, vcenter_text(fn, contentTop, fn.lineHeight()) },
                  t.text.with_alpha(alpha), fn);
 
-    float listTop = contentTop + fn.lineHeight() + 8.0f;
-    float rowH    = 48.0f;
-    float rowGap  =  4.0f;
+    float listTop = wr.y + list_top_offset(fn);
+    float rowH    = kRowHeight;
+    float rowGap  = kRowGap;
+
+    // Continue is pinned to the bottom of the panel; the list gets whatever is left. Laying the
+    // button out after the last row is what pushed it off the window once a fifth one appeared.
+    Rect  btnR    = { listX, wr.bottom() - pad - t.buttonH, listW, t.buttonH };
+    Rect  listArea = { listX, listTop, listW, std::max(rowH, btnR.y - kListGap - listTop) };
 
     if (state.processes.empty())
     {
-        float midY = listTop + (wr.bottom() - listTop) * 0.35f;
+        float midY = listTop + listArea.h * 0.4f;
         float ty   = vcenter_text(fn, midY - fn.capHeight(), fn.capHeight() * 2.0f);
         draw_text_centered(dl, fn, "No Minecraft instances found", cx, ty,
                            t.textSecond.with_alpha(alpha));
@@ -243,12 +266,22 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
     }
 
     int count = static_cast<int>(state.processes.size());
+    float contentH = count * rowH + (count - 1) * rowGap;
+    float maxScroll = std::max(0.0f, contentH - listArea.h);
+
+    if (dt > 0.0f && listArea.contains(input.mousePos) && input.mouseWheel != 0.0f)
+        state.listScroll -= input.mouseWheel * (rowH + rowGap) * 0.75f;
+    state.listScroll = clamp(state.listScroll, 0.0f, maxScroll);
+
+    dl.push_clip(listArea);
     for (int i = 0; i < count; ++i)
     {
-        float rowY = listTop + static_cast<float>(i) * (rowH + rowGap);
+        float rowY = listTop - state.listScroll + static_cast<float>(i) * (rowH + rowGap);
         Rect  row  = { listX, rowY, listW, rowH };
 
-        bool hovered  = row.contains(input.mousePos);
+        if (row.bottom() < listArea.y || row.y > listArea.bottom()) continue;
+
+        bool hovered  = row.contains(input.mousePos) && listArea.contains(input.mousePos);
         bool selected = (state.selectedIdx == i);
 
         if (i < kMaxProcessRows)
@@ -296,9 +329,16 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
         if (hovered && input.lmbReleased)
             state.selectedIdx = i;
     }
+    dl.pop_clip();
 
-    float btnY = listTop + static_cast<float>(count) * (rowH + rowGap) + 12.0f;
-    Rect  btnR = { listX, btnY, listW, t.buttonH };
+    if (maxScroll > 0.5f)
+    {
+        float trackH = listArea.h;
+        float thumbH = std::max(20.0f, trackH * (listArea.h / contentH));
+        float thumbY = listArea.y + (trackH - thumbH) * (state.listScroll / maxScroll);
+        dl.fill_rounded_rect({ listArea.right() - 3.0f, thumbY, 3.0f, thumbH },
+                             t.textDisable.with_alpha(0.9f * alpha), 1.5f);
+    }
 
     if (state.selectedIdx >= 0)
     {

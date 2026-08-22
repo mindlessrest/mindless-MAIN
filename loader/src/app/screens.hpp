@@ -20,6 +20,10 @@ struct ScreenFonts
     FontAtlas& title;
 };
 
+// Panel height that fits the current list, so the window can be sized to its contents rather
+// than leaving a gap under one row or cutting the fifth one off.
+float process_select_panel_height(int rowCount, FontAtlas& font);
+
 bool draw_chrome(ui::DrawList& dl, const InputState& input,
                  const Rect& windowRect, ScreenFonts fonts, Window* window,
                  AppState& state, float dt);

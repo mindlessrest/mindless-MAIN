@@ -192,6 +192,32 @@ int Application::run()
             }
         }
 
+        if (state_.screen == Screen::ProcessSelect || state_.screen == Screen::Loading)
+        {
+            int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
+            float panelH = state_.screen == Screen::Loading
+                ? 300.0f
+                : process_select_panel_height(
+                      static_cast<int>(state_.processes.size()), fontNormal_);
+
+            int desiredW = 460 + margin;
+            int desiredH = static_cast<int>(panelH) + margin;
+
+            RECT cur;
+            GetWindowRect(window_.hwnd(), &cur);
+            int curW = cur.right - cur.left;
+            int curH = cur.bottom - cur.top;
+            if (curW != desiredW || curH != desiredH)
+            {
+                // Grow about the centre so the window does not crawl across the desktop as
+                // instances come and go.
+                int newX = cur.left + (curW - desiredW) / 2;
+                int newY = cur.top + (curH - desiredH) / 2;
+                SetWindowPos(window_.hwnd(), nullptr, newX, newY, desiredW, desiredH,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+        }
+
         if (state_.screen == Screen::Splash)
         {
             float ease = ease_out_quart(state_.logoTween);

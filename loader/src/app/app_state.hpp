@@ -50,6 +50,8 @@ struct AppState
     std::string targetDisplay;
     std::string targetPid;
 
+    float listScroll = 0.0f;
+
     float refreshAccum = 0.0f;
     static constexpr float RefreshInterval = 0.4f;
 
