@@ -37,8 +37,7 @@ public abstract class MixinEntity {
         Minecraft mc = Minecraft.getMinecraft();
 
         if (entity != null && entity == mc.thePlayer && entity.onGround) {
-            if (SafeWalk.canSafeWalk()
-                    || (ModuleManager.scaffold != null && ModuleManager.scaffold.safewalk())) {
+            if (SafeWalk.canSafeWalk()) {
                 return true;
             }
         }

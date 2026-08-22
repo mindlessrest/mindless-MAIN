@@ -88,7 +88,6 @@ public class ModuleManager {
     public static AutoSwap autoSwap;
     public static Scaffold scaffold;
     public static Clutch clutch;
-    public static Tower tower;
     public static Sprint sprint;
     public static Weather weather;
     public static Ambience ambience;
@@ -183,7 +182,6 @@ public class ModuleManager {
         this.addModule(new AutoJump());
         this.addModule(autoSwap = new AutoSwap());
         this.addModule(new BridgeAssist());
-        this.addModule(tower = new Tower());
         this.addModule(scaffold = new Scaffold());
         this.addModule(clutch = new Clutch());
         this.addModule(autoTool = new AutoTool());

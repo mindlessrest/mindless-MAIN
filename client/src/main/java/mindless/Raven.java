@@ -109,10 +109,7 @@ public class Raven {
         playerRelationsManager = new PlayerRelationsManager();
         playerRelationsManager.load();
         moduleManager.register();
-        // Scaffold is alwaysOn and Tower is never user-toggleable, so neither is
-        // registered by Module#enable. Both listen on the Forge bus only.
         registerHandler(ModuleManager.scaffold, false);
-        registerHandler(ModuleManager.tower, false);
         registerHandler(new BlockHighlightSharedHandler(), true);
         scriptManager = new ScriptManager();
         keyStrokeRenderer = new KeyStrokeRenderer();
