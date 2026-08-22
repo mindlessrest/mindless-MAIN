@@ -103,6 +103,7 @@ target_link_libraries(MindlessLoader
         d3dcompiler.lib
         dxguid.lib
         dwmapi.lib
+        dcomp.lib
         shell32.lib
 )
 

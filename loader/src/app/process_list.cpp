@@ -87,6 +87,31 @@ static Image extract_process_icon(DWORD pid, ID3D11Device* device)
     return img;
 }
 
+std::vector<uint32_t> enumerate_target_pids()
+{
+    std::vector<uint32_t> result;
+
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return result;
+
+    PROCESSENTRY32W entry = {};
+    entry.dwSize = sizeof(entry);
+
+    if (Process32FirstW(snap, &entry))
+    {
+        do
+        {
+            if (_wcsicmp(entry.szExeFile, L"javaw.exe") == 0 ||
+                _wcsicmp(entry.szExeFile, L"java.exe") == 0)
+                result.push_back(entry.th32ProcessID);
+        }
+        while (Process32NextW(snap, &entry));
+    }
+
+    CloseHandle(snap);
+    return result;
+}
+
 std::vector<ProcessEntry> enumerate_targets(ID3D11Device* device)
 {
     std::vector<ProcessEntry> result;
@@ -104,7 +129,8 @@ std::vector<ProcessEntry> enumerate_targets(ID3D11Device* device)
     {
         do
         {
-            if (_wcsicmp(entry.szExeFile, L"javaw.exe") != 0) continue;
+            if (_wcsicmp(entry.szExeFile, L"javaw.exe") != 0 &&
+                _wcsicmp(entry.szExeFile, L"java.exe") != 0) continue;
 
             DWORD pid = entry.th32ProcessID;
             auto it   = ctx.titleByPid.find(pid);

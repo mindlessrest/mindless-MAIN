@@ -20,4 +20,8 @@ struct ProcessEntry
 
 std::vector<ProcessEntry> enumerate_targets(ID3D11Device* device);
 
+// Just the pids, with no window scan, icon extraction or texture upload. Used to check
+// whether the list actually changed before paying for a full rebuild.
+std::vector<uint32_t> enumerate_target_pids();
+
 } // namespace mindless

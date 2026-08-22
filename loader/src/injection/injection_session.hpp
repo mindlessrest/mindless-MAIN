@@ -29,6 +29,7 @@ public:
     InjectionSession& operator=(const InjectionSession&) = delete;
 
     bool start(uint32_t processId);
+    void reset();
     void tick();
 
     InjectionPhase phase() const { return phase_; }
@@ -44,7 +45,8 @@ private:
     std::wstring logPath_;
     std::string status_ = "Checking connection";
     std::string solution_;
-    float bootstrapProgress_ = 0.20f;
+    static constexpr float BootstrapFloor = 0.45f;
+    float bootstrapProgress_ = BootstrapFloor;
 
     HANDLE pipe_ = INVALID_HANDLE_VALUE;
     bool pipeConnected_ = false;

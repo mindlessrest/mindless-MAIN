@@ -2,6 +2,7 @@
 #include "ui/draw_list.hpp"
 #include <d3dcompiler.h>
 #include <dxgi1_2.h>
+#include <dcomp.h>
 #include <cstring>
 #include <cmath>
 #include <cassert>
@@ -17,17 +18,22 @@ cbuffer Constants : register(b0)
 struct VS_Input
 {
     float2 pos   : POSITION;
-    float2 uv    : TEXCOORD;
+    float2 uv    : TEXCOORD0;
     float4 color : COLOR;
     float  mode  : MODE;
+    float4 shape : SHAPE;
+    float2 param : PARAM;
 };
 
 struct VS_Output
 {
     float4 pos   : SV_POSITION;
-    float2 uv    : TEXCOORD;
+    float2 uv    : TEXCOORD0;
     float4 color : COLOR;
     float  mode  : MODE;
+    float4 shape : SHAPE;
+    float2 param : PARAM;
+    float2 wpos  : TEXCOORD1;
 };
 
 VS_Output vs_main(VS_Input input)
@@ -39,6 +45,9 @@ VS_Output vs_main(VS_Input input)
     o.uv    = input.uv;
     o.color = input.color;
     o.mode  = input.mode;
+    o.shape = input.shape;
+    o.param = input.param;
+    o.wpos  = input.pos;
     return o;
 }
 
@@ -46,8 +55,33 @@ Texture2D    gTexture : register(t0);
 SamplerState gSampler : register(s0);
 SamplerState gFontSampler : register(s1);
 
+float sd_round_box(float2 p, float2 b, float r)
+{
+    r = min(r, min(b.x, b.y));
+    float2 q = abs(p) - b + r;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
 float4 ps_main(VS_Output input) : SV_TARGET
 {
+    if (input.mode > 4.5)
+    {
+        float d = sd_round_box(input.wpos - input.shape.xy, input.shape.zw, input.param.x);
+        float t = saturate(1.0 - max(d, 0.0) / max(input.param.y, 0.001));
+        float a = t * t;
+        return float4(input.color.rgb, input.color.a * a);
+    }
+    if (input.mode > 3.5)
+    {
+        float d = sd_round_box(input.wpos - input.shape.xy, input.shape.zw, input.param.x);
+        float a = saturate(0.5 - d) * saturate(0.5 + d + input.param.y);
+        return float4(input.color.rgb, input.color.a * a);
+    }
+    if (input.mode > 2.5)
+    {
+        float d = sd_round_box(input.wpos - input.shape.xy, input.shape.zw, input.param.x);
+        return float4(input.color.rgb, input.color.a * saturate(0.5 - d));
+    }
     if (input.mode > 1.5)
     {
         float4 texel = gTexture.Sample(gSampler, input.uv);
@@ -68,6 +102,9 @@ namespace mindless
 
 Renderer::~Renderer()
 {
+    if (compVisual_)   compVisual_->Release();
+    if (compTarget_)   compTarget_->Release();
+    if (compDevice_)   compDevice_->Release();
     if (fontSampler_)  fontSampler_->Release();
     if (sampler_)      sampler_->Release();
     if (rastState_)    rastState_->Release();
@@ -104,8 +141,8 @@ bool Renderer::create_device_and_swap_chain(HWND hwnd)
     sd1.SampleDesc.Count = 1;
     sd1.BufferUsage      = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     sd1.BufferCount      = 2;
-    sd1.SwapEffect       = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-    sd1.AlphaMode        = DXGI_ALPHA_MODE_UNSPECIFIED;
+    sd1.SwapEffect       = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    sd1.AlphaMode        = DXGI_ALPHA_MODE_PREMULTIPLIED;
     sd1.Flags            = 0;
 
     UINT flags = 0;
@@ -129,8 +166,11 @@ bool Renderer::create_device_and_swap_chain(HWND hwnd)
     dxgiDevice->GetAdapter(&dxgiAdapter);
     dxgiAdapter->GetParent(IID_PPV_ARGS(&dxgiFactory));
 
-    IDXGISwapChain1* sc1 = nullptr;
-    hr = dxgiFactory->CreateSwapChainForHwnd(device_, hwnd, &sd1, nullptr, nullptr, &sc1);
+    // A swap chain bound straight to the HWND cannot carry per-pixel alpha. Going through
+    // DirectComposition instead is what lets the window be genuinely transparent outside the
+    // panel, so the rounded corners are actually round and the glow has somewhere to fall off
+    // into rather than being painted onto an opaque black square.
+    hr = dxgiFactory->CreateSwapChainForComposition(device_, &sd1, nullptr, &swapChain_);
 
     dxgiFactory->Release();
     dxgiAdapter->Release();
@@ -138,9 +178,32 @@ bool Renderer::create_device_and_swap_chain(HWND hwnd)
 
     if (FAILED(hr)) return false;
 
-    hr = sc1->QueryInterface(IID_PPV_ARGS(&swapChain_));
-    sc1->Release();
-    return SUCCEEDED(hr);
+    IDCompositionDevice* comp = nullptr;
+    IDCompositionTarget* target = nullptr;
+    IDCompositionVisual* visual = nullptr;
+
+    IDXGIDevice* dxgi = nullptr;
+    device_->QueryInterface(IID_PPV_ARGS(&dxgi));
+    hr = DCompositionCreateDevice(dxgi, IID_PPV_ARGS(&comp));
+    if (dxgi) dxgi->Release();
+    if (FAILED(hr)) return false;
+
+    if (FAILED(comp->CreateTargetForHwnd(hwnd, TRUE, &target)) ||
+        FAILED(comp->CreateVisual(&visual)))
+    {
+        if (target) target->Release();
+        comp->Release();
+        return false;
+    }
+
+    visual->SetContent(swapChain_);
+    target->SetRoot(visual);
+    comp->Commit();
+
+    compDevice_ = comp;
+    compTarget_ = target;
+    compVisual_ = visual;
+    return true;
 }
 
 bool Renderer::create_render_target()
@@ -179,8 +242,10 @@ bool Renderer::create_pipeline()
         { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, offsetof(Vertex, u),    D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, r),    D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "MODE",     0, DXGI_FORMAT_R32_FLOAT,           0, offsetof(Vertex, mode), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "SHAPE",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, cx),   D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "PARAM",    0, DXGI_FORMAT_R32G32_FLOAT,       0, offsetof(Vertex, radius), D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
-    device_->CreateInputLayout(layout, 4, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &inputLayout_);
+    device_->CreateInputLayout(layout, 6, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &inputLayout_);
 
     vsBlob->Release();
     psBlob->Release();
@@ -255,9 +320,8 @@ void Renderer::begin_frame()
         context_->Unmap(constantBuf_, 0);
     }
 
-    // Clear to solid near-black. DWM acrylic lives in the window frame area;
-    // our D3D11 surface is opaque on top.
-    float clearColor[4] = { 0.047f, 0.051f, 0.063f, 1.0f }; // 0x0C0D10
+    // Transparent: the margin around the panel has to stay clear for the glow to fade into.
+    float clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     context_->ClearRenderTargetView(rtv_, clearColor);
 
     D3D11_VIEWPORT vp = { 0, 0, (float)width_, (float)height_, 0, 1 };
@@ -365,12 +429,40 @@ void Renderer::push_quad(float x0, float y0, float x1, float y1,
     if (static_cast<int>(vertices_.size()) + 6 > MaxVertices)
         flush();
 
-    vertices_.push_back({ x0, y0, u0, v0, c.r, c.g, c.b, c.a, mode });
-    vertices_.push_back({ x1, y0, u1, v0, c.r, c.g, c.b, c.a, mode });
-    vertices_.push_back({ x1, y1, u1, v1, c.r, c.g, c.b, c.a, mode });
-    vertices_.push_back({ x0, y0, u0, v0, c.r, c.g, c.b, c.a, mode });
-    vertices_.push_back({ x1, y1, u1, v1, c.r, c.g, c.b, c.a, mode });
-    vertices_.push_back({ x0, y1, u0, v1, c.r, c.g, c.b, c.a, mode });
+    vertices_.push_back({ x0, y0, u0, v0, c.r, c.g, c.b, c.a, mode, 0, 0, 0, 0, 0, 0 });
+    vertices_.push_back({ x1, y0, u1, v0, c.r, c.g, c.b, c.a, mode, 0, 0, 0, 0, 0, 0 });
+    vertices_.push_back({ x1, y1, u1, v1, c.r, c.g, c.b, c.a, mode, 0, 0, 0, 0, 0, 0 });
+    vertices_.push_back({ x0, y0, u0, v0, c.r, c.g, c.b, c.a, mode, 0, 0, 0, 0, 0, 0 });
+    vertices_.push_back({ x1, y1, u1, v1, c.r, c.g, c.b, c.a, mode, 0, 0, 0, 0, 0, 0 });
+    vertices_.push_back({ x0, y1, u0, v1, c.r, c.g, c.b, c.a, mode, 0, 0, 0, 0, 0, 0 });
+}
+
+void Renderer::push_sdf_quad(Rect shape, Rect cover, Color c,
+                             float radius, float mode, float param)
+{
+    if (shape.w <= 0.0f || shape.h <= 0.0f || c.a <= 0.0f) return;
+
+    ensure_srv(nullptr);
+    if (static_cast<int>(vertices_.size()) + 6 > MaxVertices) flush();
+
+    float cx = shape.x + shape.w * 0.5f;
+    float cy = shape.y + shape.h * 0.5f;
+    float hx = shape.w * 0.5f;
+    float hy = shape.h * 0.5f;
+    radius = std::min(radius, std::min(hx, hy));
+
+    float x0 = cover.x, y0 = cover.y, x1 = cover.right(), y1 = cover.bottom();
+
+    Vertex v = { 0, 0, 0, 0, c.r, c.g, c.b, c.a, mode, cx, cy, hx, hy, radius, param };
+
+    auto at = [&](float x, float y) { Vertex o = v; o.x = x; o.y = y; return o; };
+
+    vertices_.push_back(at(x0, y0));
+    vertices_.push_back(at(x1, y0));
+    vertices_.push_back(at(x1, y1));
+    vertices_.push_back(at(x0, y0));
+    vertices_.push_back(at(x1, y1));
+    vertices_.push_back(at(x0, y1));
 }
 
 void Renderer::draw_rect(Rect r, Color c)
@@ -389,110 +481,17 @@ void Renderer::draw_rect_border(Rect r, Color c, float t)
 
 void Renderer::draw_rounded_rect(Rect r, Color c, float radius)
 {
-    push_rounded_rect_filled(r, c, radius);
+    push_sdf_quad(r, r.inset(-2.0f), c, radius, 3.0f, 0.0f);
 }
 
 void Renderer::draw_rounded_rect_border(Rect r, Color c, float radius, float thickness)
 {
-    push_rounded_rect_border(r, c, radius, thickness);
+    push_sdf_quad(r, r.inset(-2.0f), c, radius, 4.0f, thickness);
 }
 
-// Filled rounded rect — center cross + four corner fans.
-void Renderer::push_rounded_rect_filled(Rect r, Color c, float radius)
+void Renderer::draw_rounded_rect_glow(Rect r, Color c, float radius, float spread)
 {
-    radius = std::min(radius, std::min(r.w, r.h) * 0.5f);
-
-    ensure_srv(nullptr);
-
-    if (radius <= 0.0f)
-    {
-        push_quad(r.x, r.y, r.right(), r.bottom(), 0, 0, 0, 0, c, 0);
-        return;
-    }
-
-    // Horizontal center slab (full width, inner height)
-    push_quad(r.x,          r.y + radius,      r.right(),          r.bottom() - radius, 0,0,0,0, c, 0);
-    // Top slab (between corners)
-    push_quad(r.x + radius, r.y,               r.right() - radius, r.y + radius,        0,0,0,0, c, 0);
-    // Bottom slab
-    push_quad(r.x + radius, r.bottom() - radius, r.right() - radius, r.bottom(),         0,0,0,0, c, 0);
-
-    const int   N  = 8;
-    const float pi = 3.14159265f;
-
-    auto corner_fan = [&](float cx, float cy, float startAngle)
-    {
-        for (int i = 0; i < N; ++i)
-        {
-            float a0 = startAngle + (float)i       / N * (pi * 0.5f);
-            float a1 = startAngle + (float)(i + 1) / N * (pi * 0.5f);
-
-            float x0 = cx + std::cos(a0) * radius;
-            float y0 = cy + std::sin(a0) * radius;
-            float x1 = cx + std::cos(a1) * radius;
-            float y1 = cy + std::sin(a1) * radius;
-
-            if (static_cast<int>(vertices_.size()) + 3 > MaxVertices) flush();
-            vertices_.push_back({ cx, cy, 0, 0, c.r, c.g, c.b, c.a, 0 });
-            vertices_.push_back({ x0, y0, 0, 0, c.r, c.g, c.b, c.a, 0 });
-            vertices_.push_back({ x1, y1, 0, 0, c.r, c.g, c.b, c.a, 0 });
-        }
-    };
-
-    corner_fan(r.x + radius,          r.y + radius,          pi      );  // top-left
-    corner_fan(r.right() - radius,     r.y + radius,          pi*1.5f );  // top-right
-    corner_fan(r.right() - radius,     r.bottom() - radius,   0.0f    );  // bottom-right
-    corner_fan(r.x + radius,           r.bottom() - radius,   pi*0.5f );  // bottom-left
-}
-
-// Border as thin arc strips + straight edge quads.
-void Renderer::push_rounded_rect_border(Rect r, Color c, float radius, float t)
-{
-    radius = std::min(radius, std::min(r.w, r.h) * 0.5f);
-
-    ensure_srv(nullptr);
-
-    if (radius <= 0.0f) { draw_rect_border(r, c, t); return; }
-
-    // Straight edges
-    push_quad(r.x + radius,          r.y,              r.right() - radius, r.y + t,              0,0,0,0, c, 0);
-    push_quad(r.x + radius,          r.bottom() - t,   r.right() - radius, r.bottom(),             0,0,0,0, c, 0);
-    push_quad(r.x,                   r.y + radius,     r.x + t,             r.bottom() - radius,  0,0,0,0, c, 0);
-    push_quad(r.right() - t,         r.y + radius,     r.right(),            r.bottom() - radius,  0,0,0,0, c, 0);
-
-    const int   N  = 8;
-    const float pi = 3.14159265f;
-    float innerR   = radius - t;
-
-    auto arc_strip = [&](float cx, float cy, float startAngle)
-    {
-        for (int i = 0; i < N; ++i)
-        {
-            float a0 = startAngle + (float)i       / N * (pi * 0.5f);
-            float a1 = startAngle + (float)(i + 1) / N * (pi * 0.5f);
-
-            float c0 = std::cos(a0), s0 = std::sin(a0);
-            float c1 = std::cos(a1), s1 = std::sin(a1);
-
-            float xi0 = cx + c0 * innerR, yi0 = cy + s0 * innerR;
-            float xo0 = cx + c0 * radius, yo0 = cy + s0 * radius;
-            float xi1 = cx + c1 * innerR, yi1 = cy + s1 * innerR;
-            float xo1 = cx + c1 * radius, yo1 = cy + s1 * radius;
-
-            if (static_cast<int>(vertices_.size()) + 6 > MaxVertices) flush();
-            vertices_.push_back({ xi0, yi0, 0,0, c.r,c.g,c.b,c.a, 0 });
-            vertices_.push_back({ xo0, yo0, 0,0, c.r,c.g,c.b,c.a, 0 });
-            vertices_.push_back({ xo1, yo1, 0,0, c.r,c.g,c.b,c.a, 0 });
-            vertices_.push_back({ xi0, yi0, 0,0, c.r,c.g,c.b,c.a, 0 });
-            vertices_.push_back({ xo1, yo1, 0,0, c.r,c.g,c.b,c.a, 0 });
-            vertices_.push_back({ xi1, yi1, 0,0, c.r,c.g,c.b,c.a, 0 });
-        }
-    };
-
-    arc_strip(r.x + radius,       r.y + radius,        pi      );
-    arc_strip(r.right() - radius, r.y + radius,        pi*1.5f );
-    arc_strip(r.right() - radius, r.bottom() - radius, 0.0f    );
-    arc_strip(r.x + radius,       r.bottom() - radius, pi*0.5f );
+    push_sdf_quad(r, r.inset(-spread - 2.0f), c, radius, 5.0f, spread);
 }
 
 void Renderer::draw_text(const char* text, Vec2 pos, Color c, const FontAtlas& atlas)
@@ -561,6 +560,9 @@ void execute_draw_list(Renderer& r, const ui::DrawList& list)
             break;
         case ui::DrawCmdType::StrokeRoundedRect:
             r.draw_rounded_rect_border(cmd.rect, cmd.color, cmd.radius, cmd.thick);
+            break;
+        case ui::DrawCmdType::GlowRoundedRect:
+            r.draw_rounded_rect_glow(cmd.rect, cmd.color, cmd.radius, cmd.thick);
             break;
         case ui::DrawCmdType::Text:
             if (cmd.atlas)

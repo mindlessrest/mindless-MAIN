@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdio>
 #include <cmath>
+#include <cstdint>
 
 namespace mindless
 {
@@ -32,7 +33,11 @@ struct AppState
     std::string statusText   = "Checking connection";
     std::string solutionText;
     bool        loadFailed = false;
+    bool        retryRequested = false;
     Timer       statusFade;
+
+    // Ceiling on how fast the bar may fill, in fraction per second.
+    static constexpr float MaxProgressRate = 0.55f;
 
     Timer fadeIn;
 
@@ -46,7 +51,7 @@ struct AppState
     std::string targetPid;
 
     float refreshAccum = 0.0f;
-    static constexpr float RefreshInterval = 0.1f;
+    static constexpr float RefreshInterval = 0.4f;
 
     float closeTween   = 0.0f;
     int   closeOrigX   = 0;
@@ -71,6 +76,7 @@ struct AppState
 
     // Back link hover tween
     Tween backHover;
+    Tween retryHover;
 
     // Chrome: minimize / close button hover tweens
     Tween chromeMinHover;
@@ -81,6 +87,7 @@ struct AppState
         for (auto& t : rowHover)   { t.speed = 14.0f; }
         continueHover.speed   = 14.0f;
         backHover.speed       = 14.0f;
+        retryHover.speed      = 14.0f;
         chromeMinHover.speed  = 14.0f;
         chromeCloseHover.speed= 14.0f;
     }
@@ -90,6 +97,7 @@ struct AppState
         for (auto& t : rowHover)  t.advance(dt);
         continueHover.advance(dt);
         backHover.advance(dt);
+        retryHover.advance(dt);
         chromeMinHover.advance(dt);
         chromeCloseHover.advance(dt);
 
@@ -111,6 +119,16 @@ struct AppState
         for (auto& pe : processes) pe.icon.release();
     }
 
+    void reselect_pid(uint32_t pid)
+    {
+        selectedIdx = -1;
+        if (pid == 0) return;
+        for (size_t i = 0; i < processes.size(); ++i)
+        {
+            if (processes[i].pid == pid) { selectedIdx = static_cast<int>(i); return; }
+        }
+    }
+
     void select_process(int idx)
     {
         selectedIdx   = idx;
@@ -128,6 +146,7 @@ struct AppState
         statusText   = "Checking connection";
         solutionText.clear();
         loadFailed   = false;
+        retryRequested = false;
         statusFade.reset(0.16f);
         continueHover.snap(0.0f);
         transition_to(Screen::Loading, 1.0f);

@@ -201,6 +201,24 @@ bool InjectionSession::start(uint32_t processId)
     return true;
 }
 
+void InjectionSession::reset()
+{
+    if (injectThread_.joinable()) injectThread_.join();
+    cleanup_runtime();
+
+    phase_ = InjectionPhase::Idle;
+    status_ = "Checking connection";
+    solution_.clear();
+    injectError_.clear();
+    bootstrapProgress_ = BootstrapFloor;
+    injectDone_ = false;
+    injectSuccess_ = false;
+    pipeBuf_.clear();
+    directory_.clear();
+    dllPath_.clear();
+    logPath_.clear();
+}
+
 void InjectionSession::start_injection()
 {
     phase_ = InjectionPhase::Injecting;
@@ -360,9 +378,9 @@ float InjectionSession::progress() const
     switch (phase_)
     {
     case InjectionPhase::Idle:          return 0.0f;
-    case InjectionPhase::CheckingConnection: return 0.06f;
-    case InjectionPhase::VerifyingFiles:     return 0.12f;
-    case InjectionPhase::Injecting:          return 0.20f;
+    case InjectionPhase::CheckingConnection: return 0.10f;
+    case InjectionPhase::VerifyingFiles:     return 0.22f;
+    case InjectionPhase::Injecting:          return 0.38f;
     case InjectionPhase::Bootstrapping:      return bootstrapProgress_;
     case InjectionPhase::Complete:      return 1.0f;
     case InjectionPhase::Failed:        return 0.0f;
@@ -533,7 +551,7 @@ void InjectionSession::update_bootstrap()
              contains(log, "materialized payload"))
         bootstrapProgress_ = 0.72f;
     else
-        bootstrapProgress_ = 0.52f;
+        bootstrapProgress_ = 0.55f;
 }
 
 } // namespace mindless

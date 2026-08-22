@@ -4,7 +4,7 @@
 #include "renderer/font_atlas.hpp"
 #include "renderer/image.hpp"
 #include <d3d11.h>
-#include <dxgi.h>
+#include <dxgi1_2.h>
 #include <cstdint>
 #include <vector>
 #include <string>
@@ -12,13 +12,18 @@
 namespace mindless
 {
 
-// A single vertex pushed into the draw buffer.
+// Curved shapes are one quad carrying the shape's centre, half extents and radius; the pixel
+// shader evaluates a distance field per pixel. A polygon approximation cannot antialias its
+// own edge, which is why every rounded corner used to come out stair-stepped.
 struct Vertex
 {
-    float x, y;       // screen position
-    float u, v;       // texture coordinates (0,0 if untextured)
-    float r, g, b, a; // color
-    float mode;       // 0=solid, 1=textured (glyph alpha)
+    float x, y;
+    float u, v;
+    float r, g, b, a;
+    float mode;             // 0 solid, 1 glyph, 2 image, 3 fill, 4 stroke, 5 glow
+    float cx, cy, hx, hy;   // shape centre and half extents, in pixels
+    float radius;
+    float param;            // stroke thickness, or glow spread
 };
 
 // The renderer owns all D3D11 state.
@@ -43,6 +48,7 @@ public:
     void draw_rect_border(Rect r, Color c, float thickness = 1.0f);
     void draw_rounded_rect(Rect r, Color c, float radius);
     void draw_rounded_rect_border(Rect r, Color c, float radius, float thickness = 1.0f);
+    void draw_rounded_rect_glow(Rect r, Color c, float radius, float spread);
     void draw_text(const char* text, Vec2 pos, Color c, const FontAtlas& atlas);
     void draw_image(const Image& img, Rect dest, float alpha = 1.0f);
 
@@ -59,7 +65,10 @@ private:
     // D3D11 core
     ID3D11Device*           device_       = nullptr;
     ID3D11DeviceContext*    context_      = nullptr;
-    IDXGISwapChain*         swapChain_    = nullptr;
+    IDXGISwapChain1*        swapChain_    = nullptr;
+    IUnknown*               compDevice_   = nullptr;
+    IUnknown*               compTarget_   = nullptr;
+    IUnknown*               compVisual_   = nullptr;
     ID3D11RenderTargetView* rtv_          = nullptr;
 
     // Pipeline state
@@ -100,9 +109,8 @@ private:
                    float u0, float v0, float u1, float v1,
                    Color c, float mode);
 
-    // Rounded rect helpers
-    void push_rounded_rect_filled(Rect r, Color c, float radius);
-    void push_rounded_rect_border(Rect r, Color c, float radius, float thickness);
+    // One quad covering the shape plus its soft edge, tagged for the distance-field shader.
+    void push_sdf_quad(Rect shape, Rect cover, Color c, float radius, float mode, float param);
 };
 
 } // namespace mindless

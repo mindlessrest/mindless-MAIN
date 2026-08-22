@@ -1,24 +1,6 @@
 #include "window.hpp"
 #include "resource.h"
 #include <windowsx.h>
-#include <dwmapi.h>
-
-#pragma comment(lib, "dwmapi.lib")
-
-// DWM backdrop types (Win11 22H2+). Guard against SDK versions that already define these.
-#ifndef DWMWA_SYSTEMBACKDROP_TYPE
-#define DWMWA_SYSTEMBACKDROP_TYPE 38
-#endif
-#ifndef DWMSBT_ACRYLIC
-enum DWM_SYSTEMBACKDROP_TYPE_LOCAL
-{
-    DWMSBT_AUTO_L    = 0,
-    DWMSBT_NONE_L    = 1,
-    DWMSBT_MICA_L    = 2,
-    DWMSBT_ACRYLIC   = 3,
-    DWMSBT_TABBED_L  = 4,
-};
-#endif
 
 namespace mindless
 {
@@ -47,10 +29,12 @@ bool Window::create(const wchar_t* title, int width, int height)
     wc.hIconSm       = wc.hIcon;
     RegisterClassExW(&wc);
 
-    // WS_POPUP = no system frame.
-    // WS_THICKFRAME = DWM shadow + resize hit-testing still works.
-    DWORD style   = WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX;
-    DWORD exStyle = 0;
+    // No system frame and no DWM shadow: the surface carries its own glow, and a second
+    // shadow underneath it would show as a hard rectangle behind the rounded panel.
+    // NOREDIRECTIONBITMAP drops the GDI redirection surface, without which the composed
+    // window keeps an opaque backing and the transparent margin renders black.
+    DWORD style   = WS_POPUP | WS_MINIMIZEBOX;
+    DWORD exStyle = WS_EX_NOREDIRECTIONBITMAP;
 
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
@@ -63,26 +47,7 @@ bool Window::create(const wchar_t* title, int width, int height)
         x, y, width, height,
         nullptr, nullptr, GetModuleHandleW(nullptr), this);
 
-    if (!hwnd_) return false;
-
-    // Extend DWM frame into the client area — 1px keeps the shadow.
-    MARGINS margins = { 1, 1, 1, 1 };
-    DwmExtendFrameIntoClientArea(hwnd_, &margins);
-
-    // Try Win11 Acrylic backdrop first.
-    int backdrop = DWMSBT_ACRYLIC;
-    if (FAILED(DwmSetWindowAttribute(hwnd_, DWMWA_SYSTEMBACKDROP_TYPE,
-                                     &backdrop, sizeof(backdrop))))
-    {
-        // Fallback: legacy blur-behind (works on Win10).
-        DWM_BLURBEHIND bb = {};
-        bb.dwFlags  = DWM_BB_ENABLE;
-        bb.fEnable  = TRUE;
-        bb.hRgnBlur = nullptr;
-        DwmEnableBlurBehindWindow(hwnd_, &bb);
-    }
-
-    return true;
+    return hwnd_ != nullptr;
 }
 
 void Window::show()
@@ -92,10 +57,9 @@ void Window::show()
 
 void Window::destroy()
 {
-    if (hwnd_) {
-        DestroyWindow(hwnd_);
-        hwnd_ = nullptr;
-    }
+    if (!hwnd_) return;
+    DestroyWindow(hwnd_);
+    hwnd_ = nullptr;
     UnregisterClassW(ClassName, GetModuleHandleW(nullptr));
 }
 

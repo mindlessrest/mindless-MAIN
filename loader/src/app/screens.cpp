@@ -37,24 +37,55 @@ static void draw_text_in_box(DrawList& dl, FontAtlas& font,
     dl.draw_text(s, { tx, ty }, color, font);
 }
 
-static void draw_shimmer_bar(DrawList& dl, Rect r, float elapsed,
-                              Color track, Color fill, float alpha)
+static void draw_progress_bar(DrawList& dl, Rect r, float progress, float elapsed,
+                               Color track, Color fill, float alpha)
 {
     float radius = r.h * 0.5f;
     dl.fill_rounded_rect(r, track.with_alpha(track.a * alpha), radius);
 
-    const float period = 1.4f;
-    const float shimW  = r.w * 0.38f;
-    float phase = std::fmod(elapsed, period) / period;
-    float ease  = phase < 0.5f
-        ? 4.0f * phase * phase * phase
-        : 1.0f - std::pow(-2.0f * phase + 2.0f, 3.0f) / 2.0f;
-    float shimX = r.x - shimW + (r.w + shimW) * ease;
+    float filledW = r.w * clamp(progress, 0.0f, 1.0f);
+    if (filledW < 0.5f) return;
 
-    dl.push_clip(r);
+    Rect filled = { r.x, r.y, filledW, r.h };
+    dl.fill_rounded_rect(filled, fill.with_alpha(fill.a * alpha), radius);
+
+    if (progress >= 0.999f) return;
+
+    const float period = 1.6f;
+    const float shimW  = r.w * 0.3f;
+    float phase = std::fmod(elapsed, period) / period;
+    float shimX = r.x - shimW + (filledW + shimW) * ease_in_out_cubic(phase);
+
+    dl.push_clip(filled);
     dl.fill_rounded_rect({ shimX, r.y, shimW, r.h },
-                         fill.with_alpha(fill.a * alpha), radius);
+                         Color(0xFFFFFF).with_alpha(0.25f * alpha), radius);
     dl.pop_clip();
+}
+
+static bool draw_button(DrawList& dl, FontAtlas& fn, Rect r, std::string_view label,
+                         const InputState& input, Tween& hover, float dt, float alpha,
+                         bool accent)
+{
+    const Theme& t = g_theme;
+
+    bool hovered = r.contains(input.mousePos);
+    hover.set(hovered ? 1.0f : 0.0f);
+    hover.advance(dt);
+    float h = hover.value();
+
+    bool pressed = hovered && input.lmbDown;
+    Color bg = accent
+        ? (pressed ? t.accentPress : t.accent.lerp(t.accentHover, h))
+        : t.buttonBg.lerp(t.buttonHover, h);
+    Color border = accent
+        ? bg.darkened(0.28f)
+        : t.buttonBorder.lerp(t.buttonBorder.lightened(0.12f), h);
+
+    dl.fill_rounded_rect(r, bg.with_alpha(bg.a * alpha), t.buttonRadius);
+    dl.stroke_rounded_rect(r, border.with_alpha(border.a * alpha), t.buttonRadius, 1.0f);
+    draw_text_in_box(dl, fn, label, r, (accent ? t.accentText : t.text).with_alpha(alpha));
+
+    return hovered && input.lmbReleased;
 }
 
 bool draw_chrome(DrawList& dl, const InputState& input,
@@ -265,18 +296,7 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
 
     if (state.selectedIdx >= 0)
     {
-        bool hovered = btnR.contains(input.mousePos);
-        bool pressed = hovered && input.lmbDown;
-        state.continueHover.set(hovered ? 1.0f : 0.0f);
-        state.continueHover.advance(dt);
-        float hov = state.continueHover.value();
-
-        Color bg = pressed ? t.accentPress : t.accent.lerp(t.accentHover, hov);
-        dl.fill_rounded_rect(btnR, bg, t.buttonRadius);
-        dl.stroke_rounded_rect(btnR, bg.darkened(0.2f), t.buttonRadius, 1.0f);
-        draw_text_in_box(dl, fn, "Continue", btnR, t.text.with_alpha(alpha));
-
-        if (hovered && input.lmbReleased)
+        if (draw_button(dl, fn, btnR, "Continue", input, state.continueHover, dt, alpha, true))
         {
             state.select_process(state.selectedIdx);
             state.begin_loading();
@@ -284,8 +304,8 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
     }
     else
     {
-        dl.fill_rounded_rect(btnR, t.buttonBg,     t.buttonRadius);
-        dl.stroke_rounded_rect(btnR, t.buttonBorder, t.buttonRadius, 1.0f);
+        dl.fill_rounded_rect(btnR, t.buttonBg.with_alpha(alpha), t.buttonRadius);
+        dl.stroke_rounded_rect(btnR, t.buttonBorder.with_alpha(alpha), t.buttonRadius, 1.0f);
         draw_text_in_box(dl, fn, "Continue", btnR, t.textDisable.with_alpha(alpha));
     }
 }
@@ -297,55 +317,59 @@ static void draw_loading_content(DrawList& dl, AppState& state,
     const Theme& t  = g_theme;
     FontAtlas&   fn = fonts.normal;
 
-    float cx         = wr.x + wr.w * 0.5f;
-    float pad        = t.windowPadding;
-    float contentTop = wr.y + wr.h * 0.36f;
+    float cx   = wr.x + wr.w * 0.5f;
+    float pad  = t.windowPadding;
+    float barX = wr.x + pad;
+    float barW = wr.w - pad * 2.0f;
 
     if (state.loadFailed)
     {
-        draw_text_centered(dl, fn, state.statusText, cx, contentTop,
-                           t.danger.with_alpha(alpha));
-        float helpTop = contentTop + fn.lineHeight() + 12.0f;
-        draw_text_centered(dl, fn, "How to fix", cx, helpTop,
-                           t.accent.with_alpha(alpha));
+        float top = wr.y + wr.h * 0.28f;
+        draw_text_centered(dl, fn, state.statusText, cx, top, t.danger.with_alpha(alpha));
+
+        float helpTop = top + fn.lineHeight() + 12.0f;
+        draw_text_centered(dl, fn, "How to fix", cx, helpTop, t.accent.with_alpha(alpha));
         draw_text_centered(dl, fn, state.solutionText, cx,
                            helpTop + fn.lineHeight() + 5.0f,
                            t.textSecond.with_alpha(alpha));
+
+        float btnY  = wr.bottom() - pad - t.buttonH;
+        float gap   = 8.0f;
+        float halfW = (barW - gap) * 0.5f;
+        Rect  backR  = { barX, btnY, halfW, t.buttonH };
+        Rect  retryR = { barX + halfW + gap, btnY, halfW, t.buttonH };
+
+        if (draw_button(dl, fn, backR, "Back", input, state.backHover, dt, alpha, false))
+        {
+            state.selectedIdx = -1;
+            state.continueHover.snap(0.0f);
+            state.backHover.snap(0.0f);
+            state.transition_to(Screen::ProcessSelect, -1.0f);
+        }
+        if (draw_button(dl, fn, retryR, "Retry", input, state.retryHover, dt, alpha, true))
+            state.retryRequested = true;
+        return;
     }
-    else
-    {
-        draw_text_centered(dl, fn, "Loading", cx, contentTop,
-                           t.textSecond.with_alpha(alpha));
 
-        float barW = wr.w * 0.62f;
-        float barY = contentTop + fn.lineHeight() + 14.0f;
-        Rect  barR = { cx - barW * 0.5f, barY, barW, t.progressH };
-        draw_shimmer_bar(dl, barR, state.spinElapsed, t.trackBg, t.trackFill, alpha);
-    }
+    float top = wr.y + wr.h * 0.34f;
+    draw_text_centered(dl, fn, state.targetDisplay.empty() ? "Minecraft" : state.targetDisplay,
+                       cx, top, t.textSecond.with_alpha(alpha));
 
-    // Back link
-    float backY = wr.bottom() - pad - fn.capHeight();
-    Rect  backR = { wr.x + pad, backY - (fn.ascender() - fn.capHeight()), 50.0f, fn.lineHeight() };
-    bool  backH = backR.contains(input.mousePos);
+    float statusY = top + fn.lineHeight() + 4.0f;
+    draw_text_centered(dl, fn, state.statusText, cx, statusY, t.text.with_alpha(alpha));
 
-    state.backHover.set(backH ? 1.0f : 0.0f);
-    state.backHover.advance(dt);
+    float barY = statusY + fn.lineHeight() + 20.0f;
+    draw_progress_bar(dl, { barX, barY, barW, t.progressH }, state.loadProgress,
+                      state.spinElapsed, t.trackBg, t.trackFill, alpha);
 
-    dl.draw_text("< Back", { backR.x, backR.y },
-                 t.textDisable.lerp(t.textSecond, state.backHover.value()).with_alpha(alpha), fn);
+    char percent[8];
+    snprintf(percent, sizeof(percent), "%d%%",
+             static_cast<int>(clamp(state.loadProgress, 0.0f, 1.0f) * 100.0f));
 
-    if (backH && input.lmbReleased && !state.loadFailed == false)
-    {
-        // only allow back if injection hasn't started yet — loadFailed means it errored
-        // so always allow back on failure
-    }
-    if (backH && input.lmbReleased && state.loadFailed)
-    {
-        state.selectedIdx = -1;
-        state.continueHover.snap(0.0f);
-        state.backHover.snap(0.0f);
-        state.transition_to(Screen::ProcessSelect, -1.0f);
-    }
+    float footY = barY + t.progressH + 11.0f;
+    dl.draw_text(state.targetPid, { barX, footY }, t.textDisable.with_alpha(alpha), fn);
+    float pw = fn.measure_text_width(percent);
+    dl.draw_text(percent, { barX + barW - pw, footY }, t.textDisable.with_alpha(alpha), fn);
 }
 
 static float slide_offset(float t, float dir, float width)
@@ -365,6 +389,8 @@ void draw_screen(DrawList& dl, AppState& state, const InputState& input,
     if (state.screen == Screen::Closing && state.closeTween > 0.4f)
         bgOpacity = clamp(1.0f - (state.closeTween - 0.4f) / 0.3f, 0.0f, 1.0f);
 
+    dl.glow_rounded_rect(wr, g_theme.glowColor.with_alpha(g_theme.glowColor.a * bgOpacity),
+                         g_theme.windowRadius, g_theme.glowSpread);
     dl.fill_rounded_rect(wr, g_theme.surface.with_alpha(bgOpacity), g_theme.windowRadius);
     dl.stroke_rounded_rect(wr, g_theme.surfaceBorder.with_alpha(bgOpacity), g_theme.windowRadius, 1.0f);
     dl.fill_rect({ wr.x + g_theme.windowRadius * 0.5f, wr.y + 1.0f,

@@ -26,7 +26,8 @@ static std::pair<const void*, size_t> get_resource(int id, const wchar_t* type)
 
 bool Application::init()
 {
-    if (!window_.create(L"Mindless", 120, 120))
+    const int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
+    if (!window_.create(L"Mindless", 120 + margin, 120 + margin))
         return false;
 
     // Icon from embedded resource
@@ -61,7 +62,6 @@ bool Application::init()
     if (logoData)
         logo_ = load_image_from_memory(logoData, logoSize, renderer_.device());
 
-    window_.set_drag_rect(0, 0, window_.width() - 90, 48);
     state_.fadeIn.reset(0.0f);
     lastFrame_ = Clock::now();
 
@@ -111,6 +111,14 @@ int Application::run()
                 injection_.start(state_.processes[state_.selectedIdx].pid);
             }
 
+            if (state_.retryRequested)
+            {
+                state_.retryRequested = false;
+                injection_.reset();
+                state_.begin_loading();
+                notificationSent_ = false;
+            }
+
             injection_.tick();
             state_.spinElapsed += dt;
             if (state_.statusText != injection_.status())
@@ -124,9 +132,13 @@ int Application::run()
 
             if (!state_.loadFailed)
             {
-                float response = 1.0f - std::exp(-10.0f * dt);
-                state_.loadProgress +=
-                    (injection_.progress() - state_.loadProgress) * response;
+                // Phases finish within a few frames of each other, so easing straight at the
+                // target makes the bar appear already part-filled the instant it shows up.
+                // Capping the rate keeps it starting from empty and visibly climbing.
+                float target = injection_.progress();
+                float step   = (target - state_.loadProgress) * (1.0f - std::exp(-6.0f * dt));
+                float limit  = dt * AppState::MaxProgressRate;
+                state_.loadProgress += clamp(step, -limit, limit);
             }
 
             if (injection_.phase() == InjectionPhase::Complete)
@@ -150,16 +162,33 @@ int Application::run()
             }
         }
 
-        if (state_.screen == Screen::ProcessSelect && state_.processes.empty())
+        if (state_.screen == Screen::ProcessSelect)
         {
             state_.refreshAccum += dt;
             if (state_.refreshAccum >= AppState::RefreshInterval)
             {
                 state_.refreshAccum = 0.0f;
-                state_.release_process_icons();
-                state_.processes    = enumerate_targets(renderer_.device());
-                if (!state_.processes.empty())
-                    state_.fadeIn.reset(0.35f);
+
+                // Icon extraction and texture upload are far too expensive to repeat on a
+                // timer, so compare the pid list first and only rebuild when it moved.
+                std::vector<uint32_t> pids = enumerate_target_pids();
+                bool changed = pids.size() != state_.processes.size();
+                for (size_t i = 0; !changed && i < pids.size(); ++i)
+                    changed = pids[i] != state_.processes[i].pid;
+
+                if (changed)
+                {
+                    uint32_t selectedPid = state_.selectedIdx >= 0 &&
+                        state_.selectedIdx < static_cast<int>(state_.processes.size())
+                        ? state_.processes[state_.selectedIdx].pid : 0;
+
+                    bool wasEmpty = state_.processes.empty();
+                    state_.release_process_icons();
+                    state_.processes = enumerate_targets(renderer_.device());
+                    state_.reselect_pid(selectedPid);
+                    if (wasEmpty && !state_.processes.empty())
+                        state_.fadeIn.reset(0.35f);
+                }
             }
         }
 
@@ -171,8 +200,9 @@ int Application::run()
             int cx = screenW / 2;
             int cy = screenH / 2;
 
-            int newW = static_cast<int>(lerp(120.0f, 460.0f, ease));
-            int newH = static_cast<int>(lerp(120.0f, 300.0f, ease));
+            int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
+            int newW = static_cast<int>(lerp(120.0f, 460.0f, ease)) + margin;
+            int newH = static_cast<int>(lerp(120.0f, 300.0f, ease)) + margin;
             int newX = cx - newW / 2;
             int newY = cy - newH / 2;
 
@@ -229,20 +259,24 @@ void Application::draw_frame(float dt)
     const int W = renderer_.width();
     const int H = renderer_.height();
 
-    Rect winRect = { 0.0f, 0.0f, static_cast<float>(W), static_cast<float>(H) };
+    float margin = ui::g_theme.glowMargin;
+    Rect panel = { margin, margin,
+                   static_cast<float>(W) - margin * 2.0f,
+                   static_cast<float>(H) - margin * 2.0f };
 
     drawList_.clear();
 
     ScreenFonts fonts { fontNormal_, fontTitle_ };
 
     bool closeRequested = false;
-    draw_screen(drawList_, state_, input, fonts, winRect, logo_, dt, closeRequested, &window_, renderer_.device());
+    draw_screen(drawList_, state_, input, fonts, panel, logo_, dt, closeRequested, &window_, renderer_.device());
 
     if (closeRequested)
         window_.close();
 
     execute_draw_list(renderer_, drawList_);
-    window_.set_drag_rect(0, 0, W - 90, 48);
+    window_.set_drag_rect(static_cast<int>(margin), static_cast<int>(margin),
+                          static_cast<int>(panel.w) - 90, 48);
 }
 
 } // namespace mindless

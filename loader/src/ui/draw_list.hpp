@@ -17,6 +17,7 @@ enum class DrawCmdType : uint8_t
     FillRect,
     FillRoundedRect,
     StrokeRoundedRect,
+    GlowRoundedRect,
     Text,
     Image,
     PushClip,
@@ -61,6 +62,18 @@ public:
         cmd.rect   = r;
         cmd.color  = c;
         cmd.radius = radius;
+        cmds_.push_back(cmd);
+    }
+
+    // A soft halo falling off outwards from the shape's edge.
+    void glow_rounded_rect(Rect r, Color c, float radius, float spread)
+    {
+        DrawCmd cmd;
+        cmd.type   = DrawCmdType::GlowRoundedRect;
+        cmd.rect   = r;
+        cmd.color  = c;
+        cmd.radius = radius;
+        cmd.thick  = spread;
         cmds_.push_back(cmd);
     }
 
