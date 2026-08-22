@@ -26,11 +26,14 @@ public class SessionInfo extends Module {
     private static final float DEFAULT_RELATIVE_X = 0.985f;
     private static final float DEFAULT_RELATIVE_Y = 0.5f;
 
-    private static final float PAD_X = 11.0f;
+    private static final float PAD_X = 12.0f;
     private static final float PAD_Y = 8.0f;
+    // The labels are all caps, so the descender space at the bottom of the last line is empty
+    // and an equal bottom padding measures larger than it looks.
+    private static final float PAD_BOTTOM = 6.0f;
     private static final float HEADER_GAP = 9.0f;
-    private static final float VALUE_GAP = 1.0f;
-    private static final float CELL_GAP = 15.0f;
+    private static final float VALUE_GAP = 2.0f;
+    private static final float CELL_GAP = 14.0f;
     private static final float TITLE_GAP = 14.0f;
 
     private static final int COL_LABEL = new Color(136, 139, 150).getRGB();
@@ -301,14 +304,19 @@ public class SessionInfo extends Module {
         return new int[] { kills, deaths, wins, losses };
     }
 
-    /** Natural width of each stat, which is whichever of its number and its label is wider. */
-    private float[] cellWidths(RavenFontRenderer small, RavenFontRenderer big) {
+    /**
+     * The width one stat needs, taken from the widest of the four rather than each one's own
+     * label. Sizing every stat to itself put "KILLS" and "LOSSES" in columns of different
+     * widths, and with equal gaps between them the four numbers came out unevenly spaced.
+     */
+    private float cellWidth(RavenFontRenderer small, RavenFontRenderer big) {
         String[] vals = values();
-        float[] widths = new float[4];
+        float widest = 0.0f;
         for (int i = 0; i < 4; i++) {
-            widths[i] = Math.max(big.getStringWidth(vals[i]), small.getStringWidth(LABELS[i]));
+            widest = Math.max(widest, Math.max(big.getStringWidth(vals[i]),
+                    small.getStringWidth(LABELS[i])));
         }
-        return widths;
+        return widest;
     }
 
     /** Panel size for the current contents, as {width, height}, or null when it cannot be drawn. */
@@ -318,16 +326,13 @@ public class SessionInfo extends Module {
         if (small == null || big == null) return null;
 
         float s = (float) scale.getInput();
-        float[] cells = cellWidths(small, big);
 
-        float strip = CELL_GAP * 3.0f;
-        for (float cell : cells) strip += cell;
-
+        float strip = cellWidth(small, big) * 4.0f + CELL_GAP * 3.0f;
         float header = small.getStringWidth("SESSION") + TITLE_GAP + small.getStringWidth(clock());
         float content = Math.max(strip, header);
 
         float height = PAD_Y + small.getFontHeight() + HEADER_GAP
-                + big.getFontHeight() + VALUE_GAP + small.getFontHeight() + PAD_Y;
+                + big.getFontHeight() + VALUE_GAP + small.getFontHeight() + PAD_BOTTOM;
 
         return new float[] { (content + PAD_X * 2.0f) * s, height * s };
     }
@@ -378,25 +383,19 @@ public class SessionInfo extends Module {
 
         String[] vals = values();
         int[] counts = counts();
-        float[] cells = cellWidths(small, big);
-
-        float strip = CELL_GAP * 3.0f;
-        for (float cell : cells) strip += cell;
-
-        // Spare width goes into the gaps rather than the ends, so the row of stats always spans
-        // the panel instead of huddling on the left when the header is the widest thing in it.
-        float gap = CELL_GAP + Math.max(0.0f, (textRight - textLeft) - strip) / 3.0f;
 
         float valueTop = textTop + small.getFontHeight() + HEADER_GAP;
         float labelTop = valueTop + big.getFontHeight() + VALUE_GAP;
-        float x = textLeft;
+
+        // Four equal columns across the full content width. Even columns are what make the row
+        // read as a row; sizing each to its own label left the gaps visibly ragged.
+        float slot = (textRight - textLeft) / 4.0f;
 
         for (int i = 0; i < 4; i++) {
-            float center = x + cells[i] * 0.5f;
+            float center = textLeft + slot * (i + 0.5f);
             int color = counts[i] == 0 ? COL_ZERO : VALUE_COLORS[i];
             font(big, vals[i], center - big.getStringWidth(vals[i]) * 0.5f, valueTop, color);
             font(small, LABELS[i], center - small.getStringWidth(LABELS[i]) * 0.5f, labelTop, COL_LABEL);
-            x += cells[i] + gap;
         }
 
         GlStateManager.popMatrix();
