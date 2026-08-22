@@ -24,7 +24,7 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -467,7 +467,7 @@ public class TargetHUD extends Module {
     }
 
     class EditScreen extends GuiScreen {
-        GuiButtonExt resetPosition;
+        MindlessButton resetPosition;
         boolean d = false;
         int miX = 0;
         int miY = 0;
@@ -483,7 +483,7 @@ public class TargetHUD extends Module {
 
         public void initGui() {
             super.initGui();
-            this.buttonList.add(this.resetPosition = new GuiButtonExt(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
+            this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
             this.aX = posX;
             this.aY = posY;
         }

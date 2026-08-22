@@ -15,7 +15,7 @@ import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.potion.Potion;
 import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.StatCollector;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
@@ -455,7 +455,7 @@ public class PotionHUD extends Module {
     }
 
     private class EditScreen extends GuiScreen {
-        private GuiButtonExt resetPosition;
+        private MindlessButton resetPosition;
         private boolean dragging;
         private float minX;
         private float minY;
@@ -471,7 +471,7 @@ public class PotionHUD extends Module {
         @Override
         public void initGui() {
             super.initGui();
-            this.buttonList.add(this.resetPosition = new GuiButtonExt(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
+            this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
             syncPositionToResolution(ScaledResolutionCache.get());
             this.actualX = posX;
             this.actualY = posY;

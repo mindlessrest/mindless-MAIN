@@ -22,7 +22,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.MovingObjectPosition;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.opengl.GL11;
@@ -371,7 +371,7 @@ public class FastPlace extends Module {
     }
 
     private class EditScreen extends GuiScreen {
-        private GuiButtonExt resetBtn;
+        private MindlessButton resetBtn;
         private boolean dragging;
         private float actualX, actualY;
         private float lastActualX, lastActualY;
@@ -380,7 +380,7 @@ public class FastPlace extends Module {
         @Override
         public void initGui() {
             super.initGui();
-            buttonList.add(resetBtn = new GuiButtonExt(1, width - 90, height - 25, 85, 20, "Reset position"));
+            buttonList.add(resetBtn = new MindlessButton(1, width - 90, height - 25, 85, 20, "Reset position"));
             syncPosition(new ScaledResolution(mc));
             actualX = posX;
             actualY = posY;

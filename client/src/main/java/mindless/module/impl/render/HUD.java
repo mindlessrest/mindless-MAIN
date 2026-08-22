@@ -25,7 +25,7 @@ import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import org.lwjgl.opengl.GL11;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent.RenderTickEvent;
@@ -451,7 +451,7 @@ public class HUD extends Module {
     static class EditScreen extends GuiScreen {
         private static final String EXAMPLE = "This is an-Example-HUD";
 
-        private GuiButtonExt resetPosition;
+        private MindlessButton resetPosition;
         private boolean dragging = false;
         private float minX = 0.0f;
         private float minY = 0.0f;
@@ -468,7 +468,7 @@ public class HUD extends Module {
         @Override
         public void initGui() {
             super.initGui();
-            this.buttonList.add(this.resetPosition = new GuiButtonExt(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
+            this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
             HUD.syncPositionToResolution(ScaledResolutionCache.get());
             this.actualX = HUD.posX;
             this.actualY = HUD.posY;

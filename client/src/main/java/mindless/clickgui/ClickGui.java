@@ -29,7 +29,7 @@ import net.minecraft.util.MathHelper;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
@@ -50,7 +50,7 @@ public class ClickGui extends GuiScreen {
     private Timer backgroundFade;
     private Timer blurSmooth;
     private ScaledResolution sr;
-    private GuiButtonExt commandLineSend;
+    private MindlessButton commandLineSend;
     private GuiTextField commandLineInput;
     public static ArrayList<CategoryComponent> categories;
     private int actualScreenWidth;
@@ -155,7 +155,7 @@ public class ClickGui extends GuiScreen {
         }
         reloadModulesForCurrentMode();
         (this.commandLineInput = new GuiTextField(1, this.mc.fontRendererObj, 22, this.height - 100, 150, 20)).setMaxStringLength(256);
-        this.buttonList.add(this.commandLineSend = new GuiButtonExt(2, 22, this.height - 70, 150, 20, "Send"));
+        this.buttonList.add(this.commandLineSend = new MindlessButton(2, 22, this.height - 70, 150, 20, "Send"));
         this.commandLineSend.visible = CommandLine.opened;
         this.previousScale = configuredScale;
     }
@@ -171,7 +171,7 @@ public class ClickGui extends GuiScreen {
             }
         }
         (this.commandLineInput = new GuiTextField(1, this.mc.fontRendererObj, 22, this.height - 100, 150, 20)).setMaxStringLength(256);
-        this.buttonList.add(this.commandLineSend = new GuiButtonExt(2, 22, this.height - 70, 150, 20, "Send"));
+        this.buttonList.add(this.commandLineSend = new MindlessButton(2, 22, this.height - 70, 150, 20, "Send"));
         this.commandLineSend.visible = CommandLine.opened;
     }
 

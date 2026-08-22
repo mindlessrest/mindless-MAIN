@@ -17,7 +17,7 @@ import net.minecraft.network.play.server.S2EPacketCloseWindow;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.event.world.WorldEvent;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -259,7 +259,7 @@ public class HideWindow extends Module {
     }
 
     private class EditScreen extends GuiScreen {
-        private GuiButtonExt resetBtn;
+        private MindlessButton resetBtn;
         private boolean dragging;
         private float actualX, actualY;
         private float lastActualX, lastActualY;
@@ -268,7 +268,7 @@ public class HideWindow extends Module {
         @Override
         public void initGui() {
             super.initGui();
-            buttonList.add(resetBtn = new GuiButtonExt(1, width - 90, height - 25, 85, 20, "Reset position"));
+            buttonList.add(resetBtn = new MindlessButton(1, width - 90, height - 25, 85, 20, "Reset position"));
             syncPosition(new ScaledResolution(mc));
             actualX = posX;
             actualY = posY;

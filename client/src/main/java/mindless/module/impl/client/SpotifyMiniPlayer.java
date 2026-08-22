@@ -10,7 +10,7 @@ import mindless.utility.Utils;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
@@ -157,7 +157,7 @@ public class SpotifyMiniPlayer extends Module {
     }
 
     public static class EditScreen extends GuiScreen {
-        private GuiButtonExt resetPosition;
+        private MindlessButton resetPosition;
         private boolean dragging;
         private float dragOffsetX;
         private float dragOffsetY;
@@ -165,7 +165,7 @@ public class SpotifyMiniPlayer extends Module {
         @Override
         public void initGui() {
             super.initGui();
-            this.buttonList.add(this.resetPosition = new GuiButtonExt(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
+            this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
             // Force a preview render so panelVisible/bounds are populated immediately
             // even though onRenderTick skips rendering while a GUI screen is open.
             float[] bounds = SpotifyMiniPlayerRenderer.renderPreview();

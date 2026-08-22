@@ -17,7 +17,7 @@ import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 
 import java.awt.Color;
 import java.io.IOException;
@@ -30,9 +30,9 @@ public final class HudEditor {
 
     public static final class Screen extends GuiScreen {
         private final List<Element> elements = new ArrayList<Element>();
-        private GuiButtonExt doneButton;
-        private GuiButtonExt resetButton;
-        private GuiButtonExt resetAllButton;
+        private MindlessButton doneButton;
+        private MindlessButton resetButton;
+        private MindlessButton resetAllButton;
         private Element hovered;
         private Element dragging;
         private float dragOffsetX;
@@ -42,9 +42,9 @@ public final class HudEditor {
         public void initGui() {
             super.initGui();
             buildElements();
-            buttonList.add(doneButton = new GuiButtonExt(1, width - 90, height - 25, 85, 20, "Done"));
-            buttonList.add(resetButton = new GuiButtonExt(2, 5, height - 25, 125, 20, "Reset hovered"));
-            buttonList.add(resetAllButton = new GuiButtonExt(3, 135, height - 25, 90, 20, "Reset all"));
+            buttonList.add(doneButton = new MindlessButton(1, width - 90, height - 25, 85, 20, "Done"));
+            buttonList.add(resetButton = new MindlessButton(2, 5, height - 25, 125, 20, "Reset hovered"));
+            buttonList.add(resetAllButton = new MindlessButton(3, 135, height - 25, 90, 20, "Reset all"));
         }
 
         @Override

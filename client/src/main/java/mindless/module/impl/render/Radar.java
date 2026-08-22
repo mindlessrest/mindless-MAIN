@@ -10,7 +10,7 @@ import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.opengl.GL11;
@@ -211,7 +211,7 @@ public class Radar extends Module {
     }
 
     private class EditScreen extends GuiScreen {
-        private GuiButtonExt resetPosition;
+        private MindlessButton resetPosition;
         private boolean dragging;
         private float actualX;
         private float actualY;
@@ -223,7 +223,7 @@ public class Radar extends Module {
         @Override
         public void initGui() {
             super.initGui();
-            this.buttonList.add(this.resetPosition = new GuiButtonExt(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
+            this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
             syncPositionToResolution(new ScaledResolution(this.mc));
             this.actualX = posX;
             this.actualY = posY;

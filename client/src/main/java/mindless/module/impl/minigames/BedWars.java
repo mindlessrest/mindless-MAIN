@@ -41,7 +41,7 @@ import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.player.PlayerUseItemEvent;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
+import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -914,7 +914,7 @@ public class BedWars extends Module {
         private static final int DRAG_CLOSEST_ENEMY = 1;
         private static final int DRAG_MAGIC_MILK = 2;
 
-        private GuiButtonExt resetPositions;
+        private MindlessButton resetPositions;
         private HudBoxBounds closestEnemyBounds;
         private HudBoxBounds magicMilkBounds;
         private int dragging = DRAG_NONE;
@@ -930,7 +930,7 @@ public class BedWars extends Module {
         @Override
         public void initGui() {
             super.initGui();
-            this.buttonList.add(this.resetPositions = new GuiButtonExt(1, this.width - 95, this.height - 25, 90, 20, "Reset positions"));
+            this.buttonList.add(this.resetPositions = new MindlessButton(1, this.width - 95, this.height - 25, 90, 20, "Reset positions"));
             syncHudPositions(new ScaledResolution(this.mc));
             syncEditorPositions();
         }
