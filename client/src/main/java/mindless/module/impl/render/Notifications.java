@@ -45,8 +45,8 @@ public class Notifications extends Module {
     // Width is measured per card rather than fixed. A single width has to fit the longest module
     // name, so every card was padded out to that -- which is what made a two-word alert look like
     // a mostly empty bar.
-    private static final float W_MIN   = 108.0f;
-    private static final float W_MAX   = 210.0f;
+    private static final float W_MIN   = 132.0f;
+    private static final float W_MAX   = 240.0f;
     private static final float H       = 32.0f;
     private static final float R       = 9.0f;
     private static final float GAP     = 4.0f;
@@ -55,10 +55,12 @@ public class Notifications extends Module {
     private static final long  SLIDE   = 200L;
     private static final long  FADE    = 160L;
 
-    private static final float PAD_L   = 8.0f;
-    private static final float PAD_R   = 9.0f;
+    private static final float PAD_L   = 10.0f;
+    private static final float PAD_R   = 12.0f;
     private static final float ICON    = 18.0f;
-    private static final float ICON_GAP = 7.0f;
+    private static final float ICON_GAP = 9.0f;
+    /** Space held between the longest text line and the countdown, so they never crowd. */
+    private static final float CLOCK_GAP = 16.0f;
 
     private static final Color ON  = new Color(72, 209, 138);
     private static final Color OFF = new Color(232, 88, 88);
@@ -168,7 +170,7 @@ public class Notifications extends Module {
     /** Width that fits this card's own text, so short names get a short card. */
     private static float cardWidth(RavenFontRenderer font, String title, String status, String clock) {
         float text = Math.max(font.getStringWidth(title), font.getStringWidth(status));
-        float w = PAD_L + ICON + ICON_GAP + text + 10.0f + font.getStringWidth(clock) + PAD_R;
+        float w = PAD_L + ICON + ICON_GAP + text + CLOCK_GAP + font.getStringWidth(clock) + PAD_R;
         return Math.max(W_MIN, Math.min(W_MAX, w));
     }
 
@@ -344,54 +346,99 @@ public class Notifications extends Module {
         GlStateManager.enableTexture2D();
     }
 
-    private static void disc(float cx, float cy, float radius, int color) {
-        if (radius <= 0.0f) return;
-        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF, a = (color >>> 24) & 0xFF;
-        WorldRenderer wr = begin2D(GL11.GL_TRIANGLE_FAN);
-        wr.pos(cx, cy, 0.0D).color(r, g, b, a).endVertex();
-        for (int i = 0; i <= 24; i++) {
-            double t = Math.PI * 2 * i / 24.0;
-            wr.pos(cx + Math.sin(t) * radius, cy - Math.cos(t) * radius, 0.0D).color(r, g, b, a).endVertex();
+    /**
+     * Width of the translucent fringe added to every edge, in GUI pixels.
+     *
+     * None of this geometry gets anti-aliased by the pipeline -- the badge was raw triangles with
+     * hard edges, which is why the ring and the tick came out stepped. Every shape below is drawn
+     * with a band of its own colour fading to zero alpha along the boundary. That is
+     * anti-aliasing done by hand, and it costs one extra strip per edge.
+     */
+    private static final float FEATHER = 0.55f;
+    private static final int CIRCLE_STEPS = 48;
+
+    /**
+     * One radial band as a triangle strip: alpha {@code a0} at radius {@code r0} fading to
+     * {@code a1} at {@code r1}. Discs, rings and their fringes are all this same shape.
+     */
+    private static void band(float cx, float cy, float r0, float a0, float r1, float a1,
+                             float startDeg, float sweepDeg, int color) {
+        if (sweepDeg <= 0.0f) return;
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+        int alpha = (color >>> 24) & 0xFF;
+        int c0 = Math.round(alpha * a0), c1 = Math.round(alpha * a1);
+        if (c0 <= 0 && c1 <= 0) return;
+
+        int steps = Math.max(2, Math.round(CIRCLE_STEPS * sweepDeg / 360.0f));
+        WorldRenderer wr = begin2D(GL11.GL_TRIANGLE_STRIP);
+        for (int i = 0; i <= steps; i++) {
+            double t = Math.toRadians(startDeg + sweepDeg * i / (double) steps);
+            double sin = Math.sin(t), cos = Math.cos(t);
+            wr.pos(cx + sin * r1, cy - cos * r1, 0.0D).color(r, g, b, c1).endVertex();
+            wr.pos(cx + sin * r0, cy - cos * r0, 0.0D).color(r, g, b, c0).endVertex();
         }
         end2D();
     }
 
+    private static void disc(float cx, float cy, float radius, int color) {
+        if (radius <= 0.0f) return;
+        band(cx, cy, 0.0f, 1.0f, radius, 1.0f, 0.0f, 360.0f, color);
+        band(cx, cy, radius, 1.0f, radius + FEATHER, 0.0f, 0.0f, 360.0f, color);
+    }
+
     /**
-     * A ring segment as a triangle strip. Angles are degrees, zero at the top, sweeping clockwise
-     * so the countdown unwinds the way a clock hand would.
+     * A ring segment. Angles are degrees, zero at the top, sweeping clockwise so the countdown
+     * unwinds the way a clock hand would.
      */
     private static void arc(float cx, float cy, float radius, float thickness,
                             float startDeg, float sweepDeg, int color) {
         if (sweepDeg <= 0.0f || radius <= 0.0f) return;
         float inner = radius - thickness * 0.5f;
         float outer = radius + thickness * 0.5f;
-        int steps = Math.max(2, Math.round(sweepDeg / 5.0f));
-        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF, a = (color >>> 24) & 0xFF;
-
-        WorldRenderer wr = begin2D(GL11.GL_TRIANGLE_STRIP);
-        for (int i = 0; i <= steps; i++) {
-            double t = Math.toRadians(startDeg + sweepDeg * i / (double) steps);
-            double sin = Math.sin(t), cos = Math.cos(t);
-            wr.pos(cx + sin * outer, cy - cos * outer, 0.0D).color(r, g, b, a).endVertex();
-            wr.pos(cx + sin * inner, cy - cos * inner, 0.0D).color(r, g, b, a).endVertex();
-        }
-        end2D();
+        band(cx, cy, inner, 1.0f, outer, 1.0f, startDeg, sweepDeg, color);
+        band(cx, cy, Math.max(0.0f, inner - FEATHER), 0.0f, inner, 1.0f, startDeg, sweepDeg, color);
+        band(cx, cy, outer, 1.0f, outer + FEATHER, 0.0f, startDeg, sweepDeg, color);
     }
 
-    /** A straight segment of the given thickness, used for the tick and cross strokes. */
+    /** A straight segment with round caps, used for the tick and cross strokes. */
     private static void stroke(float x1, float y1, float x2, float y2, float thickness, int color) {
         float dx = x2 - x1, dy = y2 - y1;
         float len = (float) Math.sqrt(dx * dx + dy * dy);
         if (len < 1.0e-4f) return;
-        float nx = -dy / len * thickness * 0.5f;
-        float ny = dx / len * thickness * 0.5f;
-        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF, a = (color >>> 24) & 0xFF;
+        float half = thickness * 0.5f;
+        float nx = -dy / len, ny = dx / len;
+
+        float ax1 = x1 + nx * half, ay1 = y1 + ny * half;
+        float ax2 = x2 + nx * half, ay2 = y2 + ny * half;
+        float bx1 = x1 - nx * half, by1 = y1 - ny * half;
+        float bx2 = x2 - nx * half, by2 = y2 - ny * half;
+
+        quad(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2, color, 1.0f, 1.0f);
+        quad(ax1, ay1, ax2, ay2,
+                ax1 + nx * FEATHER, ay1 + ny * FEATHER, ax2 + nx * FEATHER, ay2 + ny * FEATHER,
+                color, 1.0f, 0.0f);
+        quad(bx1, by1, bx2, by2,
+                bx1 - nx * FEATHER, by1 - ny * FEATHER, bx2 - nx * FEATHER, by2 - ny * FEATHER,
+                color, 1.0f, 0.0f);
+        // Round caps rather than square ends: they hide the seam where the tick's two segments
+        // meet, and stop the ends looking chipped at this size.
+        disc(x1, y1, half, color);
+        disc(x2, y2, half, color);
+    }
+
+    /** Quad between two edges, each with its own alpha. Vertices wind a1, a2, b2, b1. */
+    private static void quad(float a1x, float a1y, float a2x, float a2y,
+                             float b1x, float b1y, float b2x, float b2y,
+                             int color, float alphaA, float alphaB) {
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+        int alpha = (color >>> 24) & 0xFF;
+        int ca = Math.round(alpha * alphaA), cb = Math.round(alpha * alphaB);
 
         WorldRenderer wr = begin2D(GL11.GL_QUADS);
-        wr.pos(x1 + nx, y1 + ny, 0.0D).color(r, g, b, a).endVertex();
-        wr.pos(x2 + nx, y2 + ny, 0.0D).color(r, g, b, a).endVertex();
-        wr.pos(x2 - nx, y2 - ny, 0.0D).color(r, g, b, a).endVertex();
-        wr.pos(x1 - nx, y1 - ny, 0.0D).color(r, g, b, a).endVertex();
+        wr.pos(a1x, a1y, 0.0D).color(r, g, b, ca).endVertex();
+        wr.pos(a2x, a2y, 0.0D).color(r, g, b, ca).endVertex();
+        wr.pos(b2x, b2y, 0.0D).color(r, g, b, cb).endVertex();
+        wr.pos(b1x, b1y, 0.0D).color(r, g, b, cb).endVertex();
         end2D();
     }
 }
