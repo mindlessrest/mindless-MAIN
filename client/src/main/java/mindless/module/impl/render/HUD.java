@@ -18,6 +18,11 @@ import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.RavenFontRenderer;
 import net.minecraft.client.gui.GuiButton;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.WorldRenderer;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import org.lwjgl.opengl.GL11;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraftforge.fml.client.config.GuiButtonExt;
@@ -75,7 +80,20 @@ public class HUD extends Module {
 
     private static final String[] OUTLINE_MODES = new String[] { "None", "Full", "Side" };
     private static final String[] BACKGROUND_MODES = new String[] { "Connected", "Per line", "Panel" };
-    private static final String[] SHADOW_STYLES = new String[] { "Drop", "Outline" };
+    private static final String[] SHADOW_STYLES = new String[] { "Drop", "Outline", "Soft" };
+    /**
+     * Offsets and weights for the soft shadow, as {x, y, weight}.
+     *
+     * A single offset copy is a duplicate of the text, not a shadow, and over a bright background
+     * it reads as a smear. Stacking a few weighted copies over a two pixel spread gives a falloff
+     * instead, which stays legible without turning into a second set of letters.
+     */
+    private static final float[][] SOFT_SHADOW_TAPS = {
+            { 1.0f, 1.0f, 0.60f },
+            { 2.0f, 2.0f, 0.28f },
+            { 0.0f, 2.0f, 0.15f },
+            { 2.0f, 0.0f, 0.15f }
+    };
     private static final String[] INFO_SEPARATORS = new String[] { "Space", "Brackets", "Dash" };
     /** Eight neighbours, so an outlined glyph is enclosed on the diagonals as well as the sides. */
     private static final int[][] OUTLINE_OFFSETS = {
@@ -926,21 +944,91 @@ public class HUD extends Module {
             boolean stepAbove = firstRow || widths[i - 1] < widths[i];
             boolean stepBelow = lastRow || widths[i + 1] < widths[i];
 
-            boolean topLeft = right ? stepAbove : firstRow;
-            boolean bottomLeft = right ? stepBelow : lastRow;
-            boolean topRight = right ? firstRow : stepAbove;
-            boolean bottomRight = right ? lastRow : stepBelow;
+            float topLeft = (right ? stepAbove : firstRow) ? radius : 0.0f;
+            float bottomLeft = (right ? stepBelow : lastRow) ? radius : 0.0f;
+            float topRight = (right ? firstRow : stepAbove) ? radius : 0.0f;
+            float bottomRight = (right ? lastRow : stepBelow) ? radius : 0.0f;
 
-            if (radius <= 0.0f) {
-                RenderUtils.drawRect(left, rowTop, left + width, rowTop + rowHeight, color);
-                continue;
-            }
-            // The parameter names on drawRoundedRectRise are flipped vertically against the screen:
-            // its texture runs y=0 at the top, while the shader treats y>0.5 as the "top" pair. The
-            // arguments are ordered here for what actually lands on screen.
-            RoundedUtils.drawRoundedRectRise(left, rowTop, width, rowHeight, radius, color,
-                    bottomLeft, bottomRight, topRight, topLeft);
+            fillRow(left, rowTop, left + width, rowTop + rowHeight,
+                    topLeft, topRight, bottomRight, bottomLeft, color);
         }
+    }
+
+    /**
+     * One row of the connected background, with rounding on the corners asked for.
+     *
+     * Built from flat rectangles plus a quarter disc at each rounded corner, rather than from a
+     * rounded-rect shader. That shader anti-aliases a whole quadrant at a time, so a row with any
+     * rounded corner also got a soft ramp along the straight edge it shares with the row above or
+     * below -- two ramps meeting is less than full coverage, which is the pale line that showed
+     * between every row. Straight edges here are hard and land on the same coordinate as their
+     * neighbour's, so the rows meet with nothing between them, and the only softened pixels in the
+     * whole shape are on the curves themselves.
+     */
+    private static void fillRow(float x1, float y1, float x2, float y2,
+                                float topLeft, float topRight, float bottomRight, float bottomLeft,
+                                int color) {
+        float topBand = Math.max(topLeft, topRight);
+        float bottomBand = Math.max(bottomLeft, bottomRight);
+
+        if (topBand > 0.0f) {
+            RenderUtils.drawRect(x1 + topLeft, y1, x2 - topRight, y1 + topBand, color);
+        }
+        RenderUtils.drawRect(x1, y1 + topBand, x2, y2 - bottomBand, color);
+        if (bottomBand > 0.0f) {
+            RenderUtils.drawRect(x1 + bottomLeft, y2 - bottomBand, x2 - bottomRight, y2, color);
+        }
+
+        // Zero is up and the sweep runs clockwise, so each quarter starts at the axis leading into
+        // its own corner.
+        quarterDisc(x1 + topLeft, y1 + topLeft, topLeft, 270.0f, color);
+        quarterDisc(x2 - topRight, y1 + topRight, topRight, 0.0f, color);
+        quarterDisc(x2 - bottomRight, y2 - bottomRight, bottomRight, 90.0f, color);
+        quarterDisc(x1 + bottomLeft, y2 - bottomLeft, bottomLeft, 180.0f, color);
+    }
+
+    /** Width of the translucent fringe on a corner curve, in GUI pixels. */
+    private static final float CORNER_FEATHER = 0.6f;
+
+    private static void quarterDisc(float cx, float cy, float radius, float startDeg, int color) {
+        if (radius <= 0.0f) {
+            return;
+        }
+        radialBand(cx, cy, 0.0f, 1.0f, radius, 1.0f, startDeg, color);
+        radialBand(cx, cy, radius, 1.0f, radius + CORNER_FEATHER, 0.0f, startDeg, color);
+    }
+
+    /**
+     * A ninety degree band as a triangle strip, alpha {@code a0} at {@code r0} fading to
+     * {@code a1} at {@code r1}. Nothing in this path is anti-aliased by the pipeline, so the
+     * fringe band is how the curve gets its soft edge.
+     */
+    private static void radialBand(float cx, float cy, float r0, float a0, float r1, float a1,
+                                   float startDeg, int color) {
+        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+        int alpha = (color >>> 24) & 0xFF;
+        int c0 = Math.round(alpha * a0), c1 = Math.round(alpha * a1);
+        if (c0 <= 0 && c1 <= 0) {
+            return;
+        }
+
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableTexture2D();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer worldRenderer = tessellator.getWorldRenderer();
+        worldRenderer.begin(GL11.GL_TRIANGLE_STRIP, DefaultVertexFormats.POSITION_COLOR);
+        for (int i = 0; i <= 12; i++) {
+            double t = Math.toRadians(startDeg + 90.0 * i / 12.0);
+            double sin = Math.sin(t), cos = Math.cos(t);
+            worldRenderer.pos(cx + sin * r1, cy - cos * r1, 0.0D).color(r, g, b, c1).endVertex();
+            worldRenderer.pos(cx + sin * r0, cy - cos * r0, 0.0D).color(r, g, b, c0).endVertex();
+        }
+        tessellator.draw();
+        GlStateManager.enableTexture2D();
     }
 
     private static int getBackgroundAlpha() {
@@ -1036,16 +1124,29 @@ public class HUD extends Module {
         // Outline mode draws its own border and then the text unshadowed, because the renderer's
         // built-in shadow is a single offset copy -- fine over dark ground, but over a bright sky
         // it just smears the glyph rather than separating it from the background.
-        if (shouldDrawTextShadow() && shadowStyle != null && (int) shadowStyle.getInput() == 1) {
+        int style = shadowStyle == null ? 0 : (int) shadowStyle.getInput();
+        if (shouldDrawTextShadow() && style != 0) {
             String plain = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(moduleName);
             if (plain == null) {
                 plain = moduleName;
             }
-            int border = getShadowAlpha() << 24;
-            for (int[] offset : OUTLINE_OFFSETS) {
-                // Straight to drawString, never through the wave path -- the border has to stay
-                // black, and the per-glyph colour provider would paint it with the row's gradient.
-                hudFont.drawString(plain, xPos + offset[0], textY + offset[1], border, false);
+            int base = getShadowAlpha();
+            if (style == 1) {
+                int border = base << 24;
+                for (int[] offset : OUTLINE_OFFSETS) {
+                    // Straight to drawString, never through the wave path -- the border has to stay
+                    // black, and the per-glyph colour provider would paint it with the row's gradient.
+                    hudFont.drawString(plain, xPos + offset[0], textY + offset[1], border, false);
+                }
+            }
+            else {
+                for (float[] tap : SOFT_SHADOW_TAPS) {
+                    int alpha = Math.round(base * tap[2]);
+                    if (alpha <= 0) {
+                        continue;
+                    }
+                    hudFont.drawString(plain, xPos + tap[0], textY + tap[1], alpha << 24, false);
+                }
             }
             drawTextSegment(hudFont, moduleName, xPos, textY, fallbackColor, false);
             return;
