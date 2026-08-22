@@ -497,36 +497,56 @@ public class Scaffold extends Module {
         if (held == null || !(held.getItem() instanceof ItemBlock)) return;
         if (mc.playerController == null) return;
 
-        // Place into whatever the rotation that just went out actually hits.
+        // Prefer the face the rotation that just went out actually hits.
         //
         // The look packet for this tick has already been sent, carrying the position the player
         // moved to, so this ray is the same one the server will trace. Picking a block and then
         // clicking a face that some other angle would have hit is the mismatch every anticheat
         // watches for, and it is why blocks quietly failed to stick going diagonally while
         // holding right click by hand was fine -- by hand, the aim and the click are one ray.
+        //
+        // It is a preference and not a requirement, though. The aim is worked out a tick early,
+        // from a predicted position, and stepping just past an edge leaves a band a fraction of a
+        // degree wide -- so the re-trace does miss sometimes, and refusing to place at all when
+        // it does was worse than the mismatch it was avoiding: one miss puts you in the air, and
+        // from the air the next tick misses too. When it misses, the face the aim was solved for
+        // is used instead, which the sent rotation is still within a whisker of.
         double reach = mc.playerController.getBlockReachDistance();
-        MovingObjectPosition mop = rayCast(getEyePos(),
+        Vec3 eye = getEyePos();
+        BlockPos intended = aim.support.offset(aim.side);
+
+        BlockPos support = null;
+        EnumFacing side = null;
+        Vec3 hitVec = null;
+
+        MovingObjectPosition mop = rayCast(eye,
                 RotationUtils.serverRotations[0], RotationUtils.serverRotations[1], reach);
-        if (mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) return;
-
-        BlockPos support = mop.getBlockPos();
-        EnumFacing side = mop.sideHit;
-        if (!isUsableSupport(support)) return;
-        if (!BlockUtils.canPlaceBlockOnSide(held, support, side)) return;
-
-        BlockPos placed = support.offset(side);
-        if (!BlockUtils.replaceable(placed)) return;
-        // Never at or above the feet: that is walling yourself in, not bridging.
-        if (placed.getY() > MathHelper.floor_double(
-                mc.thePlayer.getEntityBoundingBox().minY) - 1) {
-            return;
+        if (mop != null && mop.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK) {
+            BlockPos hitSupport = mop.getBlockPos();
+            BlockPos hitCell = hitSupport.offset(mop.sideHit);
+            // Sideways drift over the tick of movement is fine -- that is the point of tracing it
+            // again -- but a different layer is not, that would leave blocks hanging under the
+            // bridge.
+            if (hitCell.getY() == intended.getY()
+                    && BlockUtils.replaceable(hitCell)
+                    && isUsableSupport(hitSupport)
+                    && BlockUtils.canPlaceBlockOnSide(held, hitSupport, mop.sideHit)) {
+                support = hitSupport;
+                side = mop.sideHit;
+                hitVec = mop.hitVec;
+            }
         }
-        // The ray is allowed to have drifted sideways over the tick of movement between aiming
-        // and sending -- that is the point of re-tracing it -- but not to have found a different
-        // layer, which would leave blocks hanging under the bridge.
-        if (placed.getY() != aim.support.offset(aim.side).getY()) return;
 
-        Vec3 hitVec = mop.hitVec;
+        if (support == null) {
+            if (!BlockUtils.replaceable(intended)) return;
+            if (!isUsableSupport(aim.support)) return;
+            if (!BlockUtils.canPlaceBlockOnSide(held, aim.support, aim.side)) return;
+            if (eye.squareDistanceTo(aim.hit) > MAX_REACH_SQ) return;
+            support = aim.support;
+            side = aim.side;
+            hitVec = aim.hit;
+        }
+
         if (precisionHitVecSetting.isToggled()) {
             hitVec = new Vec3(
                     support.getX() + MathHelper.clamp_double(
@@ -716,11 +736,11 @@ public class Scaffold extends Module {
                     // refused, and the tick is spent for nothing.
                     if (!BlockUtils.canPlaceBlockOnSide(held, support, side)) continue;
 
-                    Float pitch = pitchOntoFace(support, side, eye, yaw, reach);
-                    if (pitch == null) continue;
+                    MovingObjectPosition hit = traceOntoFace(support, side, eye, yaw, reach);
+                    if (hit == null) continue;
 
                     lastYawOffset = offset;
-                    return new Aim(yaw, pitch, support, side);
+                    return new Aim(yaw, pitchTo(eye, hit.hitVec), support, side, hit.hitVec);
                 }
             }
         }
@@ -732,8 +752,8 @@ public class Scaffold extends Module {
      * The pitch that puts a ray at exactly this yaw onto a face, or null when the vertical plane
      * that yaw sweeps misses the face, the face is out of reach, or something is in the way.
      */
-    private Float pitchOntoFace(BlockPos support, EnumFacing side, Vec3 eye, float yaw,
-                                double reach) {
+    private MovingObjectPosition traceOntoFace(BlockPos support, EnumFacing side, Vec3 eye,
+                                               float yaw, double reach) {
         double dirX = -Math.sin(Math.toRadians(yaw));
         double dirZ = Math.cos(Math.toRadians(yaw));
         double limit = Math.min(MAX_REACH_SQ, reach * reach);
@@ -752,18 +772,21 @@ public class Scaffold extends Module {
             double dz = point.zCoord - eye.zCoord;
             if (dx * dx + dy * dy + dz * dz > limit) continue;
 
-            float pitch = quantizeAngle(MathHelper.clamp_float(
-                    getRotationFromPosition(eye, point).y, -89.0f, 89.0f));
-
-            MovingObjectPosition mop = rayCast(eye, quantizeAngle(yaw), pitch, reach);
+            MovingObjectPosition mop = rayCast(eye, quantizeAngle(yaw), pitchTo(eye, point), reach);
             if (mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
                 continue;
             }
             if (!mop.getBlockPos().equals(support) || mop.sideHit != side) continue;
-            return pitch;
+            return mop;
         }
 
         return null;
+    }
+
+    /** The pitch that looks from one point to another, quantized and clamped as sent. */
+    private float pitchTo(Vec3 from, Vec3 to) {
+        return quantizeAngle(MathHelper.clamp_float(
+                getRotationFromPosition(from, to).y, -89.0f, 89.0f));
     }
 
     /** Where the vertical plane swept by a fixed yaw crosses a face, or null if it misses it. */
@@ -956,12 +979,14 @@ public class Scaffold extends Module {
         final float pitch;
         final BlockPos support;
         final EnumFacing side;
+        final Vec3 hit;
 
-        Aim(float yaw, float pitch, BlockPos support, EnumFacing side) {
+        Aim(float yaw, float pitch, BlockPos support, EnumFacing side, Vec3 hit) {
             this.yaw = yaw;
             this.pitch = pitch;
             this.support = support;
             this.side = side;
+            this.hit = hit;
         }
     }
 }
