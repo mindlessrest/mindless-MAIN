@@ -352,15 +352,31 @@ public class SessionInfo extends Module {
         float left = posX - w;
         float top = posY;
 
-        float radius = 8.0f * mindless.module.impl.theme.ThemeManager.roundingScale();
+        float radius = 9.0f * mindless.module.impl.theme.ThemeManager.roundingScale();
+
+        // Drawn before the glass, because everything from prepareBlur onwards goes through a
+        // stencil shaped like the panel and would paint straight over these.
+        //
+        // A blurred panel with no edge treatment has nothing separating it from the world; it
+        // reads as a smudge rather than a card, and over bright terrain the sides all but
+        // disappear. The shadow gives it somewhere to sit and the hairline gives it an edge.
+        RoundedUtils.drawRoundShadow(left, top, w, h, radius, 5.0f,
+                new Color(0, 0, 0, 130).getRGB());
+        // A rounded rect one pixel proud of the panel, read as a border once the fill covers
+        // its middle. The outline shader blends badly against a transparent fill.
+        RoundedUtils.drawRound(left - 1.0f, top - 1.0f, w + 2.0f, h + 2.0f, radius + 1.0f,
+                new Color(255, 255, 255, 30));
+
         BlurUtils.prepareBlur();
         RoundedUtils.drawRound(left, top, w, h, radius, 0xFF000000);
-        BlurUtils.blurEnd(2, 2.4f, 0.85f);
-        RoundedUtils.drawRound(left, top, w, h, radius, new Color(0, 0, 0, 120));
+        // Region-limited: the full-screen variant composites the whole framebuffer twice for a
+        // panel this size.
+        BlurUtils.blurEndRegion(2, 2.4f, 0.85f, left - 2.0f, top - 2.0f, w + 4.0f, h + 4.0f);
+        RoundedUtils.drawRound(left, top, w, h, radius, new Color(0, 0, 0, 130));
         // Same sheen as the alert cards, so the two overlays read as one family instead of a
         // shaded box next to a flat one.
         RoundedUtils.drawGradientVertical(left, top, w, h, radius,
-                new Color(255, 255, 255, 17), new Color(255, 255, 255, 3));
+                new Color(255, 255, 255, 20), new Color(255, 255, 255, 4));
 
         // The rounded-rect and blur shaders leave a program bound; glyph quads drawn through it
         // come out garbled.
