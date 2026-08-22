@@ -19,6 +19,7 @@ import net.minecraft.util.DamageSource;
 import net.minecraft.util.MathHelper;
 import net.minecraft.world.World;
 import mindless.runtime.LunarEventBridge;
+import mindless.utility.SlotManager;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
@@ -171,6 +172,14 @@ public abstract class MixinEntityPlayer extends EntityLivingBase {
     private void isBlocking(CallbackInfoReturnable<Boolean> cir) {
         if (!cir.getReturnValue() && BlockAnimationUtils.shouldForceBlockAnimation((EntityPlayer) (Object) this, this.getHeldItem())) {
             cir.setReturnValue(true);
+        }
+    }
+
+    @Inject(method = "getHeldItem", at = @At("RETURN"), cancellable = true)
+    private void raven$getVisualHeldItem(CallbackInfoReturnable<ItemStack> cir) {
+        if ((Object) this instanceof net.minecraft.client.entity.EntityPlayerSP
+                && SlotManager.isServerSwapActive()) {
+            cir.setReturnValue(SlotManager.getVisualStack());
         }
     }
 }

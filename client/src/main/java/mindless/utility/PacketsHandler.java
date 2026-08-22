@@ -29,6 +29,7 @@ public class PacketsHandler implements IMinecraftInstance {
             int slotId = slotPacket.getSlotId();
             playerSlot.set(slotId);
             serverSlot.set(slotId);
+            SlotManager.observeServerSlot(slotId);
         }
     }
 
@@ -39,6 +40,7 @@ public class PacketsHandler implements IMinecraftInstance {
             int index = packet.getHeldItemHotbarIndex();
             if (index >= 0 && index < InventoryPlayer.getHotbarSize()) {
                 serverSlot.set(index);
+                SlotManager.observeServerSlot(index);
             }
         }
         else if (e.getPacket() instanceof S0CPacketSpawnPlayer && Minecraft.getMinecraft().thePlayer != null && handleSlots) {
