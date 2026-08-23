@@ -1,6 +1,7 @@
 package mindless.transformer.impl.render;
 
 import mindless.module.impl.render.Animations;
+import mindless.module.impl.render.EatAnimation;
 import mindless.module.impl.render.Slow;
 import mindless.runtime.ItemAnimationRuntime;
 import mindless.runtime.ItemRendererState;
@@ -64,8 +65,10 @@ public abstract class TransformerItemRenderer {
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/entity/AbstractClientPlayer;getItemInUseCount()I"))
     private int forceSwordUseCount(AbstractClientPlayer player) {
-        return ItemRendererState.shouldRenderForcedSwordBlock(this.itemToRender)
-                ? 71999 : player.getItemInUseCount();
+        if (ItemRendererState.shouldRenderForcedSwordBlock(this.itemToRender)) return 71999;
+        int actual = player.getItemInUseCount();
+        int eating = EatAnimation.spoofUseCount(player, this.itemToRender, actual);
+        return eating > 0 ? eating : actual;
     }
 
     @CInline
