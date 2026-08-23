@@ -905,6 +905,20 @@ public final class ModernClickGui extends ClickGui {
      * see what the alternatives are and switch with one click instead of two. Anything longer
      * than that does not fit across the column, so it keeps the dropdown.
      */
+    /**
+     * A setting's name, made a little smaller before it is cut short.
+     *
+     * Pinning the controls to a shared column leaves the label a fixed width, and plenty of
+     * settings here are named things like "Multipoint Horizontal". Dropping a step in size buys
+     * roughly a fifth more characters, which is usually the difference between a name you can
+     * read and one that ends in an ellipsis.
+     */
+    private void drawSettingLabel(String name, float x, float y1, float y2, float maxWidth,
+                                  int color) {
+        float scale = textWidth(name, .75f, false) > maxWidth ? .66f : .75f;
+        drawTextVCentered(trim(name, maxWidth, scale, false), x, y1, y2, color, scale, false);
+    }
+
     private float[] segmentLayout(SliderSetting slider) {
         String[] options = slider.getOptions();
         if (options == null || options.length < 2 || options.length > MAX_SEGMENTS) return null;
@@ -923,6 +937,18 @@ public final class ModernClickGui extends ClickGui {
     private float segmentX(float[] layout, int index) {
         return layout[0] + index * (layout[1] + SEGMENT_GAP);
     }
+
+    /**
+     * The same colour with its alpha forced to full.
+     *
+     * outline() works by laying a slightly larger rect of the border colour down first and
+     * letting the fill cover its middle, so only a one pixel rim survives. That only holds while
+     * the fill is opaque. Every control surface here is defined translucent so it can sit over
+     * the panel, and over an outline that turns the whole control into a wash of the border
+     * colour -- which for a selected control is the accent, so it comes out a solid accent block
+     * with its label invisible on top of it.
+     */
+    private static int opaque(int color) { return color | 0xFF000000; }
 
     /** Scales the alpha channel of a packed ARGB color by [0,1]. */
     private int fa(int color, float alpha) {
@@ -1093,8 +1119,8 @@ public final class ModernClickGui extends ClickGui {
                 // can see the alternatives and switch in one click instead of two.
                 float[] segments = segmentLayout(slider);
                 if (segments != null) {
-                    drawTextVCentered(trim(label, segments[0] - labelLeft - DROPDOWN_LABEL_GAP, .75f, false),
-                            labelLeft, y, y + h, fa(TEXT, alpha), .75f, false);
+                    drawSettingLabel(label, labelLeft, y, y + h,
+                            segments[0] - labelLeft - DROPDOWN_LABEL_GAP, fa(TEXT, alpha));
                     drawSegments(slider, segments, y, h, mx, my, alpha);
                     return;
                 }
@@ -1107,8 +1133,8 @@ public final class ModernClickGui extends ClickGui {
                 float dx1 = x2 - dropW, dx2 = x2;
                 if (openDropdown == slider) dropdownWidth = dropW;
 
-                drawTextVCentered(trim(label, dx1 - labelLeft - DROPDOWN_LABEL_GAP, .75f, false),
-                        labelLeft, y, y + h, fa(TEXT, alpha), .75f, false);
+                drawSettingLabel(label, labelLeft, y, y + h,
+                        dx1 - labelLeft - DROPDOWN_LABEL_GAP, fa(TEXT, alpha));
 
                 float open = animate(dropdownAnimation, slider, openDropdown == slider ? 1f : 0f, 20f);
                 boolean over = inside(mx, my, dx1, y + 3, dx2, y + 27);
@@ -1117,7 +1143,8 @@ public final class ModernClickGui extends ClickGui {
                 // fill. It was being drawn after it, so the control became a solid block of the
                 // border colour -- which is the accent while open, hiding the selected option.
                 outline(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(BORDER, GOLD, open), alpha));
-                rounded(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, Math.max(hp * .65f, open * .7f)), alpha));
+                rounded(dx1, y + 3, dx2, y + 27, 4f, fa(opaque(
+                        mixColor(CONTROL, CONTROL_HOVER, Math.max(hp * .65f, open * .7f))), alpha));
                 resetTextRenderState();
                 drawTextVCentered(trim(sliderValue(slider), dropW - 26f, .68f, false), dx1 + 8, y + 3, y + 27,
                         fa(mixColor(MUTED, TEXT, Math.max(open, hp * .6f)), alpha), .68f, false);
@@ -1131,8 +1158,8 @@ public final class ModernClickGui extends ClickGui {
             // every other row and broke the rhythm of the panel.
             float valueLeft = sliderValueLeft();
             float trackLeft = controlLeft();
-            drawTextVCentered(trim(slider.getName(), valueLeft - x1 - 12, .75f, false),
-                    x1 + 2, y, y + h, fa(TEXT, alpha), .75f, false);
+            drawSettingLabel(slider.getName(), x1 + 2, y, y + h, valueLeft - x1 - 12,
+                    fa(TEXT, alpha));
 
             boolean editingValue = editingSliderValue == slider;
             float valueBoxRight = trackLeft - 8;
@@ -1158,8 +1185,11 @@ public final class ModernClickGui extends ClickGui {
             }
             float bx1 = trackLeft, bx2 = sliderTrackRight(), by = y + h / 2f - 1.5f;
             float hp = animate(controlAnimation, slider, inside(mx, my, bx1 - 5, y + 3, bx2 + 3, y + h - 3) ? 1f : 0f, 18f);
-            // Track bg
-            rounded(bx1, by, bx2, by + 3, 1.5f, fa(mixColor(argb(120, 78, 79, 78), argb(165, 102, 101, 96), hp), alpha));
+            // Track bg. Opaque, and light enough to read as a groove the fill runs along --
+            // at 120 alpha over a near-black panel the unfilled part was all but invisible, so a
+            // slider near its maximum looked like a plain bar with nothing left to give.
+            rounded(bx1, by, bx2, by + 3, 1.5f,
+                    fa(opaque(mixColor(argb(255, 47, 50, 51), argb(255, 68, 71, 72), hp)), alpha));
             // Animate fill progress toward real value
             float targetProgress = (float) ((slider.getInput() - slider.getMin()) / Math.max(.00001, slider.getMax() - slider.getMin()));
             targetProgress = clamp01(targetProgress);
@@ -1182,12 +1212,13 @@ public final class ModernClickGui extends ClickGui {
             // characters nearly always, and a box five times wider than its contents reads as an
             // empty field waiting to be filled in.
             float chipLeft = keyChipLeft(key);
-            drawTextVCentered(trim(key.getName(), chipLeft - x1 - 12, .76f, false),
-                    x1 + 2, y, y + h, fa(TEXT, alpha), .76f, false);
+            drawSettingLabel(key.getName(), x1 + 2, y, y + h, chipLeft - x1 - 12,
+                    fa(TEXT, alpha));
             float top = y + (h - CONTROL_HEIGHT) / 2f, bottom = top + CONTROL_HEIGHT;
             float focus = animate(controlAnimation, key, binding == key ? 1f : inside(mx, my, chipLeft, top, x2, bottom) ? .55f : 0f, 17f);
             outline(chipLeft, top, x2, bottom, 4f, fa(mixColor(BORDER, GOLD, focus), alpha));
-            rounded(chipLeft, top, x2, bottom, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, focus), alpha));
+            rounded(chipLeft, top, x2, bottom, 4f,
+                    fa(opaque(mixColor(CONTROL, CONTROL_HOVER, focus)), alpha));
             resetTextRenderState();
             drawCenteredV(value, chipLeft, x2, top, bottom, fa(binding == key ? GOLD : MUTED, alpha), .66f, false);
         } else if (setting instanceof ColorSetting) {
@@ -1220,13 +1251,15 @@ public final class ModernClickGui extends ClickGui {
             boolean on = i == selected;
             float hover = !on && inside(mx, my, sx1, top, sx2, bottom) ? 1f : 0f;
             // outline() lays a slightly larger rect down first and the fill covers its middle,
-            // which is what leaves a one pixel border. Drawing it after would bury the fill.
+            // which is what leaves a one pixel border. Drawing it after would bury the fill, and
+            // a fill that is not opaque lets it through -- see opaque().
             outline(sx1, top, sx2, bottom, 4f, fa(on ? GOLD : BORDER, alpha));
-            rounded(sx1, top, sx2, bottom, 4f,
-                    fa(on ? GOLD_SOFT : mixColor(CONTROL, CONTROL_HOVER, hover * .8f), alpha));
+            rounded(sx1, top, sx2, bottom, 4f, fa(opaque(on
+                    ? mixColor(ROW, GOLD, .17f)
+                    : mixColor(ROW, ROW_HOVER, hover)), alpha));
             resetTextRenderState();
             drawCenteredV(trim(options[i], layout[1] - 8f, .66f, false), sx1, sx2, top, bottom,
-                    fa(on ? GOLD : mixColor(MUTED, TEXT, hover * .5f), alpha), .66f, false);
+                    fa(on ? GOLD : mixColor(MUTED, TEXT, hover * .5f), alpha), .66f, on);
         }
     }
 
@@ -1267,7 +1300,8 @@ public final class ModernClickGui extends ClickGui {
         float iy = y + 20;
         float focus = animate(controlAnimation, setting, activeText == setting ? 1f : inside(mx, my, x1 + 8, iy, x2 - 8, y + h - 7) ? .5f : 0f, 17f);
         outline(x1 + 8, iy, x2 - 8, y + h - 7, 4f, fa(mixColor(BORDER, GOLD, focus), alpha));
-        rounded(x1 + 8, iy, x2 - 8, y + h - 7, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, focus), alpha));
+        rounded(x1 + 8, iy, x2 - 8, y + h - 7, 4f,
+                fa(opaque(mixColor(CONTROL, CONTROL_HOVER, focus)), alpha));
         resetTextRenderState();
         String shown = value.isEmpty() && activeText != setting ? placeholder : value + (activeText == setting && blink() ? "|" : "");
         drawTextVCentered(trim(shown, x2 - x1 - 28, .69f, false), x1 + 14, iy, y + h - 7,
@@ -1281,7 +1315,8 @@ public final class ModernClickGui extends ClickGui {
         float iy = y + 22;
         float focus = animate(controlAnimation, setting, activeList == setting ? 1f : inside(mx, my, x1 + 8, iy, x2 - 34, iy + 21) ? .5f : 0f, 17f);
         outline(x1 + 8, iy, x2 - 34, iy + 21, 4f, fa(mixColor(BORDER, GOLD, focus), alpha));
-        rounded(x1 + 8, iy, x2 - 34, iy + 21, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, focus), alpha));
+        rounded(x1 + 8, iy, x2 - 34, iy + 21, 4f,
+                fa(opaque(mixColor(CONTROL, CONTROL_HOVER, focus)), alpha));
         resetTextRenderState();
         String shown = activeList == setting ? listDraft + (blink() ? "|" : "") : listPlaceholder(setting);
         drawTextVCentered(trim(shown, x2 - x1 - 66, .66f, false), x1 + 14, iy, iy + 21,
