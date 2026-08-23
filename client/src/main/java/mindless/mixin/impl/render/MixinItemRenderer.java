@@ -2,7 +2,6 @@ package mindless.mixin.impl.render;
 
 import mindless.mixin.interfaces.IMixinItemRenderer;
 import mindless.module.impl.render.AlwaysBlock;
-import mindless.module.impl.render.EatAnimation;
 import mindless.module.impl.render.BodyMaterial;
 import mindless.module.impl.world.HitEffect;
 import mindless.runtime.ItemRendererState;
@@ -64,8 +63,6 @@ public class MixinItemRenderer implements IMixinItemRenderer {
     private int getItemInUseCountForRender(AbstractClientPlayer player) {
         int actualCount = player.getItemInUseCount();
         if (actualCount > 0) return actualCount;
-        int eating = EatAnimation.spoofUseCount(player, itemToRender, actualCount);
-        if (eating > 0) return eating;
         if (AlwaysBlock.enabled && itemToRender != null && itemToRender.getItem() instanceof ItemSword) {
             return 1;
         }

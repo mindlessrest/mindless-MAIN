@@ -243,7 +243,6 @@ public class ModuleManager {
         this.addModule(new Xray());
         this.addModule(new Animations());
         this.addModule(new AlwaysBlock());
-        this.addModule(new EatAnimation());
         this.addModule(sexyESP = new SexyESP());
         // Preserve profiles made before SexyESP became the sole Player ESP.
         modulesByName.put("SexyESP", sexyESP);
