@@ -79,6 +79,7 @@ public class KillAura extends Module {
     private Random rand;
     private double targetDistance = Double.MAX_VALUE;
     private int lastAttackedEntityId = -1;
+    private long lastAttackTimeMs;
     private long lastKillNotifyMs;
 
     public KillAura() {
@@ -183,17 +184,23 @@ public class KillAura extends Module {
         }
 
         if (killNotification.isToggled() && lastAttackedEntityId != -1) {
+            long now = System.currentTimeMillis();
             Entity attacked = mc.theWorld.getEntityByID(lastAttackedEntityId);
             if (attacked instanceof EntityLivingBase) {
                 EntityLivingBase living = (EntityLivingBase) attacked;
-                if (living.deathTime > 0 || living.isDead) {
-                    long now = System.currentTimeMillis();
+                if (living.getHealth() <= 0 || living.deathTime > 0 || living.isDead) {
                     if (now - lastKillNotifyMs > 2000L) {
                         lastKillNotifyMs = now;
                         Notifications.notify(living.getName(), "Target neutralized.", true);
                     }
                     lastAttackedEntityId = -1;
                 }
+            } else if (attacked == null && now - lastAttackTimeMs < 3000L) {
+                if (now - lastKillNotifyMs > 2000L) {
+                    lastKillNotifyMs = now;
+                    Notifications.notify("Target", "Target neutralized.", true);
+                }
+                lastAttackedEntityId = -1;
             } else if (attacked == null) {
                 lastAttackedEntityId = -1;
             }
@@ -246,6 +253,7 @@ public class KillAura extends Module {
         }
         if (clicks > 0 && target != null && targetDistance <= attackRange.getInput()) {
             lastAttackedEntityId = target.getEntityId();
+            lastAttackTimeMs = System.currentTimeMillis();
         }
     }
 

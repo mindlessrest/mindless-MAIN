@@ -327,10 +327,14 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
         }
 
         String glyphText = String.valueOf(character);
+        Font glyphFont = renderFont;
+        if (!renderFont.canDisplay(character)) {
+            glyphFont = new Font(Font.SANS_SERIF, renderFont.getStyle(), renderFont.getSize());
+        }
         BufferedImage metricsImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D metricsGraphics = metricsImage.createGraphics();
         try {
-            metricsGraphics.setFont(renderFont);
+            metricsGraphics.setFont(glyphFont);
             applyRenderHints(metricsGraphics);
             FontMetrics metrics = metricsGraphics.getFontMetrics();
             Rectangle2D bounds = metrics.getStringBounds(glyphText, metricsGraphics);
@@ -341,7 +345,7 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
 
             Graphics2D glyphGraphics = glyphImage.createGraphics();
             try {
-                glyphGraphics.setFont(renderFont);
+                glyphGraphics.setFont(glyphFont);
                 glyphGraphics.setBackground(new Color(255, 255, 255, 0));
                 glyphGraphics.clearRect(0, 0, textureWidth, textureHeight);
                 glyphGraphics.setColor(Color.WHITE);

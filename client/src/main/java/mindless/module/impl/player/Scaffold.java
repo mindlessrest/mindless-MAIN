@@ -455,7 +455,8 @@ public class Scaffold extends Module {
                 nextPitch = MathHelper.clamp_float(targetPitch, -89.0f, 89.0f);
             } else {
                 float speed = telly ? 80.0f
-                        : (diagonalSetting.isToggled() && isMovingDiagonal() ? 70.0f : 35.0f);
+                        : isTowering() ? 80.0f
+                        : (diagonalSetting.isToggled() && isMovingDiagonal() ? 70.0f : 55.0f);
                 nextPitch = MathHelper.clamp_float(
                         rotCurrentPitch + MathHelper.clamp_float(
                                 targetPitch - rotCurrentPitch, -speed, speed),
@@ -855,8 +856,8 @@ public class Scaffold extends Module {
             if (mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
                 continue;
             }
-            if (!mop.getBlockPos().equals(support) || mop.sideHit != side) continue;
-            return mop;
+            if (mop.getBlockPos().equals(support)) return mop;
+            continue;
         }
 
         return null;

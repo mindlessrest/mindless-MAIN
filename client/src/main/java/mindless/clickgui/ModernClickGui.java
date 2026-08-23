@@ -927,7 +927,7 @@ public final class ModernClickGui extends ClickGui {
         float available = settingsRight() - left;
         float widest = 0f;
         for (String option : options) widest = Math.max(widest, textWidth(option, .66f, false));
-        if ((widest + 16f) * options.length + SEGMENT_GAP * (options.length - 1) > available) {
+        if ((widest + 24f) * options.length + SEGMENT_GAP * (options.length - 1) > available) {
             return null;
         }
         float width = (available - SEGMENT_GAP * (options.length - 1)) / options.length;
@@ -1178,7 +1178,8 @@ public final class ModernClickGui extends ClickGui {
                 float right = valueX + textWidth(sliderEditDraft.substring(0, to), valueScale, false);
                 rounded(left - 1, y + 8, right + 1, y + h - 8, 2f, fa(withAlpha(ACCENT, 74), alpha));
             }
-            drawTextVCentered(displayedValue, valueX, y, y + h, fa(TEXT, alpha), valueScale, false);
+            drawTextVCentered(editingValue ? displayedValue : trim(displayedValue, valueRoom, valueScale, false),
+                    valueX, y, y + h, fa(TEXT, alpha), valueScale, false);
             if (editingValue && blink()) {
                 float caretX = valueX + textWidth(sliderEditDraft.substring(0, sliderEditCaret), valueScale, false);
                 rounded(caretX, y + 8, caretX + .8f, y + h - 8, .4f, fa(ACCENT, alpha));
@@ -1258,7 +1259,7 @@ public final class ModernClickGui extends ClickGui {
                     ? mixColor(ROW, GOLD, .17f)
                     : mixColor(ROW, ROW_HOVER, hover)), alpha));
             resetTextRenderState();
-            drawCenteredV(trim(options[i], layout[1] - 8f, .66f, false), sx1, sx2, top, bottom,
+            drawCenteredV(trim(options[i], layout[1] - 16f, .66f, false), sx1, sx2, top, bottom,
                     fa(on ? GOLD : mixColor(MUTED, TEXT, hover * .5f), alpha), .66f, on);
         }
     }
