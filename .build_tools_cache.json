@@ -1,0 +1,9 @@
+{
+  "clang": "C:\\Program Files\\LLVM\\bin\\clang-cl.exe",
+  "lld": "C:\\Program Files\\LLVM\\bin\\lld-link.exe",
+  "ninja": "C:\\Users\\qxod\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe\\ninja.EXE",
+  "vcpkg": "C:\\vcpkg",
+  "cmake": "C:\\Program Files\\CMake\\bin\\cmake.EXE",
+  "jdk17": "C:\\Program Files\\Java\\jdk-17",
+  "jdk_any": "C:\\Program Files\\Java\\jdk-17"
+}

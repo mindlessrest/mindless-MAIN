@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import glob
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT        = Path(__file__).parent.resolve()
 LOADER_DIR  = ROOT / "loader"
@@ -16,6 +17,7 @@ PRESET_FILE = LOADER_DIR / "CMakePresets.json"
 PRESET_TEMPLATE = LOADER_DIR / "CMakePresets.template.json"
 BUILD_DIR   = LOADER_DIR / "out" / "build" / "windows-clang"
 OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
+TOOL_CACHE_FILE = ROOT / ".build_tools_cache.json"
 
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
@@ -42,6 +44,38 @@ def warn(msg): print(f"  {YELLOW}[!]{RESET} {msg}")
 def err(msg):  print(f"  {RED}[x]{RESET} {msg}")
 def info(msg): print(f"  {CYAN}[>]{RESET} {msg}")
 def section(title): print(f"\n{BOLD}{title}{RESET}")
+
+
+def load_tool_cache():
+    """Cached results from a previous run's tool detection. The Program Files
+    / Visual Studio crawl this script does is the slowest part of a cold run
+    (can be seconds on a big disk), and the answer almost never changes
+    between builds - so we trust a cached path as long as it still exists
+    on disk, and re-scan from scratch otherwise."""
+    if not TOOL_CACHE_FILE.is_file():
+        return {}
+    try:
+        with open(TOOL_CACHE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+    valid = {}
+    for key, path_str in data.items():
+        if not path_str:
+            continue
+        p = Path(path_str)
+        if p.exists():
+            valid[key] = p
+    return valid
+
+
+def save_tool_cache(entries):
+    data = {k: (str(v) if v else None) for k, v in entries.items()}
+    try:
+        with open(TOOL_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
 
 
 def find_file(candidates):
@@ -222,6 +256,12 @@ def scan_java_installs():
 
     Returns a list of dicts: {home, major, has_javac}, deduped by home,
     sorted best-first (real JDK before JRE, higher version first).
+
+    The root walk and the per-install `java -version` calls are both
+    I/O-bound (disk seeks / subprocess wait), so both are fanned out
+    across a thread pool instead of run one-after-another - on a machine
+    with several JDKs installed this is the difference between walking
+    Program Files N times sequentially and walking it once in parallel.
     """
     homes = set()
 
@@ -231,17 +271,25 @@ def scan_java_installs():
         if (jh / "bin" / "javaw.exe").is_file():
             homes.add(jh)
 
-    for root in JAVA_SEARCH_ROOTS:
-        for javaw in _find_javaw_under(root):
-            homes.add(_java_home_from_javaw(javaw))
+    with ThreadPoolExecutor(max_workers=len(JAVA_SEARCH_ROOTS)) as pool:
+        for javaw_list in pool.map(_find_javaw_under, JAVA_SEARCH_ROOTS):
+            for javaw in javaw_list:
+                homes.add(_java_home_from_javaw(javaw))
+
+    if not homes:
+        return []
 
     installs = []
-    for home in homes:
-        major = _query_java_version(home)
-        if major is None:
-            continue
-        has_javac = (home / "bin" / "javac.exe").is_file()
-        installs.append({"home": home, "major": major, "has_javac": has_javac})
+    homes = list(homes)
+    with ThreadPoolExecutor(max_workers=min(8, len(homes))) as pool:
+        futures = {pool.submit(_query_java_version, home): home for home in homes}
+        for fut in as_completed(futures):
+            home = futures[fut]
+            major = fut.result()
+            if major is None:
+                continue
+            has_javac = (home / "bin" / "javac.exe").is_file()
+            installs.append({"home": home, "major": major, "has_javac": has_javac})
 
     installs.sort(key=lambda i: (i["has_javac"], i["major"]), reverse=True)
     return installs
@@ -302,7 +350,8 @@ def build_client(jdk17):
     if jdk17:
         env["JAVA_HOME"] = str(jdk17)
         info(f"JAVA_HOME = {jdk17}")
-    cmd = [str(gradlew), "build", "lunarPayloadJar", "-x", "test", "-x", "compileTestJava"]
+    cmd = [str(gradlew), "build", "lunarPayloadJar", "-x", "test", "-x", "compileTestJava",
+           "--parallel", "--build-cache"]
     if not run(cmd, CLIENT_DIR, env):
         err("gradle build failed")
         return False
@@ -422,10 +471,41 @@ def main():
 
     build_loader_flag = "--loader" in sys.argv or "--all" in sys.argv or len(sys.argv) == 1
     build_client_flag = "--client" in sys.argv or "--all" in sys.argv or len(sys.argv) == 1
+    no_cache_flag = "--no-cache" in sys.argv
 
     section("Detecting tools")
 
-    llvm = detect_llvm()
+    # clang/lld, ninja, vcpkg and cmake detection are each independent disk
+    # crawls (Program Files, VS install trees, PATH) with no shared state,
+    # so they're run concurrently instead of one after another. A cached
+    # path from a previous run skips the crawl entirely as long as it still
+    # points at a real file/dir on disk.
+    cache = {} if no_cache_flag else load_tool_cache()
+
+    def resolve_llvm():
+        cached_clang, cached_lld = cache.get("clang"), cache.get("lld")
+        if cached_clang and cached_lld:
+            return (cached_clang, cached_lld)
+        return detect_llvm()
+
+    def resolve(name, detector):
+        cached = cache.get(name)
+        return cached if cached else detector()
+
+    detectors = {
+        "llvm":  resolve_llvm,
+        "ninja": lambda: resolve("ninja", detect_ninja),
+        "vcpkg": lambda: resolve("vcpkg", detect_vcpkg),
+        "cmake": lambda: resolve("cmake", detect_cmake),
+    }
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(detectors)) as pool:
+        futures = {pool.submit(fn): name for name, fn in detectors.items()}
+        for fut in as_completed(futures):
+            results[futures[fut]] = fut.result()
+
+    llvm, ninja, vcpkg, cmake = results["llvm"], results["ninja"], results["vcpkg"], results["cmake"]
+
     clang = lld = None
     if llvm:
         clang, lld = llvm
@@ -436,7 +516,6 @@ def main():
         if build_loader_flag:
             sys.exit(1)
 
-    ninja = detect_ninja()
     if ninja:
         ok(f"Ninja         : {ninja}")
     else:
@@ -444,7 +523,6 @@ def main():
         if build_loader_flag:
             sys.exit(1)
 
-    vcpkg = detect_vcpkg()
     if vcpkg:
         ok(f"vcpkg         : {vcpkg}")
     else:
@@ -452,7 +530,6 @@ def main():
         if build_loader_flag:
             sys.exit(1)
 
-    cmake = detect_cmake()
     if cmake:
         ok(f"CMake         : {cmake}")
     else:
@@ -460,25 +537,34 @@ def main():
         if build_loader_flag:
             sys.exit(1)
 
-    info("Scanning for Java installs (this walks Program Files, may take a sec)...")
-    java_installs = scan_java_installs()
-    if java_installs:
-        info(f"Found {len(java_installs)} Java install(s):")
-        for inst in java_installs:
-            kind = "JDK" if inst["has_javac"] else "JRE"
-            info(f"    - {kind} {inst['major']:<3} {inst['home']}")
+    cached_jdk17, cached_jdk_any = cache.get("jdk17"), cache.get("jdk_any")
+    if cached_jdk17 or cached_jdk_any:
+        jdk17, jdk_any = cached_jdk17, cached_jdk_any or cached_jdk17
+    else:
+        info("Scanning for Java installs (this walks Program Files, may take a sec)...")
+        java_installs = scan_java_installs()
+        if java_installs:
+            info(f"Found {len(java_installs)} Java install(s):")
+            for inst in java_installs:
+                kind = "JDK" if inst["has_javac"] else "JRE"
+                info(f"    - {kind} {inst['major']:<3} {inst['home']}")
+        jdk17 = find_jdk(java_installs, major=17)
+        jdk_any = jdk17 or find_jdk(java_installs)
 
-    jdk17 = find_jdk(java_installs, major=17)
     if jdk17:
         ok(f"JDK 17        : {jdk17}")
     else:
         warn("JDK 17 not found - client/gradle may fail")
 
-    jdk_any = jdk17 or find_jdk(java_installs)
     if jdk_any:
         ok(f"JDK (native)  : {jdk_any}")
     else:
         warn("No JDK found - RavenNative.dll build will fail")
+
+    save_tool_cache({
+        "clang": clang, "lld": lld, "ninja": ninja, "vcpkg": vcpkg, "cmake": cmake,
+        "jdk17": jdk17, "jdk_any": jdk_any,
+    })
 
     extra_env = {}
     if llvm:
