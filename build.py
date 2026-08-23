@@ -18,6 +18,7 @@ PRESET_TEMPLATE = LOADER_DIR / "CMakePresets.template.json"
 BUILD_DIR   = LOADER_DIR / "out" / "build" / "windows-clang"
 OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
 TOOL_CACHE_FILE = ROOT / ".build_tools_cache.json"
+CPU_COUNT = os.cpu_count() or 4
 
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
@@ -226,8 +227,28 @@ def _java_home_from_javaw(javaw_path):
 
 
 def _query_java_version(java_home):
-    """Runs java -version and parses the major version number.
-    Handles both old (1.8.0_301 -> 8) and new (17.0.9 -> 17) schemes."""
+    """Resolves the major version of a JDK/JRE home.
+
+    Fast path: every JDK 9+ ships a plain-text `release` file right next to
+    `bin/` with a `JAVA_VERSION="17.0.9"` line - reading it is a single
+    file read with no process spawn. Only JDK 8 and earlier lack this file
+    (or if it's missing/corrupt for some other reason), so `java -version`
+    - which pays for a full JVM bootstrap, ~100-300ms per install - is kept
+    strictly as a fallback rather than the default path.
+    """
+    release_file = java_home / "release"
+    if release_file.is_file():
+        try:
+            text = release_file.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            text = ""
+        m = re.search(r'JAVA_VERSION="(\d+)(?:\.(\d+))?', text)
+        if m:
+            major = int(m.group(1))
+            if major == 1 and m.group(2):
+                major = int(m.group(2))
+            return major
+
     java_exe = java_home / "bin" / "java.exe"
     if not java_exe.is_file():
         return None
@@ -281,7 +302,7 @@ def scan_java_installs():
 
     installs = []
     homes = list(homes)
-    with ThreadPoolExecutor(max_workers=min(8, len(homes))) as pool:
+    with ThreadPoolExecutor(max_workers=min(32, max(4, len(homes)))) as pool:
         futures = {pool.submit(_query_java_version, home): home for home in homes}
         for fut in as_completed(futures):
             home = futures[fut]
@@ -351,7 +372,7 @@ def build_client(jdk17):
         env["JAVA_HOME"] = str(jdk17)
         info(f"JAVA_HOME = {jdk17}")
     cmd = [str(gradlew), "build", "lunarPayloadJar", "-x", "test", "-x", "compileTestJava",
-           "--parallel", "--build-cache"]
+           "--parallel", "--build-cache", f"--max-workers={CPU_COUNT}"]
     if not run(cmd, CLIENT_DIR, env):
         err("gradle build failed")
         return False
@@ -398,12 +419,30 @@ def build_native_dll(cmake, clang, ninja, jdk):
         f"-DRAVEN_LUNAR_PAYLOAD_JAR={str(LUNAR_JAR).replace(chr(92), '/')}",
     ]
     extra_env = {"PATH": str(clang.parent) + os.pathsep + os.environ.get("PATH", "")}
-    if not run(cfg_cmd, CLIENT_DIR, extra_env):
-        err("RavenNative cmake configure failed")
-        return False
-    ok("configured")
 
-    build_cmd = [str(cmake), "--build", str(NATIVE_BUILD_DIR), "--config", "Release"]
+    # Re-running `cmake configure` unconditionally regenerates build.ninja on
+    # every invocation. Even when the regenerated file is logically the same,
+    # Ninja treats a changed build.ninja mtime as a reason to re-verify (and
+    # sometimes fully re-run) build steps beyond just the payload relink we
+    # actually want forced above - so a full native recompile was being
+    # triggered by *this* step, not by real source changes. Skip it unless
+    # the cache is missing or CMakeLists.txt actually changed.
+    cmake_cache = NATIVE_BUILD_DIR / "CMakeCache.txt"
+    cmakelists = NATIVE_DIR / "CMakeLists.txt"
+    needs_configure = (
+        not cmake_cache.is_file()
+        or (cmakelists.is_file() and cmakelists.stat().st_mtime > cmake_cache.stat().st_mtime)
+    )
+    if needs_configure:
+        if not run(cfg_cmd, CLIENT_DIR, extra_env):
+            err("RavenNative cmake configure failed")
+            return False
+        ok("configured")
+    else:
+        info("configure skipped (CMakeCache up to date)")
+
+    build_cmd = [str(cmake), "--build", str(NATIVE_BUILD_DIR), "--config", "Release",
+                 "--parallel", str(CPU_COUNT)]
     if not run(build_cmd, CLIENT_DIR, extra_env):
         err("RavenNative build failed")
         return False
@@ -442,7 +481,8 @@ def build_loader(cmake, extra_env):
         loader_exe_build.unlink()
 
     section("Loader - build")
-    cmd = [str(cmake), "--build", str(BUILD_DIR), "--config", "Release"]
+    cmd = [str(cmake), "--build", str(BUILD_DIR), "--config", "Release",
+           "--parallel", str(CPU_COUNT)]
     if not run(cmd, LOADER_DIR, extra_env):
         err("cmake build failed")
         return False
