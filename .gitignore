@@ -35,6 +35,7 @@ loader/build_log*.txt
 # Compiled binaries (anywhere)
 *.exe
 *.dll
+!client/src/main/resources/mindless/native/MindlessMediaBridge.dll
 *.obj
 *.pdb
 *.ilk

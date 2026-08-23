@@ -330,14 +330,15 @@ public class Scaffold extends Module {
 
     /**
      * Whether there is actually a gap worth bridging: under your feet, under any corner of
-     * them, or one block along the way you are heading.
+     * them, one block along the way you are heading, or the orthogonal cells a diagonal step
+     * needs filled before the diagonal itself can be placed on.
      */
     private boolean isNearEdge() {
         int targetY = targetY();
+        int px = MathHelper.floor_double(mc.thePlayer.posX);
+        int pz = MathHelper.floor_double(mc.thePlayer.posZ);
 
-        if (BlockUtils.replaceable(new BlockPos(
-                MathHelper.floor_double(mc.thePlayer.posX), targetY,
-                MathHelper.floor_double(mc.thePlayer.posZ)))) {
+        if (BlockUtils.replaceable(new BlockPos(px, targetY, pz))) {
             return true;
         }
 
@@ -355,10 +356,32 @@ public class Scaffold extends Module {
         double length = Math.sqrt(travel[0] * travel[0] + travel[1] * travel[1]);
         if (length <= 1.0E-6) return false;
 
-        return BlockUtils.replaceable(new BlockPos(
-                MathHelper.floor_double(mc.thePlayer.posX + travel[0] / length * EDGE_LOOKAHEAD),
+        double nx = travel[0] / length;
+        double nz = travel[1] / length;
+
+        if (BlockUtils.replaceable(new BlockPos(
+                MathHelper.floor_double(mc.thePlayer.posX + nx * EDGE_LOOKAHEAD),
                 targetY,
-                MathHelper.floor_double(mc.thePlayer.posZ + travel[1] / length * EDGE_LOOKAHEAD)));
+                MathHelper.floor_double(mc.thePlayer.posZ + nz * EDGE_LOOKAHEAD)))) {
+            return true;
+        }
+
+        // Diagonal: the orthogonal cells that must exist before the diagonal cell can be placed.
+        double ax = Math.abs(travel[0]);
+        double az = Math.abs(travel[1]);
+        double major = Math.max(ax, az);
+        if (major > 1.0E-6 && Math.min(ax, az) >= major * DIAGONAL_RATIO) {
+            int sx = travel[0] >= 0.0 ? 1 : -1;
+            int sz = travel[1] >= 0.0 ? 1 : -1;
+            int aheadX = MathHelper.floor_double(mc.thePlayer.posX + nx * EDGE_LOOKAHEAD);
+            int aheadZ = MathHelper.floor_double(mc.thePlayer.posZ + nz * EDGE_LOOKAHEAD);
+            if (BlockUtils.replaceable(new BlockPos(aheadX - sx, targetY, aheadZ))
+                    || BlockUtils.replaceable(new BlockPos(aheadX, targetY, aheadZ - sz))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -653,7 +676,8 @@ public class Scaffold extends Module {
         // Taken from where the jump will have carried you by the time the click goes out, since
         // reading it from the position the tick started at spends the first tick of every hop
         // looking at the block already under your feet.
-        if (isTowering()) {
+        boolean towering = isTowering();
+        if (towering) {
             addTarget(targets, body, new BlockPos(px, MathHelper.floor_double(
                     mc.thePlayer.posY + mc.thePlayer.motionY) - 1, pz));
         }
@@ -684,6 +708,25 @@ public class Scaffold extends Module {
                 lastX = x;
                 lastZ = z;
                 addBridgeTarget(targets, body, new BlockPos(x, targetY, z), sx, sz);
+            }
+        }
+
+        // Tower while bridging: after towering up, also extend the bridge at the new level so
+        // you keep moving forward instead of pillaring in place.
+        if (towering && travel != null) {
+            int towerY = MathHelper.floor_double(mc.thePlayer.posY + mc.thePlayer.motionY) - 1;
+            if (towerY != targetY) {
+                addBridgeTarget(targets, body, new BlockPos(px, towerY, pz), sx, sz);
+                int lastX = px;
+                int lastZ = pz;
+                for (double multiplier : PROJECTION) {
+                    int x = MathHelper.floor_double(mc.thePlayer.posX + travel[0] * multiplier);
+                    int z = MathHelper.floor_double(mc.thePlayer.posZ + travel[1] * multiplier);
+                    if (x == lastX && z == lastZ) continue;
+                    lastX = x;
+                    lastZ = z;
+                    addBridgeTarget(targets, body, new BlockPos(x, towerY, z), sx, sz);
+                }
             }
         }
 
