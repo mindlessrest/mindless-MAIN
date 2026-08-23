@@ -65,6 +65,24 @@ public final class ModernClickGui extends ClickGui {
     private static final float DROPDOWN_MAX_W = 156f;
     /** Gap kept between a setting's label and its dropdown. */
     private static final float DROPDOWN_LABEL_GAP = 10f;
+    /**
+     * Left edge of the control column, as a fraction of the row's width.
+     *
+     * Every control in the panel starts here -- slider tracks, dropdowns, segmented pickers,
+     * keybind chips -- so they read as one column down the right of the panel rather than each
+     * sitting wherever its own label happened to end.
+     */
+    private static final float CONTROL_COLUMN = .42f;
+    /** Where a slider's number sits, as a fraction of the row's width. */
+    private static final float VALUE_COLUMN = .30f;
+    /** Vertical gap between setting rows. Shared by the draw and the hit-test walk. */
+    private static final float SETTING_GAP = 4f;
+    /** Most options a string setting may have before it is a dropdown rather than segments. */
+    private static final int MAX_SEGMENTS = 3;
+    /** Gap between the buttons of a segmented picker. */
+    private static final float SEGMENT_GAP = 4f;
+    /** Height of a control inside its row. */
+    private static final float CONTROL_HEIGHT = 22f;
 
     private static int ACCENT = argb(255, 159, 143, 210);
     private static int ACCENT_SOFT = argb(42, 159, 143, 210);
@@ -806,6 +824,10 @@ public final class ModernClickGui extends ClickGui {
         float headerCenterY = baseY + 28.5f;
         GL11.glPushMatrix();
         GL11.glTranslatef(slideOffset, 0f, 0f);
+        // The category glyph sits in a ring, which gives the header something to be built
+        // around instead of a mark floating next to the name.
+        circle(detailX + 25, headerCenterY, 12.5f, withAlpha(GOLD_SOFT, (int) (headerAlpha * .55f)));
+        circleOutline(detailX + 25, headerCenterY, 12.5f, withAlpha(GOLD, (int) (headerAlpha * .8f)));
         drawCategoryIcon(selectedModule.moduleCategory(), detailX + 25, headerCenterY,
                 withAlpha(GOLD, headerAlpha));
         drawTwoLineTextVCentered(
@@ -824,16 +846,20 @@ public final class ModernClickGui extends ClickGui {
         scissor(detailX + 8, top, detailX + detailW - 8, bottom, true);
         float y = top + settingScroll;
         GroupSetting currentGroup = null;
+        boolean firstRow = true;
         for (Setting setting : selectedModule.getSettings()) {
             if (!setting.visible) continue;
             if (setting instanceof GroupSetting) currentGroup = (GroupSetting) setting;
             GroupSetting owner = groupOf(setting);
             if (owner != null && !owner.isOpened()) continue;
             float h = settingHeight(setting);
-            if (y + h >= top - 4 && y <= bottom + 4) drawSetting(setting, y, h, mx, my, contentAlpha);
+            if (y + h >= top - 4 && y <= bottom + 4) {
+                drawSetting(setting, y, h, mx, my, contentAlpha, firstRow);
+            }
+            firstRow = false;
             // Track where the open dropdown's row sits in screen space
             if (setting == openDropdown) dropdownAnchorY = y;
-            y += h + 3f;
+            y += h + SETTING_GAP;
         }
         settingsContentHeight = y - (top + settingScroll);
         scissor(detailX + 8, top, detailX + detailW - 8, bottom, true);
@@ -845,6 +871,57 @@ public final class ModernClickGui extends ClickGui {
 
         // Draw dropdown overlay on top of everything (no scissor, no scroll offset)
         drawDropdownOverlay(mx, my);
+    }
+
+    private float settingsLeft() { return detailX + 15; }
+
+    private float settingsRight() { return detailX + detailW - 15; }
+
+    /** Left edge of the shared control column. */
+    private float controlLeft() {
+        float left = settingsLeft();
+        return left + (settingsRight() - left) * CONTROL_COLUMN;
+    }
+
+    /**
+     * Right edge of a slider's track, pulled in by the radius of its thumb.
+     *
+     * The thumb is drawn centred on the track's end, so a track running to the full width would
+     * put half a thumb past where every other control stops.
+     */
+    private float sliderTrackRight() { return settingsRight() - 4f; }
+
+    /** Left edge of a numeric slider's value, which sits between the label and the track. */
+    private float sliderValueLeft() {
+        float left = settingsLeft();
+        return left + (settingsRight() - left) * VALUE_COLUMN;
+    }
+
+    /**
+     * Where the buttons of a segmented picker go, as {left edge, button width}, or null when this
+     * setting should stay a dropdown.
+     *
+     * A short handful of short options reads better laid out than hidden behind a menu -- you can
+     * see what the alternatives are and switch with one click instead of two. Anything longer
+     * than that does not fit across the column, so it keeps the dropdown.
+     */
+    private float[] segmentLayout(SliderSetting slider) {
+        String[] options = slider.getOptions();
+        if (options == null || options.length < 2 || options.length > MAX_SEGMENTS) return null;
+
+        float left = controlLeft();
+        float available = settingsRight() - left;
+        float widest = 0f;
+        for (String option : options) widest = Math.max(widest, textWidth(option, .66f, false));
+        if ((widest + 16f) * options.length + SEGMENT_GAP * (options.length - 1) > available) {
+            return null;
+        }
+        float width = (available - SEGMENT_GAP * (options.length - 1)) / options.length;
+        return new float[]{left, width};
+    }
+
+    private float segmentX(float[] layout, int index) {
+        return layout[0] + index * (layout[1] + SEGMENT_GAP);
     }
 
     /** Scales the alpha channel of a packed ARGB color by [0,1]. */
@@ -980,11 +1057,17 @@ public final class ModernClickGui extends ClickGui {
         return k;
     }
 
-    private void drawSetting(Setting setting, float y, float h, int mx, int my, float alpha) {
+    private void drawSetting(Setting setting, float y, float h, int mx, int my, float alpha,
+                             boolean first) {
         float x1 = detailX + 15, x2 = detailX + detailW - 15;
         if (setting instanceof DescriptionSetting) {
-            drawTextVCentered(((DescriptionSetting) setting).getDesc(), x1 + 1, y, y + 22, fa(GOLD, alpha), .76f, true);
-            line(x1, y + 22, x2, y + 22, fa(DIVIDER, alpha));
+            // A quiet heading with the rule above it, rather than an accent-coloured line of
+            // text underlined in the accent again. It is a label for what follows, not a thing
+            // to look at, and reading it as one makes the settings under it the loudest part of
+            // the panel. The first heading skips the rule, since the panel header drew one.
+            if (!first) line(x1, y + 6, x2, y + 6, fa(DIVIDER, alpha));
+            drawTextVCentered(((DescriptionSetting) setting).getDesc(), x1 + 2, y + 9, y + h,
+                    fa(MUTED, alpha), .72f, false);
         } else if (setting instanceof GroupSetting) {
             GroupSetting group = (GroupSetting) setting;
             rounded(x1, y, x2, y + h, 5f, fa(ROW, alpha));
@@ -1003,18 +1086,29 @@ public final class ModernClickGui extends ClickGui {
         } else if (setting instanceof SliderSetting) {
             SliderSetting slider = (SliderSetting) setting;
             if (slider.isString) {
-                // Width follows the label rather than being a fixed 128px, so a long setting
-                // name no longer runs underneath the control.
                 String label = slider.getName();
                 float labelLeft = x1 + 2;
-                float available = x2 - labelLeft;
-                float dropW = Math.max(DROPDOWN_MIN_W, Math.min(DROPDOWN_MAX_W,
-                        available - textWidth(label, .75f, false) - DROPDOWN_LABEL_GAP));
+
+                // A short set of short options is laid out rather than hidden behind a menu: you
+                // can see the alternatives and switch in one click instead of two.
+                float[] segments = segmentLayout(slider);
+                if (segments != null) {
+                    drawTextVCentered(trim(label, segments[0] - labelLeft - DROPDOWN_LABEL_GAP, .75f, false),
+                            labelLeft, y, y + h, fa(TEXT, alpha), .75f, false);
+                    drawSegments(slider, segments, y, h, mx, my, alpha);
+                    return;
+                }
+
+                // Width follows the label rather than being a fixed 128px, so a long setting
+                // name no longer runs underneath the control. It reaches for the shared control
+                // column first and only gives ground back when the name needs the room.
+                float available = x2 - labelLeft - textWidth(label, .75f, false) - DROPDOWN_LABEL_GAP;
+                float dropW = Math.max(DROPDOWN_MIN_W, Math.min(x2 - controlLeft(), available));
                 float dx1 = x2 - dropW, dx2 = x2;
                 if (openDropdown == slider) dropdownWidth = dropW;
 
                 drawTextVCentered(trim(label, dx1 - labelLeft - DROPDOWN_LABEL_GAP, .75f, false),
-                        labelLeft, y, y + 30, fa(TEXT, alpha), .75f, false);
+                        labelLeft, y, y + h, fa(TEXT, alpha), .75f, false);
 
                 float open = animate(dropdownAnimation, slider, openDropdown == slider ? 1f : 0f, 20f);
                 boolean over = inside(mx, my, dx1, y + 3, dx2, y + 27);
@@ -1031,29 +1125,39 @@ public final class ModernClickGui extends ClickGui {
                 // Options drawn as floating overlay in drawDropdownOverlay()
                 return;
             }
-            drawText(trim(slider.getName(), detailW - 94, .75f, false), x1 + 2, y + 7, fa(TEXT, alpha), .75f, false);
+            // Label, value and track on one row: name on the left, the number in its own
+            // column, the track filling the control column to the right edge. The track used to
+            // sit on a second line under the label, which made a slider twice the height of
+            // every other row and broke the rhythm of the panel.
+            float valueLeft = sliderValueLeft();
+            float trackLeft = controlLeft();
+            drawTextVCentered(trim(slider.getName(), valueLeft - x1 - 12, .75f, false),
+                    x1 + 2, y, y + h, fa(TEXT, alpha), .75f, false);
+
             boolean editingValue = editingSliderValue == slider;
-            boolean valueHover = inside(mx, my, x2 - 60, y + 2, x2 + 1, y + 20);
+            float valueBoxRight = trackLeft - 8;
+            boolean valueHover = inside(mx, my, valueLeft - 5, y + 5, valueBoxRight, y + h - 5);
             float valueState = animate(controlAnimation, sliderValueAnimationKey(slider), editingValue ? 1f : valueHover ? .55f : 0f, 18f);
-            if (valueState > .01f) rounded(x2 - 60, y + 2, x2 + 1, y + 20, 4f,
+            if (valueState > .01f) rounded(valueLeft - 5, y + 5, valueBoxRight, y + h - 5, 4f,
                     fa(mixColor(withAlpha(CONTROL, 0), CONTROL_HOVER, valueState), alpha));
             String displayedValue = editingValue ? sliderEditDraft : sliderValue(slider);
-            float valueScale = textWidth(displayedValue, .72f, true) > 55f ? .62f : .72f;
-            float valueX = x2 - textWidth(displayedValue, valueScale, true);
+            float valueRoom = valueBoxRight - valueLeft - 4;
+            float valueScale = textWidth(displayedValue, .72f, false) > valueRoom ? .62f : .72f;
+            float valueX = valueLeft;
             if (editingValue && sliderHasSelection()) {
                 int from = Math.min(sliderEditCaret, sliderEditAnchor);
                 int to = Math.max(sliderEditCaret, sliderEditAnchor);
-                float left = valueX + textWidth(sliderEditDraft.substring(0, from), valueScale, true);
-                float right = valueX + textWidth(sliderEditDraft.substring(0, to), valueScale, true);
-                rounded(left - 1, y + 4, right + 1, y + 18, 2f, fa(withAlpha(ACCENT, 74), alpha));
+                float left = valueX + textWidth(sliderEditDraft.substring(0, from), valueScale, false);
+                float right = valueX + textWidth(sliderEditDraft.substring(0, to), valueScale, false);
+                rounded(left - 1, y + 8, right + 1, y + h - 8, 2f, fa(withAlpha(ACCENT, 74), alpha));
             }
-            drawText(displayedValue, valueX, y + 7, fa(editingValue ? TEXT : GOLD, alpha), valueScale, true);
+            drawTextVCentered(displayedValue, valueX, y, y + h, fa(TEXT, alpha), valueScale, false);
             if (editingValue && blink()) {
-                float caretX = valueX + textWidth(sliderEditDraft.substring(0, sliderEditCaret), valueScale, true);
-                rounded(caretX, y + 5, caretX + .8f, y + 18, .4f, fa(ACCENT, alpha));
+                float caretX = valueX + textWidth(sliderEditDraft.substring(0, sliderEditCaret), valueScale, false);
+                rounded(caretX, y + 8, caretX + .8f, y + h - 8, .4f, fa(ACCENT, alpha));
             }
-            float bx1 = x1 + 10, bx2 = x2 - 10, by = y + h - 13;
-            float hp = animate(controlAnimation, slider, inside(mx, my, bx1, by - 6, bx2, by + 8) ? 1f : 0f, 18f);
+            float bx1 = trackLeft, bx2 = sliderTrackRight(), by = y + h / 2f - 1.5f;
+            float hp = animate(controlAnimation, slider, inside(mx, my, bx1 - 5, y + 3, bx2 + 3, y + h - 3) ? 1f : 0f, 18f);
             // Track bg
             rounded(bx1, by, bx2, by + 3, 1.5f, fa(mixColor(argb(120, 78, 79, 78), argb(165, 102, 101, 96), hp), alpha));
             // Animate fill progress toward real value
@@ -1068,17 +1172,24 @@ public final class ModernClickGui extends ClickGui {
             // Fill
             rounded(bx1, by, px, by + 3, 1.5f, fa(mixColor(GOLD, TEXT, hp * .18f), alpha));
             // Thumb — grows slightly on hover, follows animated position
-            float thumbR = 3.7f + hp * .65f;
+            float thumbR = 4.1f + hp * .7f;
             circle(px, by + 1.5f, thumbR, fa(mixColor(GOLD, TEXT, hp * .24f), alpha));
-            if (draggingSlider == slider) sliderRect.set(bx1, by - 5, bx2, by + 8);
+            if (draggingSlider == slider) sliderRect.set(bx1, y, bx2, y + h);
         } else if (setting instanceof KeySetting) {
             KeySetting key = (KeySetting) setting;
-            drawTextVCentered(key.getName(), x1 + 2, y, y + h, fa(TEXT, alpha), .76f, false);
             String value = binding == key ? "Press a key" : keyName(key.getKey());
-            float focus = animate(controlAnimation, key, binding == key ? 1f : inside(mx, my, x2 - 76, y + 6, x2, y + h - 6) ? .55f : 0f, 17f);
-            rounded(x2 - 76, y + 6, x2, y + h - 6, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, focus), alpha));
-            outline(x2 - 76, y + 6, x2, y + h - 6, 4f, fa(mixColor(BORDER, GOLD, focus), alpha));
-            drawCenteredV(value, x2 - 76, x2, y + 6, y + h - 6, fa(binding == key ? GOLD : MUTED, alpha), .66f, false);
+            // A chip sized to the key rather than a fixed 76px slab. A bind is one or two
+            // characters nearly always, and a box five times wider than its contents reads as an
+            // empty field waiting to be filled in.
+            float chipLeft = keyChipLeft(key);
+            drawTextVCentered(trim(key.getName(), chipLeft - x1 - 12, .76f, false),
+                    x1 + 2, y, y + h, fa(TEXT, alpha), .76f, false);
+            float top = y + (h - CONTROL_HEIGHT) / 2f, bottom = top + CONTROL_HEIGHT;
+            float focus = animate(controlAnimation, key, binding == key ? 1f : inside(mx, my, chipLeft, top, x2, bottom) ? .55f : 0f, 17f);
+            outline(chipLeft, top, x2, bottom, 4f, fa(mixColor(BORDER, GOLD, focus), alpha));
+            rounded(chipLeft, top, x2, bottom, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, focus), alpha));
+            resetTextRenderState();
+            drawCenteredV(value, chipLeft, x2, top, bottom, fa(binding == key ? GOLD : MUTED, alpha), .66f, false);
         } else if (setting instanceof ColorSetting) {
             drawColor((ColorSetting) setting, y, h, mx, my, alpha);
         } else if (setting instanceof TextSetting) {
@@ -1089,12 +1200,42 @@ public final class ModernClickGui extends ClickGui {
         }
     }
 
+    /**
+     * Left edge of a keybind's chip: wide enough for what it says, never past the control column.
+     */
+    private float keyChipLeft(KeySetting key) {
+        String value = binding == key ? "Press a key" : keyName(key.getKey());
+        float width = Math.max(34f, textWidth(value, .66f, false) + 18f);
+        return Math.min(controlLeft(), settingsRight() - width);
+    }
+
+    private void drawSegments(SliderSetting slider, float[] layout, float y, float h,
+                              int mx, int my, float alpha) {
+        String[] options = slider.getOptions();
+        int selected = (int) slider.getInput();
+        float top = y + (h - CONTROL_HEIGHT) / 2f, bottom = top + CONTROL_HEIGHT;
+
+        for (int i = 0; i < options.length; i++) {
+            float sx1 = segmentX(layout, i), sx2 = sx1 + layout[1];
+            boolean on = i == selected;
+            float hover = !on && inside(mx, my, sx1, top, sx2, bottom) ? 1f : 0f;
+            // outline() lays a slightly larger rect down first and the fill covers its middle,
+            // which is what leaves a one pixel border. Drawing it after would bury the fill.
+            outline(sx1, top, sx2, bottom, 4f, fa(on ? GOLD : BORDER, alpha));
+            rounded(sx1, top, sx2, bottom, 4f,
+                    fa(on ? GOLD_SOFT : mixColor(CONTROL, CONTROL_HOVER, hover * .8f), alpha));
+            resetTextRenderState();
+            drawCenteredV(trim(options[i], layout[1] - 8f, .66f, false), sx1, sx2, top, bottom,
+                    fa(on ? GOLD : mixColor(MUTED, TEXT, hover * .5f), alpha), .66f, false);
+        }
+    }
+
     private void drawColor(ColorSetting color, float y, float h, int mx, int my, float alpha) {
         float x1 = detailX + 15, x2 = detailX + detailW - 15;
         float controlTop = y + (Math.min(h, 32f) - 18f) / 2f;
         drawTextVCentered(color.getName(), x1 + 2, y, y + Math.min(h, 32f), fa(TEXT, alpha), .76f, false);
-        rounded(x2 - 38, controlTop, x2, controlTop + 18, 4f, fa(color.getColor(), alpha));
         outline(x2 - 38, controlTop, x2, controlTop + 18, 4f, fa(BORDER, alpha));
+        rounded(x2 - 38, controlTop, x2, controlTop + 18, 4f, fa(color.getColor(), alpha));
         if (openColor != color) return;
         float py = y + 34, pickerX = x1 + 9, pickerW = x2 - x1 - 18;
         colorSB.set(pickerX, py, pickerX + pickerW - 17, py + 48);
@@ -1125,8 +1266,9 @@ public final class ModernClickGui extends ClickGui {
         drawText(name, x1 + 10, y + 7, fa(TEXT, alpha), .72f, false);
         float iy = y + 20;
         float focus = animate(controlAnimation, setting, activeText == setting ? 1f : inside(mx, my, x1 + 8, iy, x2 - 8, y + h - 7) ? .5f : 0f, 17f);
-        rounded(x1 + 8, iy, x2 - 8, y + h - 7, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, focus), alpha));
         outline(x1 + 8, iy, x2 - 8, y + h - 7, 4f, fa(mixColor(BORDER, GOLD, focus), alpha));
+        rounded(x1 + 8, iy, x2 - 8, y + h - 7, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, focus), alpha));
+        resetTextRenderState();
         String shown = value.isEmpty() && activeText != setting ? placeholder : value + (activeText == setting && blink() ? "|" : "");
         drawTextVCentered(trim(shown, x2 - x1 - 28, .69f, false), x1 + 14, iy, y + h - 7,
                 fa(value.isEmpty() ? DIM : TEXT, alpha), .69f, false);
@@ -1138,8 +1280,9 @@ public final class ModernClickGui extends ClickGui {
         drawText(setting.getName(), x1 + 10, y + 8, fa(TEXT, alpha), .74f, false);
         float iy = y + 22;
         float focus = animate(controlAnimation, setting, activeList == setting ? 1f : inside(mx, my, x1 + 8, iy, x2 - 34, iy + 21) ? .5f : 0f, 17f);
-        rounded(x1 + 8, iy, x2 - 34, iy + 21, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, focus), alpha));
         outline(x1 + 8, iy, x2 - 34, iy + 21, 4f, fa(mixColor(BORDER, GOLD, focus), alpha));
+        rounded(x1 + 8, iy, x2 - 34, iy + 21, 4f, fa(mixColor(CONTROL, CONTROL_HOVER, focus), alpha));
+        resetTextRenderState();
         String shown = activeList == setting ? listDraft + (blink() ? "|" : "") : listPlaceholder(setting);
         drawTextVCentered(trim(shown, x2 - x1 - 66, .66f, false), x1 + 14, iy, iy + 21,
                 fa(activeList == setting && !listDraft.isEmpty() ? TEXT : DIM, alpha), .66f, false);
@@ -1362,7 +1505,7 @@ public final class ModernClickGui extends ClickGui {
                 handleSettingClick(setting, mx, my, y, h, button);
                 return;
             }
-            y += h + 3;
+            y += h + SETTING_GAP;
         }
     }
 
@@ -1378,19 +1521,31 @@ public final class ModernClickGui extends ClickGui {
             else { b.toggle(); selectedModule.guiButtonToggled(b); }
         } else if (setting instanceof SliderSetting) {
             SliderSetting slider = (SliderSetting) setting;
-            float bx1 = x1 + 10, bx2 = x2 - 10;
+            float bx1 = controlLeft(), bx2 = sliderTrackRight();
             if (slider.isString) {
+                float[] segments = segmentLayout(slider);
+                if (segments != null) {
+                    String[] options = slider.getOptions();
+                    for (int i = 0; i < options.length; i++) {
+                        float sx1 = segmentX(segments, i);
+                        if (mx < sx1 || mx > sx1 + segments[1]) continue;
+                        slider.setValueWithEvent(i);
+                        selectedModule.onSlide(slider);
+                        return;
+                    }
+                    return;
+                }
                 // toggle open/close — actual option selection handled in mouseClicked overlay block
                 openDropdown = openDropdown == slider ? null : slider;
                 closeDropdownState(); // a freshly opened list always starts at the top
-            } else if (button == 0 && inside(mx, my, x2 - 60, y + 2, x2 + 1, y + 20)) {
+            } else if (button == 0 && inside(mx, my, sliderValueLeft() - 5, y + 5, bx1 - 8, y + h - 5)) {
                 beginSliderValueEdit(slider);
             } else if (button == 1 && slider.canBeDisabled) {
                 slider.setValueRawWithEvent(slider.getInput() == -1 ? slider.getMin() : -1);
                 selectedModule.onSlide(slider);
-            } else if (my >= y + h - 21) {
+            } else if (mx >= bx1 - 5) {
                 draggingSlider = slider;
-                sliderRect.set(bx1, y + h - 18, bx2, y + h - 5);
+                sliderRect.set(bx1, y, bx2, y + h);
                 setSliderFromMouse(slider, mx, bx1, bx2);
             }
         } else if (setting instanceof KeySetting) {
@@ -1723,7 +1878,8 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private float settingHeight(Setting setting) {
-        if (setting instanceof DescriptionSetting) return 27;
+        // Section headings carry their own space above the rule that separates them.
+        if (setting instanceof DescriptionSetting) return 31;
         if (setting instanceof GroupSetting) return 31;
         // Action-only rows do not need the height of a full toggle/control.
         // Keeping them compact makes utility pages such as Scripts read as a
@@ -1731,7 +1887,9 @@ public final class ModernClickGui extends ClickGui {
         if (setting instanceof ButtonSetting && ((ButtonSetting) setting).isMethodButton) return 25;
         if (setting instanceof SliderSetting) {
             SliderSetting slider = (SliderSetting) setting;
-            if (!slider.isString) return 43;
+            // Label, number and track share one row now, so a slider is no taller than
+            // anything else and the panel keeps an even rhythm down the page.
+            if (!slider.isString) return 32;
             return 32; // dropdown draws as floating overlay, not in-flow
         }
         if (setting instanceof ColorSetting) return openColor == setting ? (((ColorSetting) setting).hasAlpha() ? 102 : 91) : 32;
