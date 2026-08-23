@@ -67,6 +67,7 @@ public class Notifications extends Module {
 
     private static final class Card {
         final String   title;
+        final String   customStatus;
         final boolean  enabled;
         final long     birthMs;
         final long     durationMs;
@@ -75,13 +76,18 @@ public class Notifications extends Module {
         float alpha;
 
         Card(String title, boolean enabled, long birthMs, long durationMs, float startY) {
-            this.title      = title;
-            this.enabled    = enabled;
-            this.birthMs    = birthMs;
-            this.durationMs = durationMs;
-            this.targetY    = startY;
-            this.y          = startY + 28;
-            this.alpha      = 0.0f;
+            this(title, null, enabled, birthMs, durationMs, startY);
+        }
+
+        Card(String title, String customStatus, boolean enabled, long birthMs, long durationMs, float startY) {
+            this.title        = title;
+            this.customStatus = customStatus;
+            this.enabled      = enabled;
+            this.birthMs      = birthMs;
+            this.durationMs   = durationMs;
+            this.targetY      = startY;
+            this.y            = startY + 28;
+            this.alpha        = 0.0f;
         }
     }
 
@@ -190,6 +196,19 @@ public class Notifications extends Module {
         notifications.push(title, enabled, (long) (notifications.duration.getInput() * 1000.0), now);
     }
 
+    /** Pushes a notification with custom status text. */
+    public static void notify(String title, String status, boolean positive) {
+        Notifications notifications = instance;
+        if (notifications == null || !notifications.isEnabled() || title == null || title.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        long dur = (long) (notifications.duration.getInput() * 1000.0);
+        if (notifications.cards.size() >= MAX) notifications.cards.remove(0);
+        ScaledResolution sr = ScaledResolutionCache.get();
+        float baseY = sr.getScaledHeight() - MARGIN - H;
+        float startY = baseY - notifications.cards.size() * (H + GAP);
+        notifications.cards.add(new Card(title, status, positive, now, dur, startY));
+    }
+
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent e) {
         if (e.phase != TickEvent.Phase.END || !Utils.nullCheck() || cards.isEmpty()) return;
@@ -245,7 +264,7 @@ public class Notifications extends Module {
         float remaining = Math.max(0.0f, (c.durationMs - age) / 1000.0f);
 
         Color accent = c.enabled ? ON : OFF;
-        String status = c.enabled ? "Enabled" : "Disabled";
+        String status = c.customStatus != null ? c.customStatus : (c.enabled ? "Enabled" : "Disabled");
         String clock = String.format(Locale.ROOT, "%.1fs", remaining);
 
         float w = cardWidth(font, c.title, status, clock);

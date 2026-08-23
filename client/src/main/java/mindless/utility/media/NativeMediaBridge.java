@@ -86,7 +86,7 @@ final class NativeMediaBridge {
                 return SystemMediaInfo.unavailable();
             }
 
-            String json = pointer.getString(0);
+            String json = pointer.getString(0, "UTF-8");
             if (json == null || json.trim().isEmpty()) {
                 return SystemMediaInfo.unavailable();
             }

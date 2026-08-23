@@ -85,6 +85,8 @@ public class SessionInfo extends Module {
     private long lastResultMs;
     private String lastLine = "";
     private long lastLineMs;
+    private String lastVictim = "";
+    private long lastVictimMs;
     // Chat calls a nicked player by the nick, not the account, so the account name alone stops
     // matching anything the moment you nick.
     private String nickName = "";
@@ -255,6 +257,10 @@ public class SessionInfo extends Module {
         String killer = null;
         Matcher by = KILLED_BY.matcher(line);
         while (by.find()) killer = by.group(1);
+
+        if (victim.equals(lastVictim) && now - lastVictimMs < 2000L) return;
+        lastVictim = victim;
+        lastVictimMs = now;
 
         if (isMe(victim)) deaths++;
         else if (isMe(killer)) kills++;

@@ -6,6 +6,7 @@ import mindless.helper.RotationHelper;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
+import mindless.module.impl.render.Notifications;
 import mindless.module.impl.world.AntiBot;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -55,6 +56,7 @@ public class KillAura extends Module {
     private ButtonSetting notUsingItem;
     private ButtonSetting requireMouseDown;
     private ButtonSetting weaponOnly;
+    private ButtonSetting killNotification;
 
     private String[] rotationModes = new String[]{"Silent", "Lock view", "None"};
     private String[] sortModes = new String[]{"Distance", "Health", "Hurt time", "Yaw"};
@@ -76,6 +78,8 @@ public class KillAura extends Module {
     private long nextClickTime;
     private Random rand;
     private double targetDistance = Double.MAX_VALUE;
+    private int lastAttackedEntityId = -1;
+    private long lastKillNotifyMs;
 
     public KillAura() {
         super("Kill Aura", category.combat);
@@ -101,6 +105,7 @@ public class KillAura extends Module {
         this.registerSetting(prioritizeEnemies = new ButtonSetting("Prioritize enemies", false));
         this.registerSetting(requireMouseDown = new ButtonSetting("Require mouse down", false));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
+        this.registerSetting(killNotification = new ButtonSetting("Kill notification", false));
     }
 
     @Override
@@ -122,6 +127,7 @@ public class KillAura extends Module {
         hitMap.clear();
         setTarget(null);
         nextClickTime = 0L;
+        lastAttackedEntityId = -1;
         monsterClassCache.clear();
         nonMonsterClassCache.clear();
     }
@@ -176,6 +182,23 @@ public class KillAura extends Module {
             }
         }
 
+        if (killNotification.isToggled() && lastAttackedEntityId != -1) {
+            Entity attacked = mc.theWorld.getEntityByID(lastAttackedEntityId);
+            if (attacked instanceof EntityLivingBase) {
+                EntityLivingBase living = (EntityLivingBase) attacked;
+                if (living.deathTime > 0 || living.isDead) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastKillNotifyMs > 2000L) {
+                        lastKillNotifyMs = now;
+                        Notifications.notify(living.getName(), "Target neutralized.", true);
+                    }
+                    lastAttackedEntityId = -1;
+                }
+            } else if (attacked == null) {
+                lastAttackedEntityId = -1;
+            }
+        }
+
         if (rotationMode.getInput() == 1 && target != null) {
             double aimRangeVal = aimRange.getInput();
             if (targetDistance <= aimRangeVal) {
@@ -221,6 +244,9 @@ public class KillAura extends Module {
         for (int i = 0; i < clicks; i++) {
             KeyBinding.onTick(key);
         }
+        if (clicks > 0 && target != null && targetDistance <= attackRange.getInput()) {
+            lastAttackedEntityId = target.getEntityId();
+        }
     }
 
     @SubscribeEvent
@@ -250,6 +276,7 @@ public class KillAura extends Module {
             golems.clear();
             monsterClassCache.clear();
             nonMonsterClassCache.clear();
+            lastAttackedEntityId = -1;
         }
     }
 
