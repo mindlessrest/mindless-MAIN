@@ -183,6 +183,7 @@ public class ModuleManager {
         this.addModule(autoSwap = new AutoSwap());
         this.addModule(new BridgeAssist());
         this.addModule(scaffold = new Scaffold());
+        this.addModule(new TestScaffold());
         this.addModule(clutch = new Clutch());
         this.addModule(autoTool = new AutoTool());
         this.addModule(bedAura = new BedAura());
