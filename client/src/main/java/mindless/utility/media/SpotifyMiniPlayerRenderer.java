@@ -77,6 +77,10 @@ public final class SpotifyMiniPlayerRenderer {
     private static String cachedAdaptiveFontKey = "";
     /** Line advance the lyrics block used last frame, so the panel can size itself for a wrap. */
     private static float lastLyricLineAdvance;
+    /** The wrapped layout the reserved line count was measured from. */
+    private static List<WrappedLyric> overflowSource;
+    /** Lines past the first that the current track's longest lyric needs. */
+    private static float overflowLines;
     /** Lines past the first that a lyric may push the panel taller for. */
     private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
     private static RavenFontRenderer cachedAdaptiveLyricFont;
@@ -243,7 +247,7 @@ public final class SpotifyMiniPlayerRenderer {
         RavenFontRenderer lyricFont = uiFont;
         float lowScaleBreathingRoom = lowScaleLayout ? 8.0F : 0.0F;
         float width = getPanelWidth(mediaVisible, showAlbumArt) * uiScale + lowScaleBreathingRoom;
-        float lyricOverflow = lyricsArea ? lyricOverflowHeight(lyricsTimeline, timedLyrics) : 0.0F;
+        float lyricOverflow = lyricsArea ? lyricOverflowHeight(timedLyrics) : 0.0F;
         float desiredHeight = getPanelHeight(mediaVisible, effectiveShowHeader, showDetails, showProgress, lyricsArea) * uiScale
                 + lowScaleBreathingRoom + lyricOverflow;
         float height = previewMode ? desiredHeight : updateAnimatedPanelHeight(desiredHeight);
@@ -1025,12 +1029,16 @@ public final class SpotifyMiniPlayerRenderer {
     }
 
     /**
-     * Extra height the panel needs for the line currently being sung.
+     * Extra height the lyrics block is given, measured over the whole track.
      *
-     * The lyrics block reserves a fixed slice of the panel, which is enough for one line. Plenty
-     * of lyrics do not fit the width in one -- "'Cause they see we are living, ghetto fabulous"
-     * wraps to two -- and the second line was simply falling outside the viewport and getting
-     * clipped in half. So the panel grows by whatever the wrap actually costs.
+     * It reserves one line by default, and plenty of lyrics do not fit the column in one --
+     * "'Cause they see we are living, ghetto fabulous" wraps to two -- so the second line fell
+     * outside the viewport and was clipped through the middle.
+     *
+     * The measurement is the longest line in the song, not the line being sung. Sizing to the
+     * current one means the panel grows and shrinks every time the lyric changes, which is once
+     * every few seconds, and the whole player breathes in and out for the length of the track.
+     * Whatever a lyric costs, the room for it was already there.
      *
      * The wrap is read from the previous frame's layout on purpose. Working it out up front
      * would mean knowing the text width, which depends on the album art, which depends on the
@@ -1038,16 +1046,22 @@ public final class SpotifyMiniPlayerRenderer {
      * and possibly another line, round and round. A frame-old line count has none of that, and
      * settles in one frame.
      */
-    private static float lyricOverflowHeight(LyricsTimeline timeline, TimedLyrics timedLyrics) {
-        if (timeline == null || lastLyricLineAdvance <= 0.0F) return 0.0F;
-        if (cachedLyricsSource != timedLyrics) return 0.0F;
+    private static float lyricOverflowHeight(TimedLyrics timedLyrics) {
+        if (lastLyricLineAdvance <= 0.0F || cachedLyricsSource != timedLyrics) return 0.0F;
 
         List<WrappedLyric> lyrics = cachedWrappedLyrics;
         if (lyrics.isEmpty()) return 0.0F;
 
-        int index = Math.max(0, Math.min(timeline.activeIndex, lyrics.size() - 1));
-        int extra = Math.min(MAX_LYRIC_OVERFLOW_LINES, lyrics.get(index).lines.size() - 1);
-        return Math.max(0, extra) * lastLyricLineAdvance;
+        // Measured once per layout. The list is replaced wholesale when anything it depends on
+        // changes, so its identity is enough to know the answer still holds.
+        if (lyrics != overflowSource) {
+            int most = 1;
+            for (WrappedLyric lyric : lyrics) most = Math.max(most, lyric.lines.size());
+            overflowLines = Math.min(MAX_LYRIC_OVERFLOW_LINES, most - 1);
+            overflowSource = lyrics;
+        }
+
+        return overflowLines * lastLyricLineAdvance;
     }
 
     private static float getPanelHeight(boolean mediaVisible, boolean showHeader, boolean showDetails,
