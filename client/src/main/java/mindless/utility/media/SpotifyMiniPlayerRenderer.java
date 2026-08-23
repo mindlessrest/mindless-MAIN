@@ -75,6 +75,10 @@ public final class SpotifyMiniPlayerRenderer {
     private static volatile TimedLyrics asyncWrappedSource;
     private static Future<?> asyncWrappedTask;
     private static String cachedAdaptiveFontKey = "";
+    /** Line advance the lyrics block used last frame, so the panel can size itself for a wrap. */
+    private static float lastLyricLineAdvance;
+    /** Lines past the first that a lyric may push the panel taller for. */
+    private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
     private static RavenFontRenderer cachedAdaptiveLyricFont;
     private static volatile String asyncAdaptiveFontKey;
     private static volatile RavenFontRenderer asyncAdaptiveLyricFont;
@@ -239,8 +243,9 @@ public final class SpotifyMiniPlayerRenderer {
         RavenFontRenderer lyricFont = uiFont;
         float lowScaleBreathingRoom = lowScaleLayout ? 8.0F : 0.0F;
         float width = getPanelWidth(mediaVisible, showAlbumArt) * uiScale + lowScaleBreathingRoom;
+        float lyricOverflow = lyricsArea ? lyricOverflowHeight(lyricsTimeline, timedLyrics) : 0.0F;
         float desiredHeight = getPanelHeight(mediaVisible, effectiveShowHeader, showDetails, showProgress, lyricsArea) * uiScale
-                + lowScaleBreathingRoom;
+                + lowScaleBreathingRoom + lyricOverflow;
         float height = previewMode ? desiredHeight : updateAnimatedPanelHeight(desiredHeight);
         float radius = 2.5F;
 
@@ -291,7 +296,10 @@ public final class SpotifyMiniPlayerRenderer {
             }
         }
         float titleY = contentTop + Math.max(0.0F, Math.min(4.5F * uiScale, (contentHeight - totalTextHeight) * 0.24F));
-        float artBottom = showProgress ? progressBarY : y + height - padding;
+        // Held back to the size it would have been without the extra lyric line. Letting the
+        // art follow the taller panel would widen it, narrow the text column, and risk wrapping
+        // the lyric again -- the feedback lyricOverflowHeight exists to avoid.
+        float artBottom = (showProgress ? progressBarY : y + height - padding) - lyricOverflow;
         float artSize = showAlbumArt ? Math.max(28.0F * uiScale, artBottom - titleY) : 0.0F;
 
         float textX = x + padding;
@@ -315,6 +323,7 @@ public final class SpotifyMiniPlayerRenderer {
             lyricFont = getAdaptiveLyricFont(textScale * getLyricTextScaleMultiplier(), timedLyrics, textWidth);
         }
         float lyricLineAdvance = lyricsArea ? lyricFont.getFontHeight() + Math.max(lowScaleLayout ? 1.0F : 1.5F, uiScale * (lowScaleLayout ? 1.4F : 1.8F)) : 0.0F;
+        if (lyricLineAdvance > 0.0F) lastLyricLineAdvance = lyricLineAdvance;
         String title = mediaVisible
                 ? safeText(mediaInfo.getTitle(), "Nothing playing")
                 : buildHeaderLabel(mediaInfo, mediaVisible);
@@ -553,6 +562,14 @@ public final class SpotifyMiniPlayerRenderer {
             targetOffset = focus.top;
         }
         targetOffset = Math.max(0.0F, Math.min(Math.max(0.0F, totalHeight - viewportHeight), targetOffset));
+        // The line being sung is the one that has to be readable in full. Centring gets that
+        // right on its own, but clamping to the ends of the song does not, and neither does a
+        // block tall enough to be worth scrolling within -- either can leave it half out of the
+        // viewport, which is the line getting cut off.
+        if (focus.height <= viewportHeight) {
+            targetOffset = Math.min(focus.top,
+                    Math.max(focus.top + focus.height - viewportHeight, targetOffset));
+        }
         updateLyricScroll(targetOffset, timeline.seeked);
 
         long now = animationTimeMs();
@@ -560,7 +577,9 @@ public final class SpotifyMiniPlayerRenderer {
         // Show one line before and after active so prev/next peek into view
         int firstIndex = fullLyricsView ? 0 : Math.max(0, activeIndex - 1);
         int lastIndex  = fullLyricsView ? lyrics.size() - 1 : Math.min(lyrics.size() - 1, activeIndex + 1);
-        RenderUtils.scissorPushGui(textX - 2.0F, lyricY - 1.0F, textWidth + 4.0F, viewportHeight);
+        // A hair taller than the viewport: cutting exactly on the boundary shaved the tails off
+        // the g's and y's on the bottom line. There is a gap to the progress bar below to spend.
+        RenderUtils.scissorPushGui(textX - 2.0F, lyricY - 1.0F, textWidth + 4.0F, viewportHeight + 2.0F);
         try {
             for (int i = firstIndex; i <= lastIndex; i++) {
                 WrappedLyric lyric = lyrics.get(i);
@@ -1003,6 +1022,32 @@ public final class SpotifyMiniPlayerRenderer {
             return IDLE_WIDTH;
         }
         return showAlbumArt ? PLAYER_WIDTH_WITH_ART : PLAYER_WIDTH_NO_ART;
+    }
+
+    /**
+     * Extra height the panel needs for the line currently being sung.
+     *
+     * The lyrics block reserves a fixed slice of the panel, which is enough for one line. Plenty
+     * of lyrics do not fit the width in one -- "'Cause they see we are living, ghetto fabulous"
+     * wraps to two -- and the second line was simply falling outside the viewport and getting
+     * clipped in half. So the panel grows by whatever the wrap actually costs.
+     *
+     * The wrap is read from the previous frame's layout on purpose. Working it out up front
+     * would mean knowing the text width, which depends on the album art, which depends on the
+     * height this is being used to decide -- a taller panel means bigger art, a narrower column,
+     * and possibly another line, round and round. A frame-old line count has none of that, and
+     * settles in one frame.
+     */
+    private static float lyricOverflowHeight(LyricsTimeline timeline, TimedLyrics timedLyrics) {
+        if (timeline == null || lastLyricLineAdvance <= 0.0F) return 0.0F;
+        if (cachedLyricsSource != timedLyrics) return 0.0F;
+
+        List<WrappedLyric> lyrics = cachedWrappedLyrics;
+        if (lyrics.isEmpty()) return 0.0F;
+
+        int index = Math.max(0, Math.min(timeline.activeIndex, lyrics.size() - 1));
+        int extra = Math.min(MAX_LYRIC_OVERFLOW_LINES, lyrics.get(index).lines.size() - 1);
+        return Math.max(0, extra) * lastLyricLineAdvance;
     }
 
     private static float getPanelHeight(boolean mediaVisible, boolean showHeader, boolean showDetails,
