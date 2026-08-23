@@ -26,7 +26,27 @@ public class Script {
 
     public Script(String name) {
         this.name = name;
-        this.scriptName = "sc_" + name.replace(" ", "").replace(")", "_").replace("(", "_") + "_" + Utils.generateRandomString(5);
+        this.scriptName = "sc_" + javaIdentifier(name) + "_" + Utils.generateRandomString(5);
+    }
+
+    /**
+     * A script's name turned into something Java will accept as a class name.
+     *
+     * The generated wrapper class is named after the script, and a script name allows
+     * characters an identifier does not -- a hyphen being the easy one to hit, since
+     * "keep-y" is a perfectly ordinary thing to call one. Spaces and brackets were
+     * handled and nothing else was, so anything else failed to compile with a message
+     * about the generated source rather than about the name. Anything not legal becomes
+     * an underscore; the display name is untouched.
+     */
+    private static String javaIdentifier(String name) {
+        if (name == null || name.isEmpty()) return "script";
+        StringBuilder out = new StringBuilder(name.length());
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            out.append(Character.isLetterOrDigit(c) || c == '_' || c == '$' ? c : '_');
+        }
+        return out.toString();
     }
 
     public boolean run() {

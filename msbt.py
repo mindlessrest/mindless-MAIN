@@ -187,9 +187,15 @@ def install_script(jar_path, script_directory):
     return destination
 
 def cleanup_script_files(java_file, jar_path, installed_path):
-    """Remove source/build staging files without deleting installed script jar."""
+    """Remove the staging jar, leaving the source where it was.
+
+    This used to delete the .java too. os.remove does not go via the recycle bin, so
+    one successful compile took the script with it -- and a build tool eating its own
+    input is not something anyone expects it to do.
+    """
+    del java_file  # deliberately not touched
     installed_abs = os.path.abspath(installed_path)
-    for path in (java_file, jar_path):
+    for path in (jar_path,):
         if not path or os.path.abspath(path) == installed_abs:
             continue
         try:
@@ -198,6 +204,22 @@ def cleanup_script_files(java_file, jar_path, installed_path):
                 log_ok(f"cleaned: {G}{path}{RST}")
         except OSError as exc:
             log_warn(f"could not clean {path}: {exc}")
+
+def java_identifier(name):
+    """A file name turned into something Java will accept as a class name.
+
+    The wrapper class is named after the file, and file names allow characters an
+    identifier does not -- a hyphen being the easy one to hit, since "keep-y.java"
+    is a perfectly ordinary thing to call a script. Anything not legal becomes an
+    underscore. The jar keeps the original name, and so does the scriptName field,
+    so nothing the user sees changes.
+    """
+    legal = "".join(
+        ch if (ch.isascii() and (ch.isalnum() or ch in "_$")) else "_"
+        for ch in name
+    )
+    return legal or "script"
+
 
 def compile_script(java_file, jdk_path, msa_path):
     script_name = os.path.splitext(os.path.basename(java_file))[0]
@@ -213,7 +235,7 @@ def compile_script(java_file, jdk_path, msa_path):
     out_dir = os.path.join(tmp_dir, "classes")
     os.makedirs(out_dir)
 
-    wrapped_name = f"sc_{script_name.replace(' ', '').replace('(', '_').replace(')', '_')}"
+    wrapped_name = f"sc_{java_identifier(script_name)}"
     wrapped_source = source
 
     imports = [
