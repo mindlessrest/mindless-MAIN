@@ -372,7 +372,7 @@ def build_client(jdk17):
         env["JAVA_HOME"] = str(jdk17)
         info(f"JAVA_HOME = {jdk17}")
     cmd = [str(gradlew), "build", "lunarPayloadJar", "-x", "test", "-x", "compileTestJava",
-           "--parallel", "--build-cache", f"--max-workers={CPU_COUNT}"]
+           "--parallel", "--build-cache", "--warning-mode=none", f"--max-workers={CPU_COUNT}"]
     if not run(cmd, CLIENT_DIR, env):
         err("gradle build failed")
         return False
@@ -462,10 +462,20 @@ def build_native_dll(cmake, clang, ninja, jdk):
 
 def build_loader(cmake, extra_env):
     section("Loader - configure")
-    if not run([str(cmake), "--preset", "windows-clang"], LOADER_DIR, extra_env):
-        err("cmake configure failed")
-        return False
-    ok("configured")
+    loader_cache = BUILD_DIR / "CMakeCache.txt"
+    loader_cmakelists = LOADER_DIR / "CMakeLists.txt"
+    needs_configure = (
+        not loader_cache.is_file()
+        or (loader_cmakelists.is_file() and loader_cmakelists.stat().st_mtime > loader_cache.stat().st_mtime)
+        or (PRESET_FILE.is_file() and PRESET_FILE.stat().st_mtime > loader_cache.stat().st_mtime)
+    )
+    if needs_configure:
+        if not run([str(cmake), "--preset", "windows-clang"], LOADER_DIR, extra_env):
+            err("cmake configure failed")
+            return False
+        ok("configured")
+    else:
+        info("configure skipped (CMakeCache up to date)")
 
     # Force rebuild when embedded assets change: touch the generated .rc so
     # Ninja re-links the EXE with fresh RavenNative.dll / other resources.

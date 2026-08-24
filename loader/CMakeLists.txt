@@ -110,6 +110,22 @@ target_link_libraries(MindlessLoader
 # RC compiler needs to find resource.h from src/
 set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} /I \"${CMAKE_SOURCE_DIR}/src\"")
 
+target_precompile_headers(MindlessLoader PRIVATE
+    <windows.h>
+    <d3d11.h>
+    <dxgi.h>
+    <dwmapi.h>
+    <string>
+    <vector>
+    <memory>
+    <functional>
+    <cmath>
+    <algorithm>
+    <cstdint>
+    <chrono>
+    <thread>
+)
+
 set_target_properties(MindlessLoader PROPERTIES
     LINK_FLAGS "/MANIFEST:NO"
 )
@@ -134,6 +150,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         -Wno-old-style-cast
         -Wno-cast-function-type-strict
         -Wno-missing-prototypes
+        -Wno-nonportable-system-include-path
     )
 endif()
 

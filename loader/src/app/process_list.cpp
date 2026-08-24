@@ -1,8 +1,8 @@
 #include "process_list.hpp"
 #include "renderer/image.hpp"
-#include <Windows.h>
-#include <TlHelp32.h>
-#include <Psapi.h>
+#include <windows.h>
+#include <tlhelp32.h>
+#include <psapi.h>
 #include <shellapi.h>
 #include <string>
 #include <unordered_map>

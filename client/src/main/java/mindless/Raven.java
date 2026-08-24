@@ -23,6 +23,7 @@ import mindless.script.ScriptDefaults;
 import mindless.script.ScriptManager;
 import mindless.script.model.Entity;
 import mindless.script.model.NetworkPlayer;
+import mindless.utility.AttackPacketTimingTracker;
 import mindless.utility.BlockHighlightSharedHandler;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
@@ -97,6 +98,7 @@ public class Raven {
         registerHandler(new PingHelper(), false);
         registerHandler(packetsHandler = new PacketsHandler(), false);
         registerHandler(new ModuleUtils(), false);
+        registerHandler(AttackPacketTimingTracker.INSTANCE, false);
         registerHandler(lagHandler = new UnifiedLagHandler(), false);
 
         // Account Manager

@@ -97,7 +97,7 @@ target_include_directories(RavenNative PRIVATE
     ${JNI_INCLUDE_DIRS})
 target_link_libraries(RavenNative PRIVATE user32 advapi32)
 if(MSVC)
-    target_compile_options(RavenNative PRIVATE /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS)
+    target_compile_options(RavenNative PRIVATE /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS /O2 /Oi /Gy)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ set_target_properties(RavenInjector PROPERTIES
     C_STANDARD 11)
 target_link_libraries(RavenInjector PRIVATE user32 advapi32)
 if(MSVC)
-    target_compile_options(RavenInjector PRIVATE /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS)
+    target_compile_options(RavenInjector PRIVATE /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS /O2 /Oi /Gy)
 endif()
 
 message(STATUS "raven_native Forge payload: ${RAVEN_FORGE_PAYLOAD_JAR}")

@@ -929,21 +929,6 @@ static int pin_native_module(void) {
  *   2) Enumerate JVMTI GetLoadedClasses, filter to targets, RetransformClasses.
  * ------------------------------------------------------------------------- */
 
-static JNIEnv *attach_current_thread(BOOL *attached) {
-    JNIEnv *env = NULL;
-    jint result;
-    *attached = FALSE;
-    if (g_vm == NULL) return NULL;
-    result = (*g_vm)->GetEnv(g_vm, (void **)&env, JNI_VERSION_1_6);
-    if (result == JNI_EDETACHED) {
-        if ((*g_vm)->AttachCurrentThread(g_vm, (void **)&env, NULL) != JNI_OK) return NULL;
-        *attached = TRUE;
-    } else if (result != JNI_OK) {
-        return NULL;
-    }
-    return env;
-}
-
 static void JNICALL class_file_load_hook(
         jvmtiEnv *jvmti_env, JNIEnv *env, jclass class_being_redefined,
         jobject loader, const char *name, jobject protection_domain,

@@ -1,5 +1,5 @@
 #include "input.hpp"
-#include <Windows.h>
+#include <windows.h>
 
 namespace mindless
 {

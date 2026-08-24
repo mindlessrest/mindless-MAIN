@@ -213,12 +213,6 @@ tasks.shadowJar {
         "fabric.mod.json"
     )
 
-    doLast {
-        configurations.forEach {
-            println("Copying dependencies into mod: ${it.files}")
-        }
-    }
-
     if (ravenBuildType != "forge") {
         relocate("org.objectweb.asm", "mindless.deps.org.objectweb.asm")
     }
@@ -298,8 +292,16 @@ val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
 
 tasks.assemble.get().dependsOn(msaJar)
 
-tasks.withType(JavaCompile::class) {
+tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
+    options.isIncremental = true
+    options.isFork = true
+    options.forkOptions.jvmArgs = listOf("-Xmx2g", "-XX:+UseParallelGC")
+    options.compilerArgs.addAll(listOf(
+        "-nowarn",
+        "-Xlint:none",
+        "-Aquiet=true"
+    ))
 }
 
 // ---------------------------------------------------------------------------

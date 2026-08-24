@@ -884,6 +884,15 @@ public class Utils implements IMinecraftInstance {
         return "";
     }
 
+    public static long getPing() {
+        if (mc.getNetHandler() == null || mc.thePlayer == null) return 0L;
+        try {
+            NetworkPlayerInfo playerInfo = mc.getNetHandler().getPlayerInfo(mc.thePlayer.getUniqueID());
+            return playerInfo != null ? playerInfo.getResponseTime() : 0L;
+        } catch (Exception ignored) {}
+        return 0L;
+    }
+
     public static void setSpeed(double n) {
         if (n == 0.0) {
             mc.thePlayer.motionZ = 0.0;

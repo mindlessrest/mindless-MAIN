@@ -35,7 +35,7 @@ loader/build_log*.txt
 # Compiled binaries (anywhere)
 *.exe
 *.dll
-!client/src/main/resources/mindless/native/MindlessMediaBridge.dll
+!client/src/main/resources/mindless/native/MindlessMediaBridge.dll
 !client/src/main/resources/mindless/native/MindlessAudioTap.dll
 *.obj
 *.pdb
@@ -87,7 +87,7 @@ __pycache__/
 *.pyc
 *.pyo
 
-client/native_build/
+client/native_build/
 client/native-audio/build/
 
 # ---------------------------------------------------------------
@@ -95,3 +95,4 @@ client/native-audio/build/
 # flips back and forth between contributors on every build.
 # ---------------------------------------------------------------
 loader/CMakePresets.json
+.build_tools_cache.json

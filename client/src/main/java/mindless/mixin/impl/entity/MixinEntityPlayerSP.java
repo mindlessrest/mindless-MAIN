@@ -144,6 +144,10 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
         }
     }
 
+    /**
+     * @author Mindless
+     * @reason Motion and rotation updates
+     */
     @Overwrite
     public void onUpdateWalkingPlayer() {
         PreMotionEvent.setRotations = false;
@@ -240,6 +244,10 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new PostMotionEvent());
     }
 
+    /**
+     * @author Mindless
+     * @reason Player living update hook
+     */
     @Overwrite
     public void onLivingUpdate() {
         if (this.sprintingTicksLeft > 0) {

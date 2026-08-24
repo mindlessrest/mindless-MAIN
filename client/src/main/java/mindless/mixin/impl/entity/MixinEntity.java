@@ -44,6 +44,10 @@ public abstract class MixinEntity {
         return flag;
     }
 
+    /**
+     * @author Mindless
+     * @reason Strafe event hook
+     */
     @Overwrite
     public void moveFlying(float strafe, float forward, float friction) {
         StrafeEvent strafeEvent = new StrafeEvent(strafe, forward, friction, this.rotationYaw);
@@ -81,6 +85,10 @@ public abstract class MixinEntity {
         return stepHeightEvent.stepHeight;
     }
 
+    /**
+     * @author Mindless
+     * @reason Client look event hook
+     */
     @Overwrite
     protected final Vec3 getVectorForRotation(float pitch, float yaw) {
 

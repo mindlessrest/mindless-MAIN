@@ -16,7 +16,7 @@
 #pragma clang diagnostic pop
 
 #include "image.hpp"
-#include <Windows.h>
+#include <windows.h>
 #include <vector>
 
 namespace mindless

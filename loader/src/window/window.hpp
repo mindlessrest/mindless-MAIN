@@ -1,6 +1,6 @@
 #pragma once
 #include "input/input.hpp"
-#include <Windows.h>
+#include <windows.h>
 #include <functional>
 
 namespace mindless

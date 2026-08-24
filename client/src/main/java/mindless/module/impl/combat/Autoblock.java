@@ -11,6 +11,7 @@ import mindless.module.ModuleManager;
 import mindless.event.SendPacketEvent;
 import mindless.event.UseItemEvent;
 import mindless.module.impl.world.TargetFilter;
+import mindless.utility.AttackPacketTimingTracker;
 import mindless.utility.BlockUtils;
 import mindless.utility.CombatTargeting;
 import mindless.module.setting.impl.ButtonSetting;
@@ -29,8 +30,12 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Mouse;
 
 public class Autoblock extends Module {
-    private static final String[] MODES = new String[]{"Vanilla", "Lag"};
+    private static final String[] MODES = new String[]{"Vanilla", "Predict", "Manual", "Lag"};
     private static final String[] UNBLOCK_OUT_OF_RANGE_MODES = new String[]{"Once", "Always"};
+    private static final int MODE_VANILLA = 0;
+    private static final int MODE_PREDICT = 1;
+    private static final int MODE_MANUAL = 2;
+    private static final int MODE_LAG = 3;
     private static final int UNBLOCK_ONCE = 0;
     private static final int UNBLOCK_ALWAYS = 1;
 
@@ -51,6 +56,14 @@ public class Autoblock extends Module {
     private final ButtonSetting blockAgainImmediately;
     private final ButtonSetting forceBlockAnimation;
 
+    // Predict mode settings
+    private final SliderSetting predictEarlyWindow;
+    private final ButtonSetting predictIncludePing;
+    private final SliderSetting predictHoldAfter;
+
+    // Manual mode settings
+    private final SliderSetting manualChance;
+
     private boolean isBlocking;
     private boolean manualBlock;
     private boolean targetWasInRange;
@@ -67,6 +80,23 @@ public class Autoblock extends Module {
 
     private int tickCounter;
 
+    // Predict mode state
+    private static final int DAMAGE_INTERVAL_CAPACITY = 8;
+    private static final int PREDICTION_SAMPLE_COUNT = 3;
+    private static final long MIN_DAMAGE_INTERVAL_MS = 250L;
+    private static final long MAX_DAMAGE_INTERVAL_MS = 1500L;
+    private final long[] damageIntervals = new long[DAMAGE_INTERVAL_CAPACITY];
+    private int damageIntervalCount;
+    private int nextDamageIntervalIndex;
+    private long lastDamageTimeMs;
+    private boolean damageObserved;
+    private boolean predictBlocking;
+    private boolean predictHoldStarted;
+    private long predictHoldUntil;
+
+    // Manual mode state
+    private long manualReleaseTime;
+
     public Autoblock() {
         super("Auto Block", category.combat);
         this.liteModule = true;
@@ -76,6 +106,12 @@ public class Autoblock extends Module {
         this.registerSetting(maxHurtTimeMs = new SliderSetting("Maximum hurt time", "ms", 200, 50, 500, 50));
         this.registerSetting(maxHoldMs = new SliderSetting("Maximum hold duration", "ms", 150, 50, 500, 50));
         this.registerSetting(cooldownMs = new SliderSetting("Cooldown", "ms", 0, 0, 500, 50));
+
+        this.registerSetting(predictEarlyWindow = new SliderSetting("Early window", "ms", 100, 0, 500, 10));
+        this.registerSetting(predictIncludePing = new ButtonSetting("Include ping", true));
+        this.registerSetting(predictHoldAfter = new SliderSetting("Hold after", "ticks", 2, 0, 10, 1));
+
+        this.registerSetting(manualChance = new SliderSetting("Chance", "%", 80, 0, 100, 5));
 
         this.registerSetting(lagChance = new SliderSetting("Lag chance", "%", 100, 0, 100, 5));
         this.registerSetting(lagMaxDuration = new SliderSetting("Lag max duration", "ms", 200, 50, 500, 50));
@@ -97,17 +133,32 @@ public class Autoblock extends Module {
 
     @Override
     public void guiUpdate() {
-        boolean lagMode = isLagMode();
+        int m = (int) mode.getInput();
+        boolean lagMode = m == MODE_LAG;
+        boolean predictMode = m == MODE_PREDICT;
+        boolean manualMode = m == MODE_MANUAL;
+
         lagChance.setVisible(lagMode, this);
         lagMaxDuration.setVisible(lagMode, this);
         preventDelayAttacks.setVisible(lagMode, this);
         blockAgainImmediately.setVisible(lagMode, this);
+
+        predictEarlyWindow.setVisible(predictMode, this);
+        predictIncludePing.setVisible(predictMode, this);
+        predictHoldAfter.setVisible(predictMode, this);
+
+        manualChance.setVisible(manualMode, this);
+
+        maxHurtTimeMs.setVisible(m == MODE_VANILLA, this);
+        maxHoldMs.setVisible(m == MODE_VANILLA || lagMode, this);
+        onlyWhenDamaged.setVisible(m == MODE_VANILLA, this);
     }
 
     @Override
     public void onEnable() {
         tickCounter = 0;
         resetState(false);
+        resetPredictState();
     }
 
     private static int msToTicks(double ms) {
@@ -118,6 +169,7 @@ public class Autoblock extends Module {
     @Override
     public void onDisable() {
         resetState(true);
+        resetPredictState();
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -140,6 +192,17 @@ public class Autoblock extends Module {
                 }
             }
             e.setCanceled(true);
+        }
+
+        // Manual mode: block on left click
+        if (e.button == 0 && e.buttonstate && (int) mode.getInput() == MODE_MANUAL) {
+            if (currentTarget != null && Utils.holdingSword()) {
+                double chance = manualChance.getInput();
+                if (chance >= 100 || Math.random() * 100 < chance) {
+                    startBlocking(tickCounter);
+                    manualReleaseTime = System.currentTimeMillis() + 50L;
+                }
+            }
         }
     }
 
@@ -221,8 +284,9 @@ public class Autoblock extends Module {
 
         tickCounter++;
         int currentTick = tickCounter;
+        int currentMode = (int) mode.getInput();
 
-        if (!isLagMode() && isLagging) {
+        if (currentMode != MODE_LAG && isLagging) {
             releaseLag();
         }
 
@@ -255,7 +319,13 @@ public class Autoblock extends Module {
             return;
         }
 
-        if (hurtAgain) {
+        // Record damage for predict mode
+        if (hurtAgain && currentMode == MODE_PREDICT) {
+            recordDamageInterval();
+            setPredictBlocking(false);
+        }
+
+        if (hurtAgain && currentMode != MODE_PREDICT) {
             releaseLag();
             stopBlocking(true);
             manualBlock = false;
@@ -278,6 +348,18 @@ public class Autoblock extends Module {
             manualBlock = false;
         }
 
+        // Mode-specific logic
+        if (currentMode == MODE_PREDICT) {
+            tickPredict(conditionsMet);
+            return;
+        }
+
+        if (currentMode == MODE_MANUAL) {
+            tickManual(conditionsMet);
+            return;
+        }
+
+        // Vanilla and Lag modes
         if (isLagging) {
             int lagMaxTicks = msToTicks(lagMaxDuration.getInput());
             boolean lagExpired = lagMaxTicks > 0 && lagStartTick >= 0 && currentTick - lagStartTick >= lagMaxTicks;
@@ -312,6 +394,148 @@ public class Autoblock extends Module {
             }
         }
     }
+
+    // --- Predict mode ---
+
+    private void tickPredict(boolean conditionsMet) {
+        if (!conditionsMet) {
+            setPredictBlocking(false);
+            stopBlocking(true);
+            return;
+        }
+
+        int hurtResistantTime = mc.thePlayer.hurtResistantTime;
+
+        if (damageObserved && hasStableDamagePattern()) {
+            long now = System.currentTimeMillis();
+            long avgInterval = getAverageDamageInterval();
+            long expectedDamage = lastDamageTimeMs + avgInterval;
+            long earlyWindow = getEarlyWindowMs();
+            long holdWindow = (long) predictHoldAfter.getInput() * 50L;
+            boolean insideWindow = now >= expectedDamage - earlyWindow && now <= expectedDamage + holdWindow;
+            boolean canTakeDamage = hurtResistantTime <= 10 + getEarlyWindowTicks();
+
+            if (insideWindow && canTakeDamage) {
+                if (!isBlocking) startBlocking(tickCounter);
+            } else {
+                releaseAfterHold();
+            }
+        } else {
+            // Reactive fallback: start blocking when hurt resistant time drops near 10
+            if (hurtResistantTime > 10) {
+                predictHoldStarted = false;
+                predictHoldUntil = 0L;
+                if (hurtResistantTime <= 10 + getEarlyWindowTicks()) {
+                    if (!isBlocking) startBlocking(tickCounter);
+                } else if (isBlocking) {
+                    stopBlocking(true);
+                }
+            } else if (isBlocking) {
+                releaseAfterHold();
+            }
+        }
+    }
+
+    private void releaseAfterHold() {
+        int holdTicks = (int) predictHoldAfter.getInput();
+        if (holdTicks <= 0) {
+            stopBlocking(true);
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (!predictHoldStarted) {
+            predictHoldStarted = true;
+            predictHoldUntil = now + holdTicks * 50L;
+        }
+        if (now >= predictHoldUntil) {
+            stopBlocking(true);
+            predictHoldStarted = false;
+        }
+    }
+
+    private void recordDamageInterval() {
+        long now = System.currentTimeMillis();
+        damageObserved = true;
+        predictHoldStarted = false;
+        predictHoldUntil = 0L;
+        if (lastDamageTimeMs > 0L) {
+            long interval = now - lastDamageTimeMs;
+            if (interval >= MIN_DAMAGE_INTERVAL_MS && interval <= MAX_DAMAGE_INTERVAL_MS) {
+                damageIntervals[nextDamageIntervalIndex] = interval;
+                nextDamageIntervalIndex = (nextDamageIntervalIndex + 1) % DAMAGE_INTERVAL_CAPACITY;
+                if (damageIntervalCount < DAMAGE_INTERVAL_CAPACITY) {
+                    damageIntervalCount++;
+                }
+            } else {
+                damageIntervalCount = 0;
+                nextDamageIntervalIndex = 0;
+            }
+        }
+        lastDamageTimeMs = now;
+    }
+
+    private long getAverageDamageInterval() {
+        int samples = Math.min(damageIntervalCount, PREDICTION_SAMPLE_COUNT);
+        if (samples <= 0) return 0L;
+        long total = 0L;
+        for (int i = 0; i < samples; i++) {
+            int idx = nextDamageIntervalIndex - 1 - i;
+            if (idx < 0) idx += DAMAGE_INTERVAL_CAPACITY;
+            total += damageIntervals[idx];
+        }
+        return total / samples;
+    }
+
+    private long getEarlyWindowMs() {
+        long window = (long) predictEarlyWindow.getInput();
+        if (predictIncludePing.isToggled()) {
+            long hitDelay = AttackPacketTimingTracker.INSTANCE.getAverageHitDelay();
+            window += (hitDelay > 0L) ? hitDelay : (Utils.getPing() * 2L);
+        }
+        return window + 50L;
+    }
+
+    private int getEarlyWindowTicks() {
+        return (int) Math.ceil(getEarlyWindowMs() / 50.0);
+    }
+
+    private boolean hasStableDamagePattern() {
+        return damageIntervalCount >= PREDICTION_SAMPLE_COUNT && lastDamageTimeMs > 0L;
+    }
+
+    private void setPredictBlocking(boolean blocking) {
+        predictBlocking = blocking;
+        if (!blocking && isBlocking) {
+            stopBlocking(true);
+        }
+    }
+
+    private void resetPredictState() {
+        damageObserved = false;
+        damageIntervalCount = 0;
+        nextDamageIntervalIndex = 0;
+        lastDamageTimeMs = 0L;
+        predictBlocking = false;
+        predictHoldStarted = false;
+        predictHoldUntil = 0L;
+        manualReleaseTime = 0L;
+    }
+
+    // --- Manual mode ---
+
+    private void tickManual(boolean conditionsMet) {
+        if (!conditionsMet) {
+            stopBlocking(true);
+            return;
+        }
+        // Release after 50ms
+        if (isBlocking && manualReleaseTime > 0 && System.currentTimeMillis() >= manualReleaseTime) {
+            stopBlocking(true);
+            manualReleaseTime = 0L;
+        }
+    }
+
+    // --- Common ---
 
     private boolean checkConditions(boolean lmbDown, boolean rmbDown) {
         if (requireLmb.isToggled() && !lmbDown) return false;
@@ -360,7 +584,7 @@ public class Autoblock extends Module {
     }
 
     private boolean shouldStartLag() {
-        if (!isLagMode()) return false;
+        if ((int) mode.getInput() != MODE_LAG) return false;
         double chance = lagChance.getInput();
         if (chance <= 0) return false;
         if (chance >= 100) return true;
@@ -396,10 +620,6 @@ public class Autoblock extends Module {
         return isEnabled() && (isBlocking || isLagging);
     }
 
-    private boolean isLagMode() {
-        return mode.getInput() == 1;
-    }
-
     private boolean canInteractWhileAlwaysUnblocked() {
         MovingObjectPosition hit = mc.objectMouseOver;
         if (hit == null) return false;
@@ -427,7 +647,8 @@ public class Autoblock extends Module {
         );
         boolean continuousUndamagedBlock = !onlyWhenDamaged.isToggled()
                 && currentTarget != null
-                && !allowingAlwaysInteraction;
+                && !allowingAlwaysInteraction
+                && (int) mode.getInput() == MODE_VANILLA;
         boolean shouldAnimate = forceBlockAnimation.isToggled()
                 && Utils.nullCheck()
                 && mc.currentScreen == null
