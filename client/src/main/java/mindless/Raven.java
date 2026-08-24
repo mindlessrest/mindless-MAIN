@@ -390,9 +390,13 @@ public class Raven {
         } catch (Throwable ignored) {
         }
 
-        // The executors are left alive rather than shut down. A ShutdownNow cannot be undone --
-        // the pool refuses work forever after -- and reinject would come back to a client whose
-        // every scheduled task silently failed. With nothing registered, nothing posts to them.
+        // Untransform classes back to baseline original bytecode
+        try {
+            mindless.runtime.RavenTransformerManager.get().setDisabled(true);
+            mindless.runtime.TransformerHooks.untransformNative();
+        } catch (Throwable t) {
+            markNativeLog("Untransform classes failed: " + t);
+        }
 
         markNativeLog("Raven uninjected; awaiting in-game reinject");
         try {
@@ -447,6 +451,14 @@ public class Raven {
     public static synchronized void reinject() {
         if (!unloaded) {
             return;
+        }
+
+        // Re-transform classes back to transformed bytecode
+        try {
+            mindless.runtime.RavenTransformerManager.get().setDisabled(false);
+            mindless.runtime.TransformerHooks.retransformNative();
+        } catch (Throwable t) {
+            markNativeLog("Retransform classes failed: " + t);
         }
 
         for (Object[] entry : EVENT_HANDLERS) {

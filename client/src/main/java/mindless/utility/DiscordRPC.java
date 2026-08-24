@@ -165,25 +165,28 @@ public class DiscordRPC {
         }
 
         boolean connect() {
-            String pipePath = "\\\\?\\pipe\\discord-ipc-" + pipeIndex;
-            try {
-                pipe = new RandomAccessFile(pipePath, "rw");
-                sendPacket(0, "{\"v\":1,\"client_id\":\"" + clientId + "\"}");
+            String[] prefixes = { "\\\\.\\pipe\\discord-ipc-", "\\\\?\\pipe\\discord-ipc-" };
+            for (String prefix : prefixes) {
+                String pipePath = prefix + pipeIndex;
+                try {
+                    pipe = new RandomAccessFile(pipePath, "rw");
+                    sendPacket(0, "{\"v\":1,\"client_id\":\"" + clientId + "\"}");
 
-                String response = readFrame();
-                if (response == null || response.contains("\"evt\":\"ERROR\"")) {
-                    pipe.close();
-                    return false;
+                    String response = readFrame();
+                    if (response == null || response.contains("\"evt\":\"ERROR\"")) {
+                        pipe.close();
+                        continue;
+                    }
+
+                    label = "pipe " + pipeIndex;
+                    String username = extractField(response, "username");
+                    if (username != null) label += " (" + username + ")";
+                    return true;
+                } catch (Exception e) {
+                    try { if (pipe != null) pipe.close(); } catch (Exception ignored) {}
                 }
-
-                label = "pipe " + pipeIndex;
-                String username = extractField(response, "username");
-                if (username != null) label += " (" + username + ")";
-                return true;
-            } catch (Exception e) {
-                try { if (pipe != null) pipe.close(); } catch (Exception ignored) {}
-                return false;
             }
+            return false;
         }
 
         /** Returns false if the connection died and should be dropped/reconnected. */

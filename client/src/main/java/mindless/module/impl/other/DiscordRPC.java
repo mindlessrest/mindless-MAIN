@@ -24,7 +24,7 @@ public class DiscordRPC extends Module {
     public void onEnable() {
         startTimestamp = System.currentTimeMillis() / 1000L;
         if (rpc == null) {
-            rpc = new mindless.utility.DiscordRPC("1228692408858837013");
+            rpc = new mindless.utility.DiscordRPC("1541533225237749760");
             rpc.start();
         }
         lastState = null;

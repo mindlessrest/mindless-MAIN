@@ -271,8 +271,13 @@ public final class RavenTransformerManager {
                 }
             };
 
+    private volatile boolean disabled = false;
+
+    public boolean isDisabled() { return disabled; }
+    public void setDisabled(boolean disabled) { this.disabled = disabled; }
+
     public byte[] transform(String internalName, byte[] originalBytes) {
-        if (internalName == null || originalBytes == null) return null;
+        if (disabled || internalName == null || originalBytes == null) return null;
         String canonicalName = internalName.replace('/', '.');
         if (!targetInternalNames.contains(internalName)) return null;
         java.util.Set<String> inFlight = IN_FLIGHT.get();

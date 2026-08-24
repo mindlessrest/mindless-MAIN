@@ -1735,6 +1735,22 @@ cleanup:
     return exit_code;
 }
 
+JNIEXPORT jboolean JNICALL Java_mindless_runtime_TransformerHooks_untransformNative0(JNIEnv *env, jclass clazz) {
+    (void)clazz;
+    vape_log(L"JNI untransformNative0 called — disabling hook and restoring original target bytes");
+    disable_class_file_load_hook();
+    if (env == NULL) return JNI_FALSE;
+    return restore_loaded_registered_targets(env, g_game_loader) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL Java_mindless_runtime_TransformerHooks_retransformNative0(JNIEnv *env, jclass clazz) {
+    (void)clazz;
+    vape_log(L"JNI retransformNative0 called — enabling hook and retransforming targets");
+    if (!install_class_file_load_hook()) return JNI_FALSE;
+    if (env == NULL) return JNI_FALSE;
+    return retransform_registered_targets(env, g_game_loader) ? JNI_TRUE : JNI_FALSE;
+}
+
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
     HANDLE thread;
     (void)reserved;

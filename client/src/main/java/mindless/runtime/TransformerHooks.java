@@ -29,4 +29,23 @@ public final class TransformerHooks {
     public static void log(String message) {
         System.out.println("[TransformerHooks] " + message);
     }
+
+    public static boolean untransformNative() {
+        try {
+            return untransformNative0();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public static boolean retransformNative() {
+        try {
+            return retransformNative0();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static native boolean untransformNative0();
+    private static native boolean retransformNative0();
 }
