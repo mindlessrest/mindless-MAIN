@@ -81,6 +81,8 @@ public class SpotifyMiniPlayer extends Module {
 
     @Override
     public void onDisable() {
+        SystemMediaClient.getInstance().setLyricsWanted(false);
+        SystemMediaClient.getInstance().setPlayerWantsArtwork(false);
         // The visualiser reads this same session to tell playing from paused, and it can be shown
         // on its own. Tearing the session down here regardless would leave a standalone
         // visualiser unable to see that Spotify had been paused.
@@ -97,6 +99,16 @@ public class SpotifyMiniPlayer extends Module {
         if (e.phase != TickEvent.Phase.END) return;
         if (mc.currentScreen != null) return;
         if (!Utils.nullCheck()) return;
+
+        // Declared every frame rather than only when a setting changes, so the bridge always
+        // matches what is really on screen without anything having to remember to tell it.
+        SystemMediaClient mediaClient = SystemMediaClient.getInstance();
+        mediaClient.setLyricsWanted(showLyrics.isToggled());
+        // Mode 1 is "Album accent", which needs the artwork decoded even when the art itself
+        // is hidden -- the same literal the renderer tests against.
+        mediaClient.setPlayerWantsArtwork(showAlbumArt.isToggled()
+                || (int) progressBarColorMode.getInput() == 1);
+
         SpotifyMiniPlayerRenderer.render();
     }
 

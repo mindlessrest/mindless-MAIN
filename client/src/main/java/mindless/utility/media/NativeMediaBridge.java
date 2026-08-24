@@ -17,19 +17,53 @@ import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 
+/**
+ * The client's half of the media bridge.
+ *
+ * <p>The native side used to expose one call that returned everything -- title, artist, album,
+ * position, the artwork as base64 and the entire timed-lyrics array -- and this class polled it
+ * twenty times a second. Every one of those polls re-serialised a hundred kilobytes of artwork and
+ * lyrics that had not changed since the track started, and most of the caching in here existed
+ * purely to throw the duplicate work away again after paying for it.
+ *
+ * <p>It is now a call per thing, each polled at the rate that thing actually changes: position
+ * every tick because it moves continuously and costs a hundred bytes, the track description only
+ * when a track might have changed, artwork and lyrics only once per track and only if something is
+ * actually going to draw them. A feature switched off in the mini player is never fetched at all.
+ */
 final class NativeMediaBridge {
     private static final String[] LIBRARY_BASENAMES = new String[] { "MindlessMediaBridge", "RavenMediaBridge" };
     private static final String BUNDLED_LIBRARY_RESOURCE = "/mindless/native/MindlessMediaBridge.dll";
+
+    /** The source application changes only when a different player takes over the session. */
+    private static final long APP_POLL_INTERVAL_MS = 1000L;
+    /** Title/artist/album change once a track; this only has to be quick enough to look instant. */
+    private static final long DESCRIPTION_POLL_INTERVAL_MS = 400L;
+    /** How often to re-ask while a lyrics lookup is still in flight. */
+    private static final long LYRICS_RETRY_INTERVAL_MS = 1000L;
+
     private static volatile String lastLoadFailure;
+
     private final MediaBridgeLibrary library;
-    private String cachedThumbnailBase64 = "";
-    private byte[] cachedThumbnailBytes;
-    private String cachedThumbnailKey = "";
-    /** Same idea as the thumbnail cache: the DLL resends the whole lyrics array every poll. */
-    private String cachedLyricsJson = "";
-    private List<TimedLyrics.LyricsLine> cachedLyricsLines;
+
+    private String cachedSourceApp = "";
+    private String cachedTitle = "";
+    private String cachedArtist = "";
+    private String cachedAlbum = "";
+    private long lastAppPollAt;
+    private long lastDescriptionPollAt;
+
+    private String artworkTrackKey = "";
+    private byte[] artworkBytes;
+    private String artworkKey = "";
+
+    private String lyricsTrackKey = "";
+    private String lyricsState = "none";
+    private long lastLyricsPollAt;
+    private List<TimedLyrics.LyricsLine> lyricsLines;
 
     private NativeMediaBridge(MediaBridgeLibrary library) {
         this.library = library;
@@ -74,127 +108,286 @@ final class NativeMediaBridge {
         return lastLoadFailure;
     }
 
-    public SystemMediaInfo poll() {
+    /**
+     * Reads the current session.
+     *
+     * @param wantLyrics  whether anything is going to draw lyrics; when false they are never fetched
+     * @param wantArtwork whether anything is going to draw album art; when false it is never fetched
+     */
+    public SystemMediaInfo poll(boolean wantLyrics, boolean wantArtwork) {
         if (library == null) {
             return SystemMediaInfo.unavailable();
         }
 
-        Pointer pointer = null;
         try {
-            pointer = library.GetNowPlayingJson();
-            if (pointer == null) {
+            JsonObject progress = readJson(library.GetProgress());
+            if (progress == null || !getBoolean(progress, "available", false)) {
+                clearTrackCaches();
                 return SystemMediaInfo.unavailable();
             }
 
-            String json = pointer.getString(0, "UTF-8");
-            if (json == null || json.trim().isEmpty()) {
-                return SystemMediaInfo.unavailable();
+            long now = System.currentTimeMillis();
+
+            if (now - lastAppPollAt >= APP_POLL_INTERVAL_MS || cachedSourceApp.isEmpty()) {
+                lastAppPollAt = now;
+                JsonObject app = readJson(library.GetApp());
+                if (app != null) {
+                    cachedSourceApp = getString(app, "sourceApp", cachedSourceApp);
+                }
             }
 
-            JsonElement jsonElement = new JsonParser().parse(new StringReader(json));
-            if (jsonElement == null || !jsonElement.isJsonObject()) {
-                return SystemMediaInfo.unavailable();
+            if (now - lastDescriptionPollAt >= DESCRIPTION_POLL_INTERVAL_MS || cachedTitle.isEmpty()) {
+                lastDescriptionPollAt = now;
+                JsonObject description = readJson(library.GetSongDescription());
+                if (description != null) {
+                    cachedTitle = getString(description, "title", "");
+                    cachedArtist = getString(description, "artist", "");
+                    cachedAlbum = getString(description, "album", "");
+                }
             }
 
-            return parseMediaInfo(jsonElement.getAsJsonObject());
+            String trackKey = cachedSourceApp + "" + cachedTitle + "" + cachedArtist + "" + cachedAlbum;
+
+            byte[] thumbnailBytes = null;
+            String thumbnailKey = "";
+            if (wantArtwork) {
+                refreshArtwork(trackKey);
+                thumbnailBytes = artworkBytes;
+                thumbnailKey = artworkKey;
+            }
+            else {
+                // Nothing is drawing it, so drop what we were holding rather than pinning a
+                // bitmap for a panel that is switched off.
+                artworkTrackKey = "";
+                artworkBytes = null;
+                artworkKey = "";
+            }
+
+            List<TimedLyrics.LyricsLine> lines = null;
+            if (wantLyrics) {
+                refreshLyrics(trackKey, now);
+                lines = lyricsLines;
+            }
+            else {
+                lyricsTrackKey = "";
+                lyricsState = "none";
+                lyricsLines = null;
+            }
+
+            return new SystemMediaInfo(
+                    true,
+                    cachedSourceApp,
+                    cachedTitle,
+                    cachedArtist,
+                    cachedAlbum,
+                    getString(progress, "status", ""),
+                    getLong(progress, "positionMs", 0L),
+                    getLong(progress, "durationMs", 0L),
+                    getLong(progress, "sampledAtMs", now),
+                    thumbnailKey,
+                    thumbnailBytes,
+                    lines != null && !lines.isEmpty(),
+                    lines
+            );
         }
         catch (Throwable ignored) {
             return SystemMediaInfo.unavailable();
         }
+    }
+
+    private void refreshArtwork(String trackKey) {
+        if (trackKey.equals(artworkTrackKey)) {
+            return;
+        }
+
+        JsonObject artwork = readJson(library.GetArtwork());
+        artworkTrackKey = trackKey;
+        artworkBytes = null;
+        artworkKey = "";
+
+        if (artwork == null || !getBoolean(artwork, "available", false)) {
+            return;
+        }
+
+        String base64 = getString(artwork, "pngBase64", "");
+        if (base64.isEmpty()) {
+            return;
+        }
+
+        try {
+            artworkBytes = Base64.getDecoder().decode(base64);
+            artworkKey = Integer.toHexString(Arrays.hashCode(artworkBytes));
+        }
+        catch (IllegalArgumentException ignored) {
+            artworkBytes = null;
+            artworkKey = "";
+        }
+    }
+
+    /**
+     * Fetches lyrics at most once per track, and stops asking once the answer is known.
+     *
+     * <p>The native side reports a state rather than just a list. {@code absent} means every
+     * provider was asked and none of them had this track, which is a permanent answer for as long
+     * as it is playing -- so nothing here ever asks again. {@code pending} means a lookup is still
+     * running, which is the only case worth re-polling, and then only about once a second.
+     */
+    private void refreshLyrics(String trackKey, long now) {
+        if (!trackKey.equals(lyricsTrackKey)) {
+            lyricsTrackKey = trackKey;
+            lyricsState = "none";
+            lyricsLines = null;
+            lastLyricsPollAt = 0L;
+        }
+
+        if ("ready".equals(lyricsState) || "absent".equals(lyricsState)) {
+            return;
+        }
+
+        if (now - lastLyricsPollAt < LYRICS_RETRY_INTERVAL_MS) {
+            return;
+        }
+        lastLyricsPollAt = now;
+
+        JsonObject lyrics = readJson(library.GetLyrics());
+        if (lyrics == null) {
+            return;
+        }
+
+        lyricsState = getString(lyrics, "state", "none");
+        if (!"ready".equals(lyricsState) || !lyrics.has("lines") || !lyrics.get("lines").isJsonArray()) {
+            return;
+        }
+
+        List<TimedLyrics.LyricsLine> parsed = new ArrayList<TimedLyrics.LyricsLine>();
+        for (JsonElement element : lyrics.get("lines").getAsJsonArray()) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            JsonObject line = element.getAsJsonObject();
+            long timestamp = getLong(line, "timestampMs", -1L);
+            if (timestamp >= 0) {
+                parsed.add(new TimedLyrics.LyricsLine(timestamp, getString(line, "text", "")));
+            }
+        }
+        lyricsLines = Collections.unmodifiableList(parsed);
+    }
+
+    private void clearTrackCaches() {
+        cachedSourceApp = "";
+        cachedTitle = "";
+        cachedArtist = "";
+        cachedAlbum = "";
+        artworkTrackKey = "";
+        artworkBytes = null;
+        artworkKey = "";
+        lyricsTrackKey = "";
+        lyricsState = "none";
+        lyricsLines = null;
+    }
+
+    // ------------------------------------------------------------------ visualiser
+
+    public void audioStart() {
+        if (library != null) {
+            try {
+                library.AudioStart();
+            }
+            catch (Throwable ignored) {
+            }
+        }
+    }
+
+    public void audioStop() {
+        if (library != null) {
+            try {
+                library.AudioStop();
+            }
+            catch (Throwable ignored) {
+            }
+        }
+    }
+
+    public int audioStatus() {
+        if (library == null) {
+            return 0;
+        }
+        try {
+            return library.AudioStatus();
+        }
+        catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    public void audioConfigure(int bars, double smoothing) {
+        if (library != null) {
+            try {
+                library.AudioConfigure(bars, smoothing);
+            }
+            catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** Fills {@code bars} with heights in 0..1 and returns how many were written. */
+    public int readSpectrum(float[] bars) {
+        if (library == null || bars == null || bars.length == 0) {
+            return 0;
+        }
+        try {
+            return library.GetSpectrum(bars, bars.length);
+        }
+        catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    public String audioError() {
+        if (library == null) {
+            return "";
+        }
+        try {
+            return readString(library.AudioError());
+        }
+        catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    // ------------------------------------------------------------------ plumbing
+
+    private String readString(Pointer pointer) {
+        if (pointer == null) {
+            return "";
+        }
+        try {
+            String value = pointer.getString(0, "UTF-8");
+            return value == null ? "" : value;
+        }
         finally {
-            if (pointer != null) {
-                try {
-                    library.FreeMindlessString(pointer);
-                }
-                catch (Throwable ignored) {
-                }
+            try {
+                library.FreeMindlessString(pointer);
+            }
+            catch (Throwable ignored) {
             }
         }
     }
 
-    private SystemMediaInfo parseMediaInfo(JsonObject jsonObject) {
-        if (jsonObject == null || !getBoolean(jsonObject, "available", false)) {
-            return SystemMediaInfo.unavailable();
+    /** Reads and frees a native string, then parses it. Null when it was not a JSON object. */
+    private JsonObject readJson(Pointer pointer) {
+        String json = readString(pointer);
+        if (json.trim().isEmpty()) {
+            return null;
         }
 
-        String thumbnailBase64 = getString(jsonObject, "thumbnailPngBase64", "");
-        byte[] thumbnailBytes = null;
-        String thumbnailKey = "";
-        if (!thumbnailBase64.isEmpty()) {
-            if (thumbnailBase64.equals(cachedThumbnailBase64)) {
-                thumbnailBytes = cachedThumbnailBytes;
-                thumbnailKey = cachedThumbnailKey;
-            }
-            else {
-                try {
-                    thumbnailBytes = Base64.getDecoder().decode(thumbnailBase64);
-                    thumbnailKey = Integer.toHexString(Arrays.hashCode(thumbnailBytes));
-                    cachedThumbnailBase64 = thumbnailBase64;
-                    cachedThumbnailBytes = thumbnailBytes;
-                    cachedThumbnailKey = thumbnailKey;
-                }
-                catch (IllegalArgumentException ignored) {
-                    thumbnailBytes = null;
-                    thumbnailKey = "";
-                    clearThumbnailCache();
-                }
-            }
+        try {
+            JsonElement element = new JsonParser().parse(new StringReader(json));
+            return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
         }
-        else {
-            clearThumbnailCache();
+        catch (Throwable ignored) {
+            return null;
         }
-
-        boolean lyricsAvailable = getBoolean(jsonObject, "lyricsAvailable", false);
-        List<TimedLyrics.LyricsLine> lyricsLines = null;
-        if (lyricsAvailable && jsonObject.has("lyrics") && jsonObject.get("lyrics").isJsonArray()) {
-            // The DLL resends the entire lyrics array on every poll -- 20 times a second. Parsing
-            // it each time allocated a fresh list of fresh LyricsLine objects, and everything
-            // downstream keyed its caches on that identity. Reuse the parse when the payload is
-            // byte-for-byte the same, exactly as the thumbnail above already does.
-            String lyricsJson = jsonObject.get("lyrics").toString();
-            if (cachedLyricsLines != null && lyricsJson.equals(cachedLyricsJson)) {
-                lyricsLines = cachedLyricsLines;
-            } else {
-                List<TimedLyrics.LyricsLine> parsed = new ArrayList<TimedLyrics.LyricsLine>();
-                for (com.google.gson.JsonElement elem : jsonObject.get("lyrics").getAsJsonArray()) {
-                    if (!elem.isJsonObject()) continue;
-                    JsonObject lineObj = elem.getAsJsonObject();
-                    long ts = getLong(lineObj, "timestampMs", -1L);
-                    String text = getString(lineObj, "text", "");
-                    if (ts >= 0) {
-                        parsed.add(new TimedLyrics.LyricsLine(ts, text));
-                    }
-                }
-                lyricsLines = java.util.Collections.unmodifiableList(parsed);
-                cachedLyricsJson = lyricsJson;
-                cachedLyricsLines = lyricsLines;
-            }
-        } else {
-            cachedLyricsJson = "";
-            cachedLyricsLines = null;
-        }
-
-        return new SystemMediaInfo(
-                true,
-                getString(jsonObject, "sourceApp", ""),
-                getString(jsonObject, "title", ""),
-                getString(jsonObject, "artist", ""),
-                getString(jsonObject, "album", ""),
-                getString(jsonObject, "status", ""),
-                getLong(jsonObject, "positionMs", 0L),
-                getLong(jsonObject, "durationMs", 0L),
-                getLong(jsonObject, "sampledAtMs", System.currentTimeMillis()),
-                thumbnailKey,
-                thumbnailBytes,
-                lyricsAvailable,
-                lyricsLines
-        );
-    }
-
-    private void clearThumbnailCache() {
-        cachedThumbnailBase64 = "";
-        cachedThumbnailBytes = null;
-        cachedThumbnailKey = "";
     }
 
     private static File[] getLibraryCandidates() {
@@ -303,8 +496,30 @@ final class NativeMediaBridge {
     }
 
     public interface MediaBridgeLibrary extends Library {
-        Pointer GetNowPlayingJson();
+        Pointer GetApp();
+
+        Pointer GetSongDescription();
+
+        Pointer GetProgress();
+
+        Pointer GetArtwork();
+
+        Pointer GetLyrics();
+
         void FreeMindlessString(Pointer pointer);
+
+        void AudioStart();
+
+        void AudioStop();
+
+        int AudioStatus();
+
+        int AudioTargetPid();
+
+        void AudioConfigure(int bars, double smoothing);
+
+        int GetSpectrum(float[] bars, int maxBars);
+
+        Pointer AudioError();
     }
 }
-

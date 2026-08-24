@@ -9,7 +9,6 @@ import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
-import mindless.utility.media.SpotifyAudioTap;
 import mindless.utility.media.SpotifyVisualizerEngine;
 import mindless.utility.media.SystemMediaClient;
 import mindless.utility.media.VisualizerRenderer;
@@ -22,8 +21,8 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
  *
  * <p>The audio behind it comes from Spotify's own process through the Windows process-loopback
  * device, so it reacts to Spotify and to nothing else on the machine -- not Minecraft, not
- * Discord, not a browser tab. The analysis is CAVA's, ported in
- * {@link mindless.utility.media.CavaCore}.
+ * Discord, not a browser tab. Both the capture and CAVA's analysis live in the media bridge, and
+ * this module only draws what the bridge hands back.
  *
  * <p>It can live in either of two places, and this module owns the settings for both. Inside the
  * mini player it is a section below the lyrics and the player reserves room for it; standalone it
@@ -88,7 +87,7 @@ public class AudioVisualizer extends Module {
     private final SliderSetting standaloneScale;
 
     /** Last engine state announced in chat, so a problem is reported once and not per tick. */
-    private int reportedStatus = SpotifyAudioTap.STATUS_STOPPED;
+    private int reportedStatus = SpotifyVisualizerEngine.STATUS_STOPPED;
 
     private float relativeX = Float.NaN;
     private float relativeY = Float.NaN;
@@ -174,7 +173,8 @@ public class AudioVisualizer extends Module {
 
     @Override
     public void onDisable() {
-        reportedStatus = SpotifyAudioTap.STATUS_STOPPED;
+        SystemMediaClient.getInstance().setVisualizerWantsArtwork(false);
+        reportedStatus = SpotifyVisualizerEngine.STATUS_STOPPED;
         SpotifyVisualizerEngine.getInstance().shutdown();
         VisualizerRenderer.reset();
         if (ModuleManager.spotifyMiniPlayer == null || !ModuleManager.spotifyMiniPlayer.isEnabled()) {
@@ -210,11 +210,11 @@ public class AudioVisualizer extends Module {
         if (status == reportedStatus) return;
         reportedStatus = status;
 
-        if (status == SpotifyAudioTap.STATUS_UNSUPPORTED) {
+        if (status == SpotifyVisualizerEngine.STATUS_UNSUPPORTED) {
             Utils.sendMessage("&cAudio Visualizer: &rper-process audio capture needs Windows 10 "
                     + "build 20348 or newer.");
         }
-        else if (status == SpotifyAudioTap.STATUS_FAILED) {
+        else if (status == SpotifyVisualizerEngine.STATUS_FAILED) {
             Utils.sendMessage("&cAudio Visualizer: &r"
                     + SpotifyVisualizerEngine.getInstance().getStatusText());
         }

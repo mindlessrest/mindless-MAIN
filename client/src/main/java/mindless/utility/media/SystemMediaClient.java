@@ -41,6 +41,17 @@ public final class SystemMediaClient {
     private volatile String statusMessage = "No media detected";
     private volatile long lastSuccessfulPollAt;
     private volatile String lastNativeTrackKey = "";
+    /**
+     * What the enabled modules actually intend to draw.
+     *
+     * <p>Lyrics cost a network lookup and artwork costs a PNG decode, and neither is worth paying
+     * for to fill a panel nobody is showing. Each consumer declares its own need and the bridge is
+     * told the union, so switching synced lyrics off in the mini player stops the lookups outright
+     * rather than fetching them and discarding the result.
+     */
+    private volatile boolean lyricsWanted;
+    private volatile boolean playerWantsArtwork;
+    private volatile boolean visualizerWantsArtwork;
     private volatile long lastNativePositionMs = Long.MIN_VALUE;
     private final ScheduledExecutorService mediaExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "Raven-MediaPoll");
@@ -304,6 +315,23 @@ public final class SystemMediaClient {
         }
     }
 
+    /** The loaded bridge, or null when the helper is unavailable. For the visualiser pump. */
+    NativeMediaBridge getNativeBridge() {
+        return nativeBridge;
+    }
+
+    public void setLyricsWanted(boolean wanted) {
+        this.lyricsWanted = wanted;
+    }
+
+    public void setPlayerWantsArtwork(boolean wanted) {
+        this.playerWantsArtwork = wanted;
+    }
+
+    public void setVisualizerWantsArtwork(boolean wanted) {
+        this.visualizerWantsArtwork = wanted;
+    }
+
     private void pollNow() {
         if (nativeBridge == null) {
             handleHelperUnavailable();
@@ -312,7 +340,8 @@ public final class SystemMediaClient {
         }
 
         try {
-            SystemMediaInfo mediaInfo = nativeBridge.poll();
+            SystemMediaInfo mediaInfo = nativeBridge.poll(
+                    lyricsWanted, playerWantsArtwork || visualizerWantsArtwork);
             if (mediaInfo == null || !mediaInfo.isAvailable()) {
                 handleHelperUnavailable();
                 handleUnavailablePoll();
