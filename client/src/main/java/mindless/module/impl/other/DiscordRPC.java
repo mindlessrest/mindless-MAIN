@@ -61,7 +61,6 @@ public class DiscordRPC extends Module {
     private void updatePresence(boolean force) {
         if (rpc == null) return;
 
-        String details = "Mindless Client";
         String state = "";
 
         if (showServer != null && showServer.isToggled()) {
@@ -79,17 +78,15 @@ public class DiscordRPC extends Module {
             }
         }
 
-        if (force || !java.util.Objects.equals(state, lastState) || !java.util.Objects.equals(details, lastDetails)) {
+        if (force || !java.util.Objects.equals(state, lastState)) {
             lastState = state;
-            lastDetails = details;
 
             mindless.utility.DiscordRPC.RichPresence presence = new mindless.utility.DiscordRPC.RichPresence()
-                    .details(details)
                     .startTimestamp(startTimestamp)
                     .largeImage("large_image", "Mindless");
 
             if (!state.isEmpty()) {
-                presence.state(state);
+                presence.details(state);
             }
 
             rpc.update(presence);
