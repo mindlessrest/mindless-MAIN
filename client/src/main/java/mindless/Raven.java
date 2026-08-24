@@ -83,7 +83,6 @@ public class Raven {
 
         Runtime.getRuntime().addShutdownHook(new Thread(scheduledExecutor::shutdown));
         Runtime.getRuntime().addShutdownHook(new Thread(cachedExecutor::shutdown));
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> mindless.backend.BackendClient.getInstance().disconnect()));
 
         ClientCommandHandler.instance.registerCommand(new KeyStrokeCommand());
 
@@ -418,10 +417,6 @@ public class Raven {
         } catch (Throwable ignored) {
         }
 
-        try {
-            mindless.backend.BackendClient.getInstance().disconnect();
-        } catch (Throwable ignored) {
-        }
         // The executors are left alive rather than shut down. A ShutdownNow cannot be undone --
         // the pool refuses work forever after -- and reinject would come back to a client whose
         // every scheduled task silently failed. With nothing registered, nothing posts to them.
@@ -501,10 +496,6 @@ public class Raven {
         }
         enabledBeforeUnload.clear();
 
-        try {
-            mindless.backend.BackendClient.getInstance().connect();
-        } catch (Throwable ignored) {
-        }
 
         unloaded = false;
         markNativeLog("Raven reinjected; client is active again");

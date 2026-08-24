@@ -61,6 +61,9 @@ public class BedAura extends Module {
     private Vec3 targetHitVec;
     private EnumFacing targetSide;
 
+    private BlockPos lockedPos;
+    private EnumFacing lockedSide;
+
     private boolean miningActive;
     private boolean controlsInput;
     private int hotbarProgrammaticDepth;
@@ -257,7 +260,8 @@ public class BedAura extends Module {
             return;
         }
 
-        MovingObjectPosition mop = new MovingObjectPosition(targetHitVec, targetSide, targetPos);
+        EnumFacing side = lockedSide != null ? lockedSide : targetSide;
+        MovingObjectPosition mop = new MovingObjectPosition(targetHitVec, side, targetPos);
         mc.objectMouseOver = mop;
         mc.pointedEntity = null;
 
@@ -293,17 +297,37 @@ public class BedAura extends Module {
             return;
         }
 
-        Choice best = chooseBestTarget(reachSq);
-        if (best == null) {
-            resetMining();
-            return;
+        if (lockedPos != null) {
+            if (!isLockedTargetValid(reachSq)) {
+                lockedPos = null;
+                lockedSide = null;
+            }
         }
 
-        targetPos = best.pos;
-        targetHitVec = best.hitVec;
-        targetSide = best.side;
-        miningActive = true;
+        if (lockedPos != null) {
+            targetPos = lockedPos;
+            targetSide = lockedSide;
+            targetHitVec = recalcHitVec(lockedPos, reachSq);
+            if (targetHitVec == null) {
+                lockedPos = null;
+                lockedSide = null;
+                resetMining();
+                return;
+            }
+        } else {
+            Choice best = chooseBestTarget(reachSq);
+            if (best == null) {
+                resetMining();
+                return;
+            }
+            targetPos = best.pos;
+            targetHitVec = best.hitVec;
+            targetSide = best.side;
+            lockedPos = best.pos;
+            lockedSide = best.side;
+        }
 
+        miningActive = true;
         equipBestHotbarTool(BlockUtils.getBlock(targetPos));
 
         float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
@@ -314,6 +338,34 @@ public class BedAura extends Module {
         );
         e.setYaw(r[0]);
         e.setPitch(r[1]);
+    }
+
+    private boolean isLockedTargetValid(double reachSq) {
+        IBlockState st = mc.theWorld.getBlockState(lockedPos);
+        Block block = st.getBlock();
+        if (block == Blocks.air) {
+            return false;
+        }
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
+        AxisAlignedBB bb = BlockUtils.getBlockSelectionBox(lockedPos);
+        if (bb == null) {
+            return false;
+        }
+        Vec3 closest = RotationUtils.closestPointOnAabb(bb, eye);
+        return eye.squareDistanceTo(closest) <= reachSq + 0.25;
+    }
+
+    private Vec3 recalcHitVec(BlockPos pos, double reachSq) {
+        AxisAlignedBB bb = BlockUtils.getBlockSelectionBox(pos);
+        if (bb == null) {
+            return null;
+        }
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
+        Vec3 hit = RotationUtils.closestPointOnAabb(bb, eye);
+        if (eye.squareDistanceTo(hit) > reachSq + 0.25) {
+            return null;
+        }
+        return hit;
     }
 
     @SubscribeEvent
@@ -332,6 +384,8 @@ public class BedAura extends Module {
 
     private void resetMining() {
         miningActive = false;
+        lockedPos = null;
+        lockedSide = null;
         if (switchBackWhenDone.isToggled() && previousSlot != -1 && Utils.nullCheck()) {
             setSlot(previousSlot);
         }

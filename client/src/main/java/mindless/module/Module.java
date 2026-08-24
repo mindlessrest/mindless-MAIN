@@ -263,7 +263,6 @@ public class Module {
         client,
         theme,
         profiles,
-        scripts,
-        cloud;
+        scripts;
     }
 }
