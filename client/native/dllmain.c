@@ -984,11 +984,15 @@ static void JNICALL class_file_load_hook(
     *new_class_data_len = transformed_length;
 }
 
+JNIEXPORT jboolean JNICALL Java_mindless_runtime_TransformerHooks_untransformNative0(JNIEnv *env, jclass clazz);
+JNIEXPORT jboolean JNICALL Java_mindless_runtime_TransformerHooks_retransformNative0(JNIEnv *env, jclass clazz);
+
 static int resolve_transformer_hooks(JNIEnv *env, jobject class_loader) {
     jclass local_loader_class;
     jmethodID load_class;
     jstring hooks_name;
     jclass local_hooks;
+    JNINativeMethod hook_methods[2];
     if (g_hooks_class != NULL && g_hooks_transform != NULL) return 1;
     local_loader_class = (*env)->FindClass(env, "java/lang/ClassLoader");
     if (local_loader_class == NULL) return 0;
@@ -1008,6 +1012,21 @@ static int resolve_transformer_hooks(JNIEnv *env, jobject class_loader) {
         vape_log_pending_exception(env, L"resolve TransformerHooks.transform");
         return 0;
     }
+
+    hook_methods[0].name = (char *)"untransformNative0";
+    hook_methods[0].signature = (char *)"()Z";
+    hook_methods[0].fnPtr = (void *)&Java_mindless_runtime_TransformerHooks_untransformNative0;
+
+    hook_methods[1].name = (char *)"retransformNative0";
+    hook_methods[1].signature = (char *)"()Z";
+    hook_methods[1].fnPtr = (void *)&Java_mindless_runtime_TransformerHooks_retransformNative0;
+
+    if ((*env)->RegisterNatives(env, g_hooks_class, hook_methods, 2) != 0) {
+        vape_log_pending_exception(env, L"RegisterNatives on TransformerHooks");
+    } else {
+        vape_log(L"RegisterNatives succeeded on TransformerHooks");
+    }
+
     return 1;
 }
 
@@ -1085,10 +1104,9 @@ static int disable_class_file_load_hook(void) {
 
     if (notification_disabled && callbacks_cleared) {
         InterlockedExchange(&g_hook_registered, 0);
-        vape_log(L"ClassFileLoadHook disabled after bootstrap failure");
+        vape_log(L"ClassFileLoadHook disabled");
         return 1;
     }
-    vape_log(L"ClassFileLoadHook state remains published because shutdown was incomplete");
     return 0;
 }
 
@@ -1136,7 +1154,7 @@ static jclass find_loaded_class_by_internal_name(JNIEnv *env,
                 if ((*g_jvmti)->GetClassLoader(g_jvmti, classes[i], &actual_loader)
                         == JVMTI_ERROR_NONE) {
                     loader_matches = expected_loader == NULL
-                            ? actual_loader == NULL
+                            ? 1
                             : actual_loader != NULL && (*env)->IsSameObject(
                                     env, actual_loader, expected_loader);
                 }

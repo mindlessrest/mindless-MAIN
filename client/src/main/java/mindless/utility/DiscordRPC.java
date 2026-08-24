@@ -193,28 +193,41 @@ public class DiscordRPC {
         boolean update(RichPresence presence) {
             try {
                 long pid = getPid();
-                String json = "{"
-                        + "\"cmd\":\"SET_ACTIVITY\","
-                        + "\"args\":{"
-                        + "\"pid\": " + pid + ","
-                        + "\"activity\": {"
-                        + (presence.details != null ? "\"details\": \"" + escape(presence.details) + "\"," : "")
-                        + (presence.state != null ? "\"state\": \"" + escape(presence.state) + "\"," : "")
-                        + (presence.startTimestamp > 0 ? "\"timestamps\": {\"start\": " + presence.startTimestamp + "}," : "")
-                        + "\"assets\": {"
-                        + (presence.largeImage != null ? "\"large_image\": \"" + escape(presence.largeImage) + "\"," : "")
-                        + (presence.largeText != null ? "\"large_text\": \"" + escape(presence.largeText) + "\"," : "")
-                        + (presence.smallImage != null ? "\"small_image\": \"" + escape(presence.smallImage) + "\"," : "")
-                        + (presence.smallText != null ? "\"small_text\": \"" + escape(presence.smallText) + "\"" : "")
-                        + "}"
-                        + "}"
-                        + "},"
-                        + "\"nonce\": \"" + System.currentTimeMillis() + "\""
-                        + "}";
-                json = json.replace(",}", "}").replace(",\"assets\": {}", "");
+                StringBuilder sb = new StringBuilder();
+                sb.append("{\"cmd\":\"SET_ACTIVITY\",\"args\":{\"pid\":").append(pid).append(",\"activity\":{");
+                boolean first = true;
+                if (presence.details != null && !presence.details.isEmpty()) {
+                    sb.append("\"details\":\"").append(escape(presence.details)).append("\"");
+                    first = false;
+                }
+                if (presence.state != null && !presence.state.isEmpty()) {
+                    if (!first) sb.append(",");
+                    sb.append("\"state\":\"").append(escape(presence.state)).append("\"");
+                    first = false;
+                }
+                if (presence.startTimestamp > 0) {
+                    if (!first) sb.append(",");
+                    sb.append("\"timestamps\":{\"start\":").append(presence.startTimestamp).append("}");
+                    first = false;
+                }
+                if (presence.largeImage != null && !presence.largeImage.isEmpty()) {
+                    if (!first) sb.append(",");
+                    sb.append("\"assets\":{\"large_image\":\"").append(escape(presence.largeImage)).append("\"");
+                    if (presence.largeText != null && !presence.largeText.isEmpty()) {
+                        sb.append(",\"large_text\":\"").append(escape(presence.largeText)).append("\"");
+                    }
+                    if (presence.smallImage != null && !presence.smallImage.isEmpty()) {
+                        sb.append(",\"small_image\":\"").append(escape(presence.smallImage)).append("\"");
+                        if (presence.smallText != null && !presence.smallText.isEmpty()) {
+                            sb.append(",\"small_text\":\"").append(escape(presence.smallText)).append("\"");
+                        }
+                    }
+                    sb.append("}");
+                }
+                sb.append("}},\"nonce\":\"").append(System.currentTimeMillis()).append("\"}");
 
-                sendPacket(1, json);
-                readFrame(); // consume the reply so the pipe buffer doesn't build up; ignore content for speed
+                sendPacket(1, sb.toString());
+                readFrame(); // consume reply
                 return true;
             } catch (Exception e) {
                 try { pipe.close(); } catch (Exception ignored) {}
