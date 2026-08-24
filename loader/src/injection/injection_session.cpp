@@ -164,35 +164,31 @@ bool InjectionSession::start(uint32_t processId)
     std::wstring loadedModule = remote_module_path(processId, L"RavenNative.dll");
     if (!loadedModule.empty())
     {
-        std::string previousLog = read_text_file(sibling_log(loadedModule));
-        if (uninjected_since_load(previousLog))
+        uintptr_t baseAddr = remote_module_base(processId, L"RavenNative.dll");
+        if (baseAddr != 0)
         {
-            // Nothing to re-inject: the module is still resident and the classes are still
-            // loaded, so the client can only be revived from inside the game.
-            fail("Mindless is uninjected, not gone",
-                 "Press your reinject key in game (Insert by default) to load it again.");
-            return false;
+            HANDLE hProcess = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ, FALSE, processId);
+            if (hProcess)
+            {
+                HMODULE hKernel = GetModuleHandleW(L"kernel32.dll");
+                FARPROC pFreeLib = GetProcAddress(hKernel, "FreeLibrary");
+                if (pFreeLib)
+                {
+                    HANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)pFreeLib, (LPVOID)baseAddr, 0, NULL);
+                    if (hThread)
+                    {
+                        WaitForSingleObject(hThread, 3000);
+                        CloseHandle(hThread);
+                    }
+                }
+                CloseHandle(hProcess);
+            }
         }
-        if (contains(previousLog, "NativeBootstrap.start completed; Raven is active"))
+        std::wstring logFile = sibling_log(loadedModule);
+        if (!logFile.empty())
         {
-            phase_ = InjectionPhase::Complete;
-            status_ = "Ready";
-            return true;
+            DeleteFileW(logFile.c_str());
         }
-
-        if (contains(previousLog, "bootstrap failed") ||
-            contains(previousLog, "timed out waiting") ||
-            contains(previousLog, "NativeBootstrap.start raised"))
-        {
-            fail("A previous Mindless load failed",
-                 "Fully restart Lunar at its main menu, then try again.");
-        }
-        else
-        {
-            fail("Mindless is already running",
-                 "Fully restart Lunar before loading it again.");
-        }
-        return false;
     }
 
     targetProcessId_ = processId;

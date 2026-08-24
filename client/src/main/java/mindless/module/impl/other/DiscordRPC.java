@@ -65,7 +65,7 @@ public class DiscordRPC extends Module {
 
         if (showServer != null && showServer.isToggled()) {
             if (mc.theWorld == null || mc.currentScreen instanceof GuiMainMenu) {
-                state = "Main Menu";
+                state = "In menu";
             } else if (mc.isSingleplayer()) {
                 state = "Singleplayer";
             } else {
@@ -73,7 +73,7 @@ public class DiscordRPC extends Module {
                 if (serverData != null && serverData.serverIP != null) {
                     state = "Playing on " + serverData.serverIP;
                 } else {
-                    state = "Multiplayer";
+                    state = "Playing on multiplayer";
                 }
             }
         }
