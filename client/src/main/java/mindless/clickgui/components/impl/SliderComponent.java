@@ -241,14 +241,9 @@ public class SliderComponent extends Component {
         }
     }
 
+    /** Same rounding as the setting itself, and for the same reason it does not use BigDecimal. */
     private static double roundToInterval(double value, int places) {
-        if (places < 0) {
-            return 0.0D;
-        }
-
-        BigDecimal bd = new BigDecimal(value);
-        bd = bd.setScale(places, RoundingMode.HALF_UP);
-        return bd.doubleValue();
+        return SliderSetting.roundToInterval(value, places);
     }
 
     @Override

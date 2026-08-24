@@ -22,9 +22,10 @@ package mindless.utility.media;
  * </ul>
  *
  * <p>The one part not carried across is FFTW. cavacore wraps it, but FFTW is GPL and the transform
- * sizes here are small and fixed, so {@link #transform} is a plain radix-2 FFT instead. It costs
- * around a megaflop per call at these sizes, runs sixty times a second on a background thread, and
- * has no bearing on the render thread.
+ * sizes here are small and fixed, so {@link RealFft} is a hand-rolled radix-2 transform instead.
+ * It runs on a background thread and never touches the render thread -- but "small and fixed" was
+ * not the same as free, and the first version, a full complex FFT over real input, profiled as the
+ * hottest method in the entire client. See {@link RealFft}.
  *
  * <p>Run in mono. The display is one row of bars, so a second channel would be work whose result
  * is discarded.
@@ -51,10 +52,8 @@ final class CavaCore {
     private final double[] bassWindow;
     private final double[] window;
 
-    private final double[] bassReal;
-    private final double[] bassImag;
-    private final double[] midReal;
-    private final double[] midImag;
+    private final RealFft bassFft;
+    private final RealFft midFft;
 
     private final int[] lowerCutOff;
     private final int[] upperCutOff;
@@ -72,9 +71,7 @@ final class CavaCore {
     private double framerate = 75.0;
     private int frameSkip = 1;
 
-    /** Bit-reversal and twiddle tables, one set per transform length. */
-    private final FftTables bassTables;
-    private final FftTables midTables;
+
 
     CavaCore(int bars, int rate, boolean autosens, double noiseReduction, int lowCutOff,
              int highCutOff, int scalingMode) {
@@ -117,10 +114,8 @@ final class CavaCore {
         this.bassWindow = new double[bassBufferSize];
         this.window = new double[bufferSize];
 
-        this.bassReal = new double[bassBufferSize];
-        this.bassImag = new double[bassBufferSize];
-        this.midReal = new double[bufferSize];
-        this.midImag = new double[bufferSize];
+        this.bassFft = new RealFft(bassBufferSize);
+        this.midFft = new RealFft(bufferSize);
 
         this.lowerCutOff = new int[bars + 1];
         this.upperCutOff = new int[bars + 1];
@@ -131,9 +126,6 @@ final class CavaCore {
         this.mem = new double[bars];
         this.peak = new double[bars];
         this.previousOut = new double[bars];
-
-        this.bassTables = new FftTables(bassBufferSize);
-        this.midTables = new FftTables(bufferSize);
 
         // Hann window, precomputed.
         for (int i = 0; i < bassBufferSize; i++) {
@@ -268,27 +260,25 @@ final class CavaCore {
             frameSkip++;
         }
 
-        for (int n = 0; n < bassBufferSize; n++) {
-            bassReal[n] = bassWindow[n] * inputBuffer[n];
-            bassImag[n] = 0.0;
-        }
-        for (int n = 0; n < bufferSize; n++) {
-            midReal[n] = window[n] * inputBuffer[n];
-            midImag[n] = 0.0;
-        }
-
-        transform(bassReal, bassImag, bassTables);
-        transform(midReal, midImag, midTables);
+        bassFft.forward(inputBuffer, bassWindow);
+        midFft.forward(inputBuffer, window);
 
         for (int n = 0; n < bars; n++) {
             double magnitude = 0.0;
             boolean bass = n < bassCutOffBar;
-            double[] real = bass ? bassReal : midReal;
-            double[] imag = bass ? bassImag : midImag;
-            int limit = (bass ? bassBufferSize : bufferSize) / 2;
+            RealFft fft = bass ? bassFft : midFft;
+            double[] real = fft.re;
+            double[] imag = fft.im;
+            int limit = fft.bins - 1;
 
             for (int i = lowerCutOff[n]; i <= upperCutOff[n] && i <= limit; i++) {
-                magnitude += Math.hypot(real[i], imag[i]);
+                // sqrt rather than Math.hypot. hypot guards against intermediate overflow with a
+                // branchy scaling path that costs an order of magnitude more, and these are
+                // windowed audio magnitudes -- nowhere near the range where it could matter. This
+                // runs for every bin of every bar of every frame, so it is worth the swap.
+                double r = real[i];
+                double m = imag[i];
+                magnitude += Math.sqrt(r * r + m * m);
             }
 
             if (scalingMode == SCALING_DECIBEL) {
@@ -373,14 +363,84 @@ final class CavaCore {
     }
 
     /**
-     * In-place iterative radix-2 FFT.
+     * A real-input FFT, built on a complex transform of half the length.
      *
-     * <p>The input is real, so half the work here is multiplying by a zero imaginary part and half
-     * the output is a mirror of the other half. A real-input transform would avoid both. It is not
-     * worth it: at 8192 and 4096 points, sixty times a second, off the render thread, this is
-     * already far below the noise floor of anything else the client does per frame, and a
-     * hand-rolled real transform is a much easier thing to get subtly wrong.
+     * <p>The first version of this ran a full complex FFT over the real samples with a zeroed
+     * imaginary part, on the reasoning that the sizes were small and the work was off the render
+     * thread. A flight recording disagreed: {@code transform} came back as the single hottest
+     * method in the entire client, ahead of anything in the game's own renderer. Half of what it
+     * was doing was multiplying by zero, and half of what it produced was the mirror image of the
+     * other half, thrown away.
+     *
+     * <p>The standard construction avoids both. N real samples are packed into N/2 complex ones --
+     * even samples into the real part, odd into the imaginary -- transformed at that half length,
+     * then untangled into the N/2+1 bins a real signal actually has. Same answer, half the
+     * butterflies, half the memory traffic.
      */
+    private static final class RealFft {
+        /** Bins the caller may read: 0..n/2 inclusive. */
+        final int bins;
+        final double[] re;
+        final double[] im;
+
+        private final int half;
+        private final FftTables tables;
+        private final double[] packedRe;
+        private final double[] packedIm;
+        /** e^(-2*pi*i*k/n) for the untangling step. */
+        private final double[] twiddleRe;
+        private final double[] twiddleIm;
+
+        RealFft(int n) {
+            this.half = n / 2;
+            this.bins = half + 1;
+            this.tables = new FftTables(half);
+            this.packedRe = new double[half];
+            this.packedIm = new double[half];
+            this.re = new double[bins];
+            this.im = new double[bins];
+            this.twiddleRe = new double[bins];
+            this.twiddleIm = new double[bins];
+            for (int k = 0; k < bins; k++) {
+                double angle = -2.0 * Math.PI * k / n;
+                twiddleRe[k] = Math.cos(angle);
+                twiddleIm[k] = Math.sin(angle);
+            }
+        }
+
+        /** Windows {@code source} in place into the packed buffers and transforms it. */
+        void forward(double[] source, double[] window) {
+            for (int k = 0; k < half; k++) {
+                packedRe[k] = window[2 * k] * source[2 * k];
+                packedIm[k] = window[2 * k + 1] * source[2 * k + 1];
+            }
+
+            transform(packedRe, packedIm, tables);
+
+            // Untangle. The transform of the packed sequence holds the even-indexed and
+            // odd-indexed sub-transforms superimposed; they separate by symmetry, and one
+            // twiddle recombines them into the spectrum of the original signal.
+            for (int k = 0; k < bins; k++) {
+                int mirror = (half - k) % half;
+
+                double evenRe = 0.5 * (packedRe[k % half] + packedRe[mirror]);
+                double evenIm = 0.5 * (packedIm[k % half] - packedIm[mirror]);
+
+                double diffRe = packedRe[k % half] - packedRe[mirror];
+                double diffIm = packedIm[k % half] + packedIm[mirror];
+                // Multiplying the difference by -i/2 swaps the components.
+                double oddRe = 0.5 * diffIm;
+                double oddIm = -0.5 * diffRe;
+
+                double wr = twiddleRe[k];
+                double wi = twiddleIm[k];
+                re[k] = evenRe + (wr * oddRe - wi * oddIm);
+                im[k] = evenIm + (wr * oddIm + wi * oddRe);
+            }
+        }
+    }
+
+    /** In-place iterative radix-2 complex FFT. */
     private static void transform(double[] real, double[] imag, FftTables tables) {
         final int n = tables.size;
 

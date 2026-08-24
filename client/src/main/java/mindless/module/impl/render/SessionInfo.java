@@ -360,18 +360,14 @@ public class SessionInfo extends Module {
 
         float radius = 9.0f * mindless.module.impl.theme.ThemeManager.roundingScale();
 
-        // Drawn before the glass, because everything from prepareBlur onwards goes through a
-        // stencil shaped like the panel and would paint straight over these.
-        //
         // A blurred panel with no edge treatment has nothing separating it from the world; it
         // reads as a smudge rather than a card, and over bright terrain the sides all but
-        // disappear. The shadow gives it somewhere to sit and the hairline gives it an edge.
+        // disappear. The shadow gives it somewhere to sit and the hairline below gives it an edge.
+        //
+        // The shadow goes first because everything from prepareBlur onwards is stencilled to the
+        // panel shape and would paint over it.
         RoundedUtils.drawRoundShadow(left, top, w, h, radius, 5.0f,
                 new Color(0, 0, 0, 130).getRGB());
-        // A rounded rect one pixel proud of the panel, read as a border once the fill covers
-        // its middle. The outline shader blends badly against a transparent fill.
-        RoundedUtils.drawRound(left - 1.0f, top - 1.0f, w + 2.0f, h + 2.0f, radius + 1.0f,
-                new Color(255, 255, 255, 30));
 
         BlurUtils.prepareBlur(left, top, w, h);
         RoundedUtils.drawRound(left, top, w, h, radius, 0xFF000000);
@@ -383,6 +379,17 @@ public class SessionInfo extends Module {
         // shaded box next to a flat one.
         RoundedUtils.drawGradientVertical(left, top, w, h, radius,
                 new Color(255, 255, 255, 20), new Color(255, 255, 255, 4));
+
+        // A real ring, drawn last.
+        //
+        // This used to be a translucent rounded rect a pixel proud of the panel, which is only an
+        // outline for as long as something else paints over its middle -- here, the blur. Any
+        // frame where the blur did not composite, the whole white rectangle showed instead of its
+        // edge, which is the box turning white at random. The outline shader takes a fill and a
+        // rim separately and needs nothing painted over it, so there is no frame in which it can
+        // come out wrong.
+        RoundedUtils.drawRoundOutline(left, top, w, h, radius, 1.0f,
+                new Color(0, 0, 0, 0), new Color(255, 255, 255, 30));
 
         // The rounded-rect and blur shaders leave a program bound; glyph quads drawn through it
         // come out garbled.
@@ -415,7 +422,23 @@ public class SessionInfo extends Module {
 
         for (int i = 0; i < 4; i++) {
             float center = textLeft + slot * (i + 0.5f);
-            int color = counts[i] == 0 ? COL_ZERO : VALUE_COLORS[i];
+            // Branch-free on purpose, and this is the one place in the client where that is
+            // worth the loss of readability.
+            //
+            // C2 compiled this method while the session was still fresh and every counter read
+            // zero, so it took the non-zero side as unreachable. The first kill of the session
+            // falsified that, and because the trap is Action_none the compiled method is never
+            // thrown away -- it just traps into the interpreter again, every single frame, for
+            // the rest of the session. A flight recording over eight minutes of play caught
+            // 58,869 deoptimisations here out of 59,153 in the entire JVM: 99.5% of them, all at
+            // this line, roughly one per frame, each one reinterpreting the rest of the panel.
+            // That is the frame rate falling through the floor once a fight starts and never
+            // recovering, which is exactly how it was reported.
+            //
+            // An arithmetic select has no branch to mispredict and nothing for the compiler to
+            // assume. The mask is 0 for a zero count and -1 for anything else.
+            int nonZero = (counts[i] | -counts[i]) >> 31;
+            int color = (VALUE_COLORS[i] & nonZero) | (COL_ZERO & ~nonZero);
             font(big, vals[i], center - big.getStringWidth(vals[i]) * 0.5f, valueTop, color);
             font(small, LABELS[i], center - small.getStringWidth(LABELS[i]) * 0.5f, labelTop, COL_LABEL);
         }
