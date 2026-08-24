@@ -40,12 +40,19 @@ public class DiscordRPC extends Module {
         }
     }
 
+    @Override
+    public void onUpdate() {
+        updatePresence(false);
+    }
+
+    @Override
+    public void guiUpdate() {
+        updatePresence(false);
+    }
+
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
-            return;
-        }
-        if (rpc == null) {
             return;
         }
         updatePresence(false);
@@ -57,7 +64,7 @@ public class DiscordRPC extends Module {
         String details = "Mindless Client";
         String state = "";
 
-        if (showServer.isToggled()) {
+        if (showServer != null && showServer.isToggled()) {
             if (mc.theWorld == null || mc.currentScreen instanceof GuiMainMenu) {
                 state = "Main Menu";
             } else if (mc.isSingleplayer()) {
@@ -72,7 +79,7 @@ public class DiscordRPC extends Module {
             }
         }
 
-        if (force || !state.equals(lastState) || !details.equals(lastDetails)) {
+        if (force || !java.util.Objects.equals(state, lastState) || !java.util.Objects.equals(details, lastDetails)) {
             lastState = state;
             lastDetails = details;
 
