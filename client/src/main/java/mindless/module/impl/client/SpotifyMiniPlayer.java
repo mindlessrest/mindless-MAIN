@@ -1,6 +1,7 @@
 package mindless.module.impl.client;
 
 import mindless.module.Module;
+import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -80,7 +81,12 @@ public class SpotifyMiniPlayer extends Module {
 
     @Override
     public void onDisable() {
-        SystemMediaClient.getInstance().setEnabled(false);
+        // The visualiser reads this same session to tell playing from paused, and it can be shown
+        // on its own. Tearing the session down here regardless would leave a standalone
+        // visualiser unable to see that Spotify had been paused.
+        if (ModuleManager.audioVisualizer == null || !ModuleManager.audioVisualizer.isEnabled()) {
+            SystemMediaClient.getInstance().setEnabled(false);
+        }
     }
 
     // Render via RenderTickEvent so the player shows reliably on Lunar.

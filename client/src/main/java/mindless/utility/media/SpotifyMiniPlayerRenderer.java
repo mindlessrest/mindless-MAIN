@@ -3,6 +3,7 @@ package mindless.utility.media;
 import mindless.Raven;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.SpotifyMiniPlayer;
+import mindless.module.impl.render.AudioVisualizer;
 import mindless.module.impl.render.HUD;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
@@ -248,8 +249,16 @@ public final class SpotifyMiniPlayerRenderer {
         float lowScaleBreathingRoom = lowScaleLayout ? 8.0F : 0.0F;
         float width = getPanelWidth(mediaVisible, showAlbumArt) * uiScale + lowScaleBreathingRoom;
         float lyricOverflow = lyricsArea ? lyricOverflowHeight(timedLyrics) : 0.0F;
+        // The visualiser is a section of this panel, not something drawn over it, so the panel is
+        // made taller by exactly what the section needs. Everything below works from the same two
+        // numbers, which is what keeps the lyrics and the album art from running underneath it.
+        boolean showVisualizer = mediaVisible && AudioVisualizer.wantsMiniPlayerSection();
+        float visualizerSection = showVisualizer
+                ? AudioVisualizer.miniPlayerSectionHeight(uiScale) : 0.0F;
+        float visualizerGap = showVisualizer ? Math.max(3.0F, 4.0F * uiScale) : 0.0F;
+        float visualizerReserve = visualizerSection + visualizerGap;
         float desiredHeight = getPanelHeight(mediaVisible, effectiveShowHeader, showDetails, showProgress, lyricsArea) * uiScale
-                + lowScaleBreathingRoom + lyricOverflow;
+                + lowScaleBreathingRoom + lyricOverflow + visualizerReserve;
         float height = previewMode ? desiredHeight : updateAnimatedPanelHeight(desiredHeight);
         float radius = 2.5F;
 
@@ -289,7 +298,7 @@ public final class SpotifyMiniPlayerRenderer {
         float progressReserve = showProgress
                 ? progressBarHeight + progressBottomReserve + Math.max(3.0F, 4.0F * uiScale)
                 : 0.0F;
-        float contentBottom = y + height - padding - progressReserve;
+        float contentBottom = y + height - padding - progressReserve - visualizerReserve;
         float infoHeight = Math.max(20.0F * uiScale, contentBottom - contentTop);
         float contentHeight = Math.max(24.0F * uiScale, infoHeight);
         float totalTextHeight = uiFont.getFontHeight();
@@ -303,7 +312,8 @@ public final class SpotifyMiniPlayerRenderer {
         // Held back to the size it would have been without the extra lyric line. Letting the
         // art follow the taller panel would widen it, narrow the text column, and risk wrapping
         // the lyric again -- the feedback lyricOverflowHeight exists to avoid.
-        float artBottom = (showProgress ? progressBarY : y + height - padding) - lyricOverflow;
+        float artBottom = (showProgress ? progressBarY : y + height - padding)
+                - lyricOverflow - visualizerReserve;
         float artSize = showAlbumArt ? Math.max(28.0F * uiScale, artBottom - titleY) : 0.0F;
 
         float textX = x + padding;
@@ -356,9 +366,9 @@ public final class SpotifyMiniPlayerRenderer {
             GlStateManager.enableTexture2D();
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             float lyricY = separatorY + Math.max(3.5F, 4.5F * uiScale);
-            float lyricBottom = showProgress
+            float lyricBottom = (showProgress
                     ? progressBarY - Math.max(4.0F, 4.75F * uiScale)
-                    : y + height - padding;
+                    : y + height - padding) - visualizerReserve;
             float lyricViewportHeight = Math.max(lyricLineAdvance, lyricBottom - lyricY);
             if (renderLyrics) {
                 renderLyricsTimeline(lyricFont, lyricsTimeline, textX, lyricY, textWidth,
@@ -368,6 +378,21 @@ public final class SpotifyMiniPlayerRenderer {
                 if (status == null || status.isEmpty()) status = "Loading lyrics";
                 lyricFont.drawString(status, textX, lyricY, secondaryColor, false);
             }
+        }
+
+        if (showVisualizer) {
+            // Full width, so it lines up with the progress bar beneath it rather than with the
+            // text column, and the bottom of the card reads as one stack.
+            float visualizerBottom = (showProgress
+                    ? progressBarY - Math.max(4.0F, 4.75F * uiScale)
+                    : y + height - padding);
+            float visualizerTop = visualizerBottom - visualizerSection;
+            VisualizerRenderer.draw(x + padding, visualizerTop,
+                    Math.max(24.0F, width - padding * 2.0F), visualizerSection,
+                    renderVisibility, true);
+            GL20.glUseProgram(0);
+            GlStateManager.enableTexture2D();
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         }
 
         if (showProgress) {

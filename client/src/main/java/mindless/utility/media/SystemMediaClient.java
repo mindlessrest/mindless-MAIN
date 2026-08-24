@@ -6,6 +6,7 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.util.ResourceLocation;
 
 import javax.imageio.ImageIO;
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -55,6 +56,9 @@ public final class SystemMediaClient {
     private DynamicTexture uploadedAlbumArtTexture;
     private String requestedAlbumArtKey = "";
     private DecodedAlbumArt decodedAlbumArt;
+    /** Accent pulled from the current artwork, for anything that wants to match the record. */
+    private volatile int albumAccentColor;
+    private volatile String albumAccentKey = "";
     private Future<?> albumArtDecodeTask;
 
     private SystemMediaClient() {
@@ -165,10 +169,15 @@ public final class SystemMediaClient {
                     @Override
                     public void run() {
                         BufferedImage image = decodeAndResizeAlbumArt(encodedImage);
+                        // Sampled here rather than at draw time: the pixels are already in hand
+                        // on a background thread, and the answer only changes once per track.
+                        int accent = image == null ? 0 : extractAccentColor(image);
                         synchronized (albumArtLock) {
                             if (albumArtKey.equals(requestedAlbumArtKey)) {
                                 decodedAlbumArt = image == null ? null : new DecodedAlbumArt(albumArtKey, image);
                                 albumArtDecodeTask = null;
+                                albumAccentColor = accent;
+                                albumAccentKey = accent == 0 ? "" : albumArtKey;
                             }
                         }
                     }
@@ -192,6 +201,75 @@ public final class SystemMediaClient {
         }
 
         return null;
+    }
+
+    /**
+     * A colour that reads as belonging to the current album art, or 0 when there is none.
+     *
+     * <p>RGB only -- callers supply their own alpha.
+     */
+    public int getAlbumAccentColor() {
+        return albumAccentKey.isEmpty() ? 0 : albumAccentColor;
+    }
+
+    /**
+     * Picks the colour a person would say the cover "is".
+     *
+     * <p>An average is the obvious approach and the wrong one: averaging a cover produces mud,
+     * because opposing hues cancel. This buckets pixels by hue instead and takes the heaviest
+     * bucket, weighting each pixel by how colourful it is, so a mostly-grey sleeve with one red
+     * detail comes back red rather than grey. Near-black and near-white pixels are skipped
+     * entirely; they carry no hue and every cover has plenty of both.
+     */
+    private static int extractAccentColor(BufferedImage image) {
+        final int buckets = 24;
+        double[] weight = new double[buckets];
+        double[] sumRed = new double[buckets];
+        double[] sumGreen = new double[buckets];
+        double[] sumBlue = new double[buckets];
+
+        int width = image.getWidth();
+        int height = image.getHeight();
+        int step = Math.max(1, Math.min(width, height) / 48);
+        float[] hsb = new float[3];
+
+        for (int y = 0; y < height; y += step) {
+            for (int x = 0; x < width; x += step) {
+                int rgb = image.getRGB(x, y);
+                if (((rgb >> 24) & 0xFF) < 128) continue;
+                int red = (rgb >> 16) & 0xFF;
+                int green = (rgb >> 8) & 0xFF;
+                int blue = rgb & 0xFF;
+
+                Color.RGBtoHSB(red, green, blue, hsb);
+                if (hsb[1] < 0.18F || hsb[2] < 0.12F || hsb[2] > 0.96F) continue;
+
+                int bucket = Math.min(buckets - 1, (int) (hsb[0] * buckets));
+                double pixelWeight = hsb[1] * (0.35 + 0.65 * hsb[2]);
+                weight[bucket] += pixelWeight;
+                sumRed[bucket] += red * pixelWeight;
+                sumGreen[bucket] += green * pixelWeight;
+                sumBlue[bucket] += blue * pixelWeight;
+            }
+        }
+
+        int best = -1;
+        for (int i = 0; i < buckets; i++) {
+            if (best < 0 || weight[i] > weight[best]) best = i;
+        }
+        if (best < 0 || weight[best] <= 0.0) {
+            return 0;
+        }
+
+        int red = (int) (sumRed[best] / weight[best]);
+        int green = (int) (sumGreen[best] / weight[best]);
+        int blue = (int) (sumBlue[best] / weight[best]);
+
+        // Lift it clear of the dark panel it will be drawn on, without washing out the hue.
+        Color.RGBtoHSB(red, green, blue, hsb);
+        int lifted = Color.HSBtoRGB(hsb[0], Math.min(1.0F, Math.max(0.55F, hsb[1])),
+                Math.min(1.0F, Math.max(0.72F, hsb[2])));
+        return lifted & 0xFFFFFF;
     }
 
     public void playPause() {

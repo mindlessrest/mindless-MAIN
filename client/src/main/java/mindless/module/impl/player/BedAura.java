@@ -16,6 +16,7 @@ import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.BlockUtils;
+import mindless.utility.OwnBedTracker;
 import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
 import net.minecraft.block.*;
@@ -53,7 +54,6 @@ public class BedAura extends Module {
 
     private static final int MS_PER_TICK = 50;
     private static final double BED_FIND_EXTRA_BLOCKS = 1.0;
-    private static final double OWN_BED_PROTECTION_RADIUS_SQ = 800.0;
     private final List<BlockPos[]> bedPairsCache = new ArrayList<>();
     private int scanCooldown;
 
@@ -69,10 +69,7 @@ public class BedAura extends Module {
     private int hotbarProgrammaticDepth;
     private boolean hasSwapped;
     private int previousSlot = -1;
-    private BlockPos spawnAnchor;
-    private boolean pendingSpawnAnchorCapture;
-    private boolean waitingForRespawn;
-    private long respawnMessageTime;
+
 
     public BedAura() {
         super("BedAura", category.player);
@@ -99,7 +96,9 @@ public class BedAura extends Module {
     @Override
     public void onDisable() {
         resetMining();
-        resetSpawnTracking();
+        // Deliberately not clearing the bed tracker: it is shared with Bed Wars, which may still
+        // be running and still need to know which bed is yours. Leaving it also means toggling
+        // this module mid-game does not throw away a correct answer. The world change clears it.
         bedPairsCache.clear();
         scanCooldown = 0;
     }
@@ -110,10 +109,7 @@ public class BedAura extends Module {
             return;
         }
 
-        if (pendingSpawnAnchorCapture && Utils.getBedwarsStatus() == 2) {
-            spawnAnchor = mc.thePlayer.getPosition();
-            pendingSpawnAnchorCapture = false;
-        }
+        OwnBedTracker.tick();
     }
 
     @SubscribeEvent
@@ -129,19 +125,7 @@ public class BedAura extends Module {
             return;
         }
 
-        String strippedMessage = Utils.stripColor(event.message.getUnformattedText());
-        if (strippedMessage.startsWith(" ") && strippedMessage.contains("Protect your bed and destroy the enemy beds.")) {
-            pendingSpawnAnchorCapture = true;
-            waitingForRespawn = false;
-        }
-        else if (strippedMessage.equals("You will respawn because you still have a bed!")) {
-            waitingForRespawn = true;
-            respawnMessageTime = System.currentTimeMillis();
-        }
-        else if (strippedMessage.equals("You have respawned!") && waitingForRespawn && Utils.timeBetween(System.currentTimeMillis(), respawnMessageTime) <= 12000) {
-            pendingSpawnAnchorCapture = true;
-            waitingForRespawn = false;
-        }
+        OwnBedTracker.handleChat(Utils.stripColor(event.message.getUnformattedText()));
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -436,34 +420,9 @@ public class BedAura extends Module {
         removeOwnBedPair();
     }
 
+    /** Shared with the tracker, so "is this a whole bed" is answered the same way everywhere. */
     private BlockPos[] footHeadPair(BlockPos at) {
-        IBlockState st = mc.theWorld.getBlockState(at);
-        if (!(st.getBlock() instanceof BlockBed)) {
-            return null;
-        }
-        BlockBed.EnumPartType part = (BlockBed.EnumPartType) st.getValue(BlockBed.PART);
-        EnumFacing facing = (EnumFacing) st.getValue(BlockBed.FACING);
-        BlockPos foot = part == BlockBed.EnumPartType.FOOT ? at : at.offset(facing.getOpposite());
-        IBlockState footSt = mc.theWorld.getBlockState(foot);
-        if (!(footSt.getBlock() instanceof BlockBed)) {
-            return null;
-        }
-        if (footSt.getValue(BlockBed.PART) != BlockBed.EnumPartType.FOOT) {
-            return null;
-        }
-        EnumFacing footFacing = (EnumFacing) footSt.getValue(BlockBed.FACING);
-        BlockPos head = foot.offset(footFacing);
-        IBlockState hs = mc.theWorld.getBlockState(head);
-        if (!(hs.getBlock() instanceof BlockBed)) {
-            return null;
-        }
-        if (hs.getValue(BlockBed.PART) != BlockBed.EnumPartType.HEAD) {
-            return null;
-        }
-        if (hs.getValue(BlockBed.FACING) != footFacing) {
-            return null;
-        }
-        return new BlockPos[]{foot, head};
+        return OwnBedTracker.footHeadPair(at);
     }
 
     private Vec3 bedCenter(BlockPos[] pair) {
@@ -706,44 +665,23 @@ public class BedAura extends Module {
                 && KillAura.target != null;
     }
 
+    /** Only for leaving the world -- the tracked bed is shared, see onDisable. */
     private void resetSpawnTracking() {
-        spawnAnchor = null;
-        pendingSpawnAnchorCapture = false;
-        waitingForRespawn = false;
-        respawnMessageTime = 0L;
+        OwnBedTracker.reset();
     }
 
+    /**
+     * Drops your own bed from the list of things to break.
+     *
+     * <p>An identity check against the bed {@link OwnBedTracker} located, not a guess at which one
+     * is nearest to where you spawned. It holds wherever you are standing and however far into the
+     * game it is; the only thing that clears it is your bed actually being gone.
+     */
     private void removeOwnBedPair() {
-        if (!shouldWhitelistOwnBed() || bedPairsCache.isEmpty()) {
+        if (!whitelistOwnBed.isToggled()) {
             return;
         }
-
-        BlockPos[] ownBedPair = null;
-        double closestDistance = Double.POSITIVE_INFINITY;
-        Vec3 spawnCenter = spawnAnchorCenter();
-
-        for (BlockPos[] pair : bedPairsCache) {
-            double distance = spawnCenter.squareDistanceTo(bedCenter(pair));
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                ownBedPair = pair;
-            }
-        }
-
-        if (ownBedPair != null) {
-            bedPairsCache.remove(ownBedPair);
-        }
-    }
-
-    private boolean shouldWhitelistOwnBed() {
-        return whitelistOwnBed.isToggled()
-                && spawnAnchor != null
-                && Utils.getBedwarsStatus() == 2
-                && mc.thePlayer.getDistanceSq(spawnAnchor) <= OWN_BED_PROTECTION_RADIUS_SQ;
-    }
-
-    private Vec3 spawnAnchorCenter() {
-        return new Vec3(spawnAnchor.getX() + 0.5, spawnAnchor.getY() + 0.5, spawnAnchor.getZ() + 0.5);
+        OwnBedTracker.removeOwnBed(bedPairsCache);
     }
 
     private static final class Choice {

@@ -1,0 +1,7 @@
+#include <windows.h>
+
+/* Runtime-specific Raven payloads selected by dllmain.c. */
+421 RCDATA "C:\\Users\\anthony\\Documents\\MINDLESS NEW NEW\\mindless-MAIN-master\\client\\build\\libs\\mindless.jar"
+422 RCDATA "C:\\Users\\anthony\\Documents\\MINDLESS NEW NEW\\mindless-MAIN-master\\client\\build\\intermediates\\mindless-lunar-mcp-with-forge.jar"
+
+1 24 "C:\\Users\\anthony\\Documents\\MINDLESS NEW NEW\\mindless-MAIN-master\\client\\native\\app.manifest"

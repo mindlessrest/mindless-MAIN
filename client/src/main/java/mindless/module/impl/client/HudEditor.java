@@ -333,6 +333,39 @@ public final class HudEditor {
                 });
             }
 
+            if (ModuleManager.audioVisualizer != null) {
+                final mindless.module.impl.render.AudioVisualizer visualizer =
+                        ModuleManager.audioVisualizer;
+                elements.add(new Element("Audio Visualizer") {
+                    @Override
+                    void render() {
+                        // Only draggable as its own overlay. Inside the mini player it is a
+                        // section of that panel and moves with it.
+                        if (!visualizer.isEnabled()
+                                || visualizer.placement() != mindless.module.impl.render.AudioVisualizer.PLACEMENT_STANDALONE) {
+                            setBounds(null);
+                            return;
+                        }
+                        setBounds(visualizer.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        setBounds(visualizer.renderDesignerPreview(left, top));
+                    }
+
+                    @Override
+                    void reset() {
+                        visualizer.resetPosition();
+                    }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return visualizer.scaleSetting();
+                    }
+                });
+            }
+
             // The bedwars overlays all share one panel, so they all drag the same way.
             for (final mindless.module.impl.bedwars.BedwarsHud panel : new mindless.module.impl.bedwars.BedwarsHud[] {
                     ModuleManager.bedTracker, ModuleManager.resourceTracker, ModuleManager.eventTimers }) {

@@ -1,0 +1,4 @@
+C:/Users/anthony/Documents/MINDLESS NEW NEW/mindless-MAIN-master/client/native_build/CMakeFiles/RavenNative.dir
+C:/Users/anthony/Documents/MINDLESS NEW NEW/mindless-MAIN-master/client/native_build/CMakeFiles/RavenInjector.dir
+C:/Users/anthony/Documents/MINDLESS NEW NEW/mindless-MAIN-master/client/native_build/CMakeFiles/edit_cache.dir
+C:/Users/anthony/Documents/MINDLESS NEW NEW/mindless-MAIN-master/client/native_build/CMakeFiles/rebuild_cache.dir

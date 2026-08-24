@@ -61,6 +61,7 @@ public class ModuleManager {
     public static Blink blink;
     public static Chams chams;
     public static HUD hud;
+    public static AudioVisualizer audioVisualizer;
     public static PotionHUD potionHUD;
     public static SessionInfo sessionInfo;
     public static Timer timer;
@@ -244,6 +245,7 @@ public class ModuleManager {
         this.addModule(new Nametags());
         this.addModule(noCameraClip = new NoCameraClip());
         this.addModule(noHurtCam = new NoHurtCam());
+        this.addModule(audioVisualizer = new AudioVisualizer());
         this.addModule(potionHUD = new PotionHUD());
         this.addModule(new Radar());
         this.addModule(new Saturation());

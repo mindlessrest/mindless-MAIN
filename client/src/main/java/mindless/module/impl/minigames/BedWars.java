@@ -10,6 +10,7 @@ import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.BlockUtils;
 import mindless.utility.RenderUtils;
+import mindless.utility.OwnBedTracker;
 import mindless.utility.Utils;
 import net.minecraft.block.BlockBed;
 import net.minecraft.block.BlockObsidian;
@@ -62,13 +63,10 @@ public class BedWars extends Module {
     private static final long CLOSEST_ENEMY_FADE_DURATION_MS = 150L;
     private static final FloatBuffer ITEM_ALPHA_COLOR = BufferUtils.createFloatBuffer(4);
 
-    private static final double OWN_BED_PROTECTION_RADIUS_SQ = 800.0;
-    private static final int OWN_BED_SEARCH_HORIZONTAL_RADIUS = 24;
-    private static final int OWN_BED_SEARCH_VERTICAL_RADIUS = 6;
+
 
     private final SliderSetting closestEnemy;
     private final SliderSetting alertInterval;
-    private final ButtonSetting whitelistOwnBed;
     private final ButtonSetting magicMilkTimer;
 
     private ButtonSetting bow;
@@ -91,12 +89,7 @@ public class BedWars extends Module {
     public List<SpawnEggInfo> entitySpawnQueue = new ArrayList<>();
     public List<Integer> spawnedMobs = new ArrayList<>(); // entity id
 
-    private BlockPos spawnAnchor;
-    private Vec3 ownBedCenter;
-    private boolean ownBedDestroyed;
-    private boolean pendingSpawnAnchorCapture;
-    private boolean waitingForRespawn;
-    private long respawnMessageTime;
+
     private long magicMilkExpiresAt;
 
     private float closestEnemyPosX = Float.NaN;
@@ -122,7 +115,6 @@ public class BedWars extends Module {
         super("Bed Wars", category.bedwars);
         this.liteModule = true;
         this.registerSetting(closestEnemy = new SliderSetting("Closest enemy", true, 0, CLOSEST_ENEMY_MODES));
-        this.registerSetting(whitelistOwnBed = new ButtonSetting("Whitelist own bed", true));
         this.registerSetting(magicMilkTimer = new ButtonSetting("Magic milk timer", true));
         this.registerSetting(new ButtonSetting("Edit positions", () -> mc.displayGuiScreen(new EditPositionsScreen())));
         this.registerSetting(new DescriptionSetting("Game alerts"));
@@ -147,7 +139,7 @@ public class BedWars extends Module {
         entitySpawnQueue.clear();
         spawnedMobs.clear();
         lastAlertMap.clear();
-        resetSpawnTracking();
+        // The bed tracker is shared with BedAura and is not cleared here; see BedAura.onDisable.
         magicMilkExpiresAt = 0L;
         closestEnemySizeInitialized = false;
         closestEnemyVisibilityInitialized = false;
@@ -314,7 +306,9 @@ public class BedWars extends Module {
         syncHudPositions(resolution);
 
         if (showClosestEnemy) {
-            Vec3 bedReference = !ownBedDestroyed ? getOwnBedReference() : null;
+            // A destroyed or not-yet-located bed gives no reference of its own, and the
+            // tracker already reports null for both, so there is nothing extra to check here.
+            Vec3 bedReference = getOwnBedReference();
             List<EntityPlayer> enemies = findClosestEnemies(
                     bedReference,
                     (int) closestEnemy.getInput()
@@ -473,11 +467,7 @@ public class BedWars extends Module {
             return;
         }
 
-        if (pendingSpawnAnchorCapture && Utils.getBedwarsStatus() == 2) {
-            spawnAnchor = mc.thePlayer.getPosition();
-            ownBedCenter = findOwnBedCenter();
-            pendingSpawnAnchorCapture = false;
-        }
+        OwnBedTracker.tick();
 
         if (Utils.getBedwarsStatus() == 2) {
             if (bow.isToggled() || diamondArmor.isToggled() || dreamDefender.isToggled()
@@ -533,48 +523,10 @@ public class BedWars extends Module {
         }
 
         String strippedMessage = Utils.stripColor(event.message.getUnformattedText());
+        OwnBedTracker.handleChat(strippedMessage);
+
         if (strippedMessage.startsWith(" ") && strippedMessage.contains("Protect your bed and destroy the enemy beds.")) {
-            ownBedDestroyed = false;
-            ownBedCenter = null;
-            pendingSpawnAnchorCapture = true;
-            waitingForRespawn = false;
             magicMilkExpiresAt = 0L;
-        }
-        else if (strippedMessage.equals("You will respawn because you still have a bed!")) {
-            waitingForRespawn = true;
-            respawnMessageTime = System.currentTimeMillis();
-        }
-        else if (strippedMessage.equals("You have respawned!") && waitingForRespawn && Utils.timeBetween(System.currentTimeMillis(), respawnMessageTime) <= 12000) {
-            pendingSpawnAnchorCapture = true;
-            waitingForRespawn = false;
-        }
-
-        if (strippedMessage.trim().startsWith("BED DESTRUCTION > Your Bed")) {
-            ownBedDestroyed = true;
-            waitingForRespawn = false;
-        }
-    }
-
-    public void removeOwnBedPair(List<BlockPos[]> bedPairs) {
-        if (!shouldWhitelistOwnBed() || bedPairs.isEmpty()) {
-            return;
-        }
-
-        BlockPos[] ownBedPair = null;
-        double closestDistance = Double.POSITIVE_INFINITY;
-        Vec3 spawnCenter = spawnAnchorCenter();
-
-        for (BlockPos[] pair : bedPairs) {
-            double distance = spawnCenter.squareDistanceTo(bedCenter(pair));
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                ownBedPair = pair;
-            }
-        }
-
-        if (ownBedPair != null) {
-            ownBedCenter = bedCenter(ownBedPair);
-            bedPairs.remove(ownBedPair);
         }
     }
 
@@ -616,47 +568,15 @@ public class BedWars extends Module {
         return false;
     }
 
-    private boolean shouldWhitelistOwnBed() {
-        return whitelistOwnBed.isToggled() && spawnAnchor != null && Utils.getBedwarsStatus() == 2
-                && mc.thePlayer.getDistanceSq(spawnAnchor) <= OWN_BED_PROTECTION_RADIUS_SQ;
-    }
-
-    private Vec3 spawnAnchorCenter() {
-        return new Vec3(spawnAnchor.getX() + 0.5, spawnAnchor.getY() + 0.5, spawnAnchor.getZ() + 0.5);
-    }
-
+    /**
+     * Where your bed is, for ranking enemies by how close they are to it.
+     *
+     * <p>Used to fall back to the spawn anchor when the bed itself had not been located. There is
+     * no anchor any more, and no need for one: an unknown bed gives no reference, and the enemy
+     * list falls back to distance from you, which is the honest answer.
+     */
     private Vec3 getOwnBedReference() {
-        return ownBedCenter != null ? ownBedCenter : spawnAnchor == null ? null : spawnAnchorCenter();
-    }
-
-    private Vec3 findOwnBedCenter() {
-        if (spawnAnchor == null) {
-            return null;
-        }
-
-        Vec3 spawnCenter = spawnAnchorCenter();
-        Vec3 closestBedCenter = null;
-        double closestDistance = Double.POSITIVE_INFINITY;
-
-        for (int x = -OWN_BED_SEARCH_HORIZONTAL_RADIUS; x <= OWN_BED_SEARCH_HORIZONTAL_RADIUS; x++) {
-            for (int y = -OWN_BED_SEARCH_VERTICAL_RADIUS; y <= OWN_BED_SEARCH_VERTICAL_RADIUS; y++) {
-                for (int z = -OWN_BED_SEARCH_HORIZONTAL_RADIUS; z <= OWN_BED_SEARCH_HORIZONTAL_RADIUS; z++) {
-                    BlockPos position = spawnAnchor.add(x, y, z);
-                    if (!(BlockUtils.getBlock(position) instanceof BlockBed)) {
-                        continue;
-                    }
-
-                    Vec3 center = new Vec3(position.getX() + 0.5, position.getY() + 0.5, position.getZ() + 0.5);
-                    double distance = spawnCenter.squareDistanceTo(center);
-                    if (distance < closestDistance) {
-                        closestDistance = distance;
-                        closestBedCenter = center;
-                    }
-                }
-            }
-        }
-
-        return closestBedCenter;
+        return OwnBedTracker.getOwnBedCenter();
     }
 
     private List<EntityPlayer> findClosestEnemies(Vec3 bedReference, int players) {
@@ -689,21 +609,9 @@ public class BedWars extends Module {
         return player.getDistance(bedReference.xCoord, bedReference.yCoord, bedReference.zCoord);
     }
 
-    private Vec3 bedCenter(BlockPos[] pair) {
-        return new Vec3(
-                (pair[0].getX() + pair[1].getX() + 1.0) * 0.5,
-                (pair[0].getY() + pair[1].getY() + 1.0) * 0.5,
-                (pair[0].getZ() + pair[1].getZ() + 1.0) * 0.5
-        );
-    }
-
+    /** Only for leaving the world -- the tracked bed is shared, see onDisable. */
     private void resetSpawnTracking() {
-        spawnAnchor = null;
-        ownBedCenter = null;
-        ownBedDestroyed = false;
-        pendingSpawnAnchorCapture = false;
-        waitingForRespawn = false;
-        respawnMessageTime = 0L;
+        OwnBedTracker.reset();
     }
 
     private String getItemType(ItemStack item) {
