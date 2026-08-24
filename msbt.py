@@ -187,15 +187,15 @@ def install_script(jar_path, script_directory):
     return destination
 
 def cleanup_script_files(java_file, jar_path, installed_path):
-    """Remove the staging jar, leaving the source where it was.
+    """Remove the source and the staging jar once the script is installed.
 
-    This used to delete the .java too. os.remove does not go via the recycle bin, so
-    one successful compile took the script with it -- and a build tool eating its own
-    input is not something anyone expects it to do.
+    Deliberate: the jar in the scripts folder is the artifact, and leaving the .java
+    behind means dragging the same file in twice. Note that os.remove does not go via
+    the recycle bin, so the source is gone for good -- keep the original somewhere else
+    if you want to edit it again.
     """
-    del java_file  # deliberately not touched
     installed_abs = os.path.abspath(installed_path)
-    for path in (jar_path,):
+    for path in (java_file, jar_path):
         if not path or os.path.abspath(path) == installed_abs:
             continue
         try:
