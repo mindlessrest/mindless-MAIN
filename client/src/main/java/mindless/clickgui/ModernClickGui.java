@@ -73,8 +73,12 @@ public final class ModernClickGui extends ClickGui {
      * sitting wherever its own label happened to end.
      */
     private static final float CONTROL_COLUMN = .42f;
-    /** Where a slider's number sits, as a fraction of the row's width. */
-    private static final float VALUE_COLUMN = .30f;
+    /** Narrowest the number column is allowed to get, so short values still line up. */
+    private static final float VALUE_MIN_W = 16f;
+    /** Widest it may grow before the label starts losing more than the number gains. */
+    private static final float VALUE_MAX_W = 52f;
+    /** Gap between the number and the control column. */
+    private static final float VALUE_GAP = 8f;
     /** Vertical gap between setting rows. Shared by the draw and the hit-test walk. */
     private static final float SETTING_GAP = 4f;
     /** Most options a string setting may have before it is a dropdown rather than segments. */
@@ -122,6 +126,8 @@ public final class ModernClickGui extends ClickGui {
     private static final int DANGER = argb(255, 219, 104, 100);
     private static final float TEXT_SCALE = .92f;
 
+    /** Width of the number column, recomputed each frame from the open module's sliders. */
+    private float sliderValueWidth = VALUE_MIN_W;
     private Module.category selectedCategory = Module.category.combat;
     private Module selectedModule;
     private float moduleScroll;
@@ -306,7 +312,10 @@ public final class ModernClickGui extends ClickGui {
         float totalW = Math.min(700f, width - 18f);
         panelH = Math.max(326f, Math.min(356f, height - 18f));
         sideW = Math.max(104f, totalW * .16f);
-        float detailWFull = Math.max(205f, totalW * .305f);
+        // Wider than it was. Settings here are named things like "Range (aim assist)" and
+        // "Multipoint Horizontal", and the column they get is what is left after the value and
+        // the control -- at 205 that was about forty pixels, which is four characters.
+        float detailWFull = Math.max(238f, totalW * .35f);
         // detail panel width animates via smoothstep
         float t = detailPanelOpen;
         float openEased = t * t * (3f - 2f * t);
@@ -700,6 +709,8 @@ public final class ModernClickGui extends ClickGui {
         line(detailX + 12, baseY + 51, detailX + detailW - 12, baseY + 51,
                 withAlpha(DIVIDER, headerAlpha));
 
+        measureSliderValues();
+
         float top = baseY + 59f, bottom = baseY + panelH - 12f;
         scissor(detailX + 8, top, detailX + detailW - 8, bottom, true);
         float y = top + settingScroll;
@@ -749,10 +760,38 @@ public final class ModernClickGui extends ClickGui {
      */
     private float sliderTrackRight() { return settingsRight() - 4f; }
 
-    /** Left edge of a numeric slider's value, which sits between the label and the track. */
+    /**
+     * Left edge of the number column, sized to the widest number the open module actually has.
+     *
+     * <p>A fixed fraction of the panel cannot know that one module's sliders read "3" and
+     * another's read "0.03404715". Too narrow and the number itself gets an ellipsis, which is
+     * the one thing on the row that must stay readable; too wide and every label is cut short to
+     * pay for space nothing is using. Measuring the module settles it per module, and the column
+     * still lines up because every row is measured against the same number.
+     */
     private float sliderValueLeft() {
-        float left = settingsLeft();
-        return left + (settingsRight() - left) * VALUE_COLUMN;
+        return controlLeft() - VALUE_GAP - sliderValueWidth;
+    }
+
+    /**
+     * Measures the widest slider value in the module being shown.
+     *
+     * <p>Done once per frame rather than per row, so the column is the same width all the way
+     * down instead of stepping in and out beside each slider.
+     */
+    private void measureSliderValues() {
+        float widest = VALUE_MIN_W;
+        if (selectedModule != null) {
+            for (Setting setting : selectedModule.getSettings()) {
+                if (!setting.visible || !(setting instanceof SliderSetting)) continue;
+                SliderSetting slider = (SliderSetting) setting;
+                if (slider.isString) continue;
+                GroupSetting owner = groupOf(setting);
+                if (owner != null && !owner.isOpened()) continue;
+                widest = Math.max(widest, textWidth(sliderValue(slider), .72f, false));
+            }
+        }
+        sliderValueWidth = Math.min(VALUE_MAX_W, widest);
     }
 
     /**
@@ -1036,8 +1075,9 @@ public final class ModernClickGui extends ClickGui {
                 float right = valueX + textWidth(sliderEditDraft.substring(0, to), valueScale, false);
                 rounded(left - 1, y + 8, right + 1, y + h - 8, 2f, fa(withAlpha(ACCENT, 74), alpha));
             }
-            drawTextVCentered(editingValue ? displayedValue : trim(displayedValue, valueRoom, valueScale, false),
-                    valueX, y, y + h, fa(TEXT, alpha), valueScale, false);
+            // No trim. The column was measured to fit this string, and a number reading "3..."
+            // tells you nothing at all -- better to shrink it, which valueScale already does.
+            drawTextVCentered(displayedValue, valueX, y, y + h, fa(TEXT, alpha), valueScale, false);
             if (editingValue && blink()) {
                 float caretX = valueX + textWidth(sliderEditDraft.substring(0, sliderEditCaret), valueScale, false);
                 rounded(caretX, y + 8, caretX + .8f, y + h - 8, .4f, fa(ACCENT, alpha));
