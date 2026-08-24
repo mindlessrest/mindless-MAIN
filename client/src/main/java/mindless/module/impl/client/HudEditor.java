@@ -333,6 +333,33 @@ public final class HudEditor {
                 });
             }
 
+            // The bedwars overlays all share one panel, so they all drag the same way.
+            for (final mindless.module.impl.bedwars.BedwarsHud panel : new mindless.module.impl.bedwars.BedwarsHud[] {
+                    ModuleManager.bedTracker, ModuleManager.resourceTracker, ModuleManager.eventTimers }) {
+                if (panel == null) continue;
+                elements.add(new Element(panel.getName()) {
+                    @Override
+                    void render() {
+                        setBounds(panel.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        setBounds(panel.renderDesignerPreview(left, top));
+                    }
+
+                    @Override
+                    void reset() {
+                        panel.resetPosition();
+                    }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return panel.scaleSetting();
+                    }
+                });
+            }
+
             if (ModuleManager.sessionInfo != null) {
                 final mindless.module.impl.render.SessionInfo session = ModuleManager.sessionInfo;
                 elements.add(new Element("Session Info") {

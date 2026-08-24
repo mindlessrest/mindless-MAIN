@@ -100,6 +100,9 @@ public class ModuleManager {
     public static HideWindow hideWindow;
     public static Displace displace;
     public static ShopHelper shopHelper;
+    public static BedTracker bedTracker;
+    public static ResourceTracker resourceTracker;
+    public static EventTimers eventTimers;
     public static Autoblock autoBlock;
     public static Backtrack backtrack;
     public static Debug debug;
@@ -149,6 +152,11 @@ public class ModuleManager {
 
         this.addModule(new AutoRequeue());
         this.addModule(new AntiMisplace());
+        this.addModule(new PickupAlerts());
+        this.addModule(new UpgradeAlerts());
+        this.addModule(bedTracker = new BedTracker());
+        this.addModule(resourceTracker = new ResourceTracker());
+        this.addModule(eventTimers = new EventTimers());
         this.addModule(bedwars = new BedWars());
         this.addModule(shopHelper = new ShopHelper());
 
