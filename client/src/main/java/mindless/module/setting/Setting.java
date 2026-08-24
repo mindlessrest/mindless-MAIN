@@ -14,6 +14,19 @@ public abstract class Setting {
         this.name = name;
     }
 
+    /**
+     * Shows or hides this setting, rebuilding the panel at most once per frame.
+     *
+     * <p>This used to call {@code reloadSettings} directly, which throws away and reconstructs
+     * every component in the module. A module's {@code guiUpdate} typically decides the visibility
+     * of several settings together -- the audio visualiser flips seven -- so expanding it rebuilt
+     * the whole list seven times in a single frame, each rebuild allocating two maps and a
+     * component per setting, on a module that has about thirty of them. That is the hitch when the
+     * panel opens.
+     *
+     * <p>Marking the component instead lets it rebuild once, on its next frame, no matter how many
+     * settings changed at the same time.
+     */
     public void setVisible(boolean visible, Module module) {
         if (visible == this.visible) {
             return;
@@ -23,7 +36,7 @@ public abstract class Setting {
             if (categoryComponent.category == module.moduleCategory()) {
                 for (ModuleComponent moduleComponent : categoryComponent.modules) {
                     if (moduleComponent.mod.getName().equals(module.getName())) {
-                        moduleComponent.reloadSettings();
+                        moduleComponent.settingsDirty = true;
                         break;
                     }
                 }

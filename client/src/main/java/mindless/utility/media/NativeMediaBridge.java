@@ -44,6 +44,14 @@ final class NativeMediaBridge {
     private static final long DESCRIPTION_POLL_INTERVAL_MS = 400L;
     /** How often to re-ask while a lyrics lookup is still in flight. */
     private static final long LYRICS_RETRY_INTERVAL_MS = 1000L;
+    /**
+     * How long "this track has no lyrics" is believed before asking once more.
+     *
+     * <p>Not forever, because that answer is also what a failed lookup produces: a provider
+     * timing out caches an empty result, and latching on it meant a song that briefly could not
+     * be reached never showed lyrics again for the rest of the session.
+     */
+    private static final long LYRICS_ABSENT_RETRY_MS = 60000L;
 
     private static volatile String lastLoadFailure;
 
@@ -165,7 +173,7 @@ final class NativeMediaBridge {
 
             List<TimedLyrics.LyricsLine> lines = null;
             if (wantLyrics) {
-                refreshLyrics(trackKey, now);
+                refreshLyrics(now);
                 lines = lyricsLines;
             }
             else {
@@ -232,19 +240,36 @@ final class NativeMediaBridge {
      * as it is playing -- so nothing here ever asks again. {@code pending} means a lookup is still
      * running, which is the only case worth re-polling, and then only about once a second.
      */
-    private void refreshLyrics(String trackKey, long now) {
-        if (!trackKey.equals(lyricsTrackKey)) {
-            lyricsTrackKey = trackKey;
+    private void refreshLyrics(long now) {
+        // Keyed on the song, not on the full track key.
+        //
+        // The track key carries the source app and the album as well, and those are not stable
+        // across a pause: the session republishes and the album can come back empty for a poll or
+        // two. Resetting on that threw away lyrics that were already on screen for a song that had
+        // not changed, and the reported symptom was exactly that -- pause, play the same song, and
+        // the lyrics never come back. The lookup itself only ever used title and artist, so this
+        // now matches what actually identifies the words.
+        String songKey = cachedTitle + "" + cachedArtist;
+
+        // A blank title or artist is a blip between polls rather than a new song. Leave whatever
+        // is already showing alone until the session says something real again.
+        if (cachedTitle.isEmpty() || cachedArtist.isEmpty()) {
+            return;
+        }
+
+        if (!songKey.equals(lyricsTrackKey)) {
+            lyricsTrackKey = songKey;
             lyricsState = "none";
             lyricsLines = null;
             lastLyricsPollAt = 0L;
         }
 
-        if ("ready".equals(lyricsState) || "absent".equals(lyricsState)) {
+        if ("ready".equals(lyricsState)) {
             return;
         }
 
-        if (now - lastLyricsPollAt < LYRICS_RETRY_INTERVAL_MS) {
+        long wait = "absent".equals(lyricsState) ? LYRICS_ABSENT_RETRY_MS : LYRICS_RETRY_INTERVAL_MS;
+        if (now - lastLyricsPollAt < wait) {
             return;
         }
         lastLyricsPollAt = now;

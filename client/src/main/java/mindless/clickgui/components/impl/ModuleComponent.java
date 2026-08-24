@@ -213,7 +213,15 @@ public class ModuleComponent extends Component {
         this.animationTargetY = height;
     }
 
+    /** Set when a setting's visibility changed; the rebuild happens once, here. */
+    public boolean settingsDirty;
+
     public void updateAnimationState() {
+        if (settingsDirty) {
+            settingsDirty = false;
+            reloadSettings();
+        }
+
         if (smoothTimer != null) {
             if (System.currentTimeMillis() - smoothTimer.last >= 280) {
                 smoothTimer = null;

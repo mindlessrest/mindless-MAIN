@@ -95,6 +95,9 @@ public class Displace extends Module {
     private boolean arrowVisible;
     private int tickCounter;
     private final Map<Integer, Integer> targetWindowStartTicks = new HashMap<>();
+    /** Scratch positions for the void sweep; see getVoidPathBlockedDistance. */
+    private final BlockPos.MutableBlockPos voidMinCorner = new BlockPos.MutableBlockPos();
+    private final BlockPos.MutableBlockPos voidMaxCorner = new BlockPos.MutableBlockPos();
     private LagRequest outboundBlink;
     private VoidDebugScan latestVoidDebugScan;
     private VoidDebugScan frozenVoidDebugScan;
@@ -478,13 +481,25 @@ public class Displace extends Module {
     private double getVoidPathBlockedDistance(EntityPlayer target, AxisAlignedBB collisionBox,
                                               double forwardX, double forwardZ,
                                               double fromForward, double toForward) {
+        // Two mutable positions reused for the whole sweep.
+        //
+        // This is the hottest loop in the client when Find void is on: a flight recording put
+        // 2,439 samples in this module against 6 in KillAura, and 426 of 451 samples inside event
+        // dispatch landed in this method. It runs for every candidate yaw at a quarter-block step,
+        // and it was allocating two BlockPos per step purely to ask whether a chunk was loaded.
         for (double forward = fromForward + VOID_COLLISION_STEP;
              forward <= toForward + VOID_SCORE_EPSILON;
              forward += VOID_COLLISION_STEP) {
             AxisAlignedBB checkBox = collisionBox.offset(forwardX * forward, 0.0D, forwardZ * forward);
-            BlockPos minCorner = new BlockPos(checkBox.minX, checkBox.minY, checkBox.minZ);
-            BlockPos maxCorner = new BlockPos(checkBox.maxX, checkBox.maxY, checkBox.maxZ);
-            if (!mc.theWorld.isBlockLoaded(minCorner) || !mc.theWorld.isBlockLoaded(maxCorner)
+
+            voidMinCorner.set(MathHelper.floor_double(checkBox.minX),
+                    MathHelper.floor_double(checkBox.minY),
+                    MathHelper.floor_double(checkBox.minZ));
+            voidMaxCorner.set(MathHelper.floor_double(checkBox.maxX),
+                    MathHelper.floor_double(checkBox.maxY),
+                    MathHelper.floor_double(checkBox.maxZ));
+
+            if (!mc.theWorld.isBlockLoaded(voidMinCorner) || !mc.theWorld.isBlockLoaded(voidMaxCorner)
                     || !mc.theWorld.getCollidingBoundingBoxes(target, checkBox).isEmpty()) {
                 return forward;
             }

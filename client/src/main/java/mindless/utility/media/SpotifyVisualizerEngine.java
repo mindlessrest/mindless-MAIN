@@ -32,6 +32,16 @@ public final class SpotifyVisualizerEngine {
     private final Object lifecycleLock = new Object();
 
     private volatile float[] published = NO_BARS;
+    /**
+     * Two buffers the pump alternates between, so publishing a frame allocates nothing.
+     *
+     * <p>A fresh array per frame made this the single largest allocation site in the client -- at
+     * sixty frames a second it was producing more garbage than anything else running. Alternating
+     * means whatever the renderer is holding is never the one being written.
+     */
+    private float[] bufferA = NO_BARS;
+    private float[] bufferB = NO_BARS;
+    private boolean useBufferA;
     private volatile int status = STATUS_STOPPED;
     private volatile String statusText = "";
     private volatile long lastRequestAt;
@@ -113,21 +123,23 @@ public final class SpotifyVisualizerEngine {
         return statusText;
     }
 
+    /**
+     * Asks the pump to stop, without waiting for it.
+     *
+     * <p>This used to join the pump for up to a second and a half, and it is called from
+     * {@code onDisable} -- on the game thread. The pump could be inside a transform or a native
+     * poll, and its own cleanup hands the capture session back, which joins the capture thread for
+     * up to another two seconds. So switching the module off froze the game for as long as it took
+     * both threads to notice, every single time.
+     *
+     * <p>Nothing needs the wait. The pump is a daemon, it checks {@code running} every frame, and
+     * releasing the audio session is its job to finish on its own time. Clearing the published
+     * bars here means the renderer stops drawing immediately regardless of how long that takes.
+     */
     public void shutdown() {
-        Thread toJoin;
         synchronized (lifecycleLock) {
             running = false;
-            toJoin = worker;
             worker = null;
-        }
-
-        if (toJoin != null) {
-            try {
-                toJoin.join(1500L);
-            }
-            catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
-            }
         }
 
         published = NO_BARS;
@@ -186,10 +198,13 @@ public final class SpotifyVisualizerEngine {
                 }
 
                 if (written > 0) {
-                    // Published as a fresh array so the renderer can read it without locking and
-                    // without ever seeing a half-written frame.
-                    float[] snapshot = new float[written];
+                    float[] snapshot = useBufferA ? bufferA : bufferB;
+                    if (snapshot.length != written) {
+                        snapshot = new float[written];
+                        if (useBufferA) bufferA = snapshot; else bufferB = snapshot;
+                    }
                     System.arraycopy(scratch, 0, snapshot, 0, written);
+                    useBufferA = !useBufferA;
                     published = snapshot;
                 }
 
