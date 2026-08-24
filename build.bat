@@ -38,7 +38,7 @@ for /f "tokens=*" %%v in ('python --version 2^>^&1') do set PYVER=%%v
 echo  [+] %PYVER%
 
 :: -----------------------------------------------
-:: 2. build.py uses stdlib only - no pip installs
+:: 2. tools\build.py uses stdlib only - no pip installs
 ::    needed. But verify pip works just in case.
 :: -----------------------------------------------
 python -m pip --version >nul 2>&1
@@ -50,15 +50,15 @@ if %errorlevel% equ 0 (
 )
 
 :: -----------------------------------------------
-:: 3. Run build.py  (pass any args: build.bat --loader etc.)
+:: 3. Run tools\build.py  (pass any args: build.bat --loader etc.)
 :: -----------------------------------------------
 echo.
 echo  ==========================================
-echo   Running build.py %*
+echo   Running tools\build.py %*
 echo  ==========================================
 echo.
 
-python "%~dp0build.py" %*
+python "%~dp0tools\build.py" %*
 set EXIT_CODE=%errorlevel%
 
 echo.

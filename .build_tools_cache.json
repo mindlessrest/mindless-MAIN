@@ -1,9 +1,0 @@
-{
-  "clang": "C:\\Users\\anthony\\Tools\\LLVM\\bin\\clang-cl.exe",
-  "lld": "C:\\Users\\anthony\\Tools\\LLVM\\bin\\lld-link.exe",
-  "ninja": "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\Ninja\\ninja.exe",
-  "vcpkg": "C:\\vcpkg",
-  "cmake": "C:\\Program Files\\CMake\\bin\\cmake.EXE",
-  "jdk17": "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.20.8-hotspot",
-  "jdk_any": "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.20.8-hotspot"
-}

@@ -9,8 +9,10 @@ monorepo for the mindless client + loader
 ```
 client/   minecraft 1.8.9 forge utility mod (~130 modules, mixin + transformer based)
 loader/   c++ windows loader that injects the client into lunar client
-build.py  builds both projects, auto detects all compiler/tool paths
+tools/    build scripts - build.py builds both projects and finds every compiler path itself,
+          msbt.py compiles a single .java script
 build.bat run this if you dont wanna touch a terminal, handles everything
+compile-script.bat  drag a .java script onto this to compile it
 ```
 
 ---
@@ -22,9 +24,9 @@ just run `build.bat` - it checks for python, installs it if missing, then runs t
 or if you wanna be specific
 
 ```
-python build.py            # builds everything
-python build.py --loader   # loader only
-python build.py --client   # client only
+python tools/build.py            # builds everything
+python tools/build.py --loader   # loader only
+python tools/build.py --client   # client only
 ```
 
 output exe lands at the root of this folder
@@ -33,8 +35,8 @@ output exe lands at the root of this folder
 
 ## what you need
 
-- **loader** — llvm/clang, cmake, ninja, vcpkg (build.py finds these automatically)
-- **client** — jdk 17 (build.py finds this too)
+- **loader** — llvm/clang, cmake, ninja, vcpkg (tools/build.py finds these automatically)
+- **client** — jdk 17 (tools/build.py finds this too)
 
 if something isnt found itll tell you exactly what to grab
 
