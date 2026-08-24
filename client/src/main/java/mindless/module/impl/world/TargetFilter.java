@@ -7,6 +7,8 @@ import mindless.utility.Utils;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.scoreboard.ScorePlayerTeam;
+import net.minecraftforge.event.entity.EntityJoinWorldEvent;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
 public class TargetFilter extends Module {
     private static ButtonSetting antiBot;
@@ -16,12 +18,41 @@ public class TargetFilter extends Module {
 
     public TargetFilter() {
         super("Target Filter", Module.category.world, 0);
-        this.registerSetting(antiBot = new ButtonSetting("Anti Bot", true));
         this.registerSetting(serverTeamCheck = new ButtonSetting("Server team check", true));
         this.registerSetting(colorTeamCheck = new ButtonSetting("Color team check", true));
         this.registerSetting(friends = new ButtonSetting("Friends", true));
+        this.registerSetting(antiBot = new ButtonSetting("Anti Bot", true));
+        AntiBot.registerSettings(this);
         this.closetModule = true;
         this.liteModule = true;
+    }
+
+    /**
+     * Whether bot detection should answer at all.
+     *
+     * <p>Read by AntiBot itself, so a consumer calling AntiBot.isBot directly -- the render side
+     * does, for chams and ESP -- gets the same answer as one going through shouldFilter.
+     */
+    public static boolean isAntiBotActive() {
+        return ModuleManager.targetFilter != null
+                && ModuleManager.targetFilter.isEnabled()
+                && antiBot != null
+                && antiBot.isToggled();
+    }
+
+    @SubscribeEvent
+    public void onEntityJoin(EntityJoinWorldEvent event) {
+        AntiBot.onEntityJoin(event);
+    }
+
+    @Override
+    public void onUpdate() {
+        AntiBot.onUpdate();
+    }
+
+    @Override
+    public void onDisable() {
+        AntiBot.clear();
     }
 
     public static boolean shouldFilter(Entity entity) {
@@ -32,7 +63,8 @@ public class TargetFilter extends Module {
             return true;
         }
 
-        if (antiBot.isToggled() && AntiBot.isBot(entity)) {
+        // The toggle is checked inside isBot, so this reads the same either way round.
+        if (AntiBot.isBot(entity)) {
             return true;
         }
 

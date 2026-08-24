@@ -398,8 +398,7 @@ public final class ModernClickGui extends ClickGui {
     private static boolean isPinnedCategory(Module.category category) {
         return category == Module.category.profiles
                 || category == Module.category.scripts
-                || category == Module.category.theme
-                || category == Module.category.cloud;
+                || category == Module.category.theme;
     }
 
     private float drawCategory(Module.category category, float y, int mx, int my) {

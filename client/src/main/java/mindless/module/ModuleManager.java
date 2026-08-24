@@ -47,7 +47,6 @@ public class ModuleManager {
     public static SpotifyMiniPlayer spotifyMiniPlayer;
     public static ThemeManager themeManager;
     public static LongJump longJump;
-    public static AntiBot antiBot;
     public static mindless.module.impl.world.TargetFilter targetFilter;
     public static NoSlow noSlow;
     public static KillAura killAura;
@@ -263,7 +262,6 @@ public class ModuleManager {
         modulesByNormalizedName.put(normalizeModuleName("Outline ESP"), sexyESP);
         this.addModule(new Slow());
 
-        this.addModule(antiBot = new AntiBot());
         this.addModule(targetFilter = new mindless.module.impl.world.TargetFilter());
         this.addModule(weather = new Weather());
         this.addModule(ambience = new Ambience());
@@ -272,7 +270,6 @@ public class ModuleManager {
         this.addModule(new mindless.script.Manager());
 
         movementFix.enable();
-        antiBot.enable();
         targetFilter.enable();
         modules.sort(Comparator.comparing(Module::getName));
     }

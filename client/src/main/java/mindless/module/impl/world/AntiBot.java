@@ -5,8 +5,10 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.player.Freecam;
 import mindless.module.setting.impl.ButtonSetting;
+import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityArmorStand;
@@ -24,13 +26,24 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
-public class AntiBot extends Module {
+/**
+ * Works out whether an entity is a real player, on behalf of Target Filter.
+ *
+ * <p>Not a module of its own any more. Every consumer of this already had to keep Anti Bot and
+ * Target Filter both switched on for either to do anything, because Target Filter's bot check
+ * delegates here and this used to refuse to answer unless its own module was enabled. Two
+ * switches for one behaviour is a trap, and the one people fell into was ticking the box in
+ * Target Filter and getting nothing. There is one switch now, and it lives with the other target
+ * filtering where it belongs.
+ */
+public final class AntiBot {
+    private static final Minecraft mc = Minecraft.getMinecraft();
     private static final HashMap<EntityPlayer, Long> entities = new HashMap();
     private static SliderSetting delay;
     private static SliderSetting pitSpawn;
     private static ButtonSetting tablist;
     private static ButtonSetting npcChecks;
-    private ButtonSetting printWorldJoin;
+    private static ButtonSetting printWorldJoin;
     private static final Set<String> tablistCache = new HashSet<>();
     private static final Set<UUID> tablistUuidCache = new HashSet<>();
     private static final Set<Integer> npcEntityIdCache = new HashSet<>();
@@ -42,19 +55,19 @@ public class AntiBot extends Module {
     private static long npcCacheTime;
     private static World npcCacheWorld;
 
-    public AntiBot() {
-        super("Anti Bot", Module.category.world, 0);
-        this.registerSetting(delay = new SliderSetting("Delay", " second", true, -1, 0.5, 15.0, 0.5));
-        this.registerSetting(pitSpawn = new SliderSetting("Pit spawn", true, -1, 70, 120, 1));
-        this.registerSetting(tablist = new ButtonSetting("Tab list", false));
-        this.registerSetting(npcChecks = new ButtonSetting("NPC checks", true));
-        this.registerSetting(printWorldJoin = new ButtonSetting("Print world join", false));
-        this.closetModule = true;
-        this.liteModule = true;
+    private AntiBot() {}
+
+    /** Hangs the detection settings off whichever module owns this. */
+    public static void registerSettings(Module owner) {
+        owner.registerSetting(new DescriptionSetting("Anti Bot"));
+        owner.registerSetting(delay = new SliderSetting("Delay", " second", true, -1, 0.5, 15.0, 0.5));
+        owner.registerSetting(pitSpawn = new SliderSetting("Pit spawn", true, -1, 70, 120, 1));
+        owner.registerSetting(tablist = new ButtonSetting("Tab list", false));
+        owner.registerSetting(npcChecks = new ButtonSetting("NPC checks", true));
+        owner.registerSetting(printWorldJoin = new ButtonSetting("Print world join", false));
     }
 
-    @SubscribeEvent
-    public void onEntityJoin(EntityJoinWorldEvent e) {
+    public static void onEntityJoin(EntityJoinWorldEvent e) {
         if ((e.entity instanceof EntityPlayer || Raven.DEBUG) && e.entity != mc.thePlayer) {
             if (delay.getInput() != -1 && e.entity instanceof EntityPlayer) {
                 entities.put((EntityPlayer) e.entity, System.currentTimeMillis());
@@ -75,8 +88,7 @@ public class AntiBot extends Module {
         }
     }
 
-    @Override
-    public void onUpdate() {
+    public static void onUpdate() {
         refreshNpcCache();
         if (delay.getInput() != -1 && !entities.isEmpty()) {
             long delayMillis = (long) (delay.getInput() * 1000.0);
@@ -85,8 +97,8 @@ public class AntiBot extends Module {
         }
     }
 
-    @Override
-    public void onDisable() {
+    /** Drops everything learned about the world we were in. */
+    public static void clear() {
         entities.clear();
         tablistCache.clear();
         tablistUuidCache.clear();
@@ -100,7 +112,7 @@ public class AntiBot extends Module {
     }
 
     public static boolean isBot(Entity entity) {
-        if (!ModuleManager.antiBot.isEnabled()) {
+        if (!TargetFilter.isAntiBotActive()) {
             return false;
         }
         if (Freecam.freeEntity != null && Freecam.freeEntity == entity) {

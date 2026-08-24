@@ -147,7 +147,8 @@ public class Utils implements IMinecraftInstance {
         sendMessage("&7&m-------------------------");
         sendMessage("&eattacking: &r" + ent.getName());
         sendMessage("&7type: &b" + ent.getClass().getSimpleName());
-        sendMessage("&7bot: &r" + (ModuleManager.antiBot.isEnabled() ? AntiBot.isBot(ent) : "&cantibot disabled"));
+        sendMessage("&7bot: &r" + (mindless.module.impl.world.TargetFilter.isAntiBotActive()
+                ? AntiBot.isBot(ent) : "&cantibot disabled"));
         boolean isPlayer = ent instanceof EntityPlayer;
         sendMessage("&7player: &r" + isPlayer);
         sendMessage("&7dist eye: &d" + round(getDistanceToEye(ent), 2));
