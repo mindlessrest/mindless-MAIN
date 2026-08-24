@@ -206,6 +206,22 @@ public class AudioVisualizer extends Module {
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !this.isEnabled()) return;
 
+        // Keep the capture alive, and the analyser current, while a screen is covering the HUD.
+        //
+        // Both render paths bail out when mc.currentScreen is set, so for as long as the click
+        // GUI is open nothing asks the engine for a frame. Left alone the pump reaches its idle
+        // timeout, hands the audio session back, and then has to find the process, re-activate
+        // loopback and re-learn its gain from scratch the moment the menu closes -- which is
+        // exactly the pause after changing a setting. Ticking it here means the new settings are
+        // applied and already settled by the time the menu is out of the way. Only while a screen
+        // is up: with the HUD actually visible the render path does this, and when it is hidden
+        // for any other reason the idle shutdown should still release the session.
+        if (mc.currentScreen != null) {
+            SpotifyVisualizerEngine engine = SpotifyVisualizerEngine.getInstance();
+            engine.configure(barCount(), smoothing(), updateRate());
+            engine.requestFrame();
+        }
+
         int status = SpotifyVisualizerEngine.getInstance().getStatus();
         if (status == reportedStatus) return;
         reportedStatus = status;
