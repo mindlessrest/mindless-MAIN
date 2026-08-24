@@ -50,7 +50,18 @@ public class BlurUtils {
         // Which texture the scene lives in cannot change while a single frame is being drawn,
         // and every driver query below flushes the state cache. Seven panels on the HUD meant
         // seven identical lookups a frame, and on the copy fallback seven full-screen readbacks.
-        if (frameSerial == 0L || sourceFrame != frameSerial || sourceFramebuffer != boundFramebuffer) {
+        // The cached id is also checked for still being a live texture, not just for being from
+        // this frame.
+        //
+        // When the fallback copy path is in use, blurSourceTexture is sceneFrameBuffer's
+        // attachment, and that framebuffer is recreated whenever the window size changes -- which
+        // deletes the texture the id refers to. Sampling a deleted id is not an error in GL, it
+        // simply reads black, so the panel composited a black rectangle instead of the scene and
+        // stayed that way until something happened to invalidate the cache. That is the glass
+        // going dark at random. glIsTexture costs one query on a path that already makes several
+        // and only runs once per panel per frame.
+        if (frameSerial == 0L || sourceFrame != frameSerial || sourceFramebuffer != boundFramebuffer
+                || blurSourceTexture == 0 || !GL11.glIsTexture(blurSourceTexture)) {
             resolveSourceTexture(boundFramebuffer);
             sourceFrame = frameSerial;
             sourceFramebuffer = boundFramebuffer;

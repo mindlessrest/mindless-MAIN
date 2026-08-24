@@ -381,15 +381,27 @@ public final class SpotifyMiniPlayerRenderer {
         }
 
         if (showVisualizer) {
-            // Full width, so it lines up with the progress bar beneath it rather than with the
-            // text column, and the bottom of the card reads as one stack.
+            // Aligned to the text column and drawn without any panel of its own.
+            //
+            // Full width put the bars underneath the album art, so the strip ran across the
+            // artwork instead of belonging to the track it describes. Starting at textX means it
+            // lines up with the title, the artist and the lyrics -- the column it is actually part
+            // of -- and it can no longer touch the art whatever size the art happens to be.
+            //
+            // No card either. This already sits inside a glass panel, so a bordered rounded box
+            // around the bars was a box drawn on a box; the bars stand on their own baseline
+            // instead, which is what the separator above the lyrics and the progress bar below
+            // already do. The panel settings still apply in standalone mode, where there is
+            // nothing behind the bars to read them against.
             float visualizerBottom = (showProgress
                     ? progressBarY - Math.max(4.0F, 4.75F * uiScale)
                     : y + height - padding);
             float visualizerTop = visualizerBottom - visualizerSection;
-            VisualizerRenderer.draw(x + padding, visualizerTop,
-                    Math.max(24.0F, width - padding * 2.0F), visualizerSection,
-                    renderVisibility, true);
+            float visualizerLeft = textX;
+            float visualizerWidth = Math.max(24.0F, x + width - padding - visualizerLeft);
+            VisualizerRenderer.draw(visualizerLeft, visualizerTop,
+                    visualizerWidth, visualizerSection,
+                    renderVisibility, false);
             GL20.glUseProgram(0);
             GlStateManager.enableTexture2D();
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
