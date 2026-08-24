@@ -31,6 +31,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.network.play.client.C02PacketUseEntity;
 import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.MathHelper;
@@ -95,9 +96,11 @@ public class Displace extends Module {
     private boolean arrowVisible;
     private int tickCounter;
     private final Map<Integer, Integer> targetWindowStartTicks = new HashMap<>();
-    /** Scratch positions for the void sweep; see getVoidPathBlockedDistance. */
+    /** Scratch positions and list for the void sweep; see getVoidPathBlockedDistance. */
     private final BlockPos.MutableBlockPos voidMinCorner = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos voidMaxCorner = new BlockPos.MutableBlockPos();
+    private final BlockPos.MutableBlockPos voidScanPos = new BlockPos.MutableBlockPos();
+    private final List<AxisAlignedBB> voidCollisionScratch = new ArrayList<AxisAlignedBB>();
     private LagRequest outboundBlink;
     private VoidDebugScan latestVoidDebugScan;
     private VoidDebugScan frozenVoidDebugScan;
@@ -478,6 +481,54 @@ public class Displace extends Module {
         return neighborhood;
     }
 
+    /**
+     * Whether terrain intersects the box, stopping at the first block that does.
+     *
+     * <p>This replaces {@code World.getCollidingBoundingBoxes}, which builds a fresh list of every
+     * colliding box in range and was only ever asked whether that list was empty. The sweep runs
+     * forty-eight coarse yaws plus refinement, roughly fifty-seven candidates, each stepping a
+     * quarter block out to the scan radius -- about fourteen hundred of those calls per attack. At
+     * fighting click rates that is fifteen to twenty thousand list allocations a second, which a
+     * flight recording caught as by far the most expensive thing the client was doing.
+     *
+     * <p>Same block range and same per-block test as vanilla, but it returns the moment anything
+     * collides and reuses one list, so a blocked step usually costs a single block lookup and an
+     * open one allocates nothing at all.
+     *
+     * <p>One deliberate difference: vanilla's version also collects entity boxes, so another
+     * player standing near the path counted as blocking it. Terrain is what decides whether there
+     * is a gap to knock someone into, and a bystander moving through should not change the yaw
+     * that gets picked.
+     */
+    private boolean isTerrainBlocking(AxisAlignedBB box) {
+        int minX = MathHelper.floor_double(box.minX);
+        int maxX = MathHelper.floor_double(box.maxX + 1.0D);
+        int minY = MathHelper.floor_double(box.minY);
+        int maxY = MathHelper.floor_double(box.maxY + 1.0D);
+        int minZ = MathHelper.floor_double(box.minZ);
+        int maxZ = MathHelper.floor_double(box.maxZ + 1.0D);
+
+        List<AxisAlignedBB> hits = voidCollisionScratch;
+        for (int blockX = minX; blockX < maxX; blockX++) {
+            for (int blockZ = minZ; blockZ < maxZ; blockZ++) {
+                if (!mc.theWorld.isBlockLoaded(voidScanPos.set(blockX, 64, blockZ))) {
+                    continue;
+                }
+
+                for (int blockY = minY - 1; blockY < maxY; blockY++) {
+                    voidScanPos.set(blockX, blockY, blockZ);
+                    IBlockState state = mc.theWorld.getBlockState(voidScanPos);
+                    state.getBlock().addCollisionBoxesToList(mc.theWorld, voidScanPos, state, box, hits, null);
+                    if (!hits.isEmpty()) {
+                        hits.clear();
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private double getVoidPathBlockedDistance(EntityPlayer target, AxisAlignedBB collisionBox,
                                               double forwardX, double forwardZ,
                                               double fromForward, double toForward) {
@@ -500,7 +551,7 @@ public class Displace extends Module {
                     MathHelper.floor_double(checkBox.maxZ));
 
             if (!mc.theWorld.isBlockLoaded(voidMinCorner) || !mc.theWorld.isBlockLoaded(voidMaxCorner)
-                    || !mc.theWorld.getCollidingBoundingBoxes(target, checkBox).isEmpty()) {
+                    || isTerrainBlocking(checkBox)) {
                 return forward;
             }
         }
