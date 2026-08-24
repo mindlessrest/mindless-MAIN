@@ -25,7 +25,7 @@ public class DiscordRPC extends Module {
         startTimestamp = System.currentTimeMillis() / 1000L;
         if (rpc == null) {
             rpc = new mindless.utility.DiscordRPC("1541533225237749760");
-            rpc.start();
+            rpc.connect();
         }
         lastState = null;
         lastDetails = null;
@@ -35,7 +35,7 @@ public class DiscordRPC extends Module {
     @Override
     public void onDisable() {
         if (rpc != null) {
-            rpc.shutdown();
+            rpc.close();
             rpc = null;
         }
     }
@@ -85,13 +85,14 @@ public class DiscordRPC extends Module {
 
             mindless.utility.DiscordRPC.RichPresence presence = new mindless.utility.DiscordRPC.RichPresence()
                     .details(details)
-                    .startTimestamp(startTimestamp);
+                    .startTimestamp(startTimestamp)
+                    .largeImage("large_image", "Mindless");
 
             if (!state.isEmpty()) {
                 presence.state(state);
             }
 
-            rpc.setPresence(presence);
+            rpc.update(presence);
         }
     }
 }
