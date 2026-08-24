@@ -154,13 +154,19 @@ public class DiscordRPC {
 
         private static long getPid() {
             try {
-                String name = ManagementFactory.getRuntimeMXBean().getName();
-                int idx = name.indexOf('@');
-                if (idx != -1) {
-                    return Long.parseLong(name.substring(0, idx));
-                }
-            } catch (Exception ignored) {}
-            return 0L;
+                Class<?> ph = Class.forName("java.lang.ProcessHandle");
+                Object current = ph.getMethod("current").invoke(null);
+                return (Long) ph.getMethod("pid").invoke(current);
+            } catch (Throwable t) {
+                try {
+                    String name = ManagementFactory.getRuntimeMXBean().getName();
+                    int idx = name.indexOf('@');
+                    if (idx != -1) {
+                        return Long.parseLong(name.substring(0, idx));
+                    }
+                } catch (Throwable ignored) {}
+                return 0L;
+            }
         }
 
         private static String escape(String s) {
