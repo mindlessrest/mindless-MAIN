@@ -66,19 +66,24 @@ public final class ModernClickGui extends ClickGui {
     /** Gap kept between a setting's label and its dropdown. */
     private static final float DROPDOWN_LABEL_GAP = 10f;
     /**
-     * Left edge of the control column, as a fraction of the row's width.
+     * Narrowest a control may be before it stops being usable.
      *
-     * Every control in the panel starts here -- slider tracks, dropdowns, segmented pickers,
-     * keybind chips -- so they read as one column down the right of the panel rather than each
-     * sitting wherever its own label happened to end.
+     * <p>Every control in the panel starts at one column so they read as a set rather than each
+     * sitting wherever its own label happened to end. Where that column falls is worked out from
+     * the module rather than fixed, but a slider you cannot aim at is no better than a label you
+     * cannot read, so it does not go below this.
      */
-    private static final float CONTROL_COLUMN = .42f;
+    private static final float CONTROL_MIN_W = 92f;
     /** Narrowest the number column is allowed to get, so short values still line up. */
     private static final float VALUE_MIN_W = 16f;
     /** Widest it may grow before the label starts losing more than the number gains. */
     private static final float VALUE_MAX_W = 52f;
     /** Gap between the number and the control column. */
     private static final float VALUE_GAP = 8f;
+    /** Gap between a label and whatever comes after it. */
+    private static final float LABEL_GAP = 10f;
+    /** Label sizes tried in order; the first that lets everything fit wins. */
+    private static final float[] LABEL_SCALES = {.75f, .70f, .64f, .58f};
     /** Vertical gap between setting rows. Shared by the draw and the hit-test walk. */
     private static final float SETTING_GAP = 4f;
     /** Most options a string setting may have before it is a dropdown rather than segments. */
@@ -128,6 +133,11 @@ public final class ModernClickGui extends ClickGui {
 
     /** Width of the number column, recomputed each frame from the open module's sliders. */
     private float sliderValueWidth = VALUE_MIN_W;
+    /** Width and size of the label column, likewise. */
+    private float settingLabelWidth = 60f;
+    private float settingLabelScale = LABEL_SCALES[0];
+    /** Where the controls start, once the label and number have taken what they need. */
+    private float settingControlLeft = Float.NaN;
     private Module.category selectedCategory = Module.category.combat;
     private Module selectedModule;
     private float moduleScroll;
@@ -709,7 +719,7 @@ public final class ModernClickGui extends ClickGui {
         line(detailX + 12, baseY + 51, detailX + detailW - 12, baseY + 51,
                 withAlpha(DIVIDER, headerAlpha));
 
-        measureSliderValues();
+        measureSettingColumns();
 
         float top = baseY + 59f, bottom = baseY + panelH - 12f;
         scissor(detailX + 8, top, detailX + detailW - 8, bottom, true);
@@ -748,8 +758,8 @@ public final class ModernClickGui extends ClickGui {
 
     /** Left edge of the shared control column. */
     private float controlLeft() {
-        float left = settingsLeft();
-        return left + (settingsRight() - left) * CONTROL_COLUMN;
+        if (Float.isNaN(settingControlLeft)) return settingsLeft() + settingsRight() * 0f + 100f;
+        return settingControlLeft;
     }
 
     /**
@@ -774,24 +784,66 @@ public final class ModernClickGui extends ClickGui {
     }
 
     /**
-     * Measures the widest slider value in the module being shown.
+     * Works out where the three columns fall for the module being shown.
      *
-     * <p>Done once per frame rather than per row, so the column is the same width all the way
-     * down instead of stepping in and out beside each slider.
+     * <p>The old layout put the controls at a fixed fraction of the panel, so they took the same
+     * 58% whether the labels needed it or not -- and settings named "Maximum block delay" or
+     * "Unblock out of range" lost their tails to pay for space nothing was using.
+     *
+     * <p>So the module is measured instead. The longest label and the longest number are what
+     * they are; the controls take what is left, down to a floor below which a slider stops being
+     * aimable. Only when even the smallest label size cannot fit does anything get cut, and by
+     * then it genuinely does not fit. Measured once per frame rather than per row, so the
+     * columns stay straight down the page instead of stepping in and out beside each setting.
      */
-    private void measureSliderValues() {
-        float widest = VALUE_MIN_W;
+    private void measureSettingColumns() {
+        float rowWidth = settingsRight() - settingsLeft();
+
+        float value = 0f;
+        boolean hasNumbers = false;
         if (selectedModule != null) {
             for (Setting setting : selectedModule.getSettings()) {
-                if (!setting.visible || !(setting instanceof SliderSetting)) continue;
+                if (!isMeasurable(setting) || !(setting instanceof SliderSetting)) continue;
                 SliderSetting slider = (SliderSetting) setting;
                 if (slider.isString) continue;
-                GroupSetting owner = groupOf(setting);
-                if (owner != null && !owner.isOpened()) continue;
-                widest = Math.max(widest, textWidth(sliderValue(slider), .72f, false));
+                hasNumbers = true;
+                value = Math.max(value, textWidth(sliderValue(slider), .72f, false));
             }
         }
-        sliderValueWidth = Math.min(VALUE_MAX_W, widest);
+        sliderValueWidth = hasNumbers ? Math.max(VALUE_MIN_W, Math.min(VALUE_MAX_W, value)) : 0f;
+        float valueSpace = hasNumbers ? sliderValueWidth + VALUE_GAP : 0f;
+
+        float budget = rowWidth - LABEL_GAP - valueSpace - CONTROL_MIN_W;
+        float label = 0f;
+        float scale = LABEL_SCALES[LABEL_SCALES.length - 1];
+        for (float candidate : LABEL_SCALES) {
+            label = widestLabel(candidate);
+            scale = candidate;
+            if (label <= budget) break;
+        }
+
+        settingLabelScale = scale;
+        settingLabelWidth = Math.max(24f, Math.min(label, budget));
+        settingControlLeft = settingsLeft() + settingLabelWidth + LABEL_GAP + valueSpace;
+    }
+
+    private float widestLabel(float scale) {
+        if (selectedModule == null) return 0f;
+        float widest = 0f;
+        for (Setting setting : selectedModule.getSettings()) {
+            if (!isMeasurable(setting)) continue;
+            // Headings and grouped rows run the full width and are not part of the column.
+            if (setting instanceof DescriptionSetting || setting instanceof GroupSetting) continue;
+            if (setting instanceof TextSetting || isList(setting)) continue;
+            widest = Math.max(widest, textWidth(setting.getName(), scale, false));
+        }
+        return widest;
+    }
+
+    private boolean isMeasurable(Setting setting) {
+        if (setting == null || !setting.visible) return false;
+        GroupSetting owner = groupOf(setting);
+        return owner == null || owner.isOpened();
     }
 
     /**
@@ -812,8 +864,10 @@ public final class ModernClickGui extends ClickGui {
      */
     private void drawSettingLabel(String name, float x, float y1, float y2, float maxWidth,
                                   int color) {
-        float scale = textWidth(name, .75f, false) > maxWidth ? .66f : .75f;
-        drawTextVCentered(trim(name, maxWidth, scale, false), x, y1, y2, color, scale, false);
+        // One size for the whole module, chosen so the longest of them fits. Sizing each label
+        // on its own made a panel of settings in four different sizes.
+        drawTextVCentered(trim(name, maxWidth, settingLabelScale, false), x, y1, y2, color,
+                settingLabelScale, false);
     }
 
     private float[] segmentLayout(SliderSetting slider) {
@@ -998,7 +1052,9 @@ public final class ModernClickGui extends ClickGui {
             drawTextVCentered(group.isOpened() ? "-" : "+", x2 - 15, y, y + h, fa(group.isOpened() ? GOLD : MUTED, alpha), .85f, true);
         } else if (setting instanceof ButtonSetting) {
             ButtonSetting button = (ButtonSetting) setting;
-            drawTextVCentered(trim(button.getName(), detailW - 80, .74f, false), x1 + 2, y, y + h, fa(TEXT, alpha), .74f, false);
+            // Toggles sit hard right, so the label may run past the control column -- but it
+            // still takes the module's size, or one panel ends up in two type sizes.
+            drawSettingLabel(button.getName(), x1 + 2, y, y + h, x2 - 38f - x1, fa(TEXT, alpha));
             if (button.isMethodButton) {
                 float hp = animate(hoverAnimation, button, inside(mx, my, x1, y, x2, y + h) ? 1f : 0f, 17f);
                 String action = methodActionLabel(button.getName());
