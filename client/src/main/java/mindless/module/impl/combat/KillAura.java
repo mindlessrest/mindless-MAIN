@@ -8,6 +8,7 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.render.Notifications;
 import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RotationUtils;
@@ -51,7 +52,6 @@ public class KillAura extends Module {
     private ButtonSetting disableWhileMining;
     private ButtonSetting aimThroughBlocks;
     private ButtonSetting aimThroughEntities;
-    private ButtonSetting ignoreTeammates;
     private ButtonSetting prioritizeEnemies;
     private ButtonSetting notUsingItem;
     private ButtonSetting requireMouseDown;
@@ -81,6 +81,7 @@ public class KillAura extends Module {
     private int lastAttackedEntityId = -1;
     private long lastAttackTimeMs;
     private long lastKillNotifyMs;
+    private float lastAttackedHealth = -1f;
 
     public KillAura() {
         super("Kill Aura", category.combat);
@@ -101,7 +102,6 @@ public class KillAura extends Module {
         this.registerSetting(aimThroughEntities = new ButtonSetting("Hit through entities", false));
         this.registerSetting(disableInInventory = new ButtonSetting("Disable in inventory", true));
         this.registerSetting(disableWhileMining = new ButtonSetting("Disable while mining", false));
-        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", true));
         this.registerSetting(notUsingItem = new ButtonSetting("Not using item", false));
         this.registerSetting(prioritizeEnemies = new ButtonSetting("Prioritize enemies", false));
         this.registerSetting(requireMouseDown = new ButtonSetting("Require mouse down", false));
@@ -188,21 +188,32 @@ public class KillAura extends Module {
             Entity attacked = mc.theWorld.getEntityByID(lastAttackedEntityId);
             if (attacked instanceof EntityLivingBase) {
                 EntityLivingBase living = (EntityLivingBase) attacked;
-                if (living.getHealth() <= 0 || living.deathTime > 0 || living.isDead) {
+                float hp = living.getHealth();
+                boolean dead = hp <= 0 || living.deathTime > 0 || living.isDead;
+                // Hypixel often removes entities before health reaches 0 on client.
+                // Detect kill when health drops very low after our damage.
+                if (!dead && lastAttackedHealth > 0 && hp <= 1.0f && hp < lastAttackedHealth * 0.25f) {
+                    dead = true;
+                }
+                lastAttackedHealth = hp;
+                if (dead) {
                     if (now - lastKillNotifyMs > 2000L) {
                         lastKillNotifyMs = now;
                         Notifications.notify(living.getName(), "Target neutralized.", true);
                     }
                     lastAttackedEntityId = -1;
+                    lastAttackedHealth = -1f;
                 }
-            } else if (attacked == null && now - lastAttackTimeMs < 3000L) {
+            } else if (attacked == null && now - lastAttackTimeMs < 5000L) {
                 if (now - lastKillNotifyMs > 2000L) {
                     lastKillNotifyMs = now;
                     Notifications.notify("Target", "Target neutralized.", true);
                 }
                 lastAttackedEntityId = -1;
+                lastAttackedHealth = -1f;
             } else if (attacked == null) {
                 lastAttackedEntityId = -1;
+                lastAttackedHealth = -1f;
             }
         }
 
@@ -254,6 +265,7 @@ public class KillAura extends Module {
         if (clicks > 0 && target != null && targetDistance <= attackRange.getInput()) {
             lastAttackedEntityId = target.getEntityId();
             lastAttackTimeMs = System.currentTimeMillis();
+            lastAttackedHealth = target.getHealth();
         }
     }
 
@@ -380,10 +392,10 @@ public class KillAura extends Module {
 
         if (entity instanceof EntityPlayer) {
             EntityPlayer player = (EntityPlayer) entity;
-            if (Utils.isFriended(player) || player.deathTime != 0) {
+            if (player.deathTime != 0) {
                 return null;
             }
-            if (AntiBot.isBot(entity) || (ignoreTeammates.isToggled() && Utils.isTeammate(entity))) {
+            if (TargetFilter.shouldFilter(entity)) {
                 return null;
             }
         } else if (entity instanceof EntityCreature && attackMobs.isToggled()) {

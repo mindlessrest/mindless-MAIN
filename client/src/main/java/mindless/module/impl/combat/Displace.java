@@ -78,7 +78,6 @@ public class Displace extends Module {
     private final ButtonSetting overrideAttack;
     private final ButtonSetting renderArrow;
     private final ButtonSetting onlyKnockbackItems;
-    private final ButtonSetting ignoreTeammates;
     private final ButtonSetting weaponOnly;
 
     private boolean displaceThisTick = false;
@@ -137,7 +136,6 @@ public class Displace extends Module {
         this.registerSetting(onlyKnockbackItems = new ButtonSetting("Only knockback items", false, "Has knockback"));
         this.registerSetting(overrideAttack = new ButtonSetting("Override attack", false));
         this.registerSetting(renderArrow = new ButtonSetting("Render arrow", true));
-        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", true));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
     }
 
@@ -750,8 +748,7 @@ public class Displace extends Module {
     private boolean isOverrideTargetValid(EntityPlayer target) {
         return target != null
                 && target.worldObj == mc.theWorld
-                && CombatTargeting.asValidPlayer(target, OVERRIDE_TARGET_RANGE_SQ,
-                        ignoreTeammates.isToggled()) != null;
+                && CombatTargeting.asValidPlayer(target, OVERRIDE_TARGET_RANGE_SQ) != null;
     }
 
     private boolean passesOverrideItemConditions() {
@@ -1426,8 +1423,7 @@ public class Displace extends Module {
 
         MovingObjectPosition mouseOver = event.objectMouseOver;
         EntityPlayer target = mouseOver != null && mouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY
-                ? CombatTargeting.asValidPlayer(mouseOver.entityHit, OVERRIDE_TARGET_RANGE_SQ,
-                        ignoreTeammates.isToggled())
+                ? CombatTargeting.asValidPlayer(mouseOver.entityHit, OVERRIDE_TARGET_RANGE_SQ)
                 : null;
         if (target != null && startOverrideAttack(target)) {
             event.setCanceled(true);
@@ -1446,8 +1442,7 @@ public class Displace extends Module {
 
         EntityPlayer target = CombatTargeting.asValidPlayer(
                 event.target,
-                OVERRIDE_TARGET_RANGE_SQ,
-                ignoreTeammates.isToggled()
+                OVERRIDE_TARGET_RANGE_SQ
         );
         if (target != null && startOverrideAttack(target)) {
             event.setCanceled(true);
@@ -1637,9 +1632,9 @@ public class Displace extends Module {
                 && ModuleManager.killAura.isEnabled()
                 && KillAura.target != null;
         if (killAuraHasTarget) {
-            target = CombatTargeting.asValidPlayer(KillAura.target, 9.0, ignoreTeammates.isToggled());
+            target = CombatTargeting.asValidPlayer(KillAura.target, 9.0);
         } else if (Mouse.isButtonDown(0)) {
-            target = CombatTargeting.findClosestTarget(9.0, ignoreTeammates.isToggled());
+            target = CombatTargeting.findClosestTarget(9.0);
         }
 
         boolean hasKBEnchant = EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0;

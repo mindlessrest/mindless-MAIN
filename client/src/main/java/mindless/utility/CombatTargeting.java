@@ -1,6 +1,6 @@
 package mindless.utility;
 
-import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.MovingObjectPosition;
@@ -92,11 +92,7 @@ public final class CombatTargeting implements IMinecraftInstance {
             return false;
         }
 
-        if (Utils.isFriended(player) || AntiBot.isBot(player)) {
-            return false;
-        }
-
-        if (ignoreTeammates && Utils.isTeammate(player)) {
+        if (TargetFilter.shouldFilter(player)) {
             return false;
         }
 

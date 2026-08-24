@@ -47,6 +47,7 @@ public class ModuleManager {
     public static ThemeManager themeManager;
     public static LongJump longJump;
     public static AntiBot antiBot;
+    public static mindless.module.impl.world.TargetFilter targetFilter;
     public static NoSlow noSlow;
     public static KillAura killAura;
     public static AutoClicker autoClicker;
@@ -253,6 +254,7 @@ public class ModuleManager {
         this.addModule(new Slow());
 
         this.addModule(antiBot = new AntiBot());
+        this.addModule(targetFilter = new mindless.module.impl.world.TargetFilter());
         this.addModule(weather = new Weather());
         this.addModule(ambience = new Ambience());
         this.addModule(new Particles());
@@ -261,6 +263,7 @@ public class ModuleManager {
 
         movementFix.enable();
         antiBot.enable();
+        targetFilter.enable();
         modules.sort(Comparator.comparing(Module::getName));
     }
 

@@ -5,6 +5,7 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.module.impl.world.TargetFilter;
 import mindless.utility.Utils;
 
 import net.minecraft.client.renderer.RenderGlobal;
@@ -59,12 +60,10 @@ public class HitBox extends Module {
         if (c == null) {
             return;
         }
-        if (c instanceof EntityPlayer) {
-            if (Utils.isFriended((EntityPlayer) c)) {
-                return;
-            }
+        if (TargetFilter.shouldFilter(c)) {
+            return;
         }
-        else if (playersOnly.isToggled()) {
+        if (!(c instanceof EntityPlayer) && playersOnly.isToggled()) {
             return;
         }
         mc.objectMouseOver = mv;

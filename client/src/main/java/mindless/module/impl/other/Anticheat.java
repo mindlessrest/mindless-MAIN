@@ -4,6 +4,7 @@ import mindless.event.AntiCheatFlagEvent;
 import mindless.event.ReceivePacketEvent;
 import mindless.module.Module;
 import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -29,7 +30,6 @@ public class Anticheat extends Module {
     private SliderSetting interval;
     private ButtonSetting enemyAdd;
     private ButtonSetting autoReport;
-    private ButtonSetting ignoreTeammates;
     private ButtonSetting atlasSuspect;
     private ButtonSetting shouldPing;
     private ButtonSetting autoBlock;
@@ -51,7 +51,6 @@ public class Anticheat extends Module {
         this.registerSetting(interval = new SliderSetting("Flag interval", " second", 20.0, 0.0, 60.0, 1.0));
         this.registerSetting(enemyAdd = new ButtonSetting("Add cheaters as enemy", false));
         this.registerSetting(autoReport = new ButtonSetting("Auto report", false));
-        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", false));
         this.registerSetting(atlasSuspect = new ButtonSetting("Only atlas suspect", false));
         this.registerSetting(shouldPing = new ButtonSetting("Should ping", true));
         this.registerSetting(new DescriptionSetting("Detected cheats"));
@@ -69,7 +68,7 @@ public class Anticheat extends Module {
     }
 
     private void alert(EntityPlayer entityPlayer, ButtonSetting mode) {
-        if (Utils.isFriended(entityPlayer) || (ignoreTeammates.isToggled() && Utils.isTeammate(entityPlayer))) {
+        if (TargetFilter.shouldFilter(entityPlayer)) {
             return;
         }
         if (atlasSuspect.isToggled()) {

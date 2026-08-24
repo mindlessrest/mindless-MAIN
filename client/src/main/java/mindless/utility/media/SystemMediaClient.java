@@ -367,10 +367,18 @@ public final class SystemMediaClient {
         lastNativeTrackKey = incomingTrackKey;
         lastNativePositionMs = incomingNativePosition;
 
-        if (previous == null || !previous.isAvailable() || trackChanged) {
+        if (previous == null || !previous.isAvailable()) {
             return incoming;
         }
-        if (!isSameTrack(previous, incoming)) {
+        if (trackChanged || !isSameTrack(previous, incoming)) {
+            // During track transitions SMTC may briefly report the new track with an empty
+            // title before metadata populates. Showing that for 1-2 frames causes a visible
+            // flicker (panel shrinks / "Nothing playing" flash). Keep the old info until the
+            // new track has a real title.
+            String title = incoming.getTitle();
+            if (title == null || title.trim().isEmpty()) {
+                return previous;
+            }
             return incoming;
         }
 

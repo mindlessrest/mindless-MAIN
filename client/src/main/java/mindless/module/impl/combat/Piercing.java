@@ -2,7 +2,7 @@ package mindless.module.impl.combat;
 
 import com.google.common.base.Predicates;
 import mindless.module.Module;
-import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
@@ -17,7 +17,6 @@ public class Piercing extends Module {
 
     private SliderSetting sortMode;
     private ButtonSetting ignoreBlocks;
-    private ButtonSetting ignoreTeammates;
     private ButtonSetting ignoreNonPlayer;
     private ButtonSetting weaponOnly;
     private ButtonSetting insideHitboxOnly;
@@ -31,7 +30,6 @@ public class Piercing extends Module {
         this.registerSetting(sortMode = new SliderSetting("Sort mode", 0, sortModes));
         this.registerSetting(ignoreBlocks = new ButtonSetting("Ignore blocks", false));
         this.registerSetting(ignoreNonPlayer = new ButtonSetting("Ignore non-players", true));
-        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", true));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
         this.registerSetting(insideHitboxOnly = new ButtonSetting("Inside hitbox only", false));
     }
@@ -88,8 +86,7 @@ public class Piercing extends Module {
                         .addCoord(look.xCoord * reach, look.yCoord * reach, look.zCoord * reach)
                         .expand(1.0, 1.0, 1.0), Predicates.and(EntitySelectors.NOT_SPECTATING, Entity::canBeCollidedWith)
         )) {
-            if ((this.ignoreNonPlayer.isToggled() && !(e instanceof EntityPlayer)) || (this.ignoreTeammates.isToggled() && Utils.isTeammate(e))
-                    || AntiBot.isBot(e) || (e instanceof EntityPlayer && Utils.isFriended((EntityPlayer) e))) {
+            if ((this.ignoreNonPlayer.isToggled() && !(e instanceof EntityPlayer)) || TargetFilter.shouldFilter(e)) {
                 continue;
             }
 

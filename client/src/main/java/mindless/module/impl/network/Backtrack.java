@@ -6,6 +6,7 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.render.TargetHUD;
 import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -34,7 +35,6 @@ public class Backtrack extends Module {
     private final SliderSetting cooldown;
     private final ButtonSetting disableAdventure;
     private final ButtonSetting flushOnDamage;
-    private final ButtonSetting ignoreTeammates;
     private final ButtonSetting weaponOnly;
     private final ButtonSetting showServerPosition;
     private final ColorSetting positionColor;
@@ -69,7 +69,6 @@ public class Backtrack extends Module {
         this.registerSetting(maxHurtTime = new SliderSetting("Max hurt time", "ms", 500.0, 0.0, 500.0, 10.0));
         this.registerSetting(disableAdventure = new ButtonSetting("Disable adventure", true));
         this.registerSetting(flushOnDamage = new ButtonSetting("Flush on damage", true));
-        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", true));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
         this.registerSetting(showServerPosition = new ButtonSetting("Show server position", true));
         this.registerSetting(positionColor = new ColorSetting("Position color", 0, 0, 250, 100));
@@ -168,7 +167,7 @@ public class Backtrack extends Module {
         if (!(e.target instanceof EntityPlayer)) return;
 
         EntityPlayer attacked = (EntityPlayer) e.target;
-        if (AntiBot.isBot(attacked) || (Utils.isTeammate(attacked) && ignoreTeammates.isToggled()) || Utils.isFriended(attacked)) return;
+        if (TargetFilter.shouldFilter(attacked)) return;
 
         double distance = mc.thePlayer.getDistanceToEntity(attacked);
         if (distance > maxDistance.getInput() || distance < minDistance.getInput()) return;

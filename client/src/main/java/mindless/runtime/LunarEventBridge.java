@@ -8,6 +8,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.server.S02PacketChat;
 import net.minecraft.world.World;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
+import mindless.event.CancelableMouseEvent;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
@@ -57,7 +58,7 @@ public final class LunarEventBridge {
     public static boolean nextMouseEvent() {
         if (!DIRECT_LUNAR) return Mouse.next();
         while (Mouse.next()) {
-            if (!MinecraftForge.EVENT_BUS.post(new MouseEvent())) return true;
+            if (!MinecraftForge.EVENT_BUS.post(new CancelableMouseEvent())) return true;
         }
         return false;
     }

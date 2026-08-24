@@ -2,7 +2,7 @@ package mindless.module.impl.combat;
 
 import mindless.event.PreUpdateEvent;
 import mindless.module.Module;
-import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
@@ -51,7 +51,7 @@ public class TPAura extends Module {
                 if (mc.thePlayer.getDistanceSqToEntity(entityPlayer) > rangeSq) {
                     continue;
                 }
-                if (AntiBot.isBot(entityPlayer) || Utils.isFriended(entityPlayer)) {
+                if (TargetFilter.shouldFilter(entityPlayer)) {
                     continue;
                 }
                 mc.thePlayer.setPosition(entityPlayer.posX + this.x, entityPlayer.posY + this.y, entityPlayer.posZ + this.z);

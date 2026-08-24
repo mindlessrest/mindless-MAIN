@@ -1,7 +1,7 @@
 package mindless.module.impl.combat;
 
 import mindless.module.Module;
-import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
@@ -81,7 +81,7 @@ public class WTap extends Module {
             if (!(event.target instanceof EntityPlayer)) {
                 return;
             }
-            if (AntiBot.isBot(event.target)) {
+            if (TargetFilter.shouldFilter(event.target)) {
                 return;
             }
         }

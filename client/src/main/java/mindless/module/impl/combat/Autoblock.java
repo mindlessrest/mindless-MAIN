@@ -10,7 +10,7 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.event.SendPacketEvent;
 import mindless.event.UseItemEvent;
-import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.utility.BlockUtils;
 import mindless.utility.CombatTargeting;
 import mindless.module.setting.impl.ButtonSetting;
@@ -44,7 +44,6 @@ public class Autoblock extends Module {
     private final ButtonSetting requireLmb;
     private final ButtonSetting requireRmb;
     private final ButtonSetting onlyWhenDamaged;
-    private final ButtonSetting ignoreTeammates;
 
     private final SliderSetting lagChance;
     private final SliderSetting lagMaxDuration;
@@ -88,7 +87,6 @@ public class Autoblock extends Module {
         this.registerSetting(requireLmb = new ButtonSetting("Require left mouse", true));
         this.registerSetting(requireRmb = new ButtonSetting("Require right mouse", false));
         this.registerSetting(onlyWhenDamaged = new ButtonSetting("Damaged", false));
-        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", true));
         this.closetModule = true;
     }
 
@@ -228,7 +226,7 @@ public class Autoblock extends Module {
             releaseLag();
         }
 
-        currentTarget = CombatTargeting.findTarget(range.getInput() * range.getInput(), ignoreTeammates.isToggled());
+        currentTarget = CombatTargeting.findTarget(range.getInput() * range.getInput());
         boolean killAuraAttacking = ModuleManager.killAura != null && ModuleManager.killAura.isEnabled() && !ModuleManager.killAura.isRequireMouseDown() && currentTarget != null;
         boolean rmbDown = Mouse.isButtonDown(1);
         boolean lmbDown = Mouse.isButtonDown(0) || killAuraAttacking;
@@ -415,7 +413,7 @@ public class Autoblock extends Module {
         }
 
         Entity entity = hit.entityHit;
-        return !(entity instanceof EntityPlayer) || AntiBot.isBot(entity);
+        return !(entity instanceof EntityPlayer) || TargetFilter.shouldFilter(entity);
     }
 
     private void syncBlockAnimation() {

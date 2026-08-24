@@ -87,11 +87,17 @@ public class MouseHelper {
     }
 
     public static void aL() {
-        a.add(LL = System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        LL = now;
+        a.add(now);
+        if (a.size() > 100) a.removeIf(o -> o < now - 1000L);
     }
 
     public static void aR() {
-        b.add(LR = System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        LR = now;
+        b.add(now);
+        if (b.size() > 100) b.removeIf(o -> o < now - 1000L);
     }
 
     public static int f() {

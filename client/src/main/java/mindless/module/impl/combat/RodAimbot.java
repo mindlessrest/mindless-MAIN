@@ -3,7 +3,7 @@ package mindless.module.impl.combat;
 import mindless.event.PreMotionEvent;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
-import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RotationUtils;
@@ -18,7 +18,6 @@ public class RodAimbot extends Module {
     private SliderSetting predicatedTicks;
     private SliderSetting distance;
     private ButtonSetting aimInvis;
-    private ButtonSetting ignoreTeammates;
     public boolean rotate;
     private boolean rightClick;
     private EntityPlayer entity;
@@ -29,7 +28,6 @@ public class RodAimbot extends Module {
         this.registerSetting(predicatedTicks = new SliderSetting("Predicted ticks", 5.0, 0.0, 20.0, 1.0));
         this.registerSetting(distance = new SliderSetting("Distance", 6, 3, 30, 0.5));
         this.registerSetting(aimInvis = new ButtonSetting("Aim invis", false));
-        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", false));
     }
 
     public void onDisable() {
@@ -92,17 +90,11 @@ public class RodAimbot extends Module {
                 if (mc.thePlayer.getDistanceSqToEntity(entityPlayer) > distance.getInput() * distance.getInput()) {
                     continue;
                 }
-                if (Utils.isFriended(entityPlayer)) {
+                if (TargetFilter.shouldFilter(entityPlayer)) {
                     continue;
                 }
                 final float n = (float)fov.getInput();
                 if (n != 360.0f && !Utils.inFov(n, entityPlayer)) {
-                    continue;
-                }
-                if (AntiBot.isBot(entityPlayer)) {
-                    continue;
-                }
-                if (ignoreTeammates.isToggled() && Utils.isTeammate(entityPlayer)) {
                     continue;
                 }
                 return entityPlayer;

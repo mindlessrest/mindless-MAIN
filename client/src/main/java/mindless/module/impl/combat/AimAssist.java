@@ -4,7 +4,7 @@ import mindless.event.ClientRotationEvent;
 import mindless.helper.RotationHelper;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
-import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RotationUtils;
@@ -33,7 +33,6 @@ public class AimAssist extends Module {
 
     private ButtonSetting aimInvis;
     private ButtonSetting clickAim;
-    private ButtonSetting ignoreTeammates;
     private ButtonSetting ignoreBehindWalls;
     private ButtonSetting ignoreBehindEntities;
     private ButtonSetting stopWhenBreaking;
@@ -62,7 +61,6 @@ public class AimAssist extends Module {
         this.registerSetting(ignoreBehindEntities = new ButtonSetting("Ignore behind entities", false));
         this.registerSetting(aimInvis = new ButtonSetting("Aim invis", false));
         this.registerSetting(clickAim = new ButtonSetting("Require mouse", true));
-        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", true));
         this.registerSetting(stopWhenBreaking = new ButtonSetting("Stop when breaking", false));
         this.registerSetting(hoverDelay = new SliderSetting("Hover delay", " ms", 100, 0, 500, 10));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
@@ -156,19 +154,13 @@ public class AimAssist extends Module {
             if (entityPlayer == mc.thePlayer || entityPlayer.deathTime != 0) {
                 continue;
             }
-            if (Utils.isFriended(entityPlayer)) {
-                continue;
-            }
-            if (ignoreTeammates.isToggled() && Utils.isTeammate(entityPlayer)) {
+            if (TargetFilter.shouldFilter(entityPlayer)) {
                 continue;
             }
             if (!aimInvis.isToggled() && entityPlayer.isInvisible()) {
                 continue;
             }
             if (RotationUtils.distanceSqFromEyeToClosestOnAABB(entityPlayer) > range.getInput() * range.getInput()) {
-                continue;
-            }
-            if (AntiBot.isBot(entityPlayer)) {
                 continue;
             }
             if (fovVal != 360) {

@@ -442,29 +442,33 @@ public class Scaffold extends Module {
         aim = solveAim(collectTargets());
 
         if (aim != null) {
-            // Yaw goes straight to the solved value instead of easing into it.
-            //
-            // Every angle the solver can return is a whole 45 degree step from the camera, and
-            // those are the only angles the movement fix can reproduce exactly. Easing between
-            // two of them spends ticks on angles that are not, and each of those ticks is the fix
-            // picking the wrong one of its eight directions and throwing you sideways -- which is
-            // the left-right-left-right, and the wobble for the first few blocks of a bridge.
+            float targetYaw = aim.yaw;
             float targetPitch = aim.pitch;
+
             float nextPitch;
             if (Float.isNaN(rotCurrentPitch)) {
                 nextPitch = MathHelper.clamp_float(targetPitch, -89.0f, 89.0f);
             } else {
-                float speed = telly ? 80.0f
+                float pitchSpeed = telly ? 80.0f
                         : isTowering() ? 80.0f
                         : (diagonalSetting.isToggled() && isMovingDiagonal() ? 70.0f : 55.0f);
                 nextPitch = MathHelper.clamp_float(
                         rotCurrentPitch + MathHelper.clamp_float(
-                                targetPitch - rotCurrentPitch, -speed, speed),
+                                targetPitch - rotCurrentPitch, -pitchSpeed, pitchSpeed),
                         -89.0f, 89.0f);
             }
 
+            float nextYaw;
+            if (Float.isNaN(rotCurrentYaw)) {
+                nextYaw = targetYaw;
+            } else {
+                float yawSpeed = telly ? 100.0f : isTowering() ? 80.0f : 60.0f;
+                float yawDelta = MathHelper.wrapAngleTo180_float(targetYaw - rotCurrentYaw);
+                nextYaw = rotCurrentYaw + MathHelper.clamp_float(yawDelta, -yawSpeed, yawSpeed);
+            }
+
             float[] finalRots = RotationUtils.fixRotation(
-                    quantizeAngle(aim.yaw), quantizeAngle(nextPitch),
+                    quantizeAngle(nextYaw), quantizeAngle(nextPitch),
                     RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
 
             idleTicks = 0;
@@ -474,8 +478,18 @@ public class Scaffold extends Module {
             e.setYaw(finalRots[0]);
             e.setPitch(finalRots[1]);
 
-            RotationHelper.get().setRotations(finalRots[0], finalRots[1]);
-            placeQueued = true;
+            // Only engage movement fix and queue placement once the rotation has arrived
+            // at the target. During easing ticks the player moves naturally off camera yaw,
+            // which avoids the sideways shove from the fix picking wrong buckets at
+            // intermediate angles and keeps sprint alive.
+            float yawErr = Math.abs(MathHelper.wrapAngleTo180_float(finalRots[0] - targetYaw));
+            float pitchErr = Math.abs(targetPitch - finalRots[1]);
+            if (yawErr < 5.0f && pitchErr < 10.0f) {
+                RotationHelper.get().setRotations(finalRots[0], finalRots[1]);
+                placeQueued = true;
+            } else {
+                placeQueued = false;
+            }
         } else {
             holdOrRelease(e);
             placeQueued = false;

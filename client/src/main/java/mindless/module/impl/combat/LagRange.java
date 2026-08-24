@@ -35,7 +35,6 @@ public class LagRange extends Module {
 
     private final SliderSetting range;
     private final SliderSetting maximumDelay;
-    private final ButtonSetting ignoreTeammates;
     private final ButtonSetting sprintReset;
     private final ButtonSetting blockSword;
     private final ButtonSetting usedSplashPotion;
@@ -65,7 +64,6 @@ public class LagRange extends Module {
         this.liteModule = true;
         this.registerSetting(range = new SliderSetting("Range", 6.0, 3.0, 10.0, 0.1));
         this.registerSetting(maximumDelay = new SliderSetting("Maximum delay", "ms", 200, 50, 1000, 10));
-        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", true));
         this.registerSetting(new DescriptionSetting("Flush conditions"));
         this.registerSetting(sprintReset = new ButtonSetting("Sprint reset", true));
         this.registerSetting(blockSword = new ButtonSetting("Block sword", true));
@@ -119,7 +117,7 @@ public class LagRange extends Module {
         double rangeSq = range.getInput() * range.getInput();
         boolean moving = isMoving();
 
-        EntityPlayer nextTarget = CombatTargeting.findTarget(rangeSq, ignoreTeammates.isToggled());
+        EntityPlayer nextTarget = CombatTargeting.findTarget(rangeSq);
         if (!sameTarget(nextTarget)) {
             if (isLagging) flushLag();
             lastDistSq = -1;

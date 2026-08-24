@@ -5,7 +5,7 @@ import mindless.event.PrePlayerInputEvent;
 import mindless.event.PrePlayerInteractEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
-import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ReflectionUtils;
@@ -135,9 +135,7 @@ public class AntiFireball extends Module {
         List<EntityPlayer> players = new ArrayList<>();
         for (EntityPlayer player : mc.theWorld.playerEntities) {
             if (player == mc.thePlayer || player.deathTime != 0) continue;
-            if (Utils.isFriended(player)) continue;
-            if (Utils.isTeammate(player)) continue;
-            if (AntiBot.isBot(player)) continue;
+            if (TargetFilter.shouldFilter(player)) continue;
             players.add(player);
         }
         players.sort(Comparator.comparingDouble(p -> mc.thePlayer.getDistanceSqToEntity(p)));
