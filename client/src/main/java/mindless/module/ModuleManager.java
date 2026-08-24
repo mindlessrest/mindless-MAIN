@@ -106,6 +106,7 @@ public class ModuleManager {
     public static Autoblock autoBlock;
     public static Backtrack backtrack;
     public static Debug debug;
+    public static mindless.module.impl.other.DiscordRPC discordRPC;
     public static mindless.script.Manager scriptManager;
 
     public void register() {
@@ -182,6 +183,7 @@ public class ModuleManager {
 
         this.addModule(new Anticheat());
         this.addModule(new ChatBypass());
+        this.addModule(discordRPC = new mindless.module.impl.other.DiscordRPC());
         this.addModule(new FakeChat());
         this.addModule(new LatencyAlerts());
         this.addModule(nameHider = new NameHider());

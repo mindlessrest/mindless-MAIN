@@ -11,9 +11,6 @@ import mindless.helper.DebugHelper;
 import mindless.helper.MouseHelper;
 import mindless.helper.PingHelper;
 import mindless.helper.RotationHelper;
-import mindless.keystroke.KeyStrokeCommand;
-import mindless.keystroke.KeyStrokeConfigGui;
-import mindless.keystroke.KeyStrokeRenderer;
 import mindless.lag.handler.UnifiedLagHandler;
 import mindless.runtime.LunarEventBridge;
 import mindless.runtime.ReinjectHotkey;
@@ -55,10 +52,6 @@ public class Raven {
 
     public static Minecraft mc = Minecraft.getMinecraft();
 
-    private static KeyStrokeRenderer keyStrokeRenderer;
-
-    private static boolean isKeyStrokeConfigGuiToggled;
-
     private static final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(2);
     private static final ExecutorService cachedExecutor = Executors.newCachedThreadPool();
 
@@ -85,8 +78,6 @@ public class Raven {
         Runtime.getRuntime().addShutdownHook(new Thread(scheduledExecutor::shutdown));
         Runtime.getRuntime().addShutdownHook(new Thread(cachedExecutor::shutdown));
 
-        ClientCommandHandler.instance.registerCommand(new KeyStrokeCommand());
-
         registerHandler(this, true);
         ReinjectHotkey reinjectHotkey = new ReinjectHotkey();
         MinecraftForge.EVENT_BUS.register(reinjectHotkey);
@@ -94,7 +85,6 @@ public class Raven {
         registerHandler(new DebugHelper(), false);
         registerHandler(new MouseHelper(), false);
         registerHandler(RotationHelper.get(), false);
-        registerHandler(new KeyStrokeRenderer(), false);
         registerHandler(new PingHelper(), false);
         registerHandler(packetsHandler = new PacketsHandler(), false);
         registerHandler(new ModuleUtils(), false);
@@ -112,7 +102,6 @@ public class Raven {
         moduleManager.register();
         registerHandler(new BlockHighlightSharedHandler(), true);
         scriptManager = new ScriptManager();
-        keyStrokeRenderer = new KeyStrokeRenderer();
         clickGui = new ModernClickGui();
         profileManager = new ProfileManager();
         ScriptDefaults.reloadModules();
@@ -176,11 +165,6 @@ public class Raven {
                     }
                 }
             }
-
-            if (isKeyStrokeConfigGuiToggled) {
-                isKeyStrokeConfigGuiToggled = false;
-                mc.displayGuiScreen(new KeyStrokeConfigGui());
-            }
         }
         else {
             MouseHelper.clearWheelCache();
@@ -238,14 +222,6 @@ public class Raven {
         return cachedExecutor;
     }
 
-    public static KeyStrokeRenderer getKeyStrokeRenderer() {
-        return keyStrokeRenderer;
-    }
-
-    public static void toggleKeyStrokeConfigGui() {
-        isKeyStrokeConfigGuiToggled = true;
-    }
-
     public static void handleFrozenKeybinds() {
         if (!Utils.nullCheck()) return;
 
@@ -275,11 +251,6 @@ public class Raven {
             for (Module module : scriptManager.scripts.values()) {
                 module.syncKeyBindState();
             }
-        }
-
-        if (isKeyStrokeConfigGuiToggled) {
-            isKeyStrokeConfigGuiToggled = false;
-            mc.displayGuiScreen(new KeyStrokeConfigGui());
         }
     }
 
