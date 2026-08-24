@@ -219,6 +219,17 @@ public final class VisualizerRenderer {
         float maxHeight = innerHeight * module.maxHeightFraction();
         float span = Math.max(0.0F, maxHeight - minHeight);
 
+        if (module.baselineEnabled()) {
+            // Sits under the bars rather than around them, at the same weight as the rule above
+            // the lyrics, so the section reads as part of the card instead of a panel on top of
+            // it. The bars overlap it, which is what makes them look like they are standing on it.
+            int baselineAlpha = Math.round(34 * alpha);
+            if (baselineAlpha > 1) {
+                RenderUtils.drawRect(innerX, bottom, innerX + innerWidth, bottom + 0.75F,
+                        (baselineAlpha << 24) | 0xFFFFFF);
+            }
+        }
+
         int style = module.barStyle();
         boolean mirror = module.mirrored();
         boolean gradient = module.gradientEnabled();

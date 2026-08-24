@@ -118,20 +118,17 @@ public abstract class TransformerGuiNewChat {
         }
         GlStateManager.disableBlend();
 
-        if (chatOpen && rendered > 0) {
+        // Only while the chat has actually been scrolled back, and clear of the text. Kept in
+        // step with MixinGuiNewChat, which carries the explanation.
+        if (chatOpen && isScrolled && rendered > 0) {
             int fontHeight = mc.fontRendererObj.FONT_HEIGHT;
             int totalHeight = totalLines * fontHeight + totalLines;
             int visibleHeight = rendered * fontHeight + rendered;
-            if (totalHeight != visibleHeight) {
+            if (totalHeight > visibleHeight) {
                 int scrollbarY = scrollPos * visibleHeight / totalHeight;
-                int scrollbarHeight = visibleHeight * visibleHeight / totalHeight;
-                int alpha = scrollbarY > 0 ? 170 : 96;
-                Gui.drawRect(0, -scrollbarY, 2,
-                        -scrollbarY - Math.max(1, scrollbarHeight),
-                        (isScrolled ? 0xCC3333 : 0x333366) | (alpha << 24));
-                Gui.drawRect(2, -scrollbarY, 1,
-                        -scrollbarY - Math.max(1, scrollbarHeight),
-                        0xCCCCCC | (alpha << 24));
+                int scrollbarHeight = Math.max(4, visibleHeight * visibleHeight / totalHeight);
+                Gui.drawRect(-5, -scrollbarY, -3,
+                        -scrollbarY - scrollbarHeight, 0xFFFFFF | (120 << 24));
             }
         }
 

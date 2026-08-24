@@ -132,20 +132,23 @@ public abstract class MixinGuiNewChat {
         }
         GlStateManager.disableBlend();
 
-        if (chatOpen && rendered > 0) {
+        // Only while the chat has actually been scrolled back, and clear of the text.
+        //
+        // Vanilla translates the whole thing three pixels left before drawing this, so the bar
+        // lands outside the message column. That translate was lost when this rendering was
+        // rewritten, leaving it at local x 0..3 -- directly on top of the first characters of
+        // every line, which is the stray coloured stripe down the side of the chat box. Drawing
+        // it whenever the backlog overflowed meant it appeared the moment chat was opened, with
+        // nothing to scroll, and in vanilla red-and-blue that matched nothing else on screen.
+        if (chatOpen && isScrolled && rendered > 0) {
             int fontHeight = mc.fontRendererObj.FONT_HEIGHT;
             int totalHeight = totalLines * fontHeight + totalLines;
             int visibleHeight = rendered * fontHeight + rendered;
-            if (totalHeight != visibleHeight) {
+            if (totalHeight > visibleHeight) {
                 int scrollbarY = scrollPos * visibleHeight / totalHeight;
-                int scrollbarHeight = visibleHeight * visibleHeight / totalHeight;
-                int alpha = scrollbarY > 0 ? 170 : 96;
-                net.minecraft.client.gui.Gui.drawRect(0, -scrollbarY, 2,
-                        -scrollbarY - Math.max(1, scrollbarHeight),
-                        (isScrolled ? 0xCC3333 : 0x333366) | (alpha << 24));
-                net.minecraft.client.gui.Gui.drawRect(2, -scrollbarY, 1,
-                        -scrollbarY - Math.max(1, scrollbarHeight),
-                        0xCCCCCC | (alpha << 24));
+                int scrollbarHeight = Math.max(4, visibleHeight * visibleHeight / totalHeight);
+                net.minecraft.client.gui.Gui.drawRect(-5, -scrollbarY, -3,
+                        -scrollbarY - scrollbarHeight, 0xFFFFFF | (120 << 24));
             }
         }
 

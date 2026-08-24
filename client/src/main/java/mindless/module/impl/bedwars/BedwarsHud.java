@@ -99,11 +99,9 @@ public abstract class BedwarsHud extends Module {
         float top = posY;
         float radius = 7.0f * mindless.module.impl.theme.ThemeManager.roundingScale();
 
-        // Same construction as the other glass panels: shadow and hairline first, because
-        // everything from prepareBlur on is stencilled to the panel and would paint over them.
+        // Same construction as the other glass panels: the shadow first, because everything from
+        // prepareBlur on is stencilled to the panel and would paint over it.
         RoundedUtils.drawRoundShadow(left, top, w, h, radius, 5.0f, new Color(0, 0, 0, 120).getRGB());
-        RoundedUtils.drawRound(left - 1.0f, top - 1.0f, w + 2.0f, h + 2.0f, radius + 1.0f,
-                new Color(255, 255, 255, 28));
 
         BlurUtils.prepareBlur(left, top, w, h);
         RoundedUtils.drawRound(left, top, w, h, radius, 0xFF000000);
@@ -111,6 +109,11 @@ public abstract class BedwarsHud extends Module {
         RoundedUtils.drawRound(left, top, w, h, radius, new Color(0, 0, 0, 125));
         RoundedUtils.drawGradientVertical(left, top, w, h, radius,
                 new Color(255, 255, 255, 18), new Color(255, 255, 255, 4));
+
+        // A real ring rather than a translucent rect showing round the edges of the fill -- see
+        // SessionInfo, where that trick turned the whole panel white whenever the blur missed.
+        RoundedUtils.drawRoundOutline(left, top, w, h, radius, 1.0f,
+                new Color(0, 0, 0, 0), new Color(255, 255, 255, 28));
 
         // The rounded and blur shaders leave a program bound; glyphs drawn through it come out
         // garbled.
