@@ -656,6 +656,9 @@ public class CategoryComponent {
             case render:
                 itemStack = new ItemStack(Items.ender_eye);
                 break;
+            case bedwars:
+                itemStack = new ItemStack(Items.bed);
+                break;
             case other:
                 itemStack = new ItemStack(Items.clock);
                 break;

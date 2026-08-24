@@ -17,7 +17,7 @@ public class AutoRequeue extends Module {
     private long receiveTime = 0;
 
     public AutoRequeue() {
-        super("Auto Requeue", category.other);
+        super("Auto Requeue", category.bedwars);
         this.registerSetting(new DescriptionSetting("Automatically requeues games."));
         this.registerSetting(delay = new SliderSetting("Delay", " second", 0.5, 0, 5, 0.1));
         this.closetModule = true;

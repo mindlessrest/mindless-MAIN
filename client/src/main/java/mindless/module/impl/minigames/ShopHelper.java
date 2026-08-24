@@ -73,7 +73,7 @@ public class ShopHelper extends Module {
     }
 
     public ShopHelper() {
-        super("ShopHelper", category.other);
+        super("ShopHelper", category.bedwars);
         this.registerSetting(instantBuy = new ButtonSetting("Instant buy", true));
         this.registerSetting(highlightAffordable = new ButtonSetting("Highlight affordable", true));
         this.registerSetting(replaceClicks = new ButtonSetting("Replace clicks", true));

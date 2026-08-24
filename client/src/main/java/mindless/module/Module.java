@@ -258,6 +258,7 @@ public class Module {
         player,
         world,
         render,
+        bedwars,
         other,
         client,
         theme,

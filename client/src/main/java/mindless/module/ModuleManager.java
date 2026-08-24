@@ -9,6 +9,7 @@ import mindless.module.impl.client.SpotifyMiniPlayer;
 import mindless.module.impl.theme.ThemeManager;
 import mindless.module.impl.combat.*;
 import mindless.module.impl.fun.Capes;
+import mindless.module.impl.bedwars.*;
 import mindless.module.impl.minigames.*;
 import mindless.module.impl.movement.*;
 import mindless.module.impl.render.ExtraBobbing;
@@ -147,6 +148,7 @@ public class ModuleManager {
         this.addModule(new HitEffect());
 
         this.addModule(new AutoRequeue());
+        this.addModule(new AntiMisplace());
         this.addModule(bedwars = new BedWars());
         this.addModule(shopHelper = new ShopHelper());
 

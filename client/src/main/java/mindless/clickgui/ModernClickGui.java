@@ -2301,6 +2301,17 @@ public final class ModernClickGui extends ClickGui {
                 circle(x - 0.4f, y - 3.6f, 1.25f, color);
                 circle(x + 2.8f, y - 2.4f, 1.25f, color);
                 break;
+            case bedwars:
+                // Bed from the side: headboard, mattress, pillow, two legs.
+                segments(color,
+                    x - 6.5f, y + 2.5f, x - 6.5f, y - 4.5f,
+                    x - 6.5f, y - 0.5f, x + 6.5f, y - 0.5f,
+                    x - 6.5f, y + 2.5f, x + 6.5f, y + 2.5f,
+                    x + 6.5f, y - 0.5f, x + 6.5f, y + 2.5f,
+                    x - 5f, y + 2.5f, x - 5f, y + 4.5f,
+                    x + 5f, y + 2.5f, x + 5f, y + 4.5f);
+                lineBox(x - 5.5f, y - 2.5f, x - 2.5f, y - 0.5f, color);
+                break;
             case scripts:
                 // Code brackets </>
                 segments(color,
@@ -2999,6 +3010,7 @@ public final class ModernClickGui extends ClickGui {
             case world: return "W"; case other: return "O";
             case client: return "S"; case theme: return "T";
             case profiles: return "P"; case scripts: return "<";
+            case bedwars: return "B";
             default: return "*";
         }
     }

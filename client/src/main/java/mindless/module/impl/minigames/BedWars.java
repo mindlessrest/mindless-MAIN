@@ -119,7 +119,7 @@ public class BedWars extends Module {
     private int obsidianColor = new Color(106, 13, 173).getRGB();
 
     public BedWars() {
-        super("Bed Wars", category.other);
+        super("Bed Wars", category.bedwars);
         this.liteModule = true;
         this.registerSetting(closestEnemy = new SliderSetting("Closest enemy", true, 0, CLOSEST_ENEMY_MODES));
         this.registerSetting(whitelistOwnBed = new ButtonSetting("Whitelist own bed", true));
