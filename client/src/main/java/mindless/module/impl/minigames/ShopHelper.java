@@ -51,7 +51,7 @@ public class ShopHelper extends Module {
 
     static {
         register(ItemCategory.SWORD, Items.wooden_sword, Items.stone_sword, Items.iron_sword, Items.diamond_sword);
-        register(ItemCategory.ARMOR, Items.leather_leggings, Items.iron_boots, Items.diamond_boots);
+        register(ItemCategory.ARMOR, Items.chainmail_leggings, Items.iron_leggings, Items.diamond_leggings);
         register(ItemCategory.PICKAXE, Items.wooden_pickaxe, Items.iron_pickaxe, Items.golden_pickaxe, Items.diamond_pickaxe);
         register(ItemCategory.AXE, Items.wooden_axe, Items.stone_axe, Items.iron_axe, Items.diamond_axe);
         register(ItemCategory.STICK, Items.stick);
@@ -172,7 +172,7 @@ public class ShopHelper extends Module {
         if (preventDuplicate.isToggled() && !title.contains("Upgrades & Traps")) {
             ItemCost cost = getCostFromLore(stack);
             if (cost != null && !shouldHighlight(stack, cost)) {
-                if ((item instanceof ItemSword || item == Items.stick) && item != Items.wooden_sword) {
+                if ((item instanceof ItemSword || item == Items.stick) && item != Items.golden_sword) {
                     Utils.sendMessage(EnumChatFormatting.RED + "[ShopHelper] Prevented duplicate purchase!");
                     return 1; // cancel
                 }
@@ -205,6 +205,7 @@ public class ShopHelper extends Module {
                 if (!isNumeric(split[1])) continue;
                 amount = Integer.parseInt(split[1]);
                 String type = split[2].toLowerCase();
+                if (type.contains("unlocked")) return null;
                 resourceItem = getResourceFromName(type);
             } else if (clean.contains("Tier") && split.length >= 3) {
                 int commaIndex = clean.lastIndexOf(',');
@@ -214,10 +215,10 @@ public class ShopHelper extends Module {
                 if (costSplit.length < 2 || !isNumeric(costSplit[0])) continue;
                 amount = Integer.parseInt(costSplit[0]);
                 String type = costSplit[1].toLowerCase();
+                if (type.contains("unlocked")) return null;
                 resourceItem = getResourceFromName(type);
             }
 
-            if (clean.contains("Unlocked")) return null;
             if (resourceItem != null) return new ItemCost(resourceItem, amount);
         }
         return null;
