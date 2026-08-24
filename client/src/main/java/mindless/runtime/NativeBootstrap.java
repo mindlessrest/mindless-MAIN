@@ -38,16 +38,21 @@ public final class NativeBootstrap {
 
     private NativeBootstrap() {}
 
+    public static synchronized void resetStateForReinject() {
+        STATE.set(BootstrapState.NOT_STARTED);
+        bootstrapFailure = null;
+    }
+
     public static synchronized void start() {
         BootstrapState currentState = STATE.get();
         if (currentState != BootstrapState.NOT_STARTED) {
             if (currentState == BootstrapState.FAILED) {
-                throw new IllegalStateException(
-                        "Raven bootstrap already failed and cannot be retried safely",
-                        bootstrapFailure);
+                STATE.set(BootstrapState.NOT_STARTED);
+                bootstrapFailure = null;
+            } else {
+                log("start() ignored: bootstrap is already " + currentState.name().toLowerCase());
+                return;
             }
-            log("start() ignored: bootstrap is already " + currentState.name().toLowerCase());
-            return;
         }
         STATE.set(BootstrapState.STARTING);
         ProgressPipe.connect();
@@ -55,6 +60,8 @@ public final class NativeBootstrap {
         try {
             ProgressPipe.report(0.57f, "Loading Mindless");
             RavenTransformerManager manager = RavenTransformerManager.get();
+            manager.setDisabled(false);
+            TransformerHooks.retransformNative();
             ProgressPipe.report(0.62f, "Loading Mindless");
             manager.assertNoTransformFailures();
             ProgressPipe.report(0.65f, "Loading Mindless");
@@ -167,20 +174,25 @@ public final class NativeBootstrap {
     private static void driveModInit() throws Exception {
         ProgressPipe.report(0.72f, "Starting modules");
         ProgressPipe.report(0.75f, "Loading modules");
-        Raven mod = new Raven();
-        ProgressPipe.report(0.80f, "Loading modules");
-        ProgressPipe.report(0.83f, "Applying patches");
-        Method init = Raven.class.getDeclaredMethod(
-                "init", net.minecraftforge.fml.common.event.FMLInitializationEvent.class);
-        init.setAccessible(true);
-        try {
-            ProgressPipe.report(0.88f, "Almost there");
-            init.invoke(mod, (Object) null);
-        } catch (InvocationTargetException wrapper) {
-            Throwable cause = wrapper.getCause();
-            if (cause instanceof Exception) throw (Exception) cause;
-            if (cause instanceof Error) throw (Error) cause;
-            throw wrapper;
+        if (Raven.isUnloaded()) {
+            log("Re-initializing Mindless via loader re-injection");
+            Raven.reinject();
+        } else {
+            Raven mod = new Raven();
+            ProgressPipe.report(0.80f, "Loading modules");
+            ProgressPipe.report(0.83f, "Applying patches");
+            Method init = Raven.class.getDeclaredMethod(
+                    "init", net.minecraftforge.fml.common.event.FMLInitializationEvent.class);
+            init.setAccessible(true);
+            try {
+                ProgressPipe.report(0.88f, "Almost there");
+                init.invoke(mod, (Object) null);
+            } catch (InvocationTargetException wrapper) {
+                Throwable cause = wrapper.getCause();
+                if (cause instanceof Exception) throw (Exception) cause;
+                if (cause instanceof Error) throw (Error) cause;
+                throw wrapper;
+            }
         }
         ProgressPipe.report(0.92f, "Almost there");
         ProgressPipe.report(0.95f, "Finishing up");

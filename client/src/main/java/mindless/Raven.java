@@ -13,7 +13,6 @@ import mindless.helper.PingHelper;
 import mindless.helper.RotationHelper;
 import mindless.lag.handler.UnifiedLagHandler;
 import mindless.runtime.LunarEventBridge;
-import mindless.runtime.ReinjectHotkey;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.script.ScriptDefaults;
@@ -79,9 +78,6 @@ public class Raven {
         Runtime.getRuntime().addShutdownHook(new Thread(cachedExecutor::shutdown));
 
         registerHandler(this, true);
-        ReinjectHotkey reinjectHotkey = new ReinjectHotkey();
-        MinecraftForge.EVENT_BUS.register(reinjectHotkey);
-        LunarEventBridge.registerTickListener(reinjectHotkey);
         registerHandler(new DebugHelper(), false);
         registerHandler(new MouseHelper(), false);
         registerHandler(RotationHelper.get(), false);
@@ -398,10 +394,14 @@ public class Raven {
             markNativeLog("Untransform classes failed: " + t);
         }
 
-        markNativeLog("Raven uninjected; awaiting in-game reinject");
         try {
-            Utils.sendMessage("&7Mindless uninjected. Press "
-                    + org.lwjgl.input.Keyboard.getKeyName(getReinjectKey()) + " to load it again.");
+            mindless.runtime.NativeBootstrap.resetStateForReinject();
+        } catch (Throwable ignored) {
+        }
+
+        markNativeLog("Raven self-destructed; ready for loader re-injection");
+        try {
+            Utils.sendMessage("&7Mindless self-destructed. Run MindlessLoader to load again.");
         } catch (Throwable ignored) {
         }
     }
@@ -429,15 +429,6 @@ public class Raven {
 
     /** Modules that were on when the client was torn down, restored on the way back in. */
     private static final java.util.List<Module> enabledBeforeUnload = new java.util.ArrayList<Module>();
-
-    /** Key that brings the client back after an uninject. */
-    public static int getReinjectKey() {
-        try {
-            return (int) mindless.module.impl.client.Settings.reinjectKey.getKey();
-        } catch (Throwable ignored) {
-            return org.lwjgl.input.Keyboard.KEY_INSERT;
-        }
-    }
 
     /**
      * Brings the client back after an uninject, without touching the loader.
