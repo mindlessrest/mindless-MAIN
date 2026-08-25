@@ -83,6 +83,7 @@ public class SexyESP extends Module {
     private final SliderSetting outlineGlowSize;
     private final SliderSetting outlineGlowStrength;
     private final ButtonSetting outlineEdge;
+    private final ButtonSetting outlineTeamColor;
     private final ColorSetting outlineColor;
 
     public static boolean renderingOutlinePass = false;
@@ -130,6 +131,7 @@ public class SexyESP extends Module {
         registerSetting(outlineGlowSize = new SliderSetting(outlineGroup, "Glow size", 4.0, 0.0, 10.0, 0.5));
         registerSetting(outlineGlowStrength = new SliderSetting(outlineGroup, "Glow strength", 1.0, 0.1, 3.0, 0.1));
         registerSetting(outlineEdge = new ButtonSetting(outlineGroup, "Edge", false));
+        registerSetting(outlineTeamColor = new ButtonSetting(outlineGroup, "Team color", false));
         registerSetting(outlineColor = new ColorSetting(outlineGroup, "Color", 180, 0, 255));
 
         registerSetting(localPlayer = new ButtonSetting("Local player", true));
@@ -639,19 +641,25 @@ public class SexyESP extends Module {
         int oR = (outCol >> 16) & 0xFF;
         int oG = (outCol >> 8) & 0xFF;
         int oB = outCol & 0xFF;
+        boolean useTeamColorOutline = outlineTeamColor.isToggled();
 
         double maxDistSq = maxDistance.getInput() * maxDistance.getInput();
-        // The program is bound per entity, not once around the loop. renderEntityStatic resets
-        // the active program on its way through, so from the second player onward setColor was
-        // calling glUniform with nothing bound -- which is GL_INVALID_OPERATION, and is the 1282
-        // the diagnostics attributed to this pass.
         for (EntityPlayer player : mc.theWorld.playerEntities) {
             if (!isValidEntity(player)) continue;
             if (!RenderUtils.isInViewFrustum(player)) continue;
             if (!RenderUtils.isWithinDistanceSqToRenderView(player, maxDistSq)) continue;
+            int pR = oR, pG = oG, pB = oB;
+            if (useTeamColorOutline) {
+                int teamCol = Utils.getColorFromEntity(player);
+                if (teamCol != -1) {
+                    pR = (teamCol >> 16) & 0xFF;
+                    pG = (teamCol >> 8) & 0xFF;
+                    pB = teamCol & 0xFF;
+                }
+            }
             glowShader.use();
             mindless.utility.Diagnostics.gl("esp: bound glow program");
-            glowShader.setColor(oR, oG, oB, 255);
+            glowShader.setColor(pR, pG, pB, 255);
             mindless.utility.Diagnostics.gl("esp: set silhouette colour");
             boolean invis = player.isInvisible();
             if (showInvisible.isToggled()) player.setInvisible(false);
