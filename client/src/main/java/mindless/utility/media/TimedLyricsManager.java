@@ -106,6 +106,7 @@ final class TimedLyricsManager {
      */
     private static final long EMPTY_TRACK_GRACE_MS = 900L;
     private long emptyTrackSince = 0L;
+    private long nativeFallbackStartMs = 0L;
 
     public synchronized void updateTrackFromNative(SystemMediaInfo mediaInfo,
             boolean lyricsAvailable, List<TimedLyrics.LyricsLine> lyricsLines) {
@@ -126,11 +127,14 @@ final class TimedLyricsManager {
         emptyTrackSince = 0L;
 
         boolean trackChanged = !trackKey.equals(activeTrackKey);
+        if (trackChanged) nativeFallbackStartMs = 0L;
         activeTrackKey = trackKey;
 
-        // DLL owns lyrics fetching — cancel any in-flight Java HTTP request
-        cancelPendingRequest();
-        pendingTrackKey = "";
+        // DLL owns lyrics fetching when it has results — cancel Java requests only if it delivered
+        if (lyricsAvailable && lyricsLines != null && !lyricsLines.isEmpty()) {
+            cancelPendingRequest();
+            pendingTrackKey = "";
+        }
 
         if (lyricsAvailable && lyricsLines != null && !lyricsLines.isEmpty()) {
             // Reuse the existing instance when the track's lyrics have not actually changed.
@@ -164,9 +168,39 @@ final class TimedLyricsManager {
         }
 
         if (trackChanged || !currentLyrics.isAvailable()) {
-            // DLL still fetching — show loading state
             currentLyrics = TimedLyrics.loading();
         }
+
+        // Fallback: if native bridge hasn't delivered lyrics after 3 seconds, try Java HTTP providers (LRCLIB + Netease)
+        if (trackKey.equals(pendingTrackKey) || pendingRequest != null) {
+            return;
+        }
+        if (nativeFallbackStartMs == 0L) {
+            nativeFallbackStartMs = System.currentTimeMillis();
+        }
+        if (System.currentTimeMillis() - nativeFallbackStartMs < 3000L) {
+            return;
+        }
+
+        pendingTrackKey = trackKey;
+        final SystemMediaInfo requestInfo = mediaInfo;
+        final String requestTrackKey = trackKey;
+        pendingRequest = Raven.getCachedExecutor().submit(new Runnable() {
+            @Override
+            public void run() {
+                TimedLyrics lyrics = fetchTimedLyrics(requestInfo);
+                cacheLyrics(requestTrackKey, lyrics);
+                synchronized (TimedLyricsManager.this) {
+                    if (requestTrackKey.equals(activeTrackKey)) {
+                        currentLyrics = lyrics;
+                    }
+                    if (requestTrackKey.equals(pendingTrackKey)) {
+                        pendingTrackKey = "";
+                        pendingRequest = null;
+                    }
+                }
+            }
+        });
     }
 
     private void cancelPendingRequest() {
