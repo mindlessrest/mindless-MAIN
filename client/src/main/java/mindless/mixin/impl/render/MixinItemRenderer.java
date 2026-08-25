@@ -2,8 +2,6 @@ package mindless.mixin.impl.render;
 
 import mindless.mixin.interfaces.IMixinItemRenderer;
 import mindless.module.impl.render.AlwaysBlock;
-import mindless.module.impl.render.BodyMaterial;
-import mindless.module.impl.world.HitEffect;
 import mindless.runtime.ItemRendererState;
 import mindless.utility.Utils;
 import net.minecraft.client.entity.AbstractClientPlayer;
@@ -25,7 +23,7 @@ public class MixinItemRenderer implements IMixinItemRenderer {
     private ItemStack originalItemToRender;
     @Shadow
     private ItemStack itemToRender;
-    private boolean experimental$itemChamsActive;
+
     @Shadow
     private float equippedProgress;
     @Shadow
@@ -35,22 +33,6 @@ public class MixinItemRenderer implements IMixinItemRenderer {
     private void modifyRenderItemPre(float p_renderItemInFirstPerson_1_, CallbackInfo info) {
         originalItemToRender = itemToRender;
         itemToRender = Utils.getSpoofedItem(originalItemToRender);
-    }
-
-    @Inject(method = "renderItem", at = @At("HEAD"))
-    private void bodyMaterial$reapplyHeldItem(EntityLivingBase entity, ItemStack stack,
-                                              ItemCameraTransforms.TransformType transform,
-                                              CallbackInfo ci) {
-        BodyMaterial.reapply();
-        experimental$itemChamsActive = HitEffect.beginItemChams(entity, stack, transform);
-    }
-
-    @Inject(method = "renderItem", at = @At("RETURN"))
-    private void experimental$restoreHeldItem(EntityLivingBase entity, ItemStack stack,
-                                              ItemCameraTransforms.TransformType transform,
-                                              CallbackInfo ci) {
-        HitEffect.endItemChams(experimental$itemChamsActive);
-        experimental$itemChamsActive = false;
     }
 
     @Inject(method = "renderItemInFirstPerson", at = @At("RETURN"))

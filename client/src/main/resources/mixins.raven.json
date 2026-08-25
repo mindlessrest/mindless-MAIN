@@ -23,8 +23,6 @@
     "client.MixinMinecraft",
     "render.MixinItemRenderer",
     "render.MixinItemRendererAnimations",
-    "render.MixinLayerArmorBaseBodyMaterial",
-    "render.MixinLayerHeldItemBodyMaterial",
     "render.MixinRenderGlobal",
     "world.MixinWorldInfo",
     "world.MixinWorld",

@@ -10,7 +10,6 @@ import net.minecraft.entity.EntityLivingBase;
 public final class RendererLivingEntityState {
     private RendererLivingEntityState() {}
 
-    public static boolean bodyMaterialActive;
     public static EntityLivingBase nameHiderRenderNameEntity;
 
     public static boolean shouldRender() {

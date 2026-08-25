@@ -42,10 +42,10 @@ public class FeatureCoverageContractTest {
                 new String[]{"setSkyColor", "clearWeather", "customTime"});
         contracts.put("src/main/java/mindless/transformer/impl/render/TransformerItemRenderer.java",
                 new String[]{"ItemAnimationRuntime", "AlwaysBlock",
-                        "beginItemChams", "isCancelUpdate"});
+                        "isCancelUpdate"});
         contracts.put("src/main/java/mindless/transformer/impl/render/TransformerRendererLivingEntity.java",
                 new String[]{"showInvisibleOutline", "setOutlineColor", "DamageTintRuntime",
-                        "BodyMaterialRuntime", "postRenderLivingSpecialsPre"});
+                        "postRenderLivingSpecialsPre"});
         contracts.put("src/main/java/mindless/transformer/impl/render/TransformerRenderGlobal.java",
                 new String[]{"setupTerrainPitch", "setupTerrainYaw", "setupTerrainVector",
                         "DrawBlockHighlightEvent"});

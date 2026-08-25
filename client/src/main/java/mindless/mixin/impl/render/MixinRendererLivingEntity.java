@@ -2,7 +2,6 @@ package mindless.mixin.impl.render;
 
 import mindless.module.ModuleManager;
 import mindless.module.impl.render.DamageTint;
-import mindless.module.impl.render.BodyMaterial;
 import mindless.module.impl.render.MobESP;
 import mindless.module.impl.other.NameHider;
 import mindless.module.impl.render.SexyESP;
@@ -48,9 +47,6 @@ public abstract class MixinRendererLivingEntity<T extends EntityLivingBase> exte
         super(renderManager);
     }
 
-    @Unique
-    private boolean bodyMaterial$active;
-
     /**
      * Third-person uses RendererLivingEntity's swing value instead of the
      * first-person ItemRenderer path. Feed the local player through Slow's
@@ -62,21 +58,6 @@ public abstract class MixinRendererLivingEntity<T extends EntityLivingBase> exte
             float vanilla = entity.getSwingProgress(partialTicks);
             cir.setReturnValue(Slow.getVisualSwingProgress((AbstractClientPlayer) entity, vanilla));
         }
-    }
-
-    @Inject(method = "renderModel", at = @At("HEAD"))
-    private void bodyMaterial$beginBody(T entity, float limbSwing, float limbSwingAmount,
-                                        float ageInTicks, float netHeadYaw, float headPitch,
-                                        float scaleFactor, CallbackInfo ci) {
-        bodyMaterial$active = BodyMaterial.begin(entity, false);
-    }
-
-    @Inject(method = "renderModel", at = @At("RETURN"))
-    private void bodyMaterial$endBody(T entity, float limbSwing, float limbSwingAmount,
-                                      float ageInTicks, float netHeadYaw, float headPitch,
-                                      float scaleFactor, CallbackInfo ci) {
-        BodyMaterial.end(bodyMaterial$active);
-        bodyMaterial$active = false;
     }
 
     @Unique
@@ -141,7 +122,7 @@ public abstract class MixinRendererLivingEntity<T extends EntityLivingBase> exte
 
     @Inject(method = "canRenderName(Lnet/minecraft/entity/EntityLivingBase;)Z", at = @At("HEAD"), cancellable = true)
     private void suppressNameDuringOutlinePass(T entity, CallbackInfoReturnable<Boolean> cir) {
-        if (SexyESP.renderingOutlinePass || MobESP.renderingOutlinePass || BodyMaterial.renderingGlowPass) {
+        if (SexyESP.renderingOutlinePass || MobESP.renderingOutlinePass) {
             cir.setReturnValue(false);
         }
     }

@@ -149,7 +149,6 @@ public class ModuleManager {
         Capes capes = new Capes();
         this.addModule(capes);
         capes.enable();
-        this.addModule(new HitEffect());
 
         this.addModule(new AutoRequeue());
         this.addModule(new AntiMisplace());
@@ -223,14 +222,14 @@ public class ModuleManager {
         this.addModule(bedESP = new BedESP());
         this.addModule(blockESP = new BlockESP());
         this.addModule(new BlockOverlay());
-        this.addModule(new BodyMaterial());
+
         this.addModule(new BreakProgress());
         this.addModule(chams = new Chams());
         this.addModule(new DamageTint());
         this.addModule(new Fullbright());
         this.addModule(new MotionBlur());
         this.addModule(new DamageTags());
-        this.addModule(new HitParticles());
+
         this.addModule(new ChestESP());
         this.addModule(extendCamera = new ExtendCamera());
         this.addModule(freelook = new Freelook());

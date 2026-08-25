@@ -2,7 +2,6 @@ package mindless.transformer.impl.render;
 
 import mindless.module.ModuleManager;
 import mindless.module.impl.render.DamageTint;
-import mindless.module.impl.render.BodyMaterial;
 import mindless.module.impl.render.MobESP;
 import mindless.module.impl.other.NameHider;
 import mindless.module.impl.render.Nametags;
@@ -46,23 +45,6 @@ public abstract class TransformerRendererLivingEntity {
             float vanilla = entity.getSwingProgress(partialTicks);
             ci.setReturnValue(Slow.getVisualSwingProgress((AbstractClientPlayer) entity, vanilla));
         }
-    }
-
-    @CInline
-    @CInject(method = "renderModel", target = @CTarget("HEAD"))
-    private void bodyMaterial$beginBody(EntityLivingBase entity, float limbSwing, float limbSwingAmount,
-                                        float ageInTicks, float netHeadYaw, float headPitch,
-                                        float scaleFactor, InjectionCallback ci) {
-        RendererLivingEntityState.bodyMaterialActive = BodyMaterial.begin(entity, false);
-    }
-
-    @CInline
-    @CInject(method = "renderModel", target = @CTarget("RETURN"))
-    private void bodyMaterial$endBody(EntityLivingBase entity, float limbSwing, float limbSwingAmount,
-                                      float ageInTicks, float netHeadYaw, float headPitch,
-                                      float scaleFactor, InjectionCallback ci) {
-        BodyMaterial.end(RendererLivingEntityState.bodyMaterialActive);
-        RendererLivingEntityState.bodyMaterialActive = false;
     }
 
     @CInline
@@ -116,7 +98,7 @@ public abstract class TransformerRendererLivingEntity {
     @CInline
     @CInject(method = "canRenderName(Lnet/minecraft/entity/EntityLivingBase;)Z", target = @CTarget("HEAD"), cancellable = true)
     private void suppressNameDuringOutlinePass(EntityLivingBase entity, InjectionCallback ci) {
-        if (SexyESP.renderingOutlinePass || MobESP.renderingOutlinePass || BodyMaterial.renderingGlowPass) {
+        if (SexyESP.renderingOutlinePass || MobESP.renderingOutlinePass) {
             ci.setReturnValue(false);
             return;
         }
