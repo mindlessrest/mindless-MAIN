@@ -116,17 +116,12 @@ public class GlowBloomShader {
                 "uniform int finalPass;\n" +
                 "void main() {\n" +
                 "  vec2 uv = gl_TexCoord[0].xy;\n" +
-                // Seventeen taps spread across the radius. The loop bound has to be a compile-time
-                // constant in GLSL 120, so reach is varied by scaling the step instead.
-                // Not named "step": that is a GLSL built-in, and redeclaring a built-in function
-                // name is rejected outright by a good number of drivers, which left the whole
-                // shader failing to compile and the glow silently absent.
-                "  vec2 sampleStep = direction * texelSize * (radius / 8.0);\n" +
+                "  vec2 sampleStep = direction * texelSize * (radius / 12.0);\n" +
                 "  float acc = 0.0;\n" +
                 "  float weightSum = 0.0;\n" +
-                "  for (int i = -8; i <= 8; i++) {\n" +
+                "  for (int i = -12; i <= 12; i++) {\n" +
                 "    float fi = float(i);\n" +
-                "    float w = exp(-fi * fi / 24.0);\n" +
+                "    float w = exp(-fi * fi / 50.0);\n" +
                 "    acc += texture2D(tex, uv + sampleStep * fi).a * w;\n" +
                 "    weightSum += w;\n" +
                 "  }\n" +
@@ -135,16 +130,8 @@ public class GlowBloomShader {
                 "    gl_FragColor = vec4(tint, glow);\n" +
                 "    return;\n" +
                 "  }\n" +
-                // The body stays clean; the glow belongs outside the silhouette.
                 "  glow *= 1.0 - texture2D(original, uv).a;\n" +
-                // The exponent is above one, not below it. Below one lifts the faint tail until
-                // most of the halo sits at full coverage, and additive blending then takes that
-                // wide saturated slab up to white -- bright, but with no falloff left to see.
-                // Above one the tail drops away and the gradient survives.
-                //
-                // The cap is what stops it reaching white at all: additive means an alpha of one
-                // adds the tint at full strength on top of whatever is already on screen.
-                "  glow = pow(clamp(glow * intensity, 0.0, 1.0), 1.5) * 0.85;\n" +
+                "  glow = pow(clamp(glow * intensity, 0.0, 1.0), 2.0) * 0.7;\n" +
                 "  gl_FragColor = vec4(tint, glow);\n" +
                 "}";
 
