@@ -409,9 +409,16 @@ public class Autoblock extends Module {
         if (damageObserved && hasStableDamagePattern()) {
             long now = System.currentTimeMillis();
             long avgInterval = getAverageDamageInterval();
-            long expectedDamage = lastDamageTimeMs + avgInterval;
             long earlyWindow = getEarlyWindowMs();
             long holdWindow = (long) predictHoldAfter.getInput() * 50L;
+
+            // Advance expected time forward if it's in the past (attacker was late or
+            // we missed the recording), so we always predict the NEXT hit, not a stale one.
+            long expectedDamage = lastDamageTimeMs + avgInterval;
+            while (expectedDamage + holdWindow < now) {
+                expectedDamage += avgInterval;
+            }
+
             boolean insideWindow = now >= expectedDamage - earlyWindow && now <= expectedDamage + holdWindow;
             boolean canTakeDamage = hurtResistantTime <= 10 + getEarlyWindowTicks();
 
@@ -421,16 +428,14 @@ public class Autoblock extends Module {
                 releaseAfterHold();
             }
         } else {
-            // Reactive fallback: start blocking when hurt resistant time drops near 10
-            if (hurtResistantTime > 10) {
-                predictHoldStarted = false;
-                predictHoldUntil = 0L;
-                if (hurtResistantTime <= 10 + getEarlyWindowTicks()) {
-                    if (!isBlocking) startBlocking(tickCounter);
-                } else if (isBlocking) {
-                    stopBlocking(true);
-                }
-            } else if (isBlocking) {
+            // Reactive fallback: block when hurt resistant time is about to allow
+            // the next hit (dropping toward 10), unblock after holding.
+            int earlyTicks = getEarlyWindowTicks();
+            if (hurtResistantTime > 0 && hurtResistantTime <= 10 + earlyTicks) {
+                if (!isBlocking) startBlocking(tickCounter);
+            } else if (hurtResistantTime == 0 && isBlocking) {
+                releaseAfterHold();
+            } else if (hurtResistantTime > 10 + earlyTicks && isBlocking) {
                 releaseAfterHold();
             }
         }
