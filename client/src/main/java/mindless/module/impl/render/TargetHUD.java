@@ -67,7 +67,7 @@ public class TargetHUD extends Module {
         super("TargetHUD", category.render);
         this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Only works with KillAura."));
-        this.registerSetting(mode = new SliderSetting("Mode", 1, modes));
+        this.registerSetting(mode = new SliderSetting("Mode", true, 1, modes));
         this.registerSetting(theme = new SliderSetting("Theme", 0, Theme.THEMES_SETTING));
         this.registerSetting(glowSize = new SliderSetting("Glow size", 9.0, 2.0, 20.0, 0.5));
         this.registerSetting(positionMode = new SliderSetting("Position", 0, POSITION_MODES));
@@ -96,7 +96,7 @@ public class TargetHUD extends Module {
             return;
         }
         if (ev.phase == TickEvent.Phase.END) {
-            if (mc.currentScreen != null) {
+            if (mode.getInput() == -1 || mc.currentScreen != null) {
                 reset();
                 return;
             }
