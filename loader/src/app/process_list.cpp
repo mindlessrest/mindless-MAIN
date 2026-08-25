@@ -73,7 +73,18 @@ static std::unordered_map<DWORD, std::string> scan_window_titles()
 
 static bool is_game_process(const wchar_t* exeName)
 {
-    return _wcsicmp(exeName, L"javaw.exe") == 0;
+    return _wcsicmp(exeName, L"javaw.exe") == 0
+        || _wcsicmp(exeName, L"java.exe") == 0;
+}
+
+static bool is_minecraft_window(const std::string& title)
+{
+    if (title.find("Minecraft") != std::string::npos) return true;
+    if (title.find("Lunar Client") != std::string::npos) return true;
+    if (title.find("Badlion") != std::string::npos) return true;
+    if (title.find("Forge") != std::string::npos) return true;
+    if (title.find("Fabric") != std::string::npos) return true;
+    return false;
 }
 
 static Image extract_process_icon(DWORD pid, ID3D11Device* device)
@@ -118,8 +129,11 @@ std::vector<uint32_t> enumerate_target_pids()
     {
         do
         {
-            if (is_game_process(entry.szExeFile) && titles.count(entry.th32ProcessID))
-                result.push_back(entry.th32ProcessID);
+            if (!is_game_process(entry.szExeFile)) continue;
+            auto it = titles.find(entry.th32ProcessID);
+            if (it == titles.end()) continue;
+            if (!is_minecraft_window(it->second)) continue;
+            result.push_back(entry.th32ProcessID);
         }
         while (Process32NextW(snap, &entry));
     }
@@ -150,6 +164,7 @@ std::vector<ProcessEntry> enumerate_targets(ID3D11Device* device)
             auto it   = titles.find(pid);
             if (it == titles.end()) continue;
             std::string title = it->second;
+            if (!is_minecraft_window(title)) continue;
 
             ProcessEntry pe;
             pe.pid      = pid;
