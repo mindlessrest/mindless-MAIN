@@ -39,6 +39,9 @@ private:
     using TimePoint = Clock::time_point;
     TimePoint   lastFrame_;
 
+    float animW_ = 0.0f;
+    float animH_ = 0.0f;
+
     void draw_frame(float dt);
     void show_completion_toast();
 };

@@ -200,20 +200,27 @@ int Application::run()
                 : process_select_panel_height(
                       static_cast<int>(state_.processes.size()), fontNormal_);
 
-            int desiredW = 460 + margin;
-            int desiredH = static_cast<int>(panelH) + margin;
+            float desiredW = 460.0f + static_cast<float>(margin);
+            float desiredH = panelH + static_cast<float>(margin);
+
+            if (animW_ == 0.0f) { animW_ = desiredW; animH_ = desiredH; }
+
+            float rate = 12.0f;
+            animW_ += (desiredW - animW_) * std::min(1.0f, rate * dt);
+            animH_ += (desiredH - animH_) * std::min(1.0f, rate * dt);
+
+            int newW = static_cast<int>(std::round(animW_));
+            int newH = static_cast<int>(std::round(animH_));
 
             RECT cur;
             GetWindowRect(window_.hwnd(), &cur);
             int curW = cur.right - cur.left;
             int curH = cur.bottom - cur.top;
-            if (curW != desiredW || curH != desiredH)
+            if (curW != newW || curH != newH)
             {
-                // Grow about the centre so the window does not crawl across the desktop as
-                // instances come and go.
-                int newX = cur.left + (curW - desiredW) / 2;
-                int newY = cur.top + (curH - desiredH) / 2;
-                SetWindowPos(window_.hwnd(), nullptr, newX, newY, desiredW, desiredH,
+                int newX = cur.left + (curW - newW) / 2;
+                int newY = cur.top + (curH - newH) / 2;
+                SetWindowPos(window_.hwnd(), nullptr, newX, newY, newW, newH,
                              SWP_NOZORDER | SWP_NOACTIVATE);
             }
         }
