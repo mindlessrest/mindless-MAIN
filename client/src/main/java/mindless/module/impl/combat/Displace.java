@@ -62,7 +62,14 @@ public class Displace extends Module {
     private static final double VOID_SCORE_EPSILON = 1.0E-4D;
     private static final long VOID_DEBUG_DURATION_MS = 30_000L;
     private static final double VOID_DEBUG_PROBE_Y_OFFSET = 0.08D;
+    private static final int DISPLACEMENT_LOCK_IDLE_TICKS = 20;
     private static final long ARROW_FADE_MS = 250L;
+    private static final double ARROW_BASE_GAP = 0.3D;
+    private static final long ARROW_NUDGE_MS = 320L;
+    private static final double ARROW_NUDGE_DISTANCE = 0.3D;
+    private static final double ARROW_NUDGE_DECAY = 6.0D;
+    private static final double ARROW_NUDGE_FADE_START = 0.58D;
+    private static final double ARROW_NUDGE_FADE_DECAY = 5.0D;
     private static final int OVERRIDE_MAX_FLICK_TICKS = 5;
     private static final int OVERRIDE_ATTACK_TICKS = 2;
     private static final int OVERRIDE_RESTORE_TICKS = 2;
@@ -94,8 +101,11 @@ public class Displace extends Module {
     private float arrowFadeEndAlpha;
     private long arrowFadeStartMs;
     private boolean arrowVisible;
+    private long arrowNudgeStartMs = -1L;
+    private int arrowNudgePlayerId = -1;
     private int tickCounter;
     private final Map<Integer, Integer> targetWindowStartTicks = new HashMap<>();
+    private final Map<Integer, DisplacementLock> targetDisplacementLocks = new HashMap<>();
     /** Scratch positions and list for the void sweep; see getVoidPathBlockedDistance. */
     private final BlockPos.MutableBlockPos voidMinCorner = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos voidMaxCorner = new BlockPos.MutableBlockPos();
@@ -127,6 +137,18 @@ public class Displace extends Module {
         FLICKING_AWAY,
         ATTACKING,
         RESTORING
+    }
+
+    private static final class DisplacementLock {
+        private final float yaw;
+        private int lastUseTick;
+        private boolean airborne;
+
+        private DisplacementLock(float yaw, int lastUseTick, boolean airborne) {
+            this.yaw = yaw;
+            this.lastUseTick = lastUseTick;
+            this.airborne = airborne;
+        }
     }
 
     public Displace() {
@@ -171,6 +193,7 @@ public class Displace extends Module {
         clearVoidDebugState();
         tickCounter = 0;
         targetWindowStartTicks.clear();
+        targetDisplacementLocks.clear();
         resetOverrideAttackState();
         lastOverrideFlickMs = -1L;
         releaseBlink();
@@ -1013,6 +1036,9 @@ public class Displace extends Module {
         boolean playerChanged = arrowPlayer != player;
         float currentAlpha = playerChanged ? 0.0F : getArrowAlpha(now);
 
+        if (playerChanged) {
+            clearArrowNudge();
+        }
         arrowPlayer = player;
         arrowYaw = yaw;
         if (!arrowVisible || playerChanged) {
@@ -1040,12 +1066,82 @@ public class Displace extends Module {
         return arrowFadeStartAlpha + (arrowFadeEndAlpha - arrowFadeStartAlpha) * progress;
     }
 
+    private void triggerArrowNudge(EntityPlayer player) {
+        if (player == null || arrowPlayer != player) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (arrowNudgePlayerId == player.getEntityId() && now - arrowNudgeStartMs < ARROW_NUDGE_MS) {
+            return;
+        }
+        arrowNudgePlayerId = player.getEntityId();
+        arrowNudgeStartMs = now;
+    }
+
+    private double getArrowNudgeProgress(EntityPlayer player, long now) {
+        if (player == null || arrowNudgePlayerId != player.getEntityId() || arrowNudgeStartMs < 0L) {
+            return -1.0D;
+        }
+        double progress = (double) (now - arrowNudgeStartMs) / (double) ARROW_NUDGE_MS;
+        return Math.min(1.0D, Math.max(0.0D, progress));
+    }
+
+    private double getArrowNudgeOffset(double progress) {
+        if (progress < 0.0D) {
+            return 0.0D;
+        }
+        double endValue = Math.exp(-ARROW_NUDGE_DECAY);
+        double movement = (1.0D - Math.exp(-ARROW_NUDGE_DECAY * progress)) / (1.0D - endValue);
+        return movement * ARROW_NUDGE_DISTANCE;
+    }
+
+    private float getArrowNudgeAlpha(double progress) {
+        if (progress < 0.0D || progress <= ARROW_NUDGE_FADE_START) {
+            return 1.0F;
+        }
+        double fadeProgress = (progress - ARROW_NUDGE_FADE_START) / (1.0D - ARROW_NUDGE_FADE_START);
+        double endValue = Math.exp(-ARROW_NUDGE_FADE_DECAY);
+        double alpha = (Math.exp(-ARROW_NUDGE_FADE_DECAY * fadeProgress) - endValue) / (1.0D - endValue);
+        return (float) alpha;
+    }
+
+    private void clearArrowNudge() {
+        arrowNudgeStartMs = -1L;
+        arrowNudgePlayerId = -1;
+    }
+
     private void clearArrow() {
         arrowPlayer = null;
         arrowFadeStartAlpha = 0.0F;
         arrowFadeEndAlpha = 0.0F;
         arrowFadeStartMs = 0L;
         arrowVisible = false;
+        clearArrowNudge();
+    }
+
+    private float lockDisplacementYaw(EntityPlayer target, float yaw) {
+        int targetId = target.getEntityId();
+        DisplacementLock lock = targetDisplacementLocks.get(targetId);
+        if (lock != null && ((lock.airborne && target.onGround)
+                || tickCounter - lock.lastUseTick >= DISPLACEMENT_LOCK_IDLE_TICKS)) {
+            targetDisplacementLocks.remove(targetId);
+            lock = null;
+        }
+        if (lock == null) {
+            lock = new DisplacementLock(yaw, tickCounter, !target.onGround);
+            targetDisplacementLocks.put(targetId, lock);
+        } else {
+            lock.lastUseTick = tickCounter;
+            if (!target.onGround) {
+                lock.airborne = true;
+            }
+        }
+        return lock.yaw;
+    }
+
+    private float getLockedDisplacementYaw(EntityPlayer target, float fallbackYaw) {
+        DisplacementLock lock = targetDisplacementLocks.get(target.getEntityId());
+        return lock == null ? fallbackYaw : lock.yaw;
     }
 
     @SubscribeEvent
@@ -1067,7 +1163,9 @@ public class Displace extends Module {
             return;
         }
 
-        float alpha = getArrowAlpha(System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        double nudgeProgress = getArrowNudgeProgress(arrowPlayer, now);
+        float alpha = getArrowAlpha(now) * getArrowNudgeAlpha(nudgeProgress);
         if (alpha <= 0.0F) {
             if (!arrowVisible) {
                 clearArrow();
@@ -1075,7 +1173,7 @@ public class Displace extends Module {
             return;
         }
 
-        drawArrow(arrowPlayer, arrowYaw, e.partialTicks, alpha);
+        drawArrow(arrowPlayer, arrowYaw, e.partialTicks, alpha, getArrowNudgeOffset(nudgeProgress));
     }
 
     private void renderFrozenVoidDebug() {
@@ -1377,14 +1475,14 @@ public class Displace extends Module {
         GL11.glVertex3d(x - viewerX, y - viewerY, z - viewerZ);
     }
 
-    private void drawArrow(EntityPlayer player, float yaw, float partialTicks, float alpha) {
+    private void drawArrow(EntityPlayer player, float yaw, float partialTicks, float alpha, double nudgeOffset) {
         double x = player.lastTickPosX + (player.posX - player.lastTickPosX) * partialTicks;
         double y = player.lastTickPosY + (player.posY - player.lastTickPosY) * partialTicks + player.height * 0.5;
         double z = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * partialTicks;
         double radians = Math.toRadians(yaw);
         double forwardX = -Math.sin(radians);
         double forwardZ = Math.cos(radians);
-        double startDistance = player.width * 0.5 + 0.24;
+        double startDistance = player.width * 0.5 + ARROW_BASE_GAP + nudgeOffset;
         double startX = x + forwardX * startDistance;
         double startZ = z + forwardZ * startDistance;
         double bodyX = startX + forwardX * 0.74;
@@ -1621,6 +1719,24 @@ public class Displace extends Module {
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onArrowNudgeAttackPacket(SendPacketEvent e) {
+        if (!active || !renderArrow.isToggled() || !Utils.nullCheck() || e.isCanceled()
+                || !(e.getPacket() instanceof C02PacketUseEntity)) {
+            return;
+        }
+
+        C02PacketUseEntity packet = (C02PacketUseEntity) e.getPacket();
+        if (packet.getAction() != C02PacketUseEntity.Action.ATTACK) {
+            return;
+        }
+
+        Entity attackedEntity = packet.getEntityFromWorld(mc.theWorld);
+        if (attackedEntity == arrowPlayer) {
+            triggerArrowNudge(arrowPlayer);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onVoidDebugAttackPacket(SendPacketEvent e) {
         if (!Raven.DEBUG || !isVoidMode() || !active || !Utils.nullCheck() || e.isCanceled()
                 || !(e.getPacket() instanceof C02PacketUseEntity)) {
@@ -1735,8 +1851,6 @@ public class Displace extends Module {
             displaceYaw = displaceLeft ? playerYaw - offset : playerYaw + offset;
         }
 
-        showArrow(target, displaceYaw);
-
         hasKB = hasKBEnchant;
         displaceThisTick = !displaceThisTick;
         if (displaceThisTick && !shouldDisplaceInCurrentWindow(target, currentTick)) {
@@ -1746,6 +1860,15 @@ public class Displace extends Module {
             hideArrow();
             return;
         }
+
+        if (displaceThisTick) {
+            displaceYaw = lockDisplacementYaw(target, displaceYaw);
+            updateDisplaceSide(playerYaw, displaceYaw);
+        } else {
+            displaceYaw = getLockedDisplacementYaw(target, displaceYaw);
+        }
+
+        showArrow(target, displaceYaw);
 
         if (!displaceThisTick && wasDisplacingLastTick) {
             int key = mc.gameSettings.keyBindAttack.getKeyCode();
