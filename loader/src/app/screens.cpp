@@ -446,7 +446,7 @@ void draw_screen(DrawList& dl, AppState& state, const InputState& input,
     // Outgoing: starts at rest (offset 0), slides away in slideDirection
     if (transitioning && state.slideOutT < 1.0f)
     {
-        float outAlpha  = 1.0f - ease_out_quart(state.slideOutT);
+        float outAlpha  = 1.0f - ease_out_quad(std::min(state.slideOutT * 2.0f, 1.0f));
         float outOffset = slide_offset(state.slideOutT, state.slideDirection, wr.w) * -1.0f
                         + ease_out_quart(state.slideOutT) * wr.w * 0.15f * state.slideDirection;
 
