@@ -116,6 +116,9 @@ public class DiscordRPC {
                         + (presence.details != null ? "\"details\": \"" + escape(presence.details) + "\"," : "")
                         + (presence.state != null ? "\"state\": \"" + escape(presence.state) + "\"," : "")
                         + (presence.startTimestamp > 0 ? "\"timestamps\": {\"start\": " + presence.startTimestamp + "}," : "")
+                        + (presence.partyMax > 0 ? "\"party\": {\"size\": ["
+                                + Math.max(1, Math.min(presence.partySize, presence.partyMax))
+                                + ", " + presence.partyMax + "]}," : "")
                         + "\"assets\": {"
                         + (presence.largeImage != null ? "\"large_image\": \"" + escape(presence.largeImage) + "\"," : "")
                         + (presence.largeText != null ? "\"large_text\": \"" + escape(presence.largeText) + "\"," : "")
@@ -233,11 +236,23 @@ public class DiscordRPC {
         public String largeText;
         public String smallImage;
         public String smallText;
+        public int partySize;
+        public int partyMax;
 
         public RichPresence details(String details) { this.details = details; return this; }
         public RichPresence state(String state) { this.state = state; return this; }
         public RichPresence startTimestamp(long timestamp) { this.startTimestamp = timestamp; return this; }
         public RichPresence largeImage(String key, String text) { this.largeImage = key; this.largeText = text; return this; }
         public RichPresence smallImage(String key, String text) { this.smallImage = key; this.smallText = text; return this; }
+
+        /** Renders next to the state as "(1 of 10)". A max of zero leaves the party off entirely. */
+        public RichPresence party(int size, int max) { this.partySize = size; this.partyMax = max; return this; }
+
+        /** Everything the pipe actually sends, so the module can skip identical updates. */
+        public String signature() {
+            return details + " " + state + " " + largeImage + " " + largeText
+                    + " " + smallImage + " " + smallText
+                    + " " + partySize + "/" + partyMax + " " + startTimestamp;
+        }
     }
 }
