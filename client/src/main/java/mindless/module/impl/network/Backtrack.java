@@ -317,6 +317,20 @@ public class Backtrack extends Module {
         return !mc.isSingleplayer() && showServerPosition.isToggled() && target == entity && targetPos != null && !target.isDead && currentDelay > 0;
     }
 
+    public Vec3 getBacktrackPosition() {
+        if (target == null || targetPos == null || target.isDead || currentDelay <= 0) {
+            return null;
+        }
+        return targetPos;
+    }
+
+    public EntityPlayer getBacktrackTarget() {
+        if (target == null || target.isDead || currentDelay <= 0) {
+            return null;
+        }
+        return target;
+    }
+
     @SubscribeEvent
     public void onRenderWorldLast(RenderWorldLastEvent event) {
         if (!showServerPosition.isToggled() || target == null || targetPos == null || currentDelay <= 0 || packetQueue.isEmpty()) return;

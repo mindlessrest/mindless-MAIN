@@ -9,7 +9,10 @@ import mindless.mixin.impl.accessor.*;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
+import mindless.module.impl.combat.AimAssist;
 import mindless.module.impl.combat.KillAura;
+import mindless.module.impl.combat.LagRange;
+import mindless.module.impl.network.Backtrack;
 import mindless.module.impl.render.Notifications;
 import mindless.module.setting.Setting;
 import mindless.module.setting.impl.*;
@@ -536,6 +539,10 @@ public class ScriptDefaults {
             return mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, mc.thePlayer.getHeldItem(), Vec3.getBlockPos(targetPos), Utils.getEnum(EnumFacing.class, side), Vec3.getVec3(hitVec));
         }
 
+        public static void clickBlock(Vec3 blockpos, String side) {
+            mc.playerController.clickBlock(Vec3.getBlockPos(blockpos), Utils.getEnum(EnumFacing.class, side));
+        }
+
         public static void enableMovementFix() {
             if (ModuleManager.movementFix != null) {
                 ModuleManager.movementFix.enable();
@@ -833,6 +840,48 @@ public class ScriptDefaults {
                 return null;
             }
             return Entity.convert(KillAura.target);
+        }
+
+        public Entity getAimAssistTarget() {
+            AimAssist aimAssist = (AimAssist) ModuleManager.getModule(AimAssist.class);
+            if (aimAssist == null || !aimAssist.isEnabled()) {
+                return null;
+            }
+            return Entity.convert(aimAssist.getAimAssistTarget());
+        }
+
+        public Entity getBacktrackTarget() {
+            Backtrack backtrack = ModuleManager.backtrack;
+            if (backtrack == null || !backtrack.isEnabled()) {
+                return null;
+            }
+            return Entity.convert(backtrack.getBacktrackTarget());
+        }
+
+        public Vec3 getBacktrackPosition() {
+            Backtrack backtrack = ModuleManager.backtrack;
+            if (backtrack == null || !backtrack.isEnabled()) {
+                return null;
+            }
+            net.minecraft.util.Vec3 position = backtrack.getBacktrackPosition();
+            return position == null ? null : new Vec3(position);
+        }
+
+        public Entity getLagRangeTarget() {
+            LagRange lagRange = (LagRange) ModuleManager.getModule(LagRange.class);
+            if (lagRange == null || !lagRange.isEnabled()) {
+                return null;
+            }
+            return Entity.convert(lagRange.getLagRangeTarget());
+        }
+
+        public Vec3 getLagRangePosition() {
+            LagRange lagRange = (LagRange) ModuleManager.getModule(LagRange.class);
+            if (lagRange == null || !lagRange.isEnabled()) {
+                return null;
+            }
+            net.minecraft.util.Vec3 position = lagRange.getLagRangePosition();
+            return position == null ? null : new Vec3(position);
         }
 
         public Map<String, Object> getSettings(String name) {

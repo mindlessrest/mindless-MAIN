@@ -83,6 +83,19 @@ public class AimAssist extends Module {
         miningStartTime = -1;
     }
 
+    public net.minecraft.entity.Entity getAimAssistTarget() {
+        if (!Utils.nullCheck() || ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
+            return null;
+        }
+        if (ModuleManager.killAura != null && ModuleManager.killAura.isEnabled() && KillAura.target != null) {
+            return null;
+        }
+        if (!conditionsMet()) {
+            return null;
+        }
+        return getEnemy(mode.getInput() == 1);
+    }
+
     @SubscribeEvent(priority = EventPriority.NORMAL)
     public void onClientRotation(ClientRotationEvent e) {
         if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {

@@ -95,6 +95,20 @@ public class LagRange extends Module {
         return (int) maximumDelay.getInput() + "ms";
     }
 
+    public net.minecraft.util.Vec3 getLagRangePosition() {
+        if (!isLagging) {
+            return null;
+        }
+        return mindless.Raven.lagHandler.getLastReleasedServerPosition();
+    }
+
+    public net.minecraft.entity.player.EntityPlayer getLagRangeTarget() {
+        if (!isLagging || currentTarget == null || currentTarget.isDead) {
+            return null;
+        }
+        return currentTarget;
+    }
+
     @SubscribeEvent
     public void onPrePlayerInteract(PrePlayerInteractEvent e) {
         if (!Utils.nullCheck() || mc.thePlayer.isDead || mc.theWorld == null) {
