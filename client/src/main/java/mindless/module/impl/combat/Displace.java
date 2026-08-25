@@ -100,7 +100,7 @@ public class Displace extends Module {
     private final BlockPos.MutableBlockPos voidMinCorner = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos voidMaxCorner = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos voidScanPos = new BlockPos.MutableBlockPos();
-    private final List<AxisAlignedBB> voidCollisionScratch = new ArrayList<AxisAlignedBB>();
+
     private LagRequest outboundBlink;
     private VoidDebugScan latestVoidDebugScan;
     private VoidDebugScan frozenVoidDebugScan;
@@ -508,7 +508,6 @@ public class Displace extends Module {
         int minZ = MathHelper.floor_double(box.minZ);
         int maxZ = MathHelper.floor_double(box.maxZ + 1.0D);
 
-        List<AxisAlignedBB> hits = voidCollisionScratch;
         for (int blockX = minX; blockX < maxX; blockX++) {
             for (int blockZ = minZ; blockZ < maxZ; blockZ++) {
                 if (!mc.theWorld.isBlockLoaded(voidScanPos.set(blockX, 64, blockZ))) {
@@ -518,9 +517,9 @@ public class Displace extends Module {
                 for (int blockY = minY - 1; blockY < maxY; blockY++) {
                     voidScanPos.set(blockX, blockY, blockZ);
                     IBlockState state = mc.theWorld.getBlockState(voidScanPos);
-                    state.getBlock().addCollisionBoxesToList(mc.theWorld, voidScanPos, state, box, hits, null);
-                    if (!hits.isEmpty()) {
-                        hits.clear();
+                    AxisAlignedBB blockBB = state.getBlock().getCollisionBoundingBox(
+                            mc.theWorld, voidScanPos, state);
+                    if (blockBB != null && box.intersectsWith(blockBB)) {
                         return true;
                     }
                 }
