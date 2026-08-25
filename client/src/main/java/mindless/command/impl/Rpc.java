@@ -68,9 +68,14 @@ public class Rpc extends Command {
         reply("&7brand: &f" + Utils.getServerBrand());
 
         boolean detected = Utils.isHypixel();
-        boolean hypixel = detected || module.isForcingHypixel();
+        boolean hypixel = module.isScrapingHypixel();
         reply("&7hypixel: " + (detected ? "&adetected"
-                : module.isForcingHypixel() ? "&eforced &8(not detected)" : "&cno"));
+                : module.isForcingHypixel() ? "&eforced &8(not detected)" : "&cno")
+                + " &8| scraping: " + (hypixel ? "&ayes" : "&cno"));
+        if (mc.theWorld == null) {
+            // Force Hypixel says the server is Hypixel, not that you are on one.
+            reply("&8  not in a world, so nothing is being scraped");
+        }
         if (!detected) {
             // The usual cause. A proxy replaces the address with its own, so only the brand can
             // still answer, and a proxy that rewrites the brand takes that away too.

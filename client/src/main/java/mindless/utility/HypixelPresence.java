@@ -124,6 +124,11 @@ public final class HypixelPresence {
     private static final Pattern PLAYERS_LEFT =
             Pattern.compile("^Players left: *(?<count>[0-9]+).*$");
 
+    private static final Pattern WHITESPACE_RUN = Pattern.compile("\\s{2,}");
+    /** A separator left at either end once the variable beside it turned out to be empty. */
+    private static final Pattern DANGLING_SEPARATOR =
+            Pattern.compile("^\\s*[-|,:]+\\s*|\\s*[-|,:]+\\s*$");
+
     /**
      * Hypixel's internal game ids, spelled the way a person would say them.
      *
@@ -468,8 +473,14 @@ public final class HypixelPresence {
                 .replace("{bits}", bits)
                 .replace("{time}", sbTime)
                 .replace("{date}", sbDate)
-                .replace("{players}", players)
-                .trim();
+                .replace("{players}", players);
+
+        // A variable with nothing behind it yet leaves its punctuation stranded: "{game} - {mode}"
+        // becomes " - Solo" in the second before the game name arrives, and "SkyBlock - {map}"
+        // becomes "SkyBlock -" in a lobby. Closing the gap and dropping a dangling separator lets
+        // a template read properly while it is still filling in, rather than only once it is full.
+        out = WHITESPACE_RUN.matcher(out).replaceAll(" ").trim();
+        out = DANGLING_SEPARATOR.matcher(out).replaceAll("").trim();
 
         // Discord rejects a field under two characters and truncates past 128, so anything that
         // lands outside that is dropped rather than sent and shown wrong.

@@ -169,7 +169,17 @@ public class DiscordRPC extends Module {
      * answer is to let the player say so.
      */
     private boolean scrapeHypixel() {
-        return hypixelStats.isToggled() && (forceHypixel.isToggled() || Utils.isHypixel());
+        if (!hypixelStats.isToggled()) {
+            return false;
+        }
+        // Force Hypixel answers "is this server Hypixel", not "am I on a server". Without this it
+        // answered both, so at the main menu the scrape ran against a world that was not there:
+        // no scoreboard meant no game name and no connection meant no player count, and the two
+        // holes rendered as "Lobby" and "0 players".
+        if (mc.theWorld == null || mc.thePlayer == null || mc.isSingleplayer()) {
+            return false;
+        }
+        return forceHypixel.isToggled() || Utils.isHypixel();
     }
 
     /** Live state next to the module name, so a presence that is not showing says why. */
@@ -181,10 +191,13 @@ public class DiscordRPC extends Module {
         if (!rpc.isConnected()) {
             return "no discord";
         }
+        if (mc.theWorld == null) {
+            return "in menu";
+        }
         if (!hypixelStats.isToggled()) {
             return "server only";
         }
-        if (!forceHypixel.isToggled() && !Utils.isHypixel()) {
+        if (!scrapeHypixel()) {
             return "not hypixel";
         }
         String game = HypixelPresence.getGame();
@@ -210,6 +223,11 @@ public class DiscordRPC extends Module {
 
     public boolean wantsSoloTeamsLeft() {
         return soloTeamsLeft.isToggled();
+    }
+
+    /** Whether the Hypixel scrape is actually running, world requirement and all. */
+    public boolean isScrapingHypixel() {
+        return scrapeHypixel();
     }
 
     private void updatePresence() {
