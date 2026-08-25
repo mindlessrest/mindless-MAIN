@@ -196,8 +196,30 @@ public final class HypixelPresence {
         MODE_NAMES.put("LOBBY", "Lobby");
     }
 
+    /**
+     * How many players a team holds in each Bed Wars style mode id.
+     *
+     * <p>The ids read teams-then-size: {@code EIGHT_TWO} is eight teams of two, {@code FOUR_THREE}
+     * is four teams of three. The second word is therefore the team size, and reading it that way
+     * covers the suffixed variants -- Rush, Lucky, Voidless, Armed -- and any mode Hypixel adds
+     * later, without a table entry for each one.
+     */
+    private static final Map<String, Integer> TEAM_WORDS = new HashMap<>();
+
+    static {
+        TEAM_WORDS.put("ONE", 1);
+        TEAM_WORDS.put("TWO", 2);
+        TEAM_WORDS.put("THREE", 3);
+        TEAM_WORDS.put("FOUR", 4);
+        TEAM_WORDS.put("FIVE", 5);
+        TEAM_WORDS.put("SIX", 6);
+        TEAM_WORDS.put("EIGHT", 8);
+    }
+
     private static String game = "";
     private static String mode = "Lobby";
+    /** The mode exactly as locraw spelled it, which is what the team size is read out of. */
+    private static String rawMode = "";
     private static String map = "";
     private static String server = "";
     private static String coins = "";
@@ -223,6 +245,7 @@ public final class HypixelPresence {
     public static void reset() {
         game = "";
         mode = "Lobby";
+        rawMode = "";
         map = "";
         server = "";
         coins = "";
@@ -394,7 +417,8 @@ public final class HypixelPresence {
                 game = gameName(gametype);
             }
             if (root.has("mode")) {
-                mode = modeName(gametype, root.get("mode").getAsString());
+                rawMode = stripGamePrefix(gametype, root.get("mode").getAsString());
+                mode = modeName(rawMode);
             }
             if (root.has("map")) {
                 map = root.get("map").getAsString();
@@ -492,6 +516,58 @@ public final class HypixelPresence {
         return partyMembers;
     }
 
+    /**
+     * How many players fit on a team in the current mode.
+     *
+     * <p>This is what the Discord party field should be counting against. A fixed cap made Solo
+     * read "1 of 10", which is wrong twice over: there is no party of one, and there is no tenth
+     * slot. Doubles is two, 3v3v3v3 is three, 4v4v4v4 and 4v4 are four.
+     *
+     * @return the team size, or 0 when the mode is solo, unknown, or has no meaningful team --
+     *         all of which mean the party field should be left off entirely
+     */
+    public static int getTeamSize() {
+        String id = rawMode;
+
+        // Teams-then-size, with the game prefix already gone: EIGHT_ONE is eight teams of one,
+        // FOUR_THREE is four teams of three. So the word after the first is the team size, and
+        // reading it there survives the suffixed variants -- EIGHT_TWO_RUSH is still doubles.
+        String[] parts = id.split("_");
+        for (int i = 1; i < parts.length; i++) {
+            Integer size = TEAM_WORDS.get(parts[i]);
+            if (size != null) {
+                return size > 1 ? size : 0;
+            }
+        }
+
+        if (id.contains("DOUBLES") || id.contains("TEAMS")) {
+            return 2;
+        }
+        if (id.contains("TRIPLES")) {
+            return 3;
+        }
+        if (id.contains("SOLO") || id.contains("SINGLES") || id.contains("DUEL")) {
+            return 0;
+        }
+
+        // Nothing in the id, so fall back to the name shown to the player. This is what covers a
+        // mode read off the scoreboard, where there is no id to read at all.
+        String pretty = mode.toLowerCase(Locale.ROOT);
+        if (pretty.contains("solo")) {
+            return 0;
+        }
+        if (pretty.contains("doubles")) {
+            return 2;
+        }
+        if (pretty.contains("3v3v3v3") || pretty.contains("triples")) {
+            return 3;
+        }
+        if (pretty.contains("4v4")) {
+            return 4;
+        }
+        return 0;
+    }
+
     public static long getStartedAt() {
         return startedAt;
     }
@@ -543,14 +619,21 @@ public final class HypixelPresence {
         return known != null ? known : prettify(gametype);
     }
 
-    private static String modeName(String gametype, String rawMode) {
+    /**
+     * Drops the game's own prefix from a mode id.
+     *
+     * <p>Bed Wars reports BEDWARS_EIGHT_ONE, SkyWars reports solo_normal. Removing the prefix lets
+     * one table cover both spellings, and it matters twice over for the team size: with the prefix
+     * still attached, the first word of BEDWARS_EIGHT_ONE is BEDWARS and the second is EIGHT --
+     * the number of teams, not the number of players on one.
+     */
+    private static String stripGamePrefix(String gametype, String rawMode) {
         String id = rawMode.toUpperCase(Locale.ROOT);
-        // Bed Wars reports BEDWARS_EIGHT_ONE, SkyWars reports solo_normal. Dropping the game's
-        // own prefix lets one table cover both spellings.
         String prefix = gametype.toUpperCase(Locale.ROOT) + "_";
-        if (id.startsWith(prefix)) {
-            id = id.substring(prefix.length());
-        }
+        return id.startsWith(prefix) ? id.substring(prefix.length()) : id;
+    }
+
+    private static String modeName(String id) {
         String known = MODE_NAMES.get(id);
         return known != null ? known : prettify(id);
     }

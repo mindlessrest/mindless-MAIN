@@ -3,7 +3,6 @@ package mindless.module.impl.other;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.GroupSetting;
-import mindless.module.setting.impl.SliderSetting;
 import mindless.module.setting.impl.TextSetting;
 import mindless.utility.HypixelPresence;
 import mindless.utility.Utils;
@@ -40,7 +39,6 @@ public class DiscordRPC extends Module {
     private final ButtonSetting gameIcons;
     private final ButtonSetting timeElapsed;
     private final ButtonSetting showParty;
-    private final SliderSetting maxPartySize;
 
     private final GroupSetting gameGroup;
     private final TextSetting detail;
@@ -71,7 +69,6 @@ public class DiscordRPC extends Module {
         this.registerSetting(gameIcons = new ButtonSetting("Game Icons", false));
         this.registerSetting(timeElapsed = new ButtonSetting("Time Elapsed", true));
         this.registerSetting(showParty = new ButtonSetting("Show Party", true));
-        this.registerSetting(maxPartySize = new SliderSetting("Max Party Size", 10, 1, 100, 1));
 
         this.registerSetting(gameGroup = new GroupSetting("In game"));
         this.registerSetting(detail = new TextSetting(gameGroup, "Detail", "{game} - {mode}", "{game} - {mode}", 100));
@@ -277,8 +274,13 @@ public class DiscordRPC extends Module {
         presence.largeImage(icon.isEmpty() ? DEFAULT_IMAGE : icon,
                 imageLine.isEmpty() ? "Mindless" : imageLine);
 
-        if (showParty.isToggled()) {
-            presence.party(HypixelPresence.getPartyMembers(), (int) maxPartySize.getInput());
+        // Discord draws this as "(1 of 2)" beside the state, and the number it counts against has
+        // to be the team, not a setting. A fixed cap made Solo read "1 of 10", which is wrong
+        // twice: there is no party of one, and there is no tenth slot. Doubles is two, 3v3v3v3 is
+        // three, 4v4 is four, and a mode with no team to speak of gets no party field at all.
+        int teamSize = HypixelPresence.getTeamSize();
+        if (showParty.isToggled() && teamSize > 1) {
+            presence.party(Math.min(HypixelPresence.getPartyMembers(), teamSize), teamSize);
         }
     }
 
