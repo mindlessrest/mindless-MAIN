@@ -16,7 +16,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 
-import java.util.Objects;
 
 public class DiscordRPC extends Module {
     /** Art uploaded to the Discord application under this name. Always present. */
@@ -27,9 +26,9 @@ public class DiscordRPC extends Module {
      * How often the presence is rebuilt.
      *
      * <p>Three hooks call into the update, so without this the templates were being expanded
-     * something like sixty times a second to produce a string that is almost always identical to
-     * the last one. Discord will not accept updates faster than about once every fifteen seconds
-     * anyway; twice a second is only to keep the change detection responsive.
+     * something like sixty times a second to produce a string almost always identical to the last
+     * one. Discord's own limit is far lower than that and the transport enforces it; twice a
+     * second here is only so a change is noticed promptly.
      */
     private static final long BUILD_INTERVAL_MS = 500L;
 
@@ -59,7 +58,6 @@ public class DiscordRPC extends Module {
 
     private mindless.utility.DiscordRPC rpc;
     private long startTimestamp;
-    private String lastSignature;
     private long lastBuildAt;
     private int tickCounter;
 
@@ -96,7 +94,6 @@ public class DiscordRPC extends Module {
             rpc = new mindless.utility.DiscordRPC("1541533225237749760");
             rpc.connect();
         }
-        lastSignature = null;
         lastBuildAt = 0L;
         HypixelPresence.reset();
         updatePresence();
@@ -126,8 +123,7 @@ public class DiscordRPC extends Module {
             return;
         }
 
-        // The scrape walks the whole sidebar, so it runs on a timer rather than every tick. The
-        // presence itself is still recomputed each tick, but only reaches Discord when it changed.
+        // The scrape walks the whole sidebar, so it runs on a timer rather than every tick.
         if (scrapeHypixel() && ++tickCounter % SCRAPE_INTERVAL_TICKS == 0) {
             HypixelPresence.tick(useLocraw.isToggled());
         }
@@ -191,11 +187,10 @@ public class DiscordRPC extends Module {
             buildGenericPresence(presence);
         }
 
-        String signature = presence.signature();
-        if (!Objects.equals(signature, lastSignature)) {
-            lastSignature = signature;
-            rpc.update(presence);
-        }
+        // Handed over unconditionally. The transport decides what is worth sending and keeps this
+        // as the target until it lands, so a send lost to a missing Discord or a spent rate limit
+        // budget is retried rather than skipped because we already recorded it as sent.
+        rpc.update(presence);
     }
 
     private void buildHypixelPresence(mindless.utility.DiscordRPC.RichPresence presence) {
