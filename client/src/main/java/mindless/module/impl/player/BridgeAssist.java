@@ -2,6 +2,7 @@ package mindless.module.impl.player;
 
 import mindless.event.ClientRotationEvent;
 import mindless.event.PrePlayerInputEvent;
+import mindless.event.PreSlotScrollEvent;
 import mindless.event.SendPacketEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
@@ -37,6 +38,7 @@ public class BridgeAssist extends Module {
     private final ButtonSetting notMovingForward;
 
     private final ButtonSetting prePlace;
+    private final ButtonSetting disableHotbarScrolling;
 
     private boolean sneakingFromModule;
     private boolean placed;
@@ -50,6 +52,7 @@ public class BridgeAssist extends Module {
         super("Bridge Assist", category.player);
 
         this.registerSetting(prePlace = new ButtonSetting("Pre place", false));
+        this.registerSetting(disableHotbarScrolling = new ButtonSetting("Disable hotbar scrolling", false));
 
         GroupSetting sneakingGroup = new GroupSetting("Sneaking");
         this.registerSetting(sneakingGroup);
@@ -156,6 +159,13 @@ public class BridgeAssist extends Module {
             if (c08.getPlacedBlockDirection() != 255 && sneakingFromModule && sneakKeyPressed.isToggled()) {
                 placed = true;
             }
+        }
+    }
+
+    @SubscribeEvent
+    public void onSlotScroll(PreSlotScrollEvent e) {
+        if (disableHotbarScrolling.isToggled() && sneakingFromModule) {
+            e.setCanceled(true);
         }
     }
 
