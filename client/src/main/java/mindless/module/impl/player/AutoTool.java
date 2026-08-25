@@ -34,6 +34,7 @@ public class AutoTool extends Module {
     private final GroupSetting conditionsGroup;
     private final ButtonSetting onlyWhileCrouching;
     private final ButtonSetting requireLeftMouse;
+    private final ButtonSetting disableInCreative;
 
     private final GroupSetting swapGroup;
     private final ButtonSetting switchBackWhenDone;
@@ -65,6 +66,7 @@ public class AutoTool extends Module {
         this.registerSetting(conditionsGroup = new GroupSetting("Conditions"));
         this.registerSetting(onlyWhileCrouching = new ButtonSetting(conditionsGroup, "Only while crouching", false));
         this.registerSetting(requireLeftMouse = new ButtonSetting(conditionsGroup, "Require Left mouse", true, "Require mouse down"));
+        this.registerSetting(disableInCreative = new ButtonSetting(conditionsGroup, "Disable in creative", true));
 
         this.registerSetting(swapGroup = new GroupSetting("Swap"));
         this.registerSetting(switchBackWhenDone = new ButtonSetting(swapGroup, "Switch back when done", true, "Swap to previous slot"));
@@ -138,6 +140,11 @@ public class AutoTool extends Module {
         updateLeftMouseState(leftMouseDown, currentTick);
 
         if (!mc.inGameHasFocus || mc.currentScreen != null || mc.thePlayer.isDead || !mc.thePlayer.capabilities.allowEdit) {
+            resetState(true);
+            return;
+        }
+
+        if (disableInCreative.isToggled() && mc.thePlayer.capabilities.isCreativeMode) {
             resetState(true);
             return;
         }
