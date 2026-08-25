@@ -264,12 +264,25 @@ public class TestScaffold extends Module {
         GL11.glPushMatrix();
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        mc.fontRendererObj.drawStringWithShadow(text, posX, posY, color);
-        mc.fontRendererObj.drawStringWithShadow(bpsText, posX, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
+        ItemStack badgeStack = getDisplayBlock();
+        float textX = textX(badgeStack);
+        mc.fontRendererObj.drawStringWithShadow(text, textX, posY, color);
+        mc.fontRendererObj.drawStringWithShadow(bpsText, textX, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
         GL11.glDisable(GL11.GL_BLEND);
         GL11.glPopMatrix();
 
-        drawHeldBlockBadge(text);
+        drawHeldBlockBadge(badgeStack);
+    }
+
+    /**
+     * Where the text starts.
+     *
+     * <p>The badge sits at the anchor and the text moves over for it, so dragging the widget still
+     * places its left edge where you put it. With no block to show there is no badge, and the text
+     * closes the gap rather than leaving one.
+     */
+    private float textX(ItemStack badgeStack) {
+        return badgeStack == null ? posX : posX + BADGE_SIZE + BADGE_GAP;
     }
 
     /**
@@ -288,16 +301,15 @@ public class TestScaffold extends Module {
         return slot == -1 ? null : mc.thePlayer.inventory.mainInventory[slot];
     }
 
-    /** A rounded slot beside the count holding whatever is about to be bridged with. */
-    private void drawHeldBlockBadge(String countText) {
-        ItemStack stack = getDisplayBlock();
+    /** A rounded slot to the left of the count holding whatever is about to be bridged with. */
+    private void drawHeldBlockBadge(ItemStack stack) {
         if (stack == null) {
             return;
         }
 
-        float badgeX = posX + mc.fontRendererObj.getStringWidth(countText) + BADGE_GAP;
+        float badgeX = posX;
         // Centred over both lines, so it reads as part of one widget rather than a tag stuck on
-        // the end of the first.
+        // the side of the first.
         float textHeight = mc.fontRendererObj.FONT_HEIGHT * 2 + 2;
         float badgeY = posY + (textHeight - BADGE_SIZE) * 0.5F;
 
@@ -808,10 +820,12 @@ public class TestScaffold extends Module {
             posX = ax; posY = ay;
             int blocks = getTotalBlocks();
             String text = blocks + " blocks";
-            mc.fontRendererObj.drawStringWithShadow(text, posX, posY, 0xFFFFFF);
+            ItemStack badgeStack = getDisplayBlock();
+            float tx = textX(badgeStack);
+            mc.fontRendererObj.drawStringWithShadow(text, tx, posY, 0xFFFFFF);
             String bps = String.format("%.1f BPS", computeBps());
-            mc.fontRendererObj.drawStringWithShadow(bps, posX, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
-            drawHeldBlockBadge(text);
+            mc.fontRendererObj.drawStringWithShadow(bps, tx, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
+            drawHeldBlockBadge(badgeStack);
 
             try { handleInput(); } catch (IOException ignored) {}
             super.drawScreen(mx, my, pt);
