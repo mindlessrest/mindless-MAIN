@@ -754,6 +754,105 @@ public class RotationUtils implements IMinecraftInstance {
         return new float[] { yaw, clampPitch(pitch) };
     }
 
+    /**
+     * Human-like rotation smoothing modeled on real mouse dynamics.
+     *
+     * Real human aiming follows Fitts' law: a ballistic phase (fast, imprecise)
+     * followed by a corrective phase (slow, precise). This implementation uses:
+     *
+     * 1. Distance-adaptive speed curve: large flicks are fast, small corrections are slow
+     * 2. Asymmetric axis movement: yaw and pitch move at different rates (wrist vs. arm)
+     * 3. Gaussian noise: subtle per-tick jitter scaled to movement speed
+     * 4. Micro-correction simulation: near target, movement becomes deliberate and noisy
+     */
+    public static float[] smoothRotationHumanized(float baseYaw, float basePitch,
+                                                   float targetYaw, float targetPitch,
+                                                   int speed, float randomizationPercent) {
+        if (speed <= 0) {
+            return new float[] { baseYaw, clampPitch(basePitch) };
+        }
+        if (speed >= 30) {
+            return new float[] { targetYaw, clampPitch(targetPitch) };
+        }
+
+        float deltaYaw = MathHelper.wrapAngleTo180_float(targetYaw - baseYaw);
+        float deltaPitch = targetPitch - basePitch;
+        float magnitude = (float) Math.sqrt(deltaYaw * deltaYaw + deltaPitch * deltaPitch);
+
+        if (magnitude < 0.02f) {
+            return new float[] { targetYaw, clampPitch(targetPitch) };
+        }
+
+        float baseSpeed = speed / 30f;
+
+        // Fitts' law ballistic curve: move a larger fraction when far, smaller when close.
+        // This creates the characteristic fast-flick then slow-correct pattern.
+        // The exponent controls how aggressively it decelerates near target.
+        float distanceFactor;
+        if (magnitude > 40f) {
+            // Ballistic phase: cover ground fast
+            distanceFactor = 0.6f + baseSpeed * 0.35f;
+        } else if (magnitude > 10f) {
+            // Transition: decelerating
+            float normalized = (magnitude - 10f) / 30f;
+            float ballistic = 0.6f + baseSpeed * 0.35f;
+            float corrective = 0.15f + baseSpeed * 0.25f;
+            distanceFactor = corrective + (ballistic - corrective) * normalized * normalized;
+        } else {
+            // Corrective phase: precise, slow movements
+            float corrective = 0.15f + baseSpeed * 0.25f;
+            float nearScale = magnitude / 10f;
+            distanceFactor = corrective * (0.4f + 0.6f * nearScale);
+        }
+
+        // Asymmetric axis speeds: humans move yaw faster than pitch (wrist rotation vs arm lift)
+        // Also add per-tick variance to prevent constant-delta detection
+        float randFactor = randomizationPercent / 100f;
+        float yawBias = 1.0f + 0.15f * randFactor * ((float) Math.random() - 0.3f);
+        float pitchBias = 1.0f - 0.1f * randFactor * ((float) Math.random() - 0.4f);
+
+        // Per-tick speed jitter (simulates inconsistent mouse polling / hand tremor)
+        float tickJitter = 1f + randFactor * 0.2f * gaussianish();
+
+        float effectiveYawStep = deltaYaw * distanceFactor * yawBias * tickJitter;
+        float effectivePitchStep = deltaPitch * distanceFactor * pitchBias * tickJitter;
+
+        // Gaussian noise perpendicular to movement (hand shake / imprecision)
+        // Scaled to current movement speed — you shake more during fast flicks
+        if (randFactor > 0f && magnitude > 1f) {
+            float noiseScale = randFactor * 0.4f * Math.min(1f, magnitude / 20f) * baseSpeed;
+            float perpNoise = gaussianish() * noiseScale;
+            float normYaw = deltaYaw / magnitude;
+            float normPitch = deltaPitch / magnitude;
+            effectiveYawStep += -normPitch * perpNoise;
+            effectivePitchStep += normYaw * perpNoise;
+        }
+
+        // Micro-overshoot: near target, occasionally overshoot slightly (then next tick corrects)
+        // This creates the characteristic oscillation humans show when landing on a target
+        if (magnitude < 5f && magnitude > 0.3f && randFactor > 0.2f) {
+            if (Math.random() < 0.08 * randFactor) {
+                float overshootAmount = 1f + (float) Math.random() * 0.12f * randFactor;
+                effectiveYawStep *= overshootAmount;
+                effectivePitchStep *= overshootAmount;
+            }
+        }
+
+        // Prevent overshooting past the target by more than a small margin
+        if (Math.abs(effectiveYawStep) > Math.abs(deltaYaw) * 1.15f) {
+            effectiveYawStep = deltaYaw * 1.05f;
+        }
+        if (Math.abs(effectivePitchStep) > Math.abs(deltaPitch) * 1.15f) {
+            effectivePitchStep = deltaPitch * 1.05f;
+        }
+
+        return new float[] { baseYaw + effectiveYawStep, clampPitch(basePitch + effectivePitchStep) };
+    }
+
+    private static float gaussianish() {
+        return (float) (Math.random() + Math.random() + Math.random() - 1.5) * 0.8165f;
+    }
+
     public static float clampPitch(final float n) {
         return MathHelper.clamp_float(n, -90.0f, 90.0f);
     }

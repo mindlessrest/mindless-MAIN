@@ -116,6 +116,17 @@ public class RotationHelper {
         return RotationUtils.smoothRotation(baseYaw, basePitch, rot[0], rot[1], speed, randomizationPercent);
     }
 
+    public float[] getHumanizedRotationsToTarget(Entity target, ClientRotationEvent e, int speed, double horizontalMultipoint, double verticalMultipoint, float randomizationPercent, boolean useBackupPoints, double range, boolean allowThroughBlocks, boolean allowThroughEntities, boolean ignoreOpenFenceGates) {
+        if (target == null || mc.thePlayer == null) return null;
+        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
+        float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
+        float[] rot = useBackupPoints
+                ? RotationUtils.getRotationsWithBackup(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)
+                : RotationUtils.getRotations(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch);
+        if (rot == null) return null;
+        return RotationUtils.smoothRotationHumanized(baseYaw, basePitch, rot[0], rot[1], speed, randomizationPercent);
+    }
+
     /**
      * Returns rotations to look at target with speed (0-30).
      * Uses player rotation as base. For Normal (non-silent) mode.
@@ -152,6 +163,17 @@ public class RotationHelper {
                 : RotationUtils.getRotations(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch);
         if (rot == null) return null;
         return RotationUtils.smoothRotation(baseYaw, basePitch, rot[0], rot[1], speed, randomizationPercent);
+    }
+
+    public float[] getHumanizedRotationsToTarget(Entity target, int speed, double horizontalMultipoint, double verticalMultipoint, float randomizationPercent, boolean useBackupPoints, double range, boolean allowThroughBlocks, boolean allowThroughEntities, boolean ignoreOpenFenceGates) {
+        if (target == null || mc.thePlayer == null) return null;
+        float baseYaw = mc.thePlayer.rotationYaw;
+        float basePitch = mc.thePlayer.rotationPitch;
+        float[] rot = useBackupPoints
+                ? RotationUtils.getRotationsWithBackup(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)
+                : RotationUtils.getRotations(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch);
+        if (rot == null) return null;
+        return RotationUtils.smoothRotationHumanized(baseYaw, basePitch, rot[0], rot[1], speed, randomizationPercent);
     }
 
     /**

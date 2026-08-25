@@ -56,6 +56,7 @@ public class KillAura extends Module {
     private ButtonSetting notUsingItem;
     private ButtonSetting requireMouseDown;
     private ButtonSetting weaponOnly;
+    private ButtonSetting humanize;
     private ButtonSetting killNotification;
 
     private String[] rotationModes = new String[]{"Silent", "Lock view", "None"};
@@ -106,6 +107,7 @@ public class KillAura extends Module {
         this.registerSetting(prioritizeEnemies = new ButtonSetting("Prioritize enemies", false));
         this.registerSetting(requireMouseDown = new ButtonSetting("Require mouse down", false));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
+        this.registerSetting(humanize = new ButtonSetting("Humanize", false));
         this.registerSetting(killNotification = new ButtonSetting("Kill notification", false));
     }
 
@@ -162,7 +164,9 @@ public class KillAura extends Module {
             if (targetDistance <= aimRangeVal) {
                 int speedVal = (int) speed.getInput();
                 boolean useBackup = !aimThroughBlocks.isToggled() || !aimThroughEntities.isToggled();
-                float[] rot = RotationHelper.get().getRotationsToTarget(target, e, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled(), true);
+                float[] rot = humanize.isToggled()
+                        ? RotationHelper.get().getHumanizedRotationsToTarget(target, e, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled(), true)
+                        : RotationHelper.get().getRotationsToTarget(target, e, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled(), true);
                 if (rot != null) {
                     e.yaw = rot[0];
                     e.pitch = rot[1];
@@ -222,7 +226,9 @@ public class KillAura extends Module {
             if (targetDistance <= aimRangeVal) {
                 int speedVal = (int) speed.getInput();
                 boolean useBackup = !aimThroughBlocks.isToggled() || !aimThroughEntities.isToggled();
-                float[] rot = RotationHelper.get().getRotationsToTarget(target, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled(), true);
+                float[] rot = humanize.isToggled()
+                        ? RotationHelper.get().getHumanizedRotationsToTarget(target, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled(), true)
+                        : RotationHelper.get().getRotationsToTarget(target, speedVal, 100, 100, 0f, useBackup, aimRangeVal, aimThroughBlocks.isToggled(), aimThroughEntities.isToggled(), true);
                 if (rot != null) {
                     mc.thePlayer.rotationYaw = rot[0];
                     mc.thePlayer.rotationPitch = rot[1];

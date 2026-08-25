@@ -37,6 +37,7 @@ public class AimAssist extends Module {
     private ButtonSetting ignoreBehindEntities;
     private ButtonSetting stopWhenBreaking;
     private SliderSetting hoverDelay;
+    private ButtonSetting humanize;
     private ButtonSetting weaponOnly;
 
     private long miningStartTime = -1;
@@ -63,6 +64,7 @@ public class AimAssist extends Module {
         this.registerSetting(clickAim = new ButtonSetting("Require mouse", true));
         this.registerSetting(stopWhenBreaking = new ButtonSetting("Stop when breaking", false));
         this.registerSetting(hoverDelay = new SliderSetting("Hover delay", " ms", 100, 0, 500, 10));
+        this.registerSetting(humanize = new ButtonSetting("Humanize", false));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
     }
 
@@ -100,7 +102,9 @@ public class AimAssist extends Module {
         double multipointV = multipointVertical.getInput();
         float randomizationPercent = (float) randomization.getInput();
         boolean useBackup = ignoreBehindWalls.isToggled() || ignoreBehindEntities.isToggled();
-        float[] rot = RotationHelper.get().getRotationsToTarget(en, e, speedVal, multipointH, multipointV, randomizationPercent, useBackup, range.getInput(), !ignoreBehindWalls.isToggled(), !ignoreBehindEntities.isToggled());
+        float[] rot = humanize.isToggled()
+                ? RotationHelper.get().getHumanizedRotationsToTarget(en, e, speedVal, multipointH, multipointV, randomizationPercent, useBackup, range.getInput(), !ignoreBehindWalls.isToggled(), !ignoreBehindEntities.isToggled(), false)
+                : RotationHelper.get().getRotationsToTarget(en, e, speedVal, multipointH, multipointV, randomizationPercent, useBackup, range.getInput(), !ignoreBehindWalls.isToggled(), !ignoreBehindEntities.isToggled());
         if (rot == null) return;
         int aimAxisMode = (int) aimAxis.getInput();
         if (aimAxisMode != 1) {
@@ -128,7 +132,9 @@ public class AimAssist extends Module {
         double multipointV = multipointVertical.getInput();
         float randomizationPercent = (float) randomization.getInput();
         boolean useBackup = ignoreBehindWalls.isToggled() || ignoreBehindEntities.isToggled();
-        float[] rot = RotationHelper.get().getRotationsToTarget(en, speedVal, multipointH, multipointV, randomizationPercent, useBackup, range.getInput(), !ignoreBehindWalls.isToggled(), !ignoreBehindEntities.isToggled());
+        float[] rot = humanize.isToggled()
+                ? RotationHelper.get().getHumanizedRotationsToTarget(en, speedVal, multipointH, multipointV, randomizationPercent, useBackup, range.getInput(), !ignoreBehindWalls.isToggled(), !ignoreBehindEntities.isToggled(), false)
+                : RotationHelper.get().getRotationsToTarget(en, speedVal, multipointH, multipointV, randomizationPercent, useBackup, range.getInput(), !ignoreBehindWalls.isToggled(), !ignoreBehindEntities.isToggled());
         if (rot == null) return;
         int aimAxisMode = (int) aimAxis.getInput();
         if (aimAxisMode != 1) {
