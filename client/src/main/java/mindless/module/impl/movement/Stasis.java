@@ -16,7 +16,7 @@ public class Stasis extends Module {
     private boolean stored;
 
     public Stasis() {
-        super("Stasis", category.movement);
+        super("Air Stuck", category.movement);
     }
 
     @Override
