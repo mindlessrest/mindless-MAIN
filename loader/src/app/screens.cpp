@@ -219,13 +219,7 @@ static float list_top_offset(FontAtlas& font)
     return 48.0f + font.lineHeight() + 8.0f;
 }
 
-float process_select_panel_height(int rowCount, FontAtlas& font)
-{
-    int visible = rowCount <= 0 ? 2 : std::min(rowCount, kMaxVisibleRows);
-    float listH = visible * kRowHeight + (visible - 1) * kRowGap;
-    return list_top_offset(font) + listH + kListGap
-         + g_theme.buttonH + g_theme.windowPadding;
-}
+
 
 static void draw_process_select_content(DrawList& dl, AppState& state,
                                          const InputState& input, ScreenFonts fonts,

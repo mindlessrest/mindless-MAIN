@@ -195,32 +195,18 @@ int Application::run()
         if (state_.screen == Screen::ProcessSelect || state_.screen == Screen::Loading)
         {
             int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
-            float panelH = state_.screen == Screen::Loading
-                ? 300.0f
-                : process_select_panel_height(
-                      static_cast<int>(state_.processes.size()), fontNormal_);
-
-            float desiredW = 460.0f + static_cast<float>(margin);
-            float desiredH = panelH + static_cast<float>(margin);
-
-            if (animW_ == 0.0f) { animW_ = desiredW; animH_ = desiredH; }
-
-            float rate = 12.0f;
-            animW_ += (desiredW - animW_) * std::min(1.0f, rate * dt);
-            animH_ += (desiredH - animH_) * std::min(1.0f, rate * dt);
-
-            int newW = static_cast<int>(std::round(animW_));
-            int newH = static_cast<int>(std::round(animH_));
+            int desiredW = 460 + margin;
+            int desiredH = 300 + margin;
 
             RECT cur;
             GetWindowRect(window_.hwnd(), &cur);
             int curW = cur.right - cur.left;
             int curH = cur.bottom - cur.top;
-            if (curW != newW || curH != newH)
+            if (curW != desiredW || curH != desiredH)
             {
-                int newX = cur.left + (curW - newW) / 2;
-                int newY = cur.top + (curH - newH) / 2;
-                SetWindowPos(window_.hwnd(), nullptr, newX, newY, newW, newH,
+                int newX = cur.left + (curW - desiredW) / 2;
+                int newY = cur.top + (curH - desiredH) / 2;
+                SetWindowPos(window_.hwnd(), nullptr, newX, newY, desiredW, desiredH,
                              SWP_NOZORDER | SWP_NOACTIVATE);
             }
         }
