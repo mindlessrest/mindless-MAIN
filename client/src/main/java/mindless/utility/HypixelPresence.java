@@ -106,6 +106,23 @@ public final class HypixelPresence {
 
     /** The Skyblock location marker, which the sidebar puts in front of the area name. */
     private static final char SKYBLOCK_AREA_MARKER = '\u23e3';
+    /** Bed Wars marks a team's bed as standing with a tick and the team as out with a cross. */
+    private static final char TEAM_BED_ALIVE = '\u2713';
+    private static final char TEAM_ELIMINATED = '\u2717';
+
+    /**
+     * A Bed Wars team line: a single letter, the colour, then the team's state.
+     *
+     * <p>Reads "R Red: [tick]" while the bed stands, "B Blue: 3" once it is gone and three players
+     * are left, and "G Green: [cross]" when the team is out. The single leading letter is what
+     * keeps this off the other sidebar lines -- "Beds Destroyed: 3" leads with a whole word.
+     */
+    private static final Pattern BEDWARS_TEAM =
+            Pattern.compile("^[A-Z] [A-Za-z]+: *(?<status>\\S+).*$");
+
+    /** How SkyWars and the arcade games count down instead. */
+    private static final Pattern PLAYERS_LEFT =
+            Pattern.compile("^Players left: *(?<count>[0-9]+).*$");
 
     /**
      * Hypixel's internal game ids, spelled the way a person would say them.
@@ -517,6 +534,37 @@ public final class HypixelPresence {
     }
 
     /**
+     * How many teams are still in the game.
+     *
+     * <p>This is what a solo game has instead of teammates: there is nobody beside you, but there
+     * is a field that shrinks as the lobby is whittled down, which is the interesting number.
+     *
+     * <p>Bed Wars states it a team at a time -- a tick while the bed stands, a count once it is
+     * gone, a cross when the team is out -- so the answer is every team line that is not a cross.
+     * SkyWars and the arcade games say it outright with a "Players left" line, and that is taken
+     * as given when it appears.
+     *
+     * @return teams still alive, or 0 when the scoreboard does not say
+     */
+    public static int getTeamsRemaining() {
+        int alive = 0;
+        for (String raw : Utils.getSidebarLines()) {
+            String line = cleanLine(raw).trim();
+
+            Matcher left = PLAYERS_LEFT.matcher(line);
+            if (left.matches()) {
+                return Integer.parseInt(left.group("count"));
+            }
+
+            Matcher team = BEDWARS_TEAM.matcher(line);
+            if (team.matches() && team.group("status").indexOf(TEAM_ELIMINATED) < 0) {
+                alive++;
+            }
+        }
+        return alive;
+    }
+
+    /**
      * How many players fit on a team in the current mode.
      *
      * <p>This is what the Discord party field should be counting against. A fixed cap made Solo
@@ -591,7 +639,8 @@ public final class HypixelPresence {
         char[] chars = StringUtils.stripControlCodes(line).toCharArray();
         StringBuilder cleaned = new StringBuilder(chars.length);
         for (char c : chars) {
-            if ((c > '\u0014' && c < '\u007f') || c == SKYBLOCK_AREA_MARKER) {
+            if ((c > '\u0014' && c < '\u007f') || c == SKYBLOCK_AREA_MARKER
+                    || c == TEAM_BED_ALIVE || c == TEAM_ELIMINATED) {
                 cleaned.append(c);
             }
         }

@@ -91,6 +91,14 @@ public class Rpc extends Command {
                     + " &8| server: &f" + blank(HypixelPresence.getServer()));
             reply("&7party: &f" + HypixelPresence.getPartyMembers()
                     + " &8| sidebar lines: &f" + Utils.getSidebarLines().size());
+
+            int teamSize = HypixelPresence.getTeamSize();
+            int remaining = HypixelPresence.getTeamsRemaining();
+            reply("&7team size: &f" + (teamSize > 1 ? String.valueOf(teamSize) : "none (solo or unknown)")
+                    + " &8| teams left: &f" + (remaining > 0 ? String.valueOf(remaining) : "not shown"));
+            if (teamSize <= 1 && !module.wantsSoloTeamsLeft()) {
+                reply("&8  turn on Solo Teams Left to show \"1 of " + Math.max(remaining, 2) + "\" here");
+            }
         }
     }
 

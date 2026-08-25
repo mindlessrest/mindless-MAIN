@@ -39,6 +39,7 @@ public class DiscordRPC extends Module {
     private final ButtonSetting gameIcons;
     private final ButtonSetting timeElapsed;
     private final ButtonSetting showParty;
+    private final ButtonSetting soloTeamsLeft;
 
     private final GroupSetting gameGroup;
     private final TextSetting detail;
@@ -69,6 +70,7 @@ public class DiscordRPC extends Module {
         this.registerSetting(gameIcons = new ButtonSetting("Game Icons", false));
         this.registerSetting(timeElapsed = new ButtonSetting("Time Elapsed", true));
         this.registerSetting(showParty = new ButtonSetting("Show Party", true));
+        this.registerSetting(soloTeamsLeft = new ButtonSetting("Solo Teams Left", false));
 
         this.registerSetting(gameGroup = new GroupSetting("In game"));
         this.registerSetting(detail = new TextSetting(gameGroup, "Detail", "{game} - {mode}", "{game} - {mode}", 100));
@@ -206,6 +208,10 @@ public class DiscordRPC extends Module {
         return forceHypixel.isToggled();
     }
 
+    public boolean wantsSoloTeamsLeft() {
+        return soloTeamsLeft.isToggled();
+    }
+
     private void updatePresence() {
         if (rpc == null) {
             return;
@@ -281,6 +287,15 @@ public class DiscordRPC extends Module {
         int teamSize = HypixelPresence.getTeamSize();
         if (showParty.isToggled() && teamSize > 1) {
             presence.party(Math.min(HypixelPresence.getPartyMembers(), teamSize), teamSize);
+        }
+        else if (soloTeamsLeft.isToggled() && teamSize == 0) {
+            // A solo game has no teammates, so the bracket counts the lobby down instead: you are
+            // one of however many teams are still alive. It shrinks as the game is won, which is
+            // the only number in a solo worth putting there.
+            int remaining = HypixelPresence.getTeamsRemaining();
+            if (remaining > 1) {
+                presence.party(1, remaining);
+            }
         }
     }
 
