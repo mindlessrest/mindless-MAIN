@@ -33,6 +33,8 @@ public class HitSelect extends Module {
     private final SliderSetting pauseDuration;
     private final SliderSetting mode;
     private final SliderSetting waitForFirstHit;
+    private final ButtonSetting weaponOnly;
+    private final ButtonSetting ignoreTeammates;
     private final ButtonSetting disableDuringKnockback;
     private final ButtonSetting onlyWhileDamaged;
     private final ButtonSetting useServerAttackTime;
@@ -60,6 +62,8 @@ public class HitSelect extends Module {
         this.registerSetting(pauseDuration = new SliderSetting("Pause duration", "ms", 500.0D, 0.0D, 500.0D, 50.0D));
         this.registerSetting(mode = new SliderSetting("Mode", 0, modes));
         this.registerSetting(waitForFirstHit = new SliderSetting("Wait for first hit", "ms", 0.0D, 0.0D, 500.0D, 50.0D));
+        this.registerSetting(weaponOnly = new ButtonSetting("Weapons only", false));
+        this.registerSetting(ignoreTeammates = new ButtonSetting("Ignore teammates", true));
         this.registerSetting(disableDuringKnockback = new ButtonSetting("Disable during knockback", false));
         this.registerSetting(onlyWhileDamaged = new ButtonSetting("Only while damaged", false));
         this.registerSetting(useServerAttackTime = new ButtonSetting("Use server attack time", false));
@@ -104,7 +108,7 @@ public class HitSelect extends Module {
         int currentTick = tickCounter;
         pruneTargetStates();
 
-        EntityPlayer nextTarget = CombatTargeting.findTarget(HIT_RANGE_SQ);
+        EntityPlayer nextTarget = CombatTargeting.findTarget(HIT_RANGE_SQ, ignoreTeammates.isToggled());
         updateCurrentTarget(nextTarget, currentTick);
         updateSelfDamage(currentTick);
         updateTargetDamage(currentTick);
@@ -112,7 +116,7 @@ public class HitSelect extends Module {
 
     @SubscribeEvent
     public void onPreAttack(PreAttackEvent event) {
-        if (!canProcessClicks()) {
+        if (!canProcessClicks() || weaponOnly.isToggled() && !Utils.holdingWeapon()) {
             return;
         }
 
@@ -130,7 +134,7 @@ public class HitSelect extends Module {
             return;
         }
 
-        EntityPlayer clickedTarget = CombatTargeting.asValidPlayer(event.objectMouseOver == null ? null : event.objectMouseOver.entityHit, HIT_RANGE_SQ);
+        EntityPlayer clickedTarget = CombatTargeting.asValidPlayer(event.objectMouseOver == null ? null : event.objectMouseOver.entityHit, HIT_RANGE_SQ, ignoreTeammates.isToggled());
         if (clickedTarget == null) {
             return;
         }
@@ -165,7 +169,7 @@ public class HitSelect extends Module {
 
         if (objectMouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY) {
             Entity entityHit = objectMouseOver.entityHit;
-            return CombatTargeting.asValidPlayer(entityHit, HIT_RANGE_SQ) != null ? ClickType.VALID_HIT : ClickType.MISSED_SWING;
+            return CombatTargeting.asValidPlayer(entityHit, HIT_RANGE_SQ, ignoreTeammates.isToggled()) != null ? ClickType.VALID_HIT : ClickType.MISSED_SWING;
         }
 
         return ClickType.MISSED_SWING;
