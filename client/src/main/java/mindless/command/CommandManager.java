@@ -10,6 +10,7 @@ import mindless.command.impl.Help;
 import mindless.command.impl.HideAll;
 import mindless.command.impl.Name;
 import mindless.command.impl.Ping;
+import mindless.command.impl.Rpc;
 import mindless.command.impl.Prefix;
 import mindless.command.impl.Profiles;
 import mindless.command.impl.ShowAll;
@@ -34,6 +35,7 @@ public class CommandManager {
     public CommandManager() {
         register(new Help());
         register(new Ping());
+        register(new Rpc());
         register(new Name());
         register(new Toggle());
         register(new Bind());

@@ -110,6 +110,24 @@ public class DiscordRPC {
         }
     }
 
+    public boolean isConnected() {
+        return !connections.isEmpty();
+    }
+
+    /** Which Discord clients are attached right now, for the diagnostic command. */
+    public List<String> describeConnections() {
+        List<String> out = new ArrayList<>();
+        for (Connection c : connections) {
+            out.add(c.label);
+        }
+        return out;
+    }
+
+    /** The presence the worker is trying to get to, whether or not it has landed yet. */
+    public RichPresence getDesired() {
+        return desired;
+    }
+
     public void close() {
         synchronized (lifecycleLock) {
             running = false;

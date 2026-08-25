@@ -15,6 +15,7 @@ import mindless.module.impl.player.Freecam;
 import mindless.module.impl.world.AntiBot;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.color.ColorConstants;
+import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.block.*;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.inventory.GuiInventory;
@@ -730,8 +731,46 @@ public class Utils implements IMinecraftInstance {
         return mc.thePlayer != null && mc.theWorld != null;
     }
 
+    private static String cachedServerBrand;
+    private static boolean cachedBrandIsHypixel;
+
+    /**
+     * Whether we are on Hypixel, however we got there.
+     *
+     * <p>The address alone is not enough. Anyone joining through a proxy -- Liquid Proxy and the
+     * like -- has a server address of localhost, so an address test says no while the player is
+     * very much on Hypixel, and every Hypixel feature in the client silently switches itself off.
+     *
+     * <p>The server brand is the reliable signal. Hypixel sends it over MC|Brand from its own
+     * BungeeCord, and a proxy forwards that packet along with everything else, so it survives the
+     * hop. It is cached because the answer only changes when the brand string does, and this is
+     * called from per-tick and per-entity paths.
+     */
     public static boolean isHypixel() {
-        return !mc.isSingleplayer() && mc.getCurrentServerData() != null && mc.getCurrentServerData().serverIP.contains("hypixel.net");
+        if (mc.isSingleplayer() || mc.thePlayer == null) {
+            return false;
+        }
+
+        final ServerData serverData = mc.getCurrentServerData();
+        if (serverData != null && serverData.serverIP != null
+                && serverData.serverIP.toLowerCase(Locale.ROOT).contains("hypixel.net")) {
+            return true;
+        }
+
+        final String brand = mc.thePlayer.getClientBrand();
+        if (brand == null) {
+            return false;
+        }
+        if (!brand.equals(cachedServerBrand)) {
+            cachedServerBrand = brand;
+            cachedBrandIsHypixel = brand.toLowerCase(Locale.ROOT).contains("hypixel");
+        }
+        return cachedBrandIsHypixel;
+    }
+
+    /** The brand the server introduced itself with, for diagnosing a connection. */
+    public static String getServerBrand() {
+        return mc.thePlayer == null ? "" : String.valueOf(mc.thePlayer.getClientBrand());
     }
 
     public static String getHitsToKillStr(final EntityPlayer entityPlayer, final ItemStack itemStack) {

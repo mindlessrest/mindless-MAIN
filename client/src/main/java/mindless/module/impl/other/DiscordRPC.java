@@ -35,6 +35,7 @@ public class DiscordRPC extends Module {
     public static ButtonSetting showServer;
 
     private final ButtonSetting hypixelStats;
+    private final ButtonSetting forceHypixel;
     private final ButtonSetting useLocraw;
     private final ButtonSetting gameIcons;
     private final ButtonSetting timeElapsed;
@@ -65,6 +66,7 @@ public class DiscordRPC extends Module {
         super("Discord RPC", Module.category.other);
         this.registerSetting(showServer = new ButtonSetting("Show Server", true));
         this.registerSetting(hypixelStats = new ButtonSetting("Hypixel Stats", true));
+        this.registerSetting(forceHypixel = new ButtonSetting("Force Hypixel", false));
         this.registerSetting(useLocraw = new ButtonSetting("Use Locraw", true));
         this.registerSetting(gameIcons = new ButtonSetting("Game Icons", false));
         this.registerSetting(timeElapsed = new ButtonSetting("Time Elapsed", true));
@@ -159,8 +161,52 @@ public class DiscordRPC extends Module {
         }
     }
 
+    /**
+     * Whether to read the scoreboard as a Hypixel one.
+     *
+     * <p>Force Hypixel exists for proxies. Detection reads the server address, and failing that
+     * the brand the server introduced itself with; a proxy replaces the address with its own and
+     * some replace the brand too, at which point nothing is left to detect and the only honest
+     * answer is to let the player say so.
+     */
     private boolean scrapeHypixel() {
-        return hypixelStats.isToggled() && Utils.isHypixel();
+        return hypixelStats.isToggled() && (forceHypixel.isToggled() || Utils.isHypixel());
+    }
+
+    /** Live state next to the module name, so a presence that is not showing says why. */
+    @Override
+    public String getInfo() {
+        if (rpc == null) {
+            return "";
+        }
+        if (!rpc.isConnected()) {
+            return "no discord";
+        }
+        if (!hypixelStats.isToggled()) {
+            return "server only";
+        }
+        if (!forceHypixel.isToggled() && !Utils.isHypixel()) {
+            return "not hypixel";
+        }
+        String game = HypixelPresence.getGame();
+        String mode = HypixelPresence.getMode();
+        if (game.isEmpty()) {
+            return "reading";
+        }
+        return mode.isEmpty() ? game : game + " - " + mode;
+    }
+
+    /** Everything the diagnostic command reports. Keep it cheap; it runs on demand only. */
+    public mindless.utility.DiscordRPC getTransport() {
+        return rpc;
+    }
+
+    public boolean wantsHypixelStats() {
+        return hypixelStats.isToggled();
+    }
+
+    public boolean isForcingHypixel() {
+        return forceHypixel.isToggled();
     }
 
     private void updatePresence() {
