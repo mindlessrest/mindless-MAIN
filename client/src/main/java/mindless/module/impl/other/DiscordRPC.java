@@ -19,17 +19,24 @@ import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 public class DiscordRPC extends Module {
     /** Art uploaded to the Discord application under this name. Always present. */
     private static final String DEFAULT_IMAGE = "large_image";
-    /** The scoreboard is rescanned this often. It does not change fast enough to want more. */
-    private static final int SCRAPE_INTERVAL_TICKS = 20;
+    /**
+     * How often the scoreboard is rescanned.
+     *
+     * <p>Was a full second, which was most of the delay before a presence caught up: a game could
+     * have started and the sidebar rewritten a second earlier and nothing had looked yet. The scan
+     * is fifteen lines and a couple of patterns, so five ticks costs nothing worth counting.
+     */
+    private static final int SCRAPE_INTERVAL_TICKS = 4;
     /**
      * How often the presence is rebuilt.
      *
      * <p>Three hooks call into the update, so without this the templates were being expanded
      * something like sixty times a second to produce a string almost always identical to the last
-     * one. Discord's own limit is far lower than that and the transport enforces it; twice a
-     * second here is only so a change is noticed promptly.
+     * one. Discord's own limit is far lower and the transport enforces it, so this only governs
+     * how quickly a change is noticed -- and half a second of not looking was half a second added
+     * to every update for no gain.
      */
-    private static final long BUILD_INTERVAL_MS = 500L;
+    private static final long BUILD_INTERVAL_MS = 150L;
 
     public static ButtonSetting showServer;
 
@@ -135,6 +142,7 @@ public class DiscordRPC extends Module {
     public void onWorldLoad(WorldEvent.Load event) {
         HypixelPresence.reset();
         startTimestamp = System.currentTimeMillis() / 1000L;
+        lastBuildAt = 0L;
     }
 
     @SubscribeEvent
@@ -157,6 +165,10 @@ public class DiscordRPC extends Module {
         if (HypixelPresence.onChat(event.message.getFormattedText(), event.message.getUnformattedText())) {
             // Our own locraw reply. We asked for it, so the player should not have to read it.
             event.setCanceled(true);
+            // It carries the game, the mode and the map all at once, which is the single biggest
+            // change the presence ever sees. Waiting out the rebuild throttle after it is pure
+            // delay, so the next tick is allowed through immediately.
+            lastBuildAt = 0L;
         }
     }
 

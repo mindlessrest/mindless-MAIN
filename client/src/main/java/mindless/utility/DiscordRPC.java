@@ -27,7 +27,7 @@ public class DiscordRPC {
     /** How long to wait before hunting for pipes again after finding none. */
     private static final long RECONNECT_INTERVAL_MS = 5000L;
     /** Worker cycle. Fast enough that a presence change lands promptly, slow enough to be free. */
-    private static final long POLL_INTERVAL_MS = 250L;
+    private static final long POLL_INTERVAL_MS = 100L;
     /**
      * How long the worker may go without completing a cycle before it is assumed wedged.
      *

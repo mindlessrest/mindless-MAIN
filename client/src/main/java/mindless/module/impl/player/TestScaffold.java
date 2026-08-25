@@ -9,6 +9,7 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
+import mindless.utility.shader.RoundedUtils;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
@@ -17,6 +18,7 @@ import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.Item;
@@ -59,6 +61,12 @@ public class TestScaffold extends Module {
 
     private final long[] timestamps = new long[TIMESTAMP_RING];
     private int tsHead, tsCount;
+
+    /** Sixteen for the icon itself, two of padding either side. */
+    private static final float BADGE_SIZE = 20.0F;
+    private static final float BADGE_GAP = 4.0F;
+    private static final float BADGE_RADIUS = 4.0F;
+    private static final int BADGE_COLOUR = 0xD218181B;
 
     private float posX = Float.NaN;
     private float posY = Float.NaN;
@@ -260,6 +268,58 @@ public class TestScaffold extends Module {
         mc.fontRendererObj.drawStringWithShadow(bpsText, posX, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
         GL11.glDisable(GL11.GL_BLEND);
         GL11.glPopMatrix();
+
+        drawHeldBlockBadge(text);
+    }
+
+    /**
+     * The block the scaffold would place, without reaching for it.
+     *
+     * <p>{@link #getBlockItem} answers the same question but switches the held slot on its way to
+     * the answer. That is right when it is about to place; it is wrong from a render pass, where
+     * it would be moving the player's hand every frame in order to draw a picture of it.
+     */
+    private ItemStack getDisplayBlock() {
+        ItemStack held = mc.thePlayer.inventory.getCurrentItem();
+        if (held != null && held.getItem() instanceof ItemBlock && held.stackSize > 0) {
+            return held;
+        }
+        int slot = getBestBlockSlot();
+        return slot == -1 ? null : mc.thePlayer.inventory.mainInventory[slot];
+    }
+
+    /** A rounded slot beside the count holding whatever is about to be bridged with. */
+    private void drawHeldBlockBadge(String countText) {
+        ItemStack stack = getDisplayBlock();
+        if (stack == null) {
+            return;
+        }
+
+        float badgeX = posX + mc.fontRendererObj.getStringWidth(countText) + BADGE_GAP;
+        // Centred over both lines, so it reads as part of one widget rather than a tag stuck on
+        // the end of the first.
+        float textHeight = mc.fontRendererObj.FONT_HEIGHT * 2 + 2;
+        float badgeY = posY + (textHeight - BADGE_SIZE) * 0.5F;
+
+        RoundedUtils.drawRound(badgeX, badgeY, BADGE_SIZE, BADGE_SIZE, BADGE_RADIUS, BADGE_COLOUR);
+
+        int iconX = Math.round(badgeX + (BADGE_SIZE - 16.0F) * 0.5F);
+        int iconY = Math.round(badgeY + (BADGE_SIZE - 16.0F) * 0.5F);
+
+        GlStateManager.pushMatrix();
+        GlStateManager.enableDepth();
+        RenderHelper.enableGUIStandardItemLighting();
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+        mc.getRenderItem().zLevel = 0.0F;
+        mc.getRenderItem().renderItemAndEffectIntoGUI(stack, iconX, iconY);
+        RenderHelper.disableStandardItemLighting();
+        GlStateManager.disableDepth();
+        GlStateManager.popMatrix();
+
+        // Item rendering leaves lighting, colour and texture state however it pleases, and
+        // everything drawn after this on the HUD expects them neutral.
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+        GlStateManager.enableTexture2D();
     }
 
     private void updateEagle(boolean placedThisTick) {
@@ -751,6 +811,7 @@ public class TestScaffold extends Module {
             mc.fontRendererObj.drawStringWithShadow(text, posX, posY, 0xFFFFFF);
             String bps = String.format("%.1f BPS", computeBps());
             mc.fontRendererObj.drawStringWithShadow(bps, posX, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
+            drawHeldBlockBadge(text);
 
             try { handleInput(); } catch (IOException ignored) {}
             super.drawScreen(mx, my, pt);
