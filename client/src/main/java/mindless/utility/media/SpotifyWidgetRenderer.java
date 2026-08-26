@@ -52,7 +52,9 @@ public final class SpotifyWidgetRenderer {
     private static final float CARD_WIDTH = COVER * 5.0F;
     private static final float RADIUS = COVER * 0.10F;
     private static final float TILE_GAP = COVER * 0.08F;
-    private static final float PAD_X = COVER * 0.20F;
+    private static final float PAD_X = COVER * 0.20F + 4.0F;
+    /** Breathing room above and below the text block, which the original gets from centring. */
+    private static final float PAD_Y = 4.0F;
 
     private static final float TITLE_HEIGHT = COVER * 0.20F;
     private static final float LABEL_HEIGHT = COVER * 0.16F;
@@ -61,17 +63,25 @@ public final class SpotifyWidgetRenderer {
     private static final float VISUALIZER_HEIGHT = COVER * 0.26F;
     private static final float LYRICS_GAP = COVER * 0.08F;
 
-    /** filter: drop-shadow(15px 15px 7px rgba(0,0,0,1)) */
-    private static final float SHADOW_OFFSET = COVER * 0.15F;
-    private static final float SHADOW_SPREAD = COVER * 0.07F;
+    /** filter: drop-shadow(15px 15px 7px rgba(0,0,0,1)), pulled in so it stays behind the card. */
+    private static final float SHADOW_OFFSET = 3.0F;
+    private static final float SHADOW_SPREAD = 3.0F;
 
     /** #1F1F1F behind the progress fill, white in front of it. */
     private static final Color TRACK = new Color(31, 31, 31);
     private static final Color FILL = new Color(255, 255, 255);
-    /** background: rgba(0, 0, 0, 0.5) over the wash. */
-    private static final int PANEL_TINT_ALPHA = 128;
-    /** #songInfo carries opacity 0.9, and so does the art behind it. */
-    private static final float WASH_ALPHA = 0.9F;
+    /**
+     * How dark the panel sits over its wash.
+     *
+     * <p>The original's rgba(0, 0, 0, 0.5) sits over art blurred across a much larger area, where
+     * twenty pixels of blur average a whole cover down to something close to grey. Twelve pixels
+     * stretched over a panel keeps far more of the record's colour than that, and a straight half
+     * alpha over it produced a flat slab of whatever colour the sleeve happened to be. Darker
+     * here, weaker below: the panel reads as dark with the record showing through, which is what
+     * the original actually looks like.
+     */
+    private static final int PANEL_TINT_ALPHA = 172;
+    private static final float WASH_ALPHA = 0.5F;
 
     private static final float ENTRY_RISE = 14.0F;
 
@@ -88,6 +98,10 @@ public final class SpotifyWidgetRenderer {
 
     private static float visibility;
     private static long lastFrameMs;
+
+    /** What the lyric strip was showing, so a change can be animated away from it. */
+    private static String lyricKey = "";
+    private static long lyricChangedAt;
 
     private static float cardX;
     private static float cardY;
@@ -219,10 +233,10 @@ public final class SpotifyWidgetRenderer {
         GlStateManager.enableBlend();
         GlStateManager.disableAlpha();
 
-        dropShadow(x, y, cover, rowHeight, radius, alpha);
-        dropShadow(panelX, y, panelWidth, rowHeight, radius, alpha);
+        dropShadow(x, y, cover, rowHeight, radius, uiScale, alpha);
+        dropShadow(panelX, y, panelWidth, rowHeight, radius, uiScale, alpha);
         if (lyricStripHeight > 0.0F) {
-            dropShadow(x, y + rowHeight + lyricGap, width, lyricStripHeight, radius, alpha);
+            dropShadow(x, y + rowHeight + lyricGap, width, lyricStripHeight, radius, uiScale, alpha);
         }
 
         drawCover(art, wash, x, y, cover, radius, alpha);
@@ -245,18 +259,20 @@ public final class SpotifyWidgetRenderer {
     // -------------------------------------------------------------------------------- the pieces
 
     /**
-     * The hard offset shadow the original drops the whole card onto.
+     * The offset shadow the original drops the whole card onto.
      *
-     * <p>Drawn as a few stacked rounded rects rather than a real blur: the original's is offset far
-     * enough that its softness reads as a gradient at the edge, which stacking reproduces closely
-     * enough at this size and costs nothing.
+     * <p>Stacked rounded rects rather than a real blur, which is close enough at this size. The
+     * spread has to be scaled with the card: left as fixed pixels it stayed full size while the
+     * card halved, and a shadow wider than the thing casting it does not read as a shadow at all,
+     * it reads as a grey box behind the player.
      */
-    private static void dropShadow(float x, float y, float width, float height, float radius, float alpha) {
-        float offset = SHADOW_OFFSET * 0.35F;
-        int steps = 4;
+    private static void dropShadow(float x, float y, float width, float height, float radius,
+                                   float uiScale, float alpha) {
+        float offset = SHADOW_OFFSET * uiScale;
+        int steps = 3;
         for (int i = steps; i >= 1; i--) {
-            float spread = SHADOW_SPREAD * i / steps;
-            int a = Math.round(38.0F * alpha * (1.0F - (i - 1) / (float) steps));
+            float spread = SHADOW_SPREAD * uiScale * i / steps;
+            int a = Math.round(58.0F * alpha * (1.0F - (i - 1) / (float) steps));
             if (a <= 0) {
                 continue;
             }
@@ -294,10 +310,12 @@ public final class SpotifyWidgetRenderer {
         String artist = clip(labelFont, valueOr(info.getArtist(), ""), textWidth);
 
         float barHeight = BAR_HEIGHT * uiScale;
-        float blockHeight = titleFont.getFontHeight()
-                + labelFont.getFontHeight() + 2.0F * uiScale
+        float titleGap = 3.0F * uiScale;
+        float blockHeight = titleFont.getFontHeight() + titleGap
+                + labelFont.getFontHeight()
                 + visualizerHeight
-                + BAR_GAP * uiScale + labelFont.getFontHeight() + barHeight;
+                + BAR_GAP * uiScale + labelFont.getFontHeight()
+                + 3.0F * uiScale + barHeight;
         // #IAmRunningOutOfNamesForTheseBoxes is centred in the panel, whatever it ends up holding.
         float cursor = y + (height - blockHeight) * 0.5F;
 
@@ -305,10 +323,10 @@ public final class SpotifyWidgetRenderer {
         int primary = Utils.mergeAlpha(0xFFFFFF, textAlpha);
         int secondary = Utils.mergeAlpha(0xFFFFFF, Math.round(textAlpha * 0.82F));
 
-        titleFont.drawString(title, textX, cursor, primary, true);
-        cursor += titleFont.getFontHeight() + 2.0F * uiScale;
+        drawShadowedString(titleFont, title, textX, cursor, primary, uiScale, alpha);
+        cursor += titleFont.getFontHeight() + titleGap;
         if (!artist.isEmpty()) {
-            labelFont.drawString(artist, textX, cursor, secondary, true);
+            drawShadowedString(labelFont, artist, textX, cursor, secondary, uiScale, alpha);
         }
         cursor += labelFont.getFontHeight();
 
@@ -325,10 +343,11 @@ public final class SpotifyWidgetRenderer {
         String elapsed = formatTime(position);
         String remaining = formatTime(duration);
 
-        labelFont.drawString(elapsed, textX, cursor, primary, true);
-        labelFont.drawString(remaining,
-                textX + textWidth - labelFont.getStringWidth(remaining), cursor, primary, true);
-        cursor += labelFont.getFontHeight();
+        drawShadowedString(labelFont, elapsed, textX, cursor, primary, uiScale, alpha);
+        drawShadowedString(labelFont, remaining,
+                textX + textWidth - labelFont.getStringWidth(remaining), cursor, primary, uiScale, alpha);
+        // margin: 10px 0 on the bar, against a 16px times line.
+        cursor += labelFont.getFontHeight() + 3.0F * uiScale;
 
         float progress = duration <= 0L ? 0.0F : Math.max(0.0F, Math.min(1.0F, position / (float) duration));
         float barRadius = barHeight * 0.5F;
@@ -341,24 +360,40 @@ public final class SpotifyWidgetRenderer {
         }
     }
 
+    /**
+     * The lyric strip, with the change between lines animated.
+     *
+     * <p>Without it the block simply becomes different words between one frame and the next, which
+     * at three lines is a flicker rather than a transition. Lines rise into place and fade up over
+     * the configured lyric animation time, so the eye follows the line moving into the middle
+     * instead of being handed a new block to re-read.
+     */
     private static void drawLyricStrip(List<String> lines, RavenFontRenderer font,
                                        ResourceLocation wash, float x, float y, float width,
                                        float height, float radius, float padX, float uiScale,
                                        float alpha) {
         drawWash(wash, x, y, width, height, radius, alpha);
 
+        float duration = Math.max(1.0F, animationMs());
+        float t = Math.max(0.0F, Math.min(1.0F, (nowMs() - lyricChangedAt) / duration));
+        // Eased out, so it arrives softly rather than stopping dead.
+        float eased = 1.0F - (1.0F - t) * (1.0F - t) * (1.0F - t);
+
         float lineHeight = font.getFontHeight() + 2.0F * uiScale;
-        float cursor = y + (height - (lineHeight * lines.size() - 2.0F * uiScale)) * 0.5F;
+        float rise = (1.0F - eased) * lineHeight * 0.8F;
+        float cursor = y + (height - (lineHeight * lines.size() - 2.0F * uiScale)) * 0.5F + rise;
         float inner = width - padX * 2.0F;
 
+        int active = activeLyricIndex(lines.size());
         for (int i = 0; i < lines.size(); i++) {
             // The line being sung is white; the rest sit back, the way the original's secondary
-            // text does against its title.
-            boolean active = i == activeLyricIndex(lines.size());
-            int color = Utils.mergeAlpha(0xFFFFFF,
-                    Math.round(255 * alpha * (active ? 1.0F : 0.55F)));
+            // text does against its title. The active one also fades up rather than appearing.
+            float weight = i == active ? 1.0F : 0.5F;
+            float fade = i == active ? (0.35F + 0.65F * eased) : eased;
+            int color = Utils.mergeAlpha(0xFFFFFF, Math.round(255 * alpha * weight * fade));
             String line = clip(font, lines.get(i), inner);
-            font.drawString(line, x + (width - font.getStringWidth(line)) * 0.5F, cursor, color, true);
+            drawShadowedString(font, line, x + (width - font.getStringWidth(line)) * 0.5F,
+                    cursor, color, uiScale, alpha * weight);
             cursor += lineHeight;
         }
     }
@@ -406,18 +441,13 @@ public final class SpotifyWidgetRenderer {
 
     // ------------------------------------------------------------------------------------ detail
 
+    /**
+     * The progress fill.
+     *
+     * <p>White, as the original has it, and not the accent the other player uses. Tinting it to
+     * the sleeve put a red bar on a red panel, which is both harder to read and not the widget.
+     */
     private static Color progressColor() {
-        if (SpotifyMiniPlayer.progressBarColorMode != null
-                && (int) SpotifyMiniPlayer.progressBarColorMode.getInput() == 1) {
-            int accent = SystemMediaClient.getInstance().getAlbumAccentColor();
-            if (accent != 0) {
-                return new Color(accent);
-            }
-        }
-        if (SpotifyMiniPlayer.dynamicIslandStyle != null
-                && SpotifyMiniPlayer.dynamicIslandStyle.isToggled()) {
-            return new Color(HUD.getHudColor(0.0D), true);
-        }
         return FILL;
     }
 
@@ -462,10 +492,27 @@ public final class SpotifyWidgetRenderer {
             }
             out.add(text.trim());
         }
+        String key = out.toString() + "@" + activeLyricIndex;
+        if (!key.equals(lyricKey)) {
+            lyricKey = key;
+            lyricChangedAt = nowMs();
+        }
         return out;
     }
 
     private static int activeLyricIndex;
+
+    private static long nowMs() {
+        return System.nanoTime() / 1_000_000L;
+    }
+
+    private static float animationMs() {
+        if (SpotifyMiniPlayer.animateLyrics != null && !SpotifyMiniPlayer.animateLyrics.isToggled()) {
+            return 1.0F;
+        }
+        return SpotifyMiniPlayer.lyricAnimationSpeed == null
+                ? 260.0F : (float) SpotifyMiniPlayer.lyricAnimationSpeed.getInput();
+    }
 
     private static int activeLyricIndex(int lineCount) {
         return Math.max(0, Math.min(lineCount - 1, activeLyricIndex));
@@ -526,6 +573,21 @@ public final class SpotifyWidgetRenderer {
 
     private static boolean isOn(mindless.module.setting.impl.ButtonSetting setting) {
         return setting != null && setting.isToggled();
+    }
+
+    /**
+     * text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.5)
+     *
+     * <p>Drawn as a second pass rather than with the font's own shadow flag. That one is a hard
+     * black copy at a fixed offset, which at these sizes reads as the text having been printed
+     * twice rather than as depth.
+     */
+    private static void drawShadowedString(RavenFontRenderer font, String text, float x, float y,
+                                           int color, float uiScale, float alpha) {
+        float offset = Math.max(0.6F, 1.1F * uiScale);
+        int shadow = Utils.mergeAlpha(0x000000, Math.round(120 * alpha));
+        font.drawString(text, x + offset, y + offset, shadow, false);
+        font.drawString(text, x, y, color, false);
     }
 
     private static Color withAlpha(Color color, float alpha) {
