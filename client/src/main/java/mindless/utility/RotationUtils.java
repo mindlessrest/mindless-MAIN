@@ -304,6 +304,55 @@ public class RotationUtils implements IMinecraftInstance {
         return new Vec3(x, y, z);
     }
 
+    /**
+     * The nearest point on a box that is safely inside a face rather than on its rim.
+     *
+     * <p>{@link #closestPointOnAabb} clamps the eye into the box, so whenever you are diagonal to
+     * a block -- which is nearly always -- the point it returns sits exactly on an edge or corner.
+     * That edge is shared with the block next door, and a ray aimed at it can resolve to either
+     * one. Aim at a seam between two blocks and the crosshair flickers between them as you move,
+     * which restarts the break each time and means neither ever finishes.
+     *
+     * <p>Pulling the point in from the rim on the two axes that are not the face normal puts it
+     * unambiguously on one block. The face itself is chosen by whichever axis the eye is furthest
+     * outside the box on, which is the face actually being looked at.
+     *
+     * @param margin how far in from each edge, in blocks
+     */
+    public static Vec3 closestPointOnAabb(AxisAlignedBB box, Vec3 point, double margin) {
+        double x = Math.max(box.minX, Math.min(box.maxX, point.xCoord));
+        double y = Math.max(box.minY, Math.min(box.maxY, point.yCoord));
+        double z = Math.max(box.minZ, Math.min(box.maxZ, point.zCoord));
+
+        double outsideX = Math.max(box.minX - point.xCoord, point.xCoord - box.maxX);
+        double outsideY = Math.max(box.minY - point.yCoord, point.yCoord - box.maxY);
+        double outsideZ = Math.max(box.minZ - point.zCoord, point.zCoord - box.maxZ);
+
+        if (outsideX >= outsideY && outsideX >= outsideZ) {
+            y = inset(y, box.minY, box.maxY, margin);
+            z = inset(z, box.minZ, box.maxZ, margin);
+        }
+        else if (outsideY >= outsideX && outsideY >= outsideZ) {
+            x = inset(x, box.minX, box.maxX, margin);
+            z = inset(z, box.minZ, box.maxZ, margin);
+        }
+        else {
+            x = inset(x, box.minX, box.maxX, margin);
+            y = inset(y, box.minY, box.maxY, margin);
+        }
+        return new Vec3(x, y, z);
+    }
+
+    /** Keeps a coordinate at least {@code margin} from either end, or centres it if it cannot. */
+    private static double inset(double value, double min, double max, double margin) {
+        double low = min + margin;
+        double high = max - margin;
+        if (low >= high) {
+            return (min + max) * 0.5;
+        }
+        return Math.max(low, Math.min(high, value));
+    }
+
     private static final double BACKUP_FACE_INSET = 0.05;
     private static final int BACKUP_TARGET_TOTAL = 30;
 

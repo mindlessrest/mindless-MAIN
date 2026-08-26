@@ -59,6 +59,13 @@ public class BedAura extends Module {
 
     private static final int MS_PER_TICK = 50;
     private static final double BED_FIND_EXTRA_BLOCKS = 1.0;
+    /**
+     * How far in from a face's edges to aim.
+     *
+     * <p>Enough to clear the seam a block shares with its neighbour, small enough that the point
+     * is still the nearest reachable part of the face.
+     */
+    private static final double AIM_FACE_INSET = 0.12;
     private final List<BlockPos[]> bedPairsCache = new ArrayList<>();
     private int scanCooldown;
 
@@ -222,6 +229,7 @@ public class BedAura extends Module {
 
     public void applyMiningKeyState() {
         if (!isAutoMode()) {
+            applyAssistMiningGate();
             return;
         }
         if (!canMineBlocks() || shouldYieldToKillAura()) {
@@ -239,6 +247,47 @@ public class BedAura extends Module {
         KeyBinding.setKeyBindState(atk, false);
         KeyBinding.setKeyBindState(use, false);
         KeyBinding.setKeyBindState(atk, true);
+    }
+
+    /**
+     * Holds mining back until the crosshair has actually arrived on the target.
+     *
+     * <p>Assist does not take over the crosshair the way Auto does -- it turns the player and
+     * lets vanilla mine whatever is under the cursor. But the turn is smoothed, so the cursor
+     * sweeps across everything between where you were looking and the block you want, and vanilla
+     * dutifully starts breaking each one it crosses. Every switch throws away the progress on the
+     * last, which is why it would chew on two neighbouring blocks and finish neither.
+     *
+     * <p>So the attack key is held down only while the cursor is genuinely on the locked block.
+     * The player still decides when to mine; this only decides when their holding the button
+     * counts. Releasing it, or losing the target, hands the key straight back through
+     * {@link #resetMining}, which restores it from the real mouse.
+     */
+    private void applyAssistMiningGate() {
+        // Silent aim never moves the real crosshair, so there is nothing to wait for and nothing
+        // to compare against; that mode takes the crosshair outright instead, below.
+        if (silentAim.isToggled() || !isEnabled() || !Utils.nullCheck() || !miningActive
+                || mc.currentScreen != null || !canMineBlocks() || shouldYieldToKillAura()
+                || targetPos == null || !Mouse.isButtonDown(0)) {
+            if (controlsInput) {
+                releaseInputControl();
+            }
+            return;
+        }
+
+        boolean onTarget = mc.objectMouseOver != null
+                && mc.objectMouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
+                && targetPos.equals(mc.objectMouseOver.getBlockPos());
+
+        controlsInput = true;
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindAttack.getKeyCode(), onTarget);
+    }
+
+    /** Gives the attack and use keys back to whatever the mouse is actually doing. */
+    private void releaseInputControl() {
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindAttack.getKeyCode(), Mouse.isButtonDown(0));
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), Mouse.isButtonDown(1));
+        controlsInput = false;
     }
 
     public BlockPos getAuraTargetPos() {
@@ -277,8 +326,19 @@ public class BedAura extends Module {
         return AccessorBridge.PlayerControllerMP_getCurBlockDamageMP(mc.playerController);
     }
 
+    /**
+     * Whether the crosshair is ours to point.
+     *
+     * <p>Auto takes it because it does everything itself. Silent aim takes it because the rotation
+     * it sends only exists in packets -- the real view never turns -- so leaving vanilla to mine
+     * whatever is under the untouched crosshair would break a block nobody aimed at. Plain assist
+     * does turn the player, so it leaves the crosshair alone and waits for it instead; see
+     * {@link #applyAssistMiningGate}.
+     */
     public boolean shouldOverrideMouseOver() {
-        return isAutoMode() && isEnabled() && miningActive && canMineBlocks() && targetPos != null && targetHitVec != null && targetSide != null && Utils.nullCheck() && !shouldYieldToKillAura();
+        return (isAutoMode() || silentAim.isToggled()) && isEnabled() && miningActive && canMineBlocks()
+                && targetPos != null && targetHitVec != null && targetSide != null
+                && Utils.nullCheck() && !shouldYieldToKillAura();
     }
 
     public void modifyMouseOverFromGetMouseOver(float partialTicks) {
@@ -409,11 +469,10 @@ public class BedAura extends Module {
             return null;
         }
         Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
-        Vec3 hit = RotationUtils.closestPointOnAabb(bb, eye);
-        if (eye.squareDistanceTo(hit) > reachSq + 0.25) {
+        if (eye.squareDistanceTo(RotationUtils.closestPointOnAabb(bb, eye)) > reachSq + 0.25) {
             return null;
         }
-        return hit;
+        return RotationUtils.closestPointOnAabb(bb, eye, AIM_FACE_INSET);
     }
 
     @SubscribeEvent
@@ -438,9 +497,7 @@ public class BedAura extends Module {
             setSlot(previousSlot);
         }
         if (controlsInput) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindAttack.getKeyCode(), Mouse.isButtonDown(0));
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), Mouse.isButtonDown(1));
-            controlsInput = false;
+            releaseInputControl();
         }
         hotbarProgrammaticDepth = 0;
         targetPos = null;
@@ -665,10 +722,12 @@ public class BedAura extends Module {
             return;
         }
         Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
-        Vec3 hit = RotationUtils.closestPointOnAabb(bb, eye);
-        if (eye.squareDistanceTo(hit) > reachSq + 1e-3) {
+        // Reach is judged on the true nearest point, so a block on the edge of range is not
+        // rejected for the sake of the margin. Only what we aim at is pulled in.
+        if (eye.squareDistanceTo(RotationUtils.closestPointOnAabb(bb, eye)) > reachSq + 1e-3) {
             return;
         }
+        Vec3 hit = RotationUtils.closestPointOnAabb(bb, eye, AIM_FACE_INSET);
 
         MovingObjectPosition trace = block.collisionRayTrace(mc.theWorld, pos, eye, hit.addVector(
                 (hit.xCoord - eye.xCoord) * 0.01,
