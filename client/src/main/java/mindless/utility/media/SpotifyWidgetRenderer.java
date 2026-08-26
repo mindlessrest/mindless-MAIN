@@ -49,18 +49,19 @@ public final class SpotifyWidgetRenderer {
     // Everything is a fraction of the cover, exactly as the stylesheet has it: 100px of cover to
     // 500px of card, 10px corners, 8px between the tiles, 20px of padding inside the panel.
     private static final float COVER = 76.0F;
-    private static final float CARD_WIDTH = COVER * 5.0F;
-    private static final float RADIUS = COVER * 0.10F;
-    private static final float TILE_GAP = COVER * 0.08F;
-    private static final float PAD_X = COVER * 0.20F + 4.0F;
-    /** Breathing room above and below the text block, which the original gets from centring. */
-    private static final float PAD_Y = 4.0F;
+    private static final float CARD_WIDTH = COVER * 5.5F;
+    /** The panel's corner is softer than the cover's, as it is in the reference. */
+    private static final float RADIUS = COVER * 0.16F;
+    private static final float COVER_RADIUS = COVER * 0.125F;
+    private static final float TILE_GAP = COVER * 0.18F;
+    private static final float PAD_X = COVER * 0.19F;
+    private static final float PAD_Y = COVER * 0.14F;
 
-    private static final float TITLE_HEIGHT = COVER * 0.20F;
-    private static final float LABEL_HEIGHT = COVER * 0.16F;
+    private static final float TITLE_HEIGHT = COVER * 0.26F;
+    private static final float LABEL_HEIGHT = COVER * 0.155F;
     private static final float BAR_HEIGHT = COVER * 0.05F;
-    private static final float BAR_GAP = COVER * 0.13F;
-    private static final float VISUALIZER_HEIGHT = COVER * 0.26F;
+    private static final float BAR_GAP = COVER * 0.09F;
+    private static final float VISUALIZER_HEIGHT = COVER * 0.22F;
     private static final float LYRICS_GAP = COVER * 0.08F;
 
     /** filter: drop-shadow(15px 15px 7px rgba(0,0,0,1)), pulled in so it stays behind the card. */
@@ -70,6 +71,9 @@ public final class SpotifyWidgetRenderer {
     /** #1F1F1F behind the progress fill, white in front of it. */
     private static final Color TRACK = new Color(31, 31, 31);
     private static final Color FILL = new Color(255, 255, 255);
+    /** The title is set in the bundled bold face, as the reference has it. */
+    private static final String BOLD_FAMILY = "Sf-Bold";
+
     /**
      * How dark the panel sits over its wash.
      *
@@ -80,8 +84,9 @@ public final class SpotifyWidgetRenderer {
      * here, weaker below: the panel reads as dark with the record showing through, which is what
      * the original actually looks like.
      */
-    private static final int PANEL_TINT_ALPHA = 172;
-    private static final float WASH_ALPHA = 0.5F;
+    private static final int TINT_LEFT_ALPHA = 208;
+    private static final int TINT_RIGHT_ALPHA = 118;
+    private static final float WASH_ALPHA = 0.85F;
 
     private static final float ENTRY_RISE = 14.0F;
 
@@ -203,10 +208,12 @@ public final class SpotifyWidgetRenderer {
 
         List<String> lyricLines = collectLyrics(info);
         RavenFontRenderer lyricFont = fontOfHeight(LABEL_HEIGHT * uiScale * lyricScale());
+        // Padded top and bottom like the panel, so the strip reads as the same object rather
+        // than a caption squeezed under one.
         float lyricStripHeight = lyricLines.isEmpty()
                 ? 0.0F
                 : lyricFont.getFontHeight() * lyricLines.size()
-                        + (lyricLines.size() - 1) * 2.0F * uiScale + padX * 0.6F;
+                        + (lyricLines.size() - 1) * 3.0F * uiScale + PAD_Y * uiScale * 1.6F;
         float lyricGap = lyricLines.isEmpty() ? 0.0F : LYRICS_GAP * uiScale;
 
         float height = rowHeight + lyricGap + lyricStripHeight;
@@ -283,7 +290,8 @@ public final class SpotifyWidgetRenderer {
     }
 
     private static void drawCover(ResourceLocation art, ResourceLocation wash, float x, float y,
-                                  float size, float radius, float alpha) {
+                                  float size, float unusedRadius, float alpha) {
+        float radius = COVER_RADIUS * (size / COVER);
         // background: rgba(0, 0, 0, 0.5) shows through wherever there is no cover to show.
         RoundedUtils.drawRound(x, y, size, size, radius, new Color(0, 0, 0, Math.round(128 * alpha)));
         if (art != null) {
@@ -303,59 +311,65 @@ public final class SpotifyWidgetRenderer {
         float textX = x + padX;
         float textWidth = width - padX * 2.0F;
 
-        RavenFontRenderer titleFont = fontOfHeight(TITLE_HEIGHT * uiScale);
+        RavenFontRenderer titleFont = fontOfHeight(BOLD_FAMILY, TITLE_HEIGHT * uiScale);
         RavenFontRenderer labelFont = fontOfHeight(LABEL_HEIGHT * uiScale);
 
         String title = clip(titleFont, valueOr(info.getTitle(), "Nothing playing"), textWidth);
         String artist = clip(labelFont, valueOr(info.getArtist(), ""), textWidth);
 
-        float barHeight = BAR_HEIGHT * uiScale;
-        float titleGap = 3.0F * uiScale;
-        float blockHeight = titleFont.getFontHeight() + titleGap
-                + labelFont.getFontHeight()
-                + visualizerHeight
-                + BAR_GAP * uiScale + labelFont.getFontHeight()
-                + 3.0F * uiScale + barHeight;
-        // #IAmRunningOutOfNamesForTheseBoxes is centred in the panel, whatever it ends up holding.
-        float cursor = y + (height - blockHeight) * 0.5F;
+        float barHeight = Math.max(2.0F, BAR_HEIGHT * uiScale);
+        float titleGap = 1.0F * uiScale;
+        float timesGap = BAR_GAP * uiScale;
+        float barGap = 3.0F * uiScale;
+
+        // Laid out from the top down with real padding, rather than centring a block and leaving
+        // whatever was left over at the bottom. The reference fills its panel; the first pass
+        // stacked everything at the top and left a gap under the bar.
+        float top = y + PAD_Y * uiScale;
+        float bottom = y + height - PAD_Y * uiScale;
 
         int textAlpha = Math.round(255 * alpha);
         int primary = Utils.mergeAlpha(0xFFFFFF, textAlpha);
-        int secondary = Utils.mergeAlpha(0xFFFFFF, Math.round(textAlpha * 0.82F));
+        int secondary = Utils.mergeAlpha(0xD2D2DC, Math.round(textAlpha * 0.86F));
 
-        drawShadowedString(titleFont, title, textX, cursor, primary, uiScale, alpha);
-        cursor += titleFont.getFontHeight() + titleGap;
+        drawShadowedString(titleFont, title, textX, top, primary, uiScale, alpha);
+        float afterTitle = top + titleFont.getFontHeight() + titleGap;
         if (!artist.isEmpty()) {
-            drawShadowedString(labelFont, artist, textX, cursor, secondary, uiScale, alpha);
+            drawShadowedString(labelFont, artist, textX, afterTitle, secondary, uiScale, alpha);
+            afterTitle += labelFont.getFontHeight();
         }
-        cursor += labelFont.getFontHeight();
+
+        // The bar sits on the bottom padding and the times ride directly above it, so the block
+        // is anchored to both edges instead of drifting with the title's height.
+        float barY = bottom - barHeight;
+        float timesY = barY - barGap - labelFont.getFontHeight();
 
         if (visualizerHeight > 0.0F) {
-            VisualizerRenderer.draw(textX, cursor + 1.0F * uiScale, textWidth,
-                    visualizerHeight - 2.0F * uiScale, alpha);
-            cursor += visualizerHeight;
+            float visTop = afterTitle + timesGap * 0.4F;
+            float visBottom = timesY - timesGap * 0.4F;
+            if (visBottom - visTop > 3.0F) {
+                VisualizerRenderer.draw(textX, visTop, textWidth, visBottom - visTop, alpha);
+            }
         }
-
-        cursor += BAR_GAP * uiScale;
 
         long duration = Math.max(0L, info.getDurationMs());
         long position = Math.max(0L, Math.min(duration, info.getLivePositionMs()));
         String elapsed = formatTime(position);
         String remaining = formatTime(duration);
 
-        drawShadowedString(labelFont, elapsed, textX, cursor, primary, uiScale, alpha);
+        drawShadowedString(labelFont, elapsed, textX, timesY, primary, uiScale, alpha);
         drawShadowedString(labelFont, remaining,
-                textX + textWidth - labelFont.getStringWidth(remaining), cursor, primary, uiScale, alpha);
-        // margin: 10px 0 on the bar, against a 16px times line.
-        cursor += labelFont.getFontHeight() + 3.0F * uiScale;
+                textX + textWidth - labelFont.getStringWidth(remaining), timesY, primary, uiScale, alpha);
 
         float progress = duration <= 0L ? 0.0F : Math.max(0.0F, Math.min(1.0F, position / (float) duration));
         float barRadius = barHeight * 0.5F;
-        RoundedUtils.drawRound(textX, cursor, textWidth, barHeight, barRadius,
-                withAlpha(TRACK, alpha));
+        // A translucent white track rather than a solid dark one: the reference's track shows the
+        // panel through it, and a flat #1F1F1F block reads as a second object on the card.
+        RoundedUtils.drawRound(textX, barY, textWidth, barHeight, barRadius,
+                new Color(255, 255, 255, Math.round(64 * alpha)));
         if (progress > 0.001F) {
             float filled = Math.max(barHeight, textWidth * progress);
-            RoundedUtils.drawRound(textX, cursor, filled, barHeight, barRadius,
+            RoundedUtils.drawRound(textX, barY, filled, barHeight, barRadius,
                     withAlpha(progressColor(), alpha));
         }
     }
@@ -379,9 +393,9 @@ public final class SpotifyWidgetRenderer {
         // Eased out, so it arrives softly rather than stopping dead.
         float eased = 1.0F - (1.0F - t) * (1.0F - t) * (1.0F - t);
 
-        float lineHeight = font.getFontHeight() + 2.0F * uiScale;
+        float lineHeight = font.getFontHeight() + 3.0F * uiScale;
         float rise = (1.0F - eased) * lineHeight * 0.8F;
-        float cursor = y + (height - (lineHeight * lines.size() - 2.0F * uiScale)) * 0.5F + rise;
+        float cursor = y + (height - (lineHeight * lines.size() - 3.0F * uiScale)) * 0.5F + rise;
         float inner = width - padX * 2.0F;
 
         int active = activeLyricIndex(lines.size());
@@ -398,14 +412,22 @@ public final class SpotifyWidgetRenderer {
         }
     }
 
-    /** #backgroundArt: the cover blurred out, with black at half opacity over it. */
+    /**
+     * The panel background: the cover blurred out, then darkened unevenly across it.
+     *
+     * <p>A flat tint was what made this look like a slab of whatever colour the sleeve was. The
+     * reference is dark where the text sits and lets the record through towards the far end, which
+     * is a gradient rather than a single alpha -- so the words stay legible against a background
+     * that is still visibly the album.
+     */
     private static void drawWash(ResourceLocation wash, float x, float y, float width,
                                  float height, float radius, float alpha) {
         if (wash != null) {
             drawTexturedRound(wash, x, y, width, height, radius, alpha * WASH_ALPHA, true);
         }
-        RoundedUtils.drawRound(x, y, width, height, radius,
-                new Color(0, 0, 0, Math.round(PANEL_TINT_ALPHA * alpha)));
+        RoundedUtils.drawGradientHorizontal(x, y, width, height, radius,
+                new Color(0, 0, 0, Math.round(TINT_LEFT_ALPHA * alpha)),
+                new Color(0, 0, 0, Math.round(TINT_RIGHT_ALPHA * alpha)));
     }
 
     /**
@@ -596,35 +618,30 @@ public final class SpotifyWidgetRenderer {
     }
 
     /**
-     * A font at roughly the requested pixel height.
+     * A font rasterised at the height asked for.
      *
-     * <p>The renderer takes a scale rather than a size, so one probe at scale one gives the ratio
-     * and everything else follows from it. Results are cached per height because the panel asks
-     * for three different sizes every frame, and a single-entry cache would rebuild all three.
+     * <p>Not {@code getHudRenderer}: that takes a scale, clamps it to two, and stretches one
+     * atlas to fit -- which is exactly what makes text mushy, and is why the first pass came out
+     * blurry at every size the card actually gets drawn at. Asking for the pixel height rebuilds
+     * the atlas on its native grid instead.
      */
-    private static RavenFontRenderer fontOfHeight(float targetHeight) {
-        String family = HUD.getSelectedFontName();
-        float base = HUD.getSelectedFontScale();
-        String key = family + ":" + Math.round(targetHeight * 4.0F);
+    private static RavenFontRenderer fontOfHeight(String family, float pixelHeight) {
+        float height = Math.max(6.0F, pixelHeight);
+        String key = family + "#" + Math.round(height * 2.0F);
         RavenFontRenderer cached = FONTS.get(key);
         if (cached != null) {
             return cached;
         }
-
-        RavenFontRenderer probe = FONTS.get(family + ":probe");
-        if (probe == null) {
-            probe = FontManager.getHudRenderer(family, base);
-            FONTS.put(family + ":probe", probe);
-        }
-        float probeHeight = Math.max(1.0F, probe.getFontHeight());
-        float scale = Math.max(0.45F, Math.min(4.0F, base * (targetHeight / probeHeight)));
-
-        RavenFontRenderer font = FontManager.getHudRenderer(family, scale);
-        if (FONTS.size() > 24) {
+        RavenFontRenderer font = FontManager.getClickGuiRenderer(family, height);
+        if (FONTS.size() > 32) {
             FONTS.clear();
         }
         FONTS.put(key, font);
         return font;
+    }
+
+    private static RavenFontRenderer fontOfHeight(float pixelHeight) {
+        return fontOfHeight(HUD.getSelectedFontName(), pixelHeight);
     }
 
     private static float approach(float current, float target, float rate) {
