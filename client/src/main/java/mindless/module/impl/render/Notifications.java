@@ -144,7 +144,7 @@ public class Notifications extends Module {
             return;
         }
         if (cur != prev) {
-            boolean suppressed = startupFiredAt > 0 && now - startupFiredAt < STARTUP_SUPPRESS_MS;
+            boolean suppressed = startupFiredAt == 0 || now - startupFiredAt < STARTUP_SUPPRESS_MS;
             boolean scriptChange;
             synchronized (SUPPRESSED_SCRIPT_CHANGES) {
                 scriptChange = !isScriptModule(module) && SUPPRESSED_SCRIPT_CHANGES.remove(name);
