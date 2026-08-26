@@ -358,13 +358,6 @@ public final class SpotifyMiniPlayerRenderer {
 
         if (lyricsArea) {
             float separatorY = titleY + totalTextHeight + Math.max(1.5F, 2.0F * uiScale);
-            // One even rule. The second, taller bar over the first 28% made the separator look
-            // thicker on the left than on the right.
-            int separatorColor = Utils.mergeAlpha(0xFFFFFF, Math.max(22, textAlpha / 6));
-            RenderUtils.drawRect(textX, separatorY, textX + textWidth, separatorY + 0.5F, separatorColor);
-            GL20.glUseProgram(0);
-            GlStateManager.enableTexture2D();
-            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             float lyricY = separatorY + Math.max(3.5F, 4.5F * uiScale);
             float lyricBottom = (showProgress
                     ? progressBarY - Math.max(4.0F, 4.75F * uiScale)
@@ -683,8 +676,8 @@ public final class SpotifyMiniPlayerRenderer {
     }
 
     private static void drawKaraokeLyric(RavenFontRenderer font, WrappedLyric lyric,
-                                          LyricsTimeline timeline, float textX, float drawY,
-                                          float lineAdvance, int primaryColor, int secondaryColor) {
+                                         LyricsTimeline timeline, float textX, float drawY,
+                                         float lineAdvance, int primaryColor, int secondaryColor) {
         boolean karaokeEnabled = SpotifyMiniPlayer.karaokeLyrics != null
                 && SpotifyMiniPlayer.karaokeLyrics.isToggled();
         if (!karaokeEnabled || timeline.activeIndex < 0 || timeline.timedLyrics == null) {
@@ -738,7 +731,7 @@ public final class SpotifyMiniPlayerRenderer {
     }
 
     private static void drawGradientLyricString(RavenFontRenderer font, String text, float x,
-                                                 float y, int alpha, double phaseOffset) {
+                                                float y, int alpha, double phaseOffset) {
         // One font pass keeps karaoke animation cheap. The previous per-letter
         // draw calls repeatedly pushed matrices and rebound state, which could
         // make the entire player feel as though it rendered at a low frame rate.
@@ -779,7 +772,7 @@ public final class SpotifyMiniPlayerRenderer {
     }
 
     private static List<WrappedLyric> getWrappedLyrics(RavenFontRenderer font, TimedLyrics timedLyrics,
-                                                        float textWidth, float lineAdvance) {
+                                                       float textWidth, float lineAdvance) {
         String layoutKey = HUD.getSelectedFontName() + ":" + Math.round(HUD.getSelectedFontScale() * 1000.0F)
                 + ":" + Math.round(textWidth) + ":" + Math.round(lineAdvance * 100.0F);
         if (timedLyrics == cachedLyricsSource && layoutKey.equals(cachedLyricsLayoutKey)) {
@@ -835,7 +828,7 @@ public final class SpotifyMiniPlayerRenderer {
     }
 
     private static List<WrappedLyric> computeWrappedLyrics(RavenFontRenderer font, TimedLyrics timedLyrics,
-                                                            float textWidth, float lineAdvance) {
+                                                           float textWidth, float lineAdvance) {
         List<WrappedLyric> wrapped = new ArrayList<WrappedLyric>();
         float top = 0.0F;
         float entryGap = Math.max(1.5F, lineAdvance * 0.28F);
@@ -851,7 +844,7 @@ public final class SpotifyMiniPlayerRenderer {
     }
 
     private static RavenFontRenderer getAdaptiveLyricFont(float requestedScale, TimedLyrics timedLyrics,
-                                                           float textWidth) {
+                                                          float textWidth) {
         String key = lastLyricsTrackKey + ":" + Math.round(textWidth)
                 + ":" + Math.round(requestedScale * 1000.0F)
                 + ":" + HUD.getSelectedFontName() + ":" + Math.round(HUD.getSelectedFontScale() * 1000.0F);
@@ -894,7 +887,7 @@ public final class SpotifyMiniPlayerRenderer {
     }
 
     private static boolean hasLyricsWiderThanTwoLines(RavenFontRenderer font, TimedLyrics timedLyrics,
-                                                       int maxWidth) {
+                                                      int maxWidth) {
         for (TimedLyrics.LyricsLine lyric : timedLyrics.getLines()) {
             if (wrapText(font, safeText(lyric.getText(), "Instrumental"), maxWidth).size() > 2) {
                 return true;
