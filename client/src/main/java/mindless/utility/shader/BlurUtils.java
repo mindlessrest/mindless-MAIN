@@ -69,7 +69,7 @@ public class BlurUtils {
 
         stencilFrameBufferBlur = RenderUtils.createFrameBuffer(stencilFrameBufferBlur);
         if (Float.isNaN(x)) {
-            stencilFrameBufferBlur.framebufferClear();
+            clearWholeMask(stencilFrameBufferBlur);
         } else {
             clearRegion(stencilFrameBufferBlur, x, y, width, height);
         }
@@ -114,6 +114,32 @@ public class BlurUtils {
         }
     }
 
+    /**
+     * Wipes the whole mask, with the caller's clip out of the way.
+     *
+     * <p>A clear obeys the scissor test like any other write, and {@code framebufferClear} does
+     * nothing about it. Anything that clips while it draws -- a scrolling list of module options
+     * being the obvious one -- therefore left most of the mask holding the previous frame's
+     * shape, and the composite dutifully painted the blurred scene through whatever was still
+     * standing there. That is the pale rectangle that appears behind the menu while scrolling and
+     * then goes away again: not a leaked shader or a lost texture, just a clear that only cleared
+     * the part of the buffer the scroll clip happened to be over.
+     *
+     * <p>{@link #clearRegion} already took this precaution for the partial path; the whole-buffer
+     * path did not, which is why it only ever showed up on panels that wipe everything.
+     */
+    private static void clearWholeMask(Framebuffer buffer) {
+        buffer.bindFramebuffer(false);
+        // GL_SCISSOR_BIT carries the enable flag and the box, so the caller's clip comes back
+        // exactly as it was.
+        GL11.glPushAttrib(GL11.GL_SCISSOR_BIT | GL11.GL_COLOR_BUFFER_BIT);
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        GlStateManager.clearColor(buffer.framebufferColor[0], buffer.framebufferColor[1],
+                buffer.framebufferColor[2], buffer.framebufferColor[3]);
+        GlStateManager.clear(GL11.GL_COLOR_BUFFER_BIT);
+        GL11.glPopAttrib();
+    }
+
     /** Scissored version of {@code framebufferClear}, matching its clear colour exactly. */
     private static void clearRegion(Framebuffer buffer, float x, float y, float width, float height) {
         ScaledResolution sr = ScaledResolutionCache.get();
@@ -131,6 +157,9 @@ public class BlurUtils {
         // glPushAttrib carries the scissor box as well as the enable bit, so a caller that had
         // its own clip set up gets it back untouched.
         GL11.glPushAttrib(GL11.GL_SCISSOR_BIT | GL11.GL_COLOR_BUFFER_BIT);
+        // Enabling is not enough on its own: an enabled scissor keeps whatever box was already
+        // set until it is replaced, so the region has to be stated outright rather than
+        // intersected with a clip that has nothing to do with this buffer.
         GL11.glEnable(GL11.GL_SCISSOR_TEST);
         GL11.glScissor(px, bottom, Math.max(0, pw), Math.max(0, ph));
         GlStateManager.clearColor(buffer.framebufferColor[0], buffer.framebufferColor[1],

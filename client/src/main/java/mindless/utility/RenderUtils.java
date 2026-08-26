@@ -172,8 +172,14 @@ public class RenderUtils implements IMinecraftInstance {
         int glTop = (int) Math.ceil((screenH - y) * scale);
         int scaledHeight = Math.max(0, glTop - glBottom);
         boolean wasEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+        // Checked before the array is touched, not after. Written the other way round the guard
+        // could never fire: the subscript threw first, and it threw with the depth already
+        // incremented, so the stack stayed one deeper than the number of clips actually pushed
+        // and every later push landed on the wrong slot.
+        if (scissorPushDepth >= SCISSOR_PUSH_STACK_DEPTH) {
+            throw new IllegalStateException("Scissor stack overflow");
+        }
         int[] saved = scissorPushStack[scissorPushDepth++];
-        if (scissorPushDepth > SCISSOR_PUSH_STACK_DEPTH) throw new IllegalStateException("Scissor stack overflow");
         if (wasEnabled) {
             SCISSOR_PUSH_BUF.clear();
             GL11.glGetInteger(GL11.GL_SCISSOR_BOX, SCISSOR_PUSH_BUF);
@@ -195,6 +201,11 @@ public class RenderUtils implements IMinecraftInstance {
     }
 
     public static void scissorPop() {
+        // An unmatched pop would take the depth negative and leave the clip on for good.
+        if (scissorPushDepth <= 0) {
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            return;
+        }
         int[] saved = scissorPushStack[--scissorPushDepth];
         if (saved[0] == 1) {
             GL11.glScissor(saved[1], saved[2], saved[3], saved[4]);

@@ -725,6 +725,13 @@ public class ModuleComponent extends Component {
      */
     private void pushScissor(int x, int y, int w, int h) {
         boolean wasEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+        // Nothing checked the depth here at all. A render that throws between a push and its pop
+        // leaves the stack one deeper than it should be, and four of those turn every later push
+        // into an out-of-bounds throw -- which aborts the menu's draw partway through and leaves
+        // the clip switched on over whatever came next.
+        if (scissorDepth >= MAX_SCISSOR_DEPTH) {
+            return;
+        }
         int[] saved = scissorStack[scissorDepth++];
         if (wasEnabled) {
             SCISSOR_BOX.clear();
@@ -747,6 +754,10 @@ public class ModuleComponent extends Component {
     }
 
     private void popScissor() {
+        if (scissorDepth <= 0) {
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            return;
+        }
         int[] saved = scissorStack[--scissorDepth];
         if (saved[0] == 1) {
             GL11.glScissor(saved[1], saved[2], saved[3], saved[4]);
