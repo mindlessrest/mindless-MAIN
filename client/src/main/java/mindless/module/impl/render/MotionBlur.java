@@ -121,7 +121,7 @@ public class MotionBlur extends Module {
         float w = mc.displayWidth;
         float h = mc.displayHeight;
 
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GlStateManager.enableTexture2D();
         GlStateManager.bindTexture(textureId);
         GL11.glBegin(GL11.GL_QUADS);
         GL11.glTexCoord2f(0f, 0f); GL11.glVertex2f(0f, 0f);

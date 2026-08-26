@@ -262,13 +262,13 @@ public class Scaffold extends Module {
         String bpsText = String.format("%.1f BPS", bps);
 
         GL11.glPushMatrix();
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         ItemStack badgeStack = getDisplayBlock();
         float textX = textX(badgeStack);
         mc.fontRendererObj.drawStringWithShadow(text, textX, posY, color);
         mc.fontRendererObj.drawStringWithShadow(bpsText, textX, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
-        GL11.glDisable(GL11.GL_BLEND);
+        GlStateManager.disableBlend();
         GL11.glPopMatrix();
 
         drawHeldBlockBadge(badgeStack);

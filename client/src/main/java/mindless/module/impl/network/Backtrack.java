@@ -1,5 +1,6 @@
 package mindless.module.impl.network;
 
+import net.minecraft.client.renderer.GlStateManager;
 import mindless.event.ReceivePacketEvent;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
@@ -356,17 +357,17 @@ public class Backtrack extends Module {
         );
 
         org.lwjgl.opengl.GL11.glPushMatrix();
-        org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL11.GL_BLEND);
-        org.lwjgl.opengl.GL11.glBlendFunc(org.lwjgl.opengl.GL11.GL_SRC_ALPHA, org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA);
-        org.lwjgl.opengl.GL11.glDisable(org.lwjgl.opengl.GL11.GL_TEXTURE_2D);
-        org.lwjgl.opengl.GL11.glDisable(org.lwjgl.opengl.GL11.GL_DEPTH_TEST);
-        org.lwjgl.opengl.GL11.glDepthMask(false);
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(org.lwjgl.opengl.GL11.GL_SRC_ALPHA, org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableDepth();
+        GlStateManager.depthMask(false);
         org.lwjgl.opengl.GL11.glLineWidth(1.5f);
         RenderUtils.drawBoundingBox(bb, r, g, b, a);
-        org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL11.GL_DEPTH_TEST);
-        org.lwjgl.opengl.GL11.glDepthMask(true);
-        org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL11.GL_TEXTURE_2D);
-        org.lwjgl.opengl.GL11.glDisable(org.lwjgl.opengl.GL11.GL_BLEND);
+        GlStateManager.enableDepth();
+        GlStateManager.depthMask(true);
+        GlStateManager.enableTexture2D();
+        GlStateManager.disableBlend();
         org.lwjgl.opengl.GL11.glPopMatrix();
     }
 

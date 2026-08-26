@@ -8,6 +8,7 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.module.impl.world.TargetFilter;
 import mindless.utility.Utils;
 
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
@@ -153,18 +154,18 @@ public class HitBox extends Module {
             float ex = (float) ((double) e.getCollisionBorderSize() * multiplier.getInput());
             AxisAlignedBB bbox = e.getEntityBoundingBox().expand((double) ex, (double) ex, (double) ex);
             AxisAlignedBB axis = new AxisAlignedBB(bbox.minX - e.posX + x, bbox.minY - e.posY + y, bbox.minZ - e.posZ + z, bbox.maxX - e.posX + x, bbox.maxY - e.posY + y, bbox.maxZ - e.posZ + z);
-            GL11.glBlendFunc(770, 771);
-            GL11.glEnable(3042);
-            GL11.glDisable(3553);
-            GL11.glDisable(2929);
-            GL11.glDepthMask(false);
+            GlStateManager.blendFunc(770, 771);
+            GlStateManager.enableBlend();
+            GlStateManager.disableTexture2D();
+            GlStateManager.disableDepth();
+            GlStateManager.depthMask(false);
             GL11.glLineWidth(2.0F);
             GL11.glColor3d((double) c.getRed(), (double) c.getGreen(), (double) c.getBlue());
             RenderGlobal.drawSelectionBoundingBox(axis);
-            GL11.glEnable(3553);
-            GL11.glEnable(2929);
-            GL11.glDepthMask(true);
-            GL11.glDisable(3042);
+            GlStateManager.enableTexture2D();
+            GlStateManager.enableDepth();
+            GlStateManager.depthMask(true);
+            GlStateManager.disableBlend();
         }
     }
 }

@@ -164,13 +164,13 @@ public class TargetHUD extends Module {
 
         GlStateManager.pushMatrix();
         GlStateManager.translate((float) x, (float) y, (float) z);
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableDepth();
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glEnable(GL11.GL_LINE_SMOOTH);
         GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
-        GL11.glDepthMask(false);
+        GlStateManager.depthMask(false);
 
         int trailCount = 5;
         for (int trail = trailCount; trail >= 0; trail--) {
@@ -182,7 +182,7 @@ public class TargetHUD extends Module {
 
             GL11.glLineWidth(lineWidth);
             GL11.glBegin(GL11.GL_LINE_LOOP);
-            GL11.glColor4f(r, g, b, alpha);
+            GlStateManager.color(r, g, b, alpha);
             int segments = 40;
             for (int i = 0; i < segments; i++) {
                 double angle = Math.PI * 2.0 * i / segments;
@@ -193,11 +193,11 @@ public class TargetHUD extends Module {
             GL11.glEnd();
         }
 
-        GL11.glDepthMask(true);
+        GlStateManager.depthMask(true);
         GL11.glDisable(GL11.GL_LINE_SMOOTH);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_BLEND);
+        GlStateManager.enableDepth();
+        GlStateManager.enableTexture2D();
+        GlStateManager.disableBlend();
         GlStateManager.popMatrix();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
@@ -368,13 +368,13 @@ public class TargetHUD extends Module {
                 RenderUtils.drawRoundedGradientRect((float) n13, (float) n15, lastHealthBar, (float) (n15 + 5), 4.0f, mergedGradientLeft, mergedGradientLeft, mergedGradientRight, mergedGradientRight);
                 break;
         }
-        GL11.glEnable(GL11.GL_BLEND);
+        GlStateManager.enableBlend();
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.enableTexture2D();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         mindless.utility.font.RavenFontRenderer hudFont = HUD.getHudFontRenderer();
         hudFont.drawString(string, (float) n13, (float) y, (new Color(220, 220, 220, 255).getRGB() & 0xFFFFFF) | Utils.clamp(alpha + 15) << 24, true);
-        GL11.glDisable(GL11.GL_BLEND);
+        GlStateManager.disableBlend();
 
         GlStateManager.popMatrix();
     }
@@ -412,7 +412,7 @@ public class TargetHUD extends Module {
 
     private void drawRoundedSkinLayer(float x, float y, float width, float height, float radius, float textureU, float textureV, int alpha) {
         float r = Math.min(radius, Math.min(width, height) * 0.5f);
-        GL11.glColor4f(1.0f, 1.0f, 1.0f, (float) alpha / 255.0f);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, (float) alpha / 255.0f);
         GL11.glBegin(6); // GL_TRIANGLE_FAN
         addSkinVertex(x + width * 0.5f, y + height * 0.5f, x, y, width, height, textureU, textureV);
         addSkinCorner(x + width - r, y + r,          r, -90.0, x, y, width, height, textureU, textureV);

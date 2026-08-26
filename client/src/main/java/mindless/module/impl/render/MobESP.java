@@ -438,12 +438,12 @@ public class MobESP extends Module {
         float blue = (rgb & 0xFF) / 255.0F;
 
         GL11.glPushMatrix();
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableDepth();
         GL11.glEnable(GL11.GL_LINE_SMOOTH);
         GL11.glLineWidth(1.0F);
 
-        GL11.glColor4f(0.0F, 0.0F, 0.0F, 0.4F);
+        GlStateManager.color(0.0F, 0.0F, 0.0F, 0.4F);
         GL11.glBegin(GL11.GL_LINE_LOOP);
         GL11.glVertex2d(minX, minY);
         GL11.glVertex2d(maxX, minY);
@@ -451,7 +451,7 @@ public class MobESP extends Module {
         GL11.glVertex2d(minX, maxY);
         GL11.glEnd();
 
-        GL11.glColor4f(0.0F, 0.0F, 0.0F, 0.4F);
+        GlStateManager.color(0.0F, 0.0F, 0.0F, 0.4F);
         GL11.glBegin(GL11.GL_LINE_LOOP);
         GL11.glVertex2d(minX + 1.0, minY + 1.0);
         GL11.glVertex2d(maxX - 1.0, minY + 1.0);
@@ -459,7 +459,7 @@ public class MobESP extends Module {
         GL11.glVertex2d(minX + 1.0, maxY - 1.0);
         GL11.glEnd();
 
-        GL11.glColor4f(red, green, blue, 1.0f);
+        GlStateManager.color(red, green, blue, 1.0f);
         GL11.glBegin(GL11.GL_LINE_LOOP);
         GL11.glVertex2d(minX + 0.5, minY + 0.5);
         GL11.glVertex2d(maxX - 0.5, minY + 0.5);
@@ -467,9 +467,9 @@ public class MobESP extends Module {
         GL11.glVertex2d(minX + 0.5, maxY - 0.5);
         GL11.glEnd();
 
-        GL11.glColor4f(1, 1, 1, 1);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GlStateManager.color(1, 1, 1, 1);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableDepth();
         GL11.glDisable(GL11.GL_LINE_SMOOTH);
         GL11.glPopMatrix();
     }

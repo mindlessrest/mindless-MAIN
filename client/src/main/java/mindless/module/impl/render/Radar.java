@@ -159,7 +159,7 @@ public class Radar extends Module {
         GL11.glVertex2d(startX, startY);
         GL11.glVertex2d(endX, endY);
         GL11.glEnd();
-        GL11.glPopAttrib();
+        RenderUtils.popAttrib();
         GL11.glPopMatrix();
     }
 

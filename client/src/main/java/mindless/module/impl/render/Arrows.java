@@ -189,12 +189,12 @@ public class Arrows extends Module {
                     float red = ((rgb >> 16) & 0xFF) / 255.0F;
                     float green = ((rgb >> 8) & 0xFF) / 255.0F;
                     float blue = ( rgb & 0xFF) / 255.0F;
-                    GL11.glColor4f(red, green, blue, 1.0f);
+                    GlStateManager.color(red, green, blue, 1.0f);
                 }
 
-                GL11.glEnable(GL11.GL_BLEND);
-                GL11.glDisable(GL11.GL_TEXTURE_2D);
-                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                GlStateManager.enableBlend();
+                GlStateManager.disableTexture2D();
+                GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
                 GL11.glEnable(GL11.GL_LINE_SMOOTH);
 
                 double halfAngle = 0.6108652353286743;
@@ -206,8 +206,8 @@ public class Arrows extends Module {
                 GL11.glVertex2d(0.0, -offsetY);
                 GL11.glVertex2d(Math.sin(halfAngle) * size, Math.cos(halfAngle) * size - offsetY);
                 GL11.glEnd();
-                GL11.glEnable(GL11.GL_TEXTURE_2D);
-                GL11.glDisable(GL11.GL_BLEND);
+                GlStateManager.enableTexture2D();
+                GlStateManager.disableBlend();
                 GL11.glDisable(GL11.GL_LINE_SMOOTH);
             }
             else if (arrowInput == 1) {

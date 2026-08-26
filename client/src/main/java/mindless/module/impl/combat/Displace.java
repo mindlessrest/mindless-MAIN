@@ -1,5 +1,6 @@
 package mindless.module.impl.combat;
 
+import mindless.utility.RenderUtils;
 import mindless.Raven;
 import mindless.event.AttackEvent;
 import mindless.event.ClientRotationEvent;
@@ -1302,7 +1303,7 @@ public class Displace extends Module {
 
         renderBestVoidDebugDetails(scan, renderY, viewerX, viewerY, viewerZ);
 
-        GL11.glPopAttrib();
+        RenderUtils.popAttrib();
         GL11.glPopMatrix();
 
         for (VoidDebugCandidate candidate : scan.candidates) {
@@ -1369,16 +1370,16 @@ public class Displace extends Module {
     }
 
     private void setVoidDebugColor(int color, float alpha) {
-        GL11.glColor4f((float) (color >> 16 & 255) / 255.0F,
+        GlStateManager.color((float) (color >> 16 & 255) / 255.0F,
                 (float) (color >> 8 & 255) / 255.0F,
                 (float) (color & 255) / 255.0F, alpha);
     }
 
     private void setVoidProbeColor(boolean voidColumn) {
         if (voidColumn) {
-            GL11.glColor4f(0.15F, 0.9F, 1.0F, 0.82F);
+            GlStateManager.color(0.15F, 0.9F, 1.0F, 0.82F);
         } else {
-            GL11.glColor4f(1.0F, 0.42F, 0.05F, 0.72F);
+            GlStateManager.color(1.0F, 0.42F, 0.05F, 0.72F);
         }
     }
 
@@ -1410,13 +1411,13 @@ public class Displace extends Module {
                 int radius = Math.max(Math.abs(offsetX), Math.abs(offsetZ));
 
                 if (destination) {
-                    GL11.glColor4f(0.1F, 1.0F, 0.25F, 1.0F);
+                    GlStateManager.color(0.1F, 1.0F, 0.25F, 1.0F);
                 } else if (voidColumn && radius == 1) {
-                    GL11.glColor4f(0.15F, 1.0F, 0.55F, 0.9F);
+                    GlStateManager.color(0.15F, 1.0F, 0.55F, 0.9F);
                 } else if (voidColumn) {
-                    GL11.glColor4f(0.1F, 0.75F, 1.0F, 0.78F);
+                    GlStateManager.color(0.1F, 0.75F, 1.0F, 0.78F);
                 } else {
-                    GL11.glColor4f(1.0F, 0.12F, 0.08F, 0.68F);
+                    GlStateManager.color(1.0F, 0.12F, 0.08F, 0.68F);
                 }
 
                 GL11.glLineWidth(destination ? 3.0F : 1.25F);
@@ -1429,7 +1430,7 @@ public class Displace extends Module {
         }
 
         GL11.glLineWidth(3.0F);
-        GL11.glColor4f(0.1F, 1.0F, 0.25F, 1.0F);
+        GlStateManager.color(0.1F, 1.0F, 0.25F, 1.0F);
         GL11.glBegin(GL11.GL_LINES);
         voidDebugVertex(score.destinationX, renderY, score.destinationZ, viewerX, viewerY, viewerZ);
         voidDebugVertex(score.destinationX, renderY + 1.25D, score.destinationZ,
@@ -1558,7 +1559,7 @@ public class Displace extends Module {
         this.vertex(headBaseX, y, headBaseZ, 0.3, viewerX, viewerY, viewerZ);
         this.vertex(bodyX, y, bodyZ, 0.08, viewerX, viewerY, viewerZ);
         GL11.glEnd();
-        GL11.glPopAttrib();
+        RenderUtils.popAttrib();
         GL11.glPopMatrix();
     }
 

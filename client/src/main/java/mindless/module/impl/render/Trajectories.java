@@ -12,6 +12,7 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
@@ -691,14 +692,14 @@ public class Trajectories extends Module {
 
         GL11.glPushMatrix();
         GL11.glEnable(GL11.GL_LINE_SMOOTH);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(false);
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.enableBlend();
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableDepth();
+        GlStateManager.depthMask(false);
 
         float lineW = (float) lineThickness.getInput();
-        GL11.glColor4f(r, g, b, 1.0f);
+        GlStateManager.color(r, g, b, 1.0f);
         GL11.glLineWidth(lineW);
         GL11.glBegin(GL11.GL_LINE_STRIP);
         boolean first = true;
@@ -716,23 +717,23 @@ public class Trajectories extends Module {
             double ey = hitEntity.lastTickPosY + (hitEntity.posY - hitEntity.lastTickPosY) * partialTicks;
             double ez = hitEntity.lastTickPosZ + (hitEntity.posZ - hitEntity.lastTickPosZ) * partialTicks;
             AxisAlignedBB renderBox = new AxisAlignedBB(hitEntityBox.minX - hitEntity.posX + ex, hitEntityBox.minY - hitEntity.posY + ey, hitEntityBox.minZ - hitEntity.posZ + ez, hitEntityBox.maxX - hitEntity.posX + ex, hitEntityBox.maxY - hitEntity.posY + ey, hitEntityBox.maxZ - hitEntity.posZ + ez);
-            GL11.glColor4f(r, g, b, 1.0f);
+            GlStateManager.color(r, g, b, 1.0f);
             RenderUtils.drawOutlinedBox(renderBox, rm.viewerPosX, rm.viewerPosY, rm.viewerPosZ);
         } else if (hitBlock != null && !showLanding.isToggled()) {
             BlockPos bpos = hitBlock.getBlockPos();
             AxisAlignedBB selBox = BlockUtils.getBlockSelectionBox(bpos);
             if (selBox != null) {
-                GL11.glColor4f(r, g, b, 1.0f);
+                GlStateManager.color(r, g, b, 1.0f);
                 RenderUtils.drawOutlinedBox(selBox, rm.viewerPosX, rm.viewerPosY, rm.viewerPosZ);
             }
         }
         if (showLanding.isToggled() && hitPos != null) {
             renderLandingIndicator(hitPos, rm.viewerPosX, rm.viewerPosY, rm.viewerPosZ, r, g, b, hitType);
         }
-        GL11.glDisable(GL11.GL_BLEND);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(true);
+        GlStateManager.disableBlend();
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableDepth();
+        GlStateManager.depthMask(true);
         GL11.glDisable(GL11.GL_LINE_SMOOTH);
         GL11.glPopMatrix();
     }
@@ -741,17 +742,17 @@ public class Trajectories extends Module {
         double boxSize = hitType == HIT_ENTITY ? 0.4 : 0.2;
         AxisAlignedBB worldBox = new AxisAlignedBB(hitPos.xCoord - boxSize, hitPos.yCoord - boxSize, hitPos.zCoord - boxSize, hitPos.xCoord + boxSize, hitPos.yCoord + boxSize, hitPos.zCoord + boxSize);
         GL11.glLineWidth(2.0f);
-        GL11.glColor4f(r, g, b, 1.0f);
+        GlStateManager.color(r, g, b, 1.0f);
         RenderUtils.drawOutlinedBox(worldBox, camX, camY, camZ);
         AxisAlignedBB renderBox = worldBox.offset(-camX, -camY, -camZ);
-        GL11.glColor4f(r, g, b, 0.3f);
+        GlStateManager.color(r, g, b, 0.3f);
         RenderUtils.drawBoundingBox(renderBox, r, g, b, 0.3f);
         double x = hitPos.xCoord - camX;
         double y = hitPos.yCoord - camY;
         double z = hitPos.zCoord - camZ;
         double crossSize = hitType == HIT_ENTITY ? 0.5 : 0.3;
         GL11.glLineWidth(1.5f);
-        GL11.glColor4f(r, g, b, 1.0f);
+        GlStateManager.color(r, g, b, 1.0f);
         GL11.glBegin(GL11.GL_LINES);
         GL11.glVertex3d(x - crossSize, y, z);
         GL11.glVertex3d(x + crossSize, y, z);

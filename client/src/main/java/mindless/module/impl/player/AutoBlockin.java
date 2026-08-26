@@ -13,6 +13,7 @@ import mindless.utility.*;
 import mindless.utility.Timer;
 import net.minecraft.block.*;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
@@ -437,8 +438,8 @@ public class AutoBlockin extends Module {
         int color = Utils.mergeAlpha(ratio >= 0.999f ? 0x00FF00 : 0xFFFFFF, alpha);
 
         GL11.glPushMatrix();
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(
                 GL11.GL_SRC_ALPHA,
                 GL11.GL_ONE_MINUS_SRC_ALPHA
         );
@@ -450,7 +451,7 @@ public class AutoBlockin extends Module {
                 color
         );
 
-        GL11.glDisable(GL11.GL_BLEND);
+        GlStateManager.disableBlend();
         GL11.glPopMatrix();
     }
 

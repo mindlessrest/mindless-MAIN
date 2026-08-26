@@ -711,7 +711,7 @@ public class SexyESP extends Module {
         outlineFramebuffer.framebufferClear();
         mc.getFramebuffer().bindFramebuffer(true);
 
-        GL11.glPopAttrib();
+        RenderUtils.popAttrib();
         GlStateManager.matrixMode(GL11.GL_PROJECTION);
         GL11.glPopMatrix();
         GlStateManager.matrixMode(GL11.GL_MODELVIEW);

@@ -232,7 +232,7 @@ public class ClickGui extends GuiScreen {
         }
 
         // Logo watermark - lazy-load logo.png, render bottom-right semi-transparent
-        GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         if (!Gui.hideWatermark.isToggled()) {
             if (!logoLoadAttempted) {
                 logoLoadAttempted = true;

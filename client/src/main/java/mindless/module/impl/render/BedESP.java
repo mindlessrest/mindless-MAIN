@@ -494,12 +494,12 @@ public class BedESP extends Module {
         double x = blocks[0].getX() - mc.getRenderManager().viewerPosX;
         double y = blocks[0].getY() - mc.getRenderManager().viewerPosY;
         double z = blocks[0].getZ() - mc.getRenderManager().viewerPosZ;
-        GL11.glBlendFunc(770, 771);
-        GL11.glEnable(3042);
+        GlStateManager.blendFunc(770, 771);
+        GlStateManager.enableBlend();
         GL11.glLineWidth(2.0f);
-        GL11.glDisable(3553);
-        GL11.glDisable(2929);
-        GL11.glDepthMask(false);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableDepth();
+        GlStateManager.depthMask(false);
         int col = getCurrentColor();
         float drawA = (col >> 24 & 0xFF) / 255.0f;
         float r = (col >> 16 & 0xFF) / 255.0f;
@@ -529,15 +529,15 @@ public class BedESP extends Module {
             float outlineG = (outlineColor >> 8 & 0xFF) / 255.0f;
             float outlineB = (outlineColor & 0xFF) / 255.0f;
             GL11.glLineWidth(3.0f);
-            GL11.glColor4f(outlineR, outlineG, outlineB, outlineA);
+            GlStateManager.color(outlineR, outlineG, outlineB, outlineA);
             RenderGlobal.drawSelectionBoundingBox(axisAlignedBB);
             GL11.glLineWidth(2.0f);
         }
-        GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-        GL11.glEnable(3553);
-        GL11.glEnable(2929);
-        GL11.glDepthMask(true);
-        GL11.glDisable(3042);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableDepth();
+        GlStateManager.depthMask(true);
+        GlStateManager.disableBlend();
     }
 
     private List<AxisAlignedBB> mergeExposedBounds(List<BlockPos> exposedBlocks) {
@@ -631,7 +631,7 @@ public class BedESP extends Module {
 
         RenderManager renderManager = mc.getRenderManager();
 
-        GL11.glColor4f(overlayR, overlayG, overlayB, overlayA);
+        GlStateManager.color(overlayR, overlayG, overlayB, overlayA);
 
         for (AxisAlignedBB bounds : exposedBounds) {
             AxisAlignedBB renderedBounds = bounds.offset(

@@ -408,9 +408,9 @@ public class Indicators extends Module {
                     GL11.glColor3d(colorForStack.getRed(), colorForStack.getGreen(), colorForStack.getBlue());
                 }
 
-                GL11.glEnable(GL11.GL_BLEND);
-                GL11.glDisable(GL11.GL_TEXTURE_2D);
-                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                GlStateManager.enableBlend();
+                GlStateManager.disableTexture2D();
+                GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
                 GL11.glEnable(GL11.GL_LINE_SMOOTH);
 
                 double halfAngle = 0.6108652353286743;
@@ -422,8 +422,8 @@ public class Indicators extends Module {
                 GL11.glVertex2d(0.0, -offsetY);
                 GL11.glVertex2d(Math.sin(halfAngle) * size, Math.cos(halfAngle) * size - offsetY);
                 GL11.glEnd();
-                GL11.glEnable(GL11.GL_TEXTURE_2D);
-                GL11.glDisable(GL11.GL_BLEND);
+                GlStateManager.enableTexture2D();
+                GlStateManager.disableBlend();
                 GL11.glDisable(GL11.GL_LINE_SMOOTH);
             }
             else if (arrowInput == 1) {
@@ -536,15 +536,15 @@ public class Indicators extends Module {
         float blue = fireballColor.getBlue() / 255.0F;
 
         GL11.glPushMatrix();
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glEnable(GL11.GL_LINE_SMOOTH);
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(false);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableDepth();
+        GlStateManager.depthMask(false);
 
         GL11.glLineWidth(FIREBALL_TRAJECTORY_LINE_WIDTH);
-        GL11.glColor4f(red, green, blue, 1.0F);
+        GlStateManager.color(red, green, blue, 1.0F);
         GL11.glBegin(GL11.GL_LINES);
         GL11.glVertex3d(startX - viewerX, startY - viewerY, startZ - viewerZ);
         GL11.glVertex3d(impactPosition.xCoord - viewerX, endY - viewerY, impactPosition.zCoord - viewerZ);
@@ -555,12 +555,12 @@ public class Indicators extends Module {
         RenderUtils.drawBoundingBox(impactBox.offset(-viewerX, -viewerY, -viewerZ), red, green, blue, FIREBALL_TRAJECTORY_SHADE_ALPHA);
 
         GL11.glLineWidth(1.0F);
-        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-        GL11.glDepthMask(true);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+        GlStateManager.depthMask(true);
+        GlStateManager.enableDepth();
+        GlStateManager.enableTexture2D();
         GL11.glDisable(GL11.GL_LINE_SMOOTH);
-        GL11.glDisable(GL11.GL_BLEND);
+        GlStateManager.disableBlend();
         GL11.glPopMatrix();
     }
 
@@ -761,15 +761,15 @@ public class Indicators extends Module {
         float blue = color.getBlue() / 255.0F;
 
         GL11.glPushMatrix();
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glEnable(GL11.GL_LINE_SMOOTH);
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(false);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableDepth();
+        GlStateManager.depthMask(false);
 
         GL11.glLineWidth(FIREBALL_TRAJECTORY_LINE_WIDTH);
-        GL11.glColor4f(red, green, blue, 1.0F);
+        GlStateManager.color(red, green, blue, 1.0F);
         GL11.glBegin(GL11.GL_LINE_STRIP);
         GL11.glVertex3d(startX - viewerX, startY - viewerY, startZ - viewerZ);
         for (int i = 1; i < prediction.points.size(); i++) {
@@ -789,12 +789,12 @@ public class Indicators extends Module {
         }
 
         GL11.glLineWidth(1.0F);
-        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-        GL11.glDepthMask(true);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+        GlStateManager.depthMask(true);
+        GlStateManager.enableDepth();
+        GlStateManager.enableTexture2D();
         GL11.glDisable(GL11.GL_LINE_SMOOTH);
-        GL11.glDisable(GL11.GL_BLEND);
+        GlStateManager.disableBlend();
         GL11.glPopMatrix();
     }
 
@@ -827,7 +827,7 @@ public class Indicators extends Module {
         Vec3 rotatedArmAxisB = rotateMarkerAxis(armAxisB, armAxisA, cosine, -sine);
 
         GL11.glLineWidth(ARROW_TRAJECTORY_MARKER_LINE_WIDTH);
-        GL11.glColor4f(red, green, blue, ARROW_TRAJECTORY_MARKER_ALPHA);
+        GlStateManager.color(red, green, blue, ARROW_TRAJECTORY_MARKER_ALPHA);
         GL11.glBegin(GL11.GL_LINES);
         addMarkerSegment(centerX, centerY, centerZ, rotatedArmAxisA, direction, viewerX, viewerY, viewerZ);
         addMarkerSegment(centerX, centerY, centerZ, new Vec3(-rotatedArmAxisA.xCoord, -rotatedArmAxisA.yCoord, -rotatedArmAxisA.zCoord), direction, viewerX, viewerY, viewerZ);

@@ -8,6 +8,7 @@ import mindless.utility.Utils;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.inventory.GuiChest;
 import net.minecraft.client.gui.inventory.GuiContainer;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Items;
 import net.minecraft.inventory.ContainerChest;
@@ -125,8 +126,8 @@ public class ShopHelper extends Module {
         int guiTop = getGuiTop(chest);
         if (guiLeft == -1) return;
 
-        GL11.glDisable(GL11.GL_LIGHTING);
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GlStateManager.disableLighting();
+        GlStateManager.disableDepth();
         GL11.glColorMask(true, true, true, true);
 
         int alpha = (int) (opacity.getInput() * 2.55);
@@ -146,8 +147,8 @@ public class ShopHelper extends Module {
             Gui.drawRect(x, y, x + 16, y + 16, color);
         }
 
-        GL11.glEnable(GL11.GL_LIGHTING);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GlStateManager.enableLighting();
+        GlStateManager.enableDepth();
     }
 
     /**

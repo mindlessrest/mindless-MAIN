@@ -148,7 +148,7 @@ public final class SpotifyMiniPlayerRenderer {
         }
         finally {
             GL11.glPopMatrix();
-            GL11.glPopAttrib();
+            RenderUtils.popAttrib();
 
             // The old 1.8 render stack mixes cached GlStateManager calls with
             // direct OpenGL calls. Restore the actual fixed-function baseline
@@ -159,13 +159,13 @@ public final class SpotifyMiniPlayerRenderer {
             EXTFramebufferObject.glBindFramebufferEXT(
                     EXTFramebufferObject.GL_FRAMEBUFFER_EXT, previousFramebuffer);
             GL11.glColorMask(true, true, true, true);
-            GL11.glShadeModel(GL11.GL_FLAT);
-            GL11.glEnable(GL11.GL_TEXTURE_2D);
-            GL11.glEnable(GL11.GL_ALPHA_TEST);
-            GL11.glAlphaFunc(GL11.GL_GREATER, 0.1F);
-            GL11.glEnable(GL11.GL_BLEND);
-            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-            GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+            GlStateManager.shadeModel(GL11.GL_FLAT);
+            GlStateManager.enableTexture2D();
+            GlStateManager.enableAlpha();
+            GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1F);
+            GlStateManager.enableBlend();
+            GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             GlStateManager.resetColor();
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         }
@@ -471,7 +471,7 @@ public final class SpotifyMiniPlayerRenderer {
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ZERO);
         GlStateManager.shadeModel(GL11.GL_FLAT);
-        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         GlStateManager.resetColor();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
@@ -755,7 +755,7 @@ public final class SpotifyMiniPlayerRenderer {
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ZERO);
         GlStateManager.disableTexture2D();
-        GL11.glColor4f(color.getRed() / 255.0F, color.getGreen() / 255.0F,
+        GlStateManager.color(color.getRed() / 255.0F, color.getGreen() / 255.0F,
                 color.getBlue() / 255.0F, color.getAlpha() / 255.0F);
         GL11.glBegin(GL11.GL_TRIANGLE_FAN);
         GL11.glVertex2f(centerX, centerY);
@@ -773,7 +773,7 @@ public final class SpotifyMiniPlayerRenderer {
         }
         // The circle color was set through raw OpenGL, so invalidate
         // GlStateManager's cached value before restoring white.
-        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         GlStateManager.resetColor();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }

@@ -332,17 +332,17 @@ public class LagRange extends Module {
         GlStateManager.disableTexture2D();
         GlStateManager.disableDepth();
         GlStateManager.depthMask(false);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
 
         if (indicatorFilled.isToggled()) {
             RenderUtils.drawBoundingBox(box, r, g, b, a);
         }
 
         GL11.glLineWidth((float) indicatorLineWidth.getInput());
-        GL11.glColor4f(r, g, b, a);
+        GlStateManager.color(r, g, b, a);
         RenderGlobal.drawSelectionBoundingBox(box);
 
-        GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         GlStateManager.enableDepth();
         GlStateManager.depthMask(true);
         GlStateManager.enableTexture2D();

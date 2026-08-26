@@ -51,10 +51,10 @@ public class BreakProgress extends Module {
         GlStateManager.scale(-0.02266667f, -0.02266667f, -0.02266667f);
         GlStateManager.depthMask(false);
         GlStateManager.disableDepth();
-        GL11.glEnable(GL11.GL_BLEND);
+        GlStateManager.enableBlend();
         int colorAlpha = Utils.mergeAlpha(-1, Math.max(10, (int) (255 * progress)));
         mc.fontRendererObj.drawString(this.progressStr, (float) (-mc.fontRendererObj.getStringWidth(this.progressStr) / 2), -3.0f, fadeIn.isToggled() ? colorAlpha : -1, true);
-        GL11.glDisable(GL11.GL_BLEND);
+        GlStateManager.disableBlend();
         GlStateManager.enableDepth();
         GlStateManager.depthMask(true);
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);

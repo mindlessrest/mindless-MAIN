@@ -31,6 +31,7 @@ import net.minecraft.client.gui.inventory.GuiContainerCreative;
 import net.minecraft.client.gui.inventory.GuiInventory;
 import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.client.renderer.*;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.client.resources.I18n;
@@ -1491,27 +1492,27 @@ public class ScriptDefaults {
             AxisAlignedBB bbox = e.getEntityBoundingBox().expand(0.1, 0.1, 0.1);
             AxisAlignedBB axis = new AxisAlignedBB(bbox.minX - e.posX + x, bbox.minY - e.posY + y, bbox.minZ - e.posZ + z, bbox.maxX - e.posX + x, bbox.maxY - e.posY + y, bbox.maxZ - e.posZ + z);
             GL11.glPushMatrix();
-            GL11.glBlendFunc(770, 771);
-            GL11.glEnable(3042);
-            GL11.glDisable(3553);
-            GL11.glDisable(2929);
-            GL11.glDepthMask(false);
+            GlStateManager.blendFunc(770, 771);
+            GlStateManager.enableBlend();
+            GlStateManager.disableTexture2D();
+            GlStateManager.disableDepth();
+            GlStateManager.depthMask(false);
             GL11.glLineWidth(2.0f);
             float a = (color >> 24 & 0xFF) / 255.0f;
             float r = (color >> 16 & 0xFF) / 255.0f;
             float g = (color >> 8 & 0xFF) / 255.0f;
             float b = (color & 0xFF) / 255.0f;
-            GL11.glColor4f(r, g, b, a);
+            GlStateManager.color(r, g, b, a);
             if (outline) {
                 RenderGlobal.drawSelectionBoundingBox(axis);
             }
             if (shade) {
                 RenderUtils.drawBoundingBox(axis, r, g, b);
             }
-            GL11.glEnable(3553);
-            GL11.glEnable(2929);
-            GL11.glDepthMask(true);
-            GL11.glDisable(3042);
+            GlStateManager.enableTexture2D();
+            GlStateManager.enableDepth();
+            GlStateManager.depthMask(true);
+            GlStateManager.disableBlend();
             GL11.glPopMatrix();
         }
 
@@ -1744,16 +1745,16 @@ public class ScriptDefaults {
         public static void line2D(double startX, double startY, double endX, double endY, float lineWidth, int color) {
             GL11.glPushMatrix();
             GL11.glEnable(GL11.GL_LINE_SMOOTH);
-            GL11.glDisable(GL11.GL_TEXTURE_2D);
-            GL11.glEnable(GL11.GL_BLEND);
+            GlStateManager.disableTexture2D();
+            GlStateManager.enableBlend();
             RenderUtils.glColor(color);
             GL11.glLineWidth(lineWidth);
             GL11.glBegin(GL11.GL_LINES);
             GL11.glVertex2d(startX, startY);
             GL11.glVertex2d(endX, endY);
             GL11.glEnd();
-            GL11.glDisable(GL11.GL_BLEND);
-            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            GlStateManager.disableBlend();
+            GlStateManager.enableTexture2D();
             GL11.glDisable(GL11.GL_LINE_SMOOTH);
             GL11.glPopMatrix();
         }
@@ -1777,11 +1778,11 @@ public class ScriptDefaults {
             final float g = (color >> 8 & 0xFF) / 255.0f;
             final float b = (color & 0xFF) / 255.0f;
             GL11.glPushMatrix();
-            GL11.glEnable(3042);
+            GlStateManager.enableBlend();
             GL11.glEnable(2848);
-            GL11.glDisable(2929);
-            GL11.glDisable(3553);
-            GL11.glBlendFunc(770, 771);
+            GlStateManager.disableDepth();
+            GlStateManager.disableTexture2D();
+            GlStateManager.blendFunc(770, 771);
             GL11.glLineWidth(lineWidth);
             GlStateManager.color(r, g, b, a);
             GL11.glBegin(2);
@@ -1789,10 +1790,10 @@ public class ScriptDefaults {
             GL11.glVertex3d(endX, endY, endZ);
             GL11.glEnd();
             GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-            GL11.glEnable(3553);
-            GL11.glEnable(2929);
+            GlStateManager.enableTexture2D();
+            GlStateManager.enableDepth();
             GL11.glDisable(2848);
-            GL11.glDisable(3042);
+            GlStateManager.disableBlend();
             GL11.glPopMatrix();
         }
 

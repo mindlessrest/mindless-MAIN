@@ -261,6 +261,10 @@ public final class ModernClickGui extends ClickGui {
 
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        // The menu draws over a frame the world and the HUD have already been through, so it
+        // starts by reconciling GlStateManager's cache with the driver -- otherwise a colour or a
+        // blend mode left set out there is one the menu's own resets are too stale to clear.
+        RenderUtils.syncGlStateFromDriver();
         updateAnimationClock();
         updateThemePalette();
         double renderScale = getActiveRenderScale();
@@ -2149,15 +2153,15 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void circle(float cx, float cy, float r, int color) {
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glColor4f(((color >> 16) & 255) / 255f, ((color >> 8) & 255) / 255f, (color & 255) / 255f, ((color >>> 24) & 255) / 255f);
+        GlStateManager.disableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.color(((color >> 16) & 255) / 255f, ((color >> 8) & 255) / 255f, (color & 255) / 255f, ((color >>> 24) & 255) / 255f);
         GL11.glBegin(GL11.GL_TRIANGLE_FAN);
         GL11.glVertex2f(cx, cy);
         for (int i = 0; i <= 20; i++) { double a = Math.PI * 2 * i / 20; GL11.glVertex2d(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
         GL11.glEnd();
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GlStateManager.enableTexture2D();
     }
 
     private void drawSearchGlyph(float x, float y, int color) {
@@ -2349,12 +2353,12 @@ public final class ModernClickGui extends ClickGui {
 
     private void segments(int color, float... points) {
         if (points == null || points.length < 4) return;
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glEnable(GL11.GL_LINE_SMOOTH);
         GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
-        GL11.glColor4f(((color >> 16)&255)/255f, ((color>>8)&255)/255f, (color&255)/255f, ((color>>>24)&255)/255f);
+        GlStateManager.color(((color >> 16)&255)/255f, ((color>>8)&255)/255f, (color&255)/255f, ((color>>>24)&255)/255f);
         GL11.glLineWidth(1.15f);
         GL11.glBegin(GL11.GL_LINES);
         for (int i = 0; i + 3 < points.length; i += 4) {
@@ -2363,16 +2367,16 @@ public final class ModernClickGui extends ClickGui {
         }
         GL11.glEnd();
         GL11.glDisable(GL11.GL_LINE_SMOOTH);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GlStateManager.enableTexture2D();
     }
 
     private void circleOutline(float cx, float cy, float r, int color) {
-        GL11.glDisable(GL11.GL_TEXTURE_2D); GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableTexture2D(); GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glEnable(GL11.GL_LINE_SMOOTH);
-        GL11.glColor4f(((color >> 16)&255)/255f, ((color>>8)&255)/255f, (color&255)/255f, ((color>>>24)&255)/255f);
+        GlStateManager.color(((color >> 16)&255)/255f, ((color>>8)&255)/255f, (color&255)/255f, ((color>>>24)&255)/255f);
         GL11.glLineWidth(1.2f); GL11.glBegin(GL11.GL_LINE_LOOP);
-        for (int i=0;i<18;i++){double a=Math.PI*2*i/18;GL11.glVertex2d(cx+Math.cos(a)*r,cy+Math.sin(a)*r);} GL11.glEnd(); GL11.glEnable(GL11.GL_TEXTURE_2D);
+        for (int i=0;i<18;i++){double a=Math.PI*2*i/18;GL11.glVertex2d(cx+Math.cos(a)*r,cy+Math.sin(a)*r);} GL11.glEnd(); GlStateManager.enableTexture2D();
         GL11.glDisable(GL11.GL_LINE_SMOOTH);
     }
 

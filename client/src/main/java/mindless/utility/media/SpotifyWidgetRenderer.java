@@ -157,7 +157,7 @@ public final class SpotifyWidgetRenderer {
         }
         finally {
             GL11.glPopMatrix();
-            GL11.glPopAttrib();
+            RenderUtils.popAttrib();
 
             // The 1.8 stack mixes GlStateManager's cache with direct GL calls, so the saved
             // attributes are not enough on their own; the baseline is restored explicitly too.
@@ -166,12 +166,12 @@ public final class SpotifyWidgetRenderer {
             EXTFramebufferObject.glBindFramebufferEXT(
                     EXTFramebufferObject.GL_FRAMEBUFFER_EXT, previousFramebuffer);
             GL11.glColorMask(true, true, true, true);
-            GL11.glEnable(GL11.GL_TEXTURE_2D);
-            GL11.glEnable(GL11.GL_ALPHA_TEST);
-            GL11.glAlphaFunc(GL11.GL_GREATER, 0.1F);
-            GL11.glEnable(GL11.GL_BLEND);
-            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-            GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+            GlStateManager.enableTexture2D();
+            GlStateManager.enableAlpha();
+            GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1F);
+            GlStateManager.enableBlend();
+            GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             GlStateManager.resetColor();
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         }

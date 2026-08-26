@@ -151,12 +151,12 @@ public class BlockOverlay extends Module {
         GL11.glEnable(GL11.GL_LINE_SMOOTH);
         GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
         if (showOutline) GL11.glLineWidth((float) thickness.getInput());
-        GL11.glShadeModel(GL11.GL_SMOOTH);
+        GlStateManager.shadeModel(GL11.GL_SMOOTH);
 
         try {
             drawOverlayGeometry(mc, pos, box, side, vx, vy, vz, overlayStart, overlayEnd, outlineStart, outlineEnd, showOverlay, showOutline);
         } finally {
-            GL11.glShadeModel(GL11.GL_FLAT);
+            GlStateManager.shadeModel(GL11.GL_FLAT);
             GL11.glLineWidth(2.0f);
             GL11.glDisable(GL11.GL_LINE_SMOOTH);
             if (depthDisabled) GlStateManager.enableDepth();
@@ -192,12 +192,12 @@ public class BlockOverlay extends Module {
         GL11.glEnable(GL11.GL_LINE_SMOOTH);
         GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
         GL11.glLineWidth(lineWidth);
-        GL11.glShadeModel(GL11.GL_SMOOTH);
+        GlStateManager.shadeModel(GL11.GL_SMOOTH);
 
         try {
             drawOverlayGeometry(m, pos, box, null, vx, vy, vz, 0, 0, outlineArgbStart, outlineArgbEnd, false, true);
         } finally {
-            GL11.glShadeModel(GL11.GL_FLAT);
+            GlStateManager.shadeModel(GL11.GL_FLAT);
             GL11.glLineWidth(2.0f);
             GL11.glDisable(GL11.GL_LINE_SMOOTH);
             if (depthless) {

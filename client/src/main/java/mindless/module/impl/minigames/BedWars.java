@@ -17,6 +17,7 @@ import net.minecraft.block.BlockObsidian;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.entity.Entity;
@@ -261,11 +262,11 @@ public class BedWars extends Module {
         RenderManager renderManager = mc.getRenderManager();
 
         GL11.glPushMatrix();
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(false);
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.enableBlend();
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableDepth();
+        GlStateManager.depthMask(false);
 
         try {
             for (AxisAlignedBB bounds : obsidianBounds) {
@@ -277,11 +278,11 @@ public class BedWars extends Module {
                 RenderUtils.drawBoundingBox(renderedBounds, red, green, blue, 0.25f);
             }
         } finally {
-            GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-            GL11.glEnable(GL11.GL_TEXTURE_2D);
-            GL11.glEnable(GL11.GL_DEPTH_TEST);
-            GL11.glDepthMask(true);
-            GL11.glDisable(GL11.GL_BLEND);
+            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+            GlStateManager.enableTexture2D();
+            GlStateManager.enableDepth();
+            GlStateManager.depthMask(true);
+            GlStateManager.disableBlend();
             GL11.glPopMatrix();
         }
     }
@@ -1073,16 +1074,16 @@ public class BedWars extends Module {
             }
         }
         finally {
-            GL11.glPopAttrib();
-            GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+            RenderUtils.popAttrib();
+            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         }
 
         return new HudBoxBounds(left, top, right, bottom);
     }
 
     private void enableClosestEnemyAlphaBlending() {
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
     }
 
     private float updateClosestEnemyVisibility(List<EnemyHudEntry> entries) {

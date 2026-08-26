@@ -5,6 +5,7 @@ import mindless.utility.shader.RoundedUtils;
 import mindless.module.impl.client.Settings;
 import mindless.runtime.GuiIngameState;
 import mindless.utility.HudRenderBounds;
+import mindless.utility.RenderUtils;
 import mindless.utility.TextGlowUtils;
 import net.lenni0451.classtransform.InjectionCallback;
 import net.lenni0451.classtransform.annotations.CInline;
@@ -46,6 +47,12 @@ public abstract class TransformerGuiIngame {
     @CInline
     @CInject(method = "renderGameOverlay", target = @CTarget("HEAD"))
     private void raven$beginHudBlurFrame(float partialTicks, InjectionCallback callbackInfo) {
+        // Once a frame, before anything draws over the world: put GlStateManager's cache back in
+        // agreement with the driver. The world pass is full of raw GL, ours and everyone else's,
+        // and the cache is what decides whether a reset is worth forwarding -- so a colour or a
+        // blend mode left behind out there is not merely still set, it is invisible to the calls
+        // meant to clear it, and the whole HUD inherits it.
+        RenderUtils.syncGlStateFromDriver();
         HudRenderBounds.clearScoreboard();
         BlurUtils.beginFrame();
     }
@@ -100,7 +107,7 @@ public abstract class TransformerGuiIngame {
         HudRenderBounds.setScoreboard(left, top, right, bottom);
 
         GL20.glUseProgram(0);
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         Minecraft.getMinecraft().getFramebuffer().bindFramebuffer(true);
         GL11.glColorMask(true, true, true, true);
 
