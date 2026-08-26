@@ -73,11 +73,6 @@ public class AudioVisualizer extends Module {
     private final SliderSetting opacity;
 
     private final ButtonSetting baseline;
-    private final ButtonSetting background;
-    private final SliderSetting backgroundOpacity;
-    private final ButtonSetting border;
-    private final SliderSetting borderOpacity;
-    private final SliderSetting cornerRadius;
 
     private final SliderSetting idleBehaviour;
     private final SliderSetting pausedBehaviour;
@@ -128,19 +123,14 @@ public class AudioVisualizer extends Module {
         this.registerSetting(opacity = new SliderSetting("Opacity", "%", 100, 10, 100, 5));
 
         this.registerSetting(new DescriptionSetting("Panel"));
-        // Off by default, and the corners square when it is on.
+        // There is no card any more, in either placement.
         //
-        // In the mini player this sits inside a glass card already, so a second card around it is
-        // a box drawn on a box -- which is what the rounded outline looked like. A rule for the
-        // bars to stand on ties the section to the separator above the lyrics and the progress bar
-        // below it, and needs no border at all. The panel is still here for standalone use over
-        // the world, where there is nothing behind the bars to read them against.
+        // Inside the mini player the bars already sit on glass, so a card around them was a box
+        // drawn on a box. Standalone kept the card, which meant the same visualiser wore a
+        // rounded border in one place and not the other -- and a saved profile with the border
+        // switched on brought it back however the defaults changed. A rule for the bars to stand
+        // on reads in both places and needs no border at all.
         this.registerSetting(baseline = new ButtonSetting("Baseline", true));
-        this.registerSetting(background = new ButtonSetting("Background", false));
-        this.registerSetting(backgroundOpacity = new SliderSetting("Background opacity", "%", 42, 0, 100, 2));
-        this.registerSetting(border = new ButtonSetting("Border", false));
-        this.registerSetting(borderOpacity = new SliderSetting("Border opacity", "%", 14, 0, 100, 2));
-        this.registerSetting(cornerRadius = new SliderSetting("Corner radius", "px", 0.0, 0.0, 12.0, 0.5));
 
         this.registerSetting(new DescriptionSetting("When silent"));
         this.registerSetting(idleBehaviour = new SliderSetting("Idle", BEHAVIOUR_WAVE,
@@ -190,8 +180,6 @@ public class AudioVisualizer extends Module {
         if (standaloneScale != null) standaloneScale.setVisible(standalone, this);
         if (customColor != null) customColor.setVisible(colorMode() == COLOR_CUSTOM, this);
         if (gradientDirection != null) gradientDirection.setVisible(gradientEnabled(), this);
-        if (backgroundOpacity != null) backgroundOpacity.setVisible(backgroundEnabled(), this);
-        if (borderOpacity != null) borderOpacity.setVisible(borderEnabled(), this);
     }
 
     /**
@@ -265,7 +253,7 @@ public class AudioVisualizer extends Module {
         float scale = (float) standaloneScale.getInput();
         float width = (float) standaloneWidth.getInput() * scale;
         float height = (float) standaloneHeight.getInput() * scale;
-        VisualizerRenderer.draw(posX, posY, width, height, 1.0F, true);
+        VisualizerRenderer.draw(posX, posY, width, height, 1.0F);
         return new float[]{posX, posY, posX + width, posY + height};
     }
 
@@ -401,26 +389,6 @@ public class AudioVisualizer extends Module {
     /** Whether the bars stand on a hairline rule. */
     public boolean baselineEnabled() {
         return baseline.isToggled();
-    }
-
-    public boolean backgroundEnabled() {
-        return background.isToggled();
-    }
-
-    public float backgroundOpacity() {
-        return (float) backgroundOpacity.getInput() / 100.0F;
-    }
-
-    public boolean borderEnabled() {
-        return border.isToggled();
-    }
-
-    public float borderOpacity() {
-        return (float) borderOpacity.getInput() / 100.0F;
-    }
-
-    public float cornerRadius() {
-        return (float) cornerRadius.getInput();
     }
 
     public int idleBehaviour() {

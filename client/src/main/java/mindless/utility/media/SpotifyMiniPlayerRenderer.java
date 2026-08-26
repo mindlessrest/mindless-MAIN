@@ -400,8 +400,7 @@ public final class SpotifyMiniPlayerRenderer {
             float visualizerLeft = textX;
             float visualizerWidth = Math.max(24.0F, x + width - padding - visualizerLeft);
             VisualizerRenderer.draw(visualizerLeft, visualizerTop,
-                    visualizerWidth, visualizerSection,
-                    renderVisibility, false);
+                    visualizerWidth, visualizerSection, renderVisibility);
             GL20.glUseProgram(0);
             GlStateManager.enableTexture2D();
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);

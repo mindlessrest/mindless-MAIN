@@ -43,10 +43,8 @@ public final class VisualizerRenderer {
      *
      * @param alphaScale overall fade applied on top of the configured opacity, for panels that
      *                   animate in
-     * @param drawPanel  whether to paint the card behind the bars
      */
-    public static void draw(float x, float y, float width, float height, float alphaScale,
-                            boolean drawPanel) {
+    public static void draw(float x, float y, float width, float height, float alphaScale) {
         AudioVisualizer module = AudioVisualizer.getInstance();
         if (module == null || width <= 1.0F || height <= 1.0F) {
             return;
@@ -86,10 +84,6 @@ public final class VisualizerRenderer {
 
         GlStateManager.enableBlend();
         GlStateManager.disableAlpha();
-        if (drawPanel) {
-            drawCard(module, x, y, width, height, alpha);
-        }
-
         drawBars(module, x, y, width, height, alpha);
 
         // The rounded shader leaves a program bound; anything drawn after this without clearing it
@@ -173,33 +167,6 @@ public final class VisualizerRenderer {
 
     // ----------------------------------------------------------------------------------- drawing
 
-    private static void drawCard(AudioVisualizer module, float x, float y, float width,
-                                 float height, float alpha) {
-        float radius = module.cornerRadius();
-
-        boolean hasBackground = module.backgroundEnabled();
-        boolean hasBorder = module.borderEnabled();
-        if (!hasBackground && !hasBorder) return;
-
-        int backgroundAlpha = hasBackground
-                ? Math.min(255, Math.round(255 * module.backgroundOpacity() * alpha)) : 0;
-        int borderAlpha = hasBorder
-                ? Math.min(255, Math.round(255 * module.borderOpacity() * alpha)) : 0;
-
-        // One shader call draws fill and hairline together. Faking the outline with a larger rect
-        // behind the fill -- as some of the older panels here do -- only produces a rim when the
-        // fill is opaque, and this one usually is not.
-        RoundedUtils.drawRoundOutline(x, y, width, height, radius, 1.0F,
-                new Color(0, 0, 0, backgroundAlpha),
-                new Color(255, 255, 255, borderAlpha));
-
-        if (backgroundAlpha > 1) {
-            // A touch brighter at the top, like the other glass in the client.
-            RoundedUtils.drawGradientVertical(x, y, width, height, radius,
-                    new Color(255, 255, 255, Math.round(13 * alpha)),
-                    new Color(255, 255, 255, Math.round(3 * alpha)));
-        }
-    }
 
     private static void drawBars(AudioVisualizer module, float x, float y, float width,
                                  float height, float alpha) {
