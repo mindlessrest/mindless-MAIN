@@ -980,7 +980,7 @@ public class InvManager extends Module {
 
         Item item = itemStack.getItem();
         return (isAutoSortMode(AUTO_SORT_CUSTOM) && items.matches(itemStack))
-            || item instanceof ItemBlock
+            || (item instanceof ItemBlock && !(((ItemBlock) item).getBlock() instanceof net.minecraft.block.BlockRailBase))
             || item instanceof ItemAppleGold
             || item instanceof ItemSnowball
             || item instanceof ItemEgg
