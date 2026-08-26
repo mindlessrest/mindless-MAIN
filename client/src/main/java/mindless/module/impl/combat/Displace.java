@@ -208,6 +208,7 @@ public class Displace extends Module {
         clearArrow();
         clearVoidDebugState();
         targetWindowStartTicks.clear();
+        targetDisplacementLocks.clear();
         resetOverrideAttackState();
     }
 
@@ -788,6 +789,7 @@ public class Displace extends Module {
     private void pruneTargetDelayStates() {
         if (mc.theWorld == null) {
             targetWindowStartTicks.clear();
+            targetDisplacementLocks.clear();
             return;
         }
 
@@ -797,6 +799,24 @@ public class Displace extends Module {
             Entity entity = mc.theWorld.getEntityByID(entry.getKey());
             if (!(entity instanceof EntityPlayer) || entity.isDead || ((EntityPlayer) entity).deathTime != 0) {
                 iterator.remove();
+            }
+        }
+
+        Iterator<Map.Entry<Integer, DisplacementLock>> lockIterator = targetDisplacementLocks.entrySet().iterator();
+        while (lockIterator.hasNext()) {
+            Map.Entry<Integer, DisplacementLock> entry = lockIterator.next();
+            Entity entity = mc.theWorld.getEntityByID(entry.getKey());
+            if (!(entity instanceof EntityPlayer) || entity.isDead || ((EntityPlayer) entity).deathTime != 0) {
+                lockIterator.remove();
+                continue;
+            }
+
+            EntityPlayer player = (EntityPlayer) entity;
+            DisplacementLock lock = entry.getValue();
+            if (!player.onGround) {
+                lock.airborne = true;
+            } else if (lock.airborne || tickCounter - lock.lastUseTick >= DISPLACEMENT_LOCK_IDLE_TICKS) {
+                lockIterator.remove();
             }
         }
     }
@@ -919,6 +939,9 @@ public class Displace extends Module {
             overrideFlickYaw = overrideTargetYaw + overrideFlickOffset;
         }
 
+        overrideFlickYaw = lockDisplacementYaw(target, overrideFlickYaw);
+        updateDisplaceSide(overrideTargetYaw, overrideFlickYaw);
+
         overrideTarget = target;
         overrideAttackState = OverrideAttackState.FLICKING_AWAY;
         overrideStateTicks = 0;
@@ -976,8 +999,12 @@ public class Displace extends Module {
         overrideTargetYaw = targetRotations[0];
         overrideTargetPitch = targetRotations[1];
         if (!overrideAbsoluteFlickYaw) {
-            overrideFlickYaw = overrideTargetYaw + overrideFlickOffset;
+            overrideFlickYaw = getLockedDisplacementYaw(
+                    overrideTarget,
+                    overrideTargetYaw + overrideFlickOffset
+            );
         }
+        updateDisplaceSide(overrideTargetYaw, overrideFlickYaw);
 
         if (overrideAttackState == OverrideAttackState.FLICKING_AWAY) {
             event.yaw = overrideFlickYaw;
