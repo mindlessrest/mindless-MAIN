@@ -11,7 +11,7 @@ import java.util.List;
 
 public class Profiles extends Command {
     public Profiles() {
-        super("profiles", "profile", "p");
+        super("profiles", "profile", "p", "config", "c");
     }
 
     @Override
@@ -34,6 +34,7 @@ public class Profiles extends Command {
         switch (subCommand) {
             case "save":
             case "s":
+            case "create":
                 handleSave(input);
                 return;
             case "load":
@@ -43,6 +44,7 @@ public class Profiles extends Command {
             case "delete":
             case "remove":
             case "r":
+            case "d":
                 handleDelete(input);
                 return;
             case "rename":
