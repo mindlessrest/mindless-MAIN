@@ -12,9 +12,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # This script lives in tools/, so the repository root is one level up.
 ROOT        = Path(__file__).resolve().parent.parent
-LOADER_DIR  = ROOT / "loader" / "gui"
+LOADER_DIR  = ROOT / "loader"
 CLIENT_DIR  = ROOT / "client"
-NATIVE_DIR  = ROOT / "bootstrapper"
+NATIVE_DIR  = CLIENT_DIR / "native"
 PRESET_FILE = LOADER_DIR / "CMakePresets.json"
 PRESET_TEMPLATE = LOADER_DIR / "CMakePresets.template.json"
 BUILD_DIR   = LOADER_DIR / "out" / "build" / "windows-clang"
@@ -26,11 +26,10 @@ CPU_COUNT = os.cpu_count() or 4
 
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
-NATIVE_BUILD_DIR = NATIVE_DIR / "build"
+NATIVE_BUILD_DIR = CLIENT_DIR / "native_build"
 NATIVE_DLL_OUT   = NATIVE_BUILD_DIR / "dist" / "RavenNative.dll"
 
 LOADER_RUNTIME   = LOADER_DIR / "assets" / "runtime" / "RavenNative.dll"
-NATIVE_DLL_OUT_LINUX = NATIVE_BUILD_DIR / "dist" / "RavenNative.so"
 
 VS_ROOTS = [
     r"C:\Program Files\Microsoft Visual Studio",

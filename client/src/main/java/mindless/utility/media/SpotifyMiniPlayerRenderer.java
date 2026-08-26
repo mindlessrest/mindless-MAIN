@@ -358,6 +358,13 @@ public final class SpotifyMiniPlayerRenderer {
 
         if (lyricsArea) {
             float separatorY = titleY + totalTextHeight + Math.max(1.5F, 2.0F * uiScale);
+            // One even rule. The second, taller bar over the first 28% made the separator look
+            // thicker on the left than on the right.
+            int separatorColor = Utils.mergeAlpha(0xFFFFFF, Math.max(22, textAlpha / 6));
+            RenderUtils.drawRect(textX, separatorY, textX + textWidth, separatorY + 0.5F, separatorColor);
+            GL20.glUseProgram(0);
+            GlStateManager.enableTexture2D();
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             float lyricY = separatorY + Math.max(3.5F, 4.5F * uiScale);
             float lyricBottom = (showProgress
                     ? progressBarY - Math.max(4.0F, 4.75F * uiScale)

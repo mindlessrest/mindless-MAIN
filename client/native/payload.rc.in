@@ -1,0 +1,7 @@
+#include <windows.h>
+
+/* Runtime-specific Raven payloads selected by dllmain.c. */
+421 RCDATA "@RAVEN_FORGE_PAYLOAD_JAR_ESCAPED@"
+422 RCDATA "@RAVEN_LUNAR_PAYLOAD_JAR_ESCAPED@"
+
+1 24 "@RAVEN_MANIFEST_PATH@"
