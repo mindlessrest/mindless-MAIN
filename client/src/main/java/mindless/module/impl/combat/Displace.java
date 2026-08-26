@@ -177,8 +177,7 @@ public class Displace extends Module {
 
     @Override
     public String getInfo() {
-        int ms = (int) Math.round(delay.getInput());
-        return ms + "ms";
+        return MODES[(int) mode.getInput()];
     }
 
     @Override
