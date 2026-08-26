@@ -273,6 +273,28 @@ public class AudioVisualizer extends Module {
         return standaloneScale;
     }
 
+    /**
+     * Where the standalone visualiser sits, as a fraction of the screen.
+     *
+     * <p>Stored and restored as a fraction rather than in pixels so it lands in the same place
+     * across resolutions and GUI scales, which is how the other movable elements do it.
+     */
+    public float getRelativePosX() {
+        syncPosition();
+        return relativeX;
+    }
+
+    public float getRelativePosY() {
+        syncPosition();
+        return relativeY;
+    }
+
+    public void setRelativePosition(float x, float y) {
+        relativeX = Math.max(0.0F, Math.min(1.0F, x));
+        relativeY = Math.max(0.0F, Math.min(1.0F, y));
+        syncPosition();
+    }
+
     public void resetPosition() {
         relativeX = 0.02F;
         relativeY = 0.72F;

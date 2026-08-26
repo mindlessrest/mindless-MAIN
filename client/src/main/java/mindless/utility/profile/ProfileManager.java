@@ -148,6 +148,11 @@ public class ProfileManager implements IMinecraftInstance {
             moduleInformation.addProperty("relPosX", potionHUD.getRelativePosX());
             moduleInformation.addProperty("relPosY", potionHUD.getRelativePosY());
         }
+        else if (module instanceof mindless.module.impl.render.AudioVisualizer) {
+            mindless.module.impl.render.AudioVisualizer visualizer = (mindless.module.impl.render.AudioVisualizer) module;
+            moduleInformation.addProperty("relPosX", visualizer.getRelativePosX());
+            moduleInformation.addProperty("relPosY", visualizer.getRelativePosY());
+        }
         else if (module instanceof mindless.module.impl.render.SessionInfo) {
             mindless.module.impl.render.SessionInfo session = (mindless.module.impl.render.SessionInfo) module;
             moduleInformation.addProperty("posX", session.getPosX());
@@ -371,6 +376,15 @@ public class ProfileManager implements IMinecraftInstance {
                             float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : potionHUD.getPosX();
                             float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : potionHUD.getPosY();
                             potionHUD.setAbsolutePosition(posX, posY);
+                        }
+                    }
+                    else if (module.getName().equals("Audio Visualizer")) {
+                        mindless.module.impl.render.AudioVisualizer visualizer = (mindless.module.impl.render.AudioVisualizer) module;
+                        if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                            visualizer.setRelativePosition(
+                                    moduleInformation.get("relPosX").getAsFloat(),
+                                    moduleInformation.get("relPosY").getAsFloat()
+                            );
                         }
                     }
                     else if (module.getName().equals("Session Info")) {

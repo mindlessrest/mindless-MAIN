@@ -33,7 +33,7 @@ public final class SystemMediaClient {
      * <p>Small enough that no feature of the cover survives as a feature, large enough that the
      * wash still moves across the panel rather than being one flat colour.
      */
-    private static final int ALBUM_ART_BLUR_SIZE = 12;
+    private static final int ALBUM_ART_BLUR_SIZE = 16;
     private static final SystemMediaClient INSTANCE = new SystemMediaClient();
 
     private final Minecraft mc = Minecraft.getMinecraft();
@@ -422,7 +422,14 @@ public final class SystemMediaClient {
         }
     }
 
-    /** Reduces the artwork to {@link #ALBUM_ART_BLUR_SIZE} square. See the getter for why. */
+    /**
+     * Reduces the artwork to {@link #ALBUM_ART_BLUR_SIZE} square, then puts the colour back.
+     *
+     * <p>Averaging a cover down to a handful of pixels is what produces the blur, but it also
+     * averages the colour out: mixing a sleeve's lights and darks together walks every pixel
+     * towards grey, and the wash came out muddy for it. Pushing saturation back up afterwards
+     * restores what the shrinking took, so the panel reads as the record rather than as a smudge.
+     */
     private static BufferedImage softenAlbumArt(BufferedImage source) {
         if (source == null) {
             return null;
@@ -439,11 +446,36 @@ public final class SystemMediaClient {
             finally {
                 graphics.dispose();
             }
+            saturate(small, 1.75F, 1.12F);
             return small;
         }
         catch (Exception ignored) {
             return null;
         }
+    }
+
+    /** Pushes every pixel away from its own grey, and lifts it a little. */
+    private static void saturate(BufferedImage image, float saturation, float brightness) {
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                int argb = image.getRGB(x, y);
+                int a = (argb >>> 24) & 0xFF;
+                int r = (argb >> 16) & 0xFF;
+                int g = (argb >> 8) & 0xFF;
+                int b = argb & 0xFF;
+
+                float grey = 0.2126F * r + 0.7152F * g + 0.0722F * b;
+                r = clamp255((grey + (r - grey) * saturation) * brightness);
+                g = clamp255((grey + (g - grey) * saturation) * brightness);
+                b = clamp255((grey + (b - grey) * saturation) * brightness);
+
+                image.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b);
+            }
+        }
+    }
+
+    private static int clamp255(float value) {
+        return value < 0.0F ? 0 : (value > 255.0F ? 255 : Math.round(value));
     }
 
     private static BufferedImage decodeAndResizeAlbumArt(byte[] encodedImage) {

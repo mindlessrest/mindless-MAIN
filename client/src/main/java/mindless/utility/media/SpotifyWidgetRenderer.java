@@ -54,8 +54,10 @@ public final class SpotifyWidgetRenderer {
     private static final float RADIUS = COVER * 0.16F;
     private static final float COVER_RADIUS = COVER * 0.125F;
     private static final float TILE_GAP = COVER * 0.18F;
-    private static final float PAD_X = COVER * 0.19F;
-    private static final float PAD_Y = COVER * 0.14F;
+    /** One value for both axes. Two of them drifted apart and the panel looked lopsided. */
+    private static final float PAD = COVER * 0.17F;
+    private static final float PAD_X = PAD;
+    private static final float PAD_Y = PAD;
 
     private static final float TITLE_HEIGHT = COVER * 0.26F;
     private static final float LABEL_HEIGHT = COVER * 0.155F;
@@ -84,9 +86,9 @@ public final class SpotifyWidgetRenderer {
      * here, weaker below: the panel reads as dark with the record showing through, which is what
      * the original actually looks like.
      */
-    private static final int TINT_LEFT_ALPHA = 208;
-    private static final int TINT_RIGHT_ALPHA = 118;
-    private static final float WASH_ALPHA = 0.85F;
+    private static final int TINT_LEFT_ALPHA = 202;
+    private static final int TINT_RIGHT_ALPHA = 96;
+    private static final float WASH_ALPHA = 1.0F;
 
     private static final float ENTRY_RISE = 14.0F;
 
@@ -413,21 +415,32 @@ public final class SpotifyWidgetRenderer {
     }
 
     /**
-     * The panel background: the cover blurred out, then darkened unevenly across it.
+     * The panel background: the cover blurred out, darkened across the diagonal, lit at the top.
      *
-     * <p>A flat tint was what made this look like a slab of whatever colour the sleeve was. The
-     * reference is dark where the text sits and lets the record through towards the far end, which
-     * is a gradient rather than a single alpha -- so the words stay legible against a background
-     * that is still visibly the album.
+     * <p>A single flat alpha over the wash made a slab, and a straight left-to-right fade was
+     * only marginally better -- both read as one dull colour because nothing in them changes in
+     * more than one direction. Darkening from the top left, where the words are, out towards the
+     * far bottom corner leaves the record visible where nothing is written over it, and a thin
+     * highlight along the top edge gives the panel an edge to catch light on rather than ending
+     * flat against whatever is behind it.
      */
     private static void drawWash(ResourceLocation wash, float x, float y, float width,
                                  float height, float radius, float alpha) {
         if (wash != null) {
             drawTexturedRound(wash, x, y, width, height, radius, alpha * WASH_ALPHA, true);
         }
-        RoundedUtils.drawGradientHorizontal(x, y, width, height, radius,
+        else {
+            RoundedUtils.drawRound(x, y, width, height, radius,
+                    new Color(18, 18, 22, Math.round(232 * alpha)));
+        }
+
+        RoundedUtils.drawGradientCornerLR(x, y, width, height, radius,
                 new Color(0, 0, 0, Math.round(TINT_LEFT_ALPHA * alpha)),
                 new Color(0, 0, 0, Math.round(TINT_RIGHT_ALPHA * alpha)));
+
+        RoundedUtils.drawGradientVertical(x, y, width, height * 0.55F, radius,
+                new Color(255, 255, 255, Math.round(20 * alpha)),
+                new Color(255, 255, 255, 0));
     }
 
     /**
