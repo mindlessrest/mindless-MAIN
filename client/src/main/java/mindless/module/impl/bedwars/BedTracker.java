@@ -1,5 +1,6 @@
 package mindless.module.impl.bedwars;
 
+import mindless.command.impl.Urchin;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
@@ -38,8 +39,10 @@ public class BedTracker extends BedwarsHud {
     private final SliderSetting frequency;
     private final SliderSetting distance;
     private final ButtonSetting pingSound;
+    private final ButtonSetting urchinAlerts;
 
     private final Map<UUID, Long> lastAlert = new HashMap<UUID, Long>();
+    private final java.util.Set<String> urchinChecked = new java.util.HashSet<String>();
     private BlockPos bed;
     private long scanAt;
     private long settledAt;
@@ -50,6 +53,7 @@ public class BedTracker extends BedwarsHud {
         this.registerSetting(frequency = new SliderSetting("Alert interval", " second", 10, 5, 30, 1));
         this.registerSetting(distance = new SliderSetting("Max distance", " block", 50, 10, 100, 5));
         this.registerSetting(pingSound = new ButtonSetting("Ping sound", true));
+        this.registerSetting(urchinAlerts = new ButtonSetting("Urchin alerts", true));
     }
 
     @Override
@@ -63,6 +67,7 @@ public class BedTracker extends BedwarsHud {
         settledAt = 0L;
         warnedOutOfRange = false;
         lastAlert.clear();
+        urchinChecked.clear();
     }
 
     // ------------------------------------------------------------------ chat triggers
@@ -88,6 +93,26 @@ public class BedTracker extends BedwarsHud {
         else if (message.contains("BED DESTRUCTION") && message.contains("Your Bed")) {
             bed = null;
             Utils.sendMessage("&4&l⚠ &cYour bed was destroyed.");
+        }
+
+        if (urchinAlerts.isToggled() && Urchin.hasKey() && message.startsWith("ONLINE: ")) {
+            String[] players = message.substring(8).split(", ");
+            for (String player : players) {
+                String trimmed = player.trim();
+                if (trimmed.isEmpty() || trimmed.equals(mc.thePlayer.getName())) continue;
+                if (urchinChecked.contains(trimmed.toLowerCase())) continue;
+                urchinChecked.add(trimmed.toLowerCase());
+                final String name = trimmed;
+                new Thread(() -> {
+                    String result = Urchin.fetchTags(name);
+                    if (result != null && result.contains("tagged on")) {
+                        Utils.sendMessage(result);
+                        if (pingSound.isToggled()) {
+                            mc.thePlayer.playSound("note.pling", 1.0f, 0.5f);
+                        }
+                    }
+                }, "Urchin-" + name).start();
+            }
         }
     }
 

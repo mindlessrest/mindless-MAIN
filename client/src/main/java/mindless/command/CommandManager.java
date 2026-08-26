@@ -16,6 +16,7 @@ import mindless.command.impl.Profiles;
 import mindless.command.impl.ShowAll;
 import mindless.command.impl.Toggle;
 import mindless.command.impl.Track;
+import mindless.command.impl.Urchin;
 import mindless.command.impl.Unbind;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.ChatCommands;
@@ -50,6 +51,7 @@ public class CommandManager {
         register(new Profiles());
         register(new ShowAll());
         register(new HideAll());
+        register(new Urchin());
     }
 
     public boolean handleChatMessage(String message) {
