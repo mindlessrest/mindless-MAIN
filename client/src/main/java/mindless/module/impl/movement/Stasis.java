@@ -31,7 +31,7 @@ public class Stasis extends Module {
     private double storedMotionZ;
 
     public Stasis() {
-        super("Stasis", category.movement);
+        super("Air Stuck", category.movement);
         this.registerSetting(pulse = new SliderSetting("Pulse", " tick", "\u00a7cNever", 60.0, 0.0, 200.0, 2.0));
         this.registerSetting(pulseDelay = new SliderSetting("Pulse delay", " tick", 10.0, 1.0, 150.0, 1.0));
     }
