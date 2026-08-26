@@ -371,8 +371,8 @@ public class AutoBlockin extends Module {
     private void renderCircleProgress(float ratio, int alpha) {
         ScaledResolution resolution = new ScaledResolution(mc);
 
-        float centerX = resolution.getScaledWidth() / 2f - 1f;
-        float centerY = resolution.getScaledHeight() / 2f;
+        float centerX = resolution.getScaledWidth() / 2f + 0.5f;
+        float centerY = resolution.getScaledHeight() / 2f + 0.5f;
         float radius = 10f;
         float thickness = 3f;
         float alphaFloat = alpha / 255f;
