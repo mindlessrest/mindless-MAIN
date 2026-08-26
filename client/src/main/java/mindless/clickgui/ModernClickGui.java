@@ -1225,28 +1225,85 @@ public final class ModernClickGui extends ClickGui {
         outline(x2 - 38, controlTop, x2, controlTop + 18, 4f, fa(BORDER, alpha));
         rounded(x2 - 38, controlTop, x2, controlTop + 18, 4f, fa(color.getColor(), alpha));
         if (openColor != color) return;
+
         float py = y + 34, pickerX = x1 + 9, pickerW = x2 - x1 - 18;
         colorSB.set(pickerX, py, pickerX + pickerW - 17, py + 48);
-        for (int sx = 0; sx < 12; sx++) for (int sy = 0; sy < 8; sy++) {
-            float sat = sx / 11f, bri = 1f - sy / 7f;
-            int rgb = Color.HSBtoRGB(color.getHue() / 360f, sat, bri) | 0xFF000000;
-            float ax = colorSB.x1 + colorSB.w() * sx / 12f, ay = colorSB.y1 + colorSB.h() * sy / 8f;
-            net.minecraft.client.gui.Gui.drawRect((int) ax, (int) ay, (int) Math.ceil(ax + colorSB.w() / 12f), (int) Math.ceil(ay + colorSB.h() / 8f), rgb);
-        }
         colorHue.set(colorSB.x2 + 5, py, colorSB.x2 + 12, py + 48);
-        for (int i = 0; i < 24; i++) {
-            int rgb = Color.HSBtoRGB(i / 24f, 1f, 1f) | 0xFF000000;
-            net.minecraft.client.gui.Gui.drawRect((int) colorHue.x1, (int) (py + i * 2), (int) colorHue.x2, (int) (py + i * 2 + 2), rgb);
-        }
-        circle(colorSB.x1 + color.getSaturation() * colorSB.w(), colorSB.y1 + (1f - color.getBrightness()) * colorSB.h(), 2.5f, TEXT);
-        net.minecraft.client.gui.Gui.drawRect((int) colorHue.x1 - 1, (int) (colorHue.y1 + color.getHue() / 360f * colorHue.h()) - 1, (int) colorHue.x2 + 1, (int) (colorHue.y1 + color.getHue() / 360f * colorHue.h()) + 1, TEXT);
+
+        drawSaturationBrightnessField(color, alpha);
+        drawHueStrip(alpha);
+
+        // Handles, not dots. A two-tone ring stays visible over every part of the field, which a
+        // single colour cannot -- white vanishes into the top left corner and black into the
+        // bottom edge, and an invisible handle is why picking a colour felt like starting over
+        // every time this was opened.
+        float sbX = colorSB.x1 + color.getSaturation() * colorSB.w();
+        float sbY = colorSB.y1 + (1f - color.getBrightness()) * colorSB.h();
+        circleOutline(sbX, sbY, 4.2f, fa(0xFF000000, alpha));
+        circleOutline(sbX, sbY, 3.4f, fa(0xFFFFFFFF, alpha));
+
+        float hueY = colorHue.y1 + color.getHue() / 360f * colorHue.h();
+        rounded(colorHue.x1 - 2.5f, hueY - 2f, colorHue.x2 + 2.5f, hueY + 2f, 2f, fa(0xFFFFFFFF, alpha));
+        rounded(colorHue.x1 - 1.5f, hueY - 1f, colorHue.x2 + 1.5f, hueY + 1f, 1f,
+                fa(0xFF000000 | Color.HSBtoRGB(color.getHue() / 360f, 1f, 1f), alpha));
+
         if (color.hasAlpha()) {
             colorAlpha.set(pickerX, py + 55, pickerX + pickerW, py + 61);
-            for (int i = 0; i < 16; i++) {
-                int a = (int) (255f * i / 15f);
-                net.minecraft.client.gui.Gui.drawRect((int) (colorAlpha.x1 + colorAlpha.w() * i / 16f), (int) colorAlpha.y1, (int) Math.ceil(colorAlpha.x1 + colorAlpha.w() * (i + 1) / 16f), (int) colorAlpha.y2, (a << 24) | color.getRGB());
+            drawAlphaStrip(color, alpha);
+            float ax = colorAlpha.x1 + color.getAlpha() / 255f * colorAlpha.w();
+            rounded(ax - 2f, colorAlpha.y1 - 2.5f, ax + 2f, colorAlpha.y2 + 2.5f, 2f, fa(0xFFFFFFFF, alpha));
+            rounded(ax - 1f, colorAlpha.y1 - 1.5f, ax + 1f, colorAlpha.y2 + 1.5f, 1f, fa(0xFF000000, alpha));
+        }
+    }
+
+    /**
+     * The saturation and brightness square.
+     *
+     * <p>Two gradients rather than the grid of flat swatches this used to be. Horizontally from
+     * white to the pure hue, then black faded down over it: that is the whole of an HSB square,
+     * and every colour in between actually exists instead of being rounded to one of ninety-six
+     * tiles. It is also two draws instead of ninety-six.
+     */
+    private void drawSaturationBrightnessField(ColorSetting color, float alpha) {
+        int hueRgb = 0xFF000000 | Color.HSBtoRGB(color.getHue() / 360f, 1f, 1f);
+        RenderUtils.drawHorizontalGradientRect(colorSB.x1, colorSB.y1, colorSB.x2, colorSB.y2,
+                fa(0xFFFFFFFF, alpha), fa(hueRgb, alpha));
+        RenderUtils.drawVerticalGradientRect(colorSB.x1, colorSB.y1, colorSB.x2, colorSB.y2,
+                fa(0x00000000, alpha), fa(0xFF000000, alpha));
+        outline(colorSB.x1, colorSB.y1, colorSB.x2, colorSB.y2, 3f, fa(BORDER, alpha));
+    }
+
+    /** The hue rail, as six gradients through the wheel rather than twenty-four flat bands. */
+    private void drawHueStrip(float alpha) {
+        float step = colorHue.h() / 6f;
+        for (int i = 0; i < 6; i++) {
+            int top = 0xFF000000 | Color.HSBtoRGB(i / 6f, 1f, 1f);
+            int bottom = 0xFF000000 | Color.HSBtoRGB((i + 1) / 6f, 1f, 1f);
+            RenderUtils.drawVerticalGradientRect(colorHue.x1, colorHue.y1 + i * step,
+                    colorHue.x2, colorHue.y1 + (i + 1) * step, fa(top, alpha), fa(bottom, alpha));
+        }
+        outline(colorHue.x1, colorHue.y1, colorHue.x2, colorHue.y2, 2f, fa(BORDER, alpha));
+    }
+
+    /** Transparent to opaque over a chequer, so "half transparent" looks like something. */
+    private void drawAlphaStrip(ColorSetting color, float alpha) {
+        int squares = (int) Math.ceil(colorAlpha.w() / 4f);
+        for (int i = 0; i < squares; i++) {
+            float sx = colorAlpha.x1 + i * 4f;
+            float sw = Math.min(4f, colorAlpha.x2 - sx);
+            for (int row = 0; row < 2; row++) {
+                boolean light = ((i + row) & 1) == 0;
+                float sy = colorAlpha.y1 + row * colorAlpha.h() * 0.5f;
+                net.minecraft.client.gui.Gui.drawRect((int) sx, (int) sy,
+                        (int) Math.ceil(sx + sw), (int) Math.ceil(sy + colorAlpha.h() * 0.5f),
+                        fa(light ? 0xFF6E6E76 : 0xFF3A3A42, alpha));
             }
         }
+        // Both ends carry the same RGB so the fade is the colour thinning out, not the colour
+        // sliding towards black on its way to transparent.
+        RenderUtils.drawHorizontalGradientRect(colorAlpha.x1, colorAlpha.y1, colorAlpha.x2, colorAlpha.y2,
+                withAlpha(color.getRGB(), 0), fa(0xFF000000 | color.getRGB(), alpha));
+        outline(colorAlpha.x1, colorAlpha.y1, colorAlpha.x2, colorAlpha.y2, 2f, fa(BORDER, alpha));
     }
 
     private void drawInputSetting(TextSetting setting, String name, String value, String placeholder, float y, float h, int mx, int my, float alpha) {

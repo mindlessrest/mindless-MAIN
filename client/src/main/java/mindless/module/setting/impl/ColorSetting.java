@@ -13,6 +13,19 @@ public class ColorSetting extends Setting {
     private final boolean hasAlpha;
     public GroupSetting groupSetting;
 
+    /**
+     * The hue and saturation the picker was last set to, kept because red, green and blue cannot
+     * always answer for them.
+     *
+     * <p>Black has no hue and grey has no saturation -- there is nothing in the numbers to recover
+     * them from, so converting back returns zero for both. That is why the picker forgot where it
+     * was: drag the brightness to the bottom, close the menu, reopen it, and the handle had jumped
+     * to red because red is what zero means. Remembering what was picked, and only trusting the
+     * conversion when the colour actually carries the answer, keeps the handle where it was left.
+     */
+    private float pickedHue = Float.NaN;
+    private float pickedSaturation = Float.NaN;
+
     public ColorSetting(String name, int red, int green, int blue) {
         this(null, name, red, green, blue, 255, false);
     }
@@ -63,6 +76,9 @@ public class ColorSetting extends Setting {
         this.red = clamp(r);
         this.green = clamp(g);
         this.blue = clamp(b);
+        // Set from outside the picker, so whatever it was remembering no longer applies.
+        this.pickedHue = Float.NaN;
+        this.pickedSaturation = Float.NaN;
     }
 
     public void setColor(int r, int g, int b, int a) {
@@ -82,11 +98,19 @@ public class ColorSetting extends Setting {
 
     public float getHue() {
         float[] hsb = Color.RGBtoHSB(red, green, blue, null);
+        // A colour with no saturation has no hue to read; fall back on the one that was chosen.
+        if (hsb[1] <= 0.001f && !Float.isNaN(pickedHue)) {
+            return pickedHue;
+        }
         return hsb[0] * 360f;
     }
 
     public float getSaturation() {
         float[] hsb = Color.RGBtoHSB(red, green, blue, null);
+        // Likewise black: every saturation looks the same at zero brightness.
+        if (hsb[2] <= 0.001f && !Float.isNaN(pickedSaturation)) {
+            return pickedSaturation;
+        }
         return hsb[1];
     }
 
@@ -97,6 +121,8 @@ public class ColorSetting extends Setting {
 
     /** @param hueDegrees 0-360 */
     public void setFromHSB(float hueDegrees, float saturation, float brightness) {
+        this.pickedHue = ((hueDegrees % 360f) + 360f) % 360f;
+        this.pickedSaturation = Math.max(0f, Math.min(1f, saturation));
         int rgb = Color.HSBtoRGB(hueDegrees / 360f,
                 Math.max(0f, Math.min(1f, saturation)),
                 Math.max(0f, Math.min(1f, brightness)));
@@ -106,18 +132,15 @@ public class ColorSetting extends Setting {
     }
 
     public void setHue(float hueDegrees) {
-        float[] hsb = Color.RGBtoHSB(red, green, blue, null);
-        setFromHSB(hueDegrees, hsb[1], hsb[2]);
+        setFromHSB(hueDegrees, getSaturation(), getBrightness());
     }
 
     public void setSaturation(float saturation) {
-        float[] hsb = Color.RGBtoHSB(red, green, blue, null);
-        setFromHSB(hsb[0] * 360f, saturation, hsb[2]);
+        setFromHSB(getHue(), saturation, getBrightness());
     }
 
     public void setBrightness(float brightness) {
-        float[] hsb = Color.RGBtoHSB(red, green, blue, null);
-        setFromHSB(hsb[0] * 360f, hsb[1], brightness);
+        setFromHSB(getHue(), getSaturation(), brightness);
     }
 
     public boolean hasAlpha() {
