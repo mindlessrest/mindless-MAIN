@@ -41,8 +41,11 @@ public final class SystemMediaClient {
      * Cropping the cover to roughly the shape it will be drawn at first -- which is what any
      * background-size: cover does -- leaves only a slight stretch to absorb.
      */
-    private static final int ALBUM_ART_BLUR_WIDTH = 32;
-    private static final int ALBUM_ART_BLUR_HEIGHT = 10;
+    private static final int ALBUM_ART_BLUR_WIDTH = 96;
+    private static final int ALBUM_ART_BLUR_HEIGHT = 32;
+    /** Passes of box blur. Three is the usual stand-in for a Gaussian. */
+    private static final int ALBUM_ART_BLUR_PASSES = 3;
+    private static final int ALBUM_ART_BLUR_RADIUS = 5;
     private static final SystemMediaClient INSTANCE = new SystemMediaClient();
 
     private final Minecraft mc = Minecraft.getMinecraft();
@@ -173,6 +176,7 @@ public final class SystemMediaClient {
         }
 
         BufferedImage imageToUpload = null;
+        BufferedImage washToUpload = null;
         String keyToUpload = null;
 
         synchronized (albumArtLock) {
@@ -183,6 +187,7 @@ public final class SystemMediaClient {
 
             if (decodedAlbumArt != null && albumArtKey.equals(decodedAlbumArt.key)) {
                 imageToUpload = decodedAlbumArt.image;
+                washToUpload = decodedAlbumArt.wash;
                 keyToUpload = decodedAlbumArt.key;
                 decodedAlbumArt = null;
                 clearAlbumArtTextureLocked();
@@ -201,9 +206,14 @@ public final class SystemMediaClient {
                         // Sampled here rather than at draw time: the pixels are already in hand
                         // on a background thread, and the answer only changes once per track.
                         int accent = image == null ? 0 : extractAccentColor(image);
+                        // Same reasoning for the wash. It is a downscale and three blur passes,
+                        // which is a couple of milliseconds -- nothing on a worker thread, but a
+                        // dropped frame if it were done on the render thread at the moment of the
+                        // upload, which is exactly when a track changes and the panel is on screen.
+                        BufferedImage wash = softenAlbumArt(image);
                         synchronized (albumArtLock) {
                             if (albumArtKey.equals(requestedAlbumArtKey)) {
-                                decodedAlbumArt = image == null ? null : new DecodedAlbumArt(albumArtKey, image);
+                                decodedAlbumArt = image == null ? null : new DecodedAlbumArt(albumArtKey, image, wash);
                                 albumArtDecodeTask = null;
                                 albumAccentColor = accent;
                                 albumAccentKey = accent == 0 ? "" : albumArtKey;
@@ -219,9 +229,8 @@ public final class SystemMediaClient {
                 uploadedAlbumArtTexture = new DynamicTexture(imageToUpload);
                 uploadedAlbumArtLocation = mc.getTextureManager().getDynamicTextureLocation("mindless_media_album_art", uploadedAlbumArtTexture);
 
-                BufferedImage softened = softenAlbumArt(imageToUpload);
-                if (softened != null) {
-                    uploadedBlurTexture = new DynamicTexture(softened);
+                if (washToUpload != null) {
+                    uploadedBlurTexture = new DynamicTexture(washToUpload);
                     uploadedBlurLocation = mc.getTextureManager().getDynamicTextureLocation("mindless_media_album_blur", uploadedBlurTexture);
                 }
 
@@ -432,51 +441,126 @@ public final class SystemMediaClient {
     }
 
     /**
-     * Crops the artwork to the shape it will be drawn at, shrinks it, and puts the colour back.
+     * Turns the cover into the wash that sits behind the card.
      *
-     * <p>Averaging a cover down to a handful of pixels is what produces the blur, but it also
-     * averages the colour out: mixing a sleeve's lights and darks together walks every pixel
-     * towards grey, and the wash came out muddy for it. Pushing saturation back up afterwards
-     * restores what the shrinking took, so the panel reads as the record rather than as a smudge.
+     * <p>Shrinking a cover to a handful of pixels is not the same as blurring it. What comes back
+     * out when those pixels are stretched across the panel is straight lines between neighbouring
+     * samples -- flat facets meeting at creases, which is what made it read as a stretched
+     * thumbnail rather than as blurred artwork. Blurring at a size with something left in it and
+     * then magnifying gives smooth gradients instead, because there is no detail left at the pixel
+     * scale for the magnification to expose. Three box passes stand in for a Gaussian.
+     *
+     * <p>The whole cover goes in rather than a centre band, so the wash carries the record's full
+     * palette. Squashing it out of shape costs nothing once it is this far gone.
+     *
+     * <p>Averaging also walks every pixel towards grey, mixing a sleeve's lights and darks
+     * together, and the wash came out muddy for it. Saturation goes back on afterwards.
      */
     private static BufferedImage softenAlbumArt(BufferedImage source) {
         if (source == null) {
             return null;
         }
         try {
-            int width = source.getWidth();
-            int height = source.getHeight();
-            float wanted = ALBUM_ART_BLUR_WIDTH / (float) ALBUM_ART_BLUR_HEIGHT;
-
-            // The centre band of the cover at the panel's proportions, so nothing is squashed
-            // into it that will have to be stretched back out at draw time.
-            int cropWidth = width;
-            int cropHeight = Math.max(1, Math.round(width / wanted));
-            if (cropHeight > height) {
-                cropHeight = height;
-                cropWidth = Math.max(1, Math.min(width, Math.round(height * wanted)));
-            }
-            int cropX = (width - cropWidth) / 2;
-            int cropY = (height - cropHeight) / 2;
-
-            BufferedImage small = new BufferedImage(ALBUM_ART_BLUR_WIDTH, ALBUM_ART_BLUR_HEIGHT,
-                    BufferedImage.TYPE_INT_ARGB);
-            Graphics2D graphics = small.createGraphics();
-            try {
-                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                graphics.drawImage(source,
-                        0, 0, ALBUM_ART_BLUR_WIDTH, ALBUM_ART_BLUR_HEIGHT,
-                        cropX, cropY, cropX + cropWidth, cropY + cropHeight, null);
-            }
-            finally {
-                graphics.dispose();
+            BufferedImage small = downscale(source, ALBUM_ART_BLUR_WIDTH, ALBUM_ART_BLUR_HEIGHT);
+            for (int pass = 0; pass < ALBUM_ART_BLUR_PASSES; pass++) {
+                boxBlur(small, ALBUM_ART_BLUR_RADIUS);
             }
             saturate(small, 1.75F, 1.12F);
             return small;
         }
         catch (Exception ignored) {
             return null;
+        }
+    }
+
+    /**
+     * Halves repeatedly before the final step.
+     *
+     * <p>One bilinear draw from a 600px cover down to under a hundred reads four neighbouring
+     * pixels and ignores the rest, so most of the artwork never reaches the result and what does
+     * is whichever pixels happened to land under the sample points. Halving averages everything on
+     * the way down, which is what makes the wash the colour of the record rather than the colour
+     * of an arbitrary scattering of its pixels.
+     */
+    private static BufferedImage downscale(BufferedImage source, int targetWidth, int targetHeight) {
+        BufferedImage current = source;
+        int width = source.getWidth();
+        int height = source.getHeight();
+
+        while (width > targetWidth * 2 && height > targetHeight * 2) {
+            width = Math.max(targetWidth, width / 2);
+            height = Math.max(targetHeight, height / 2);
+            current = redraw(current, width, height);
+        }
+        return redraw(current, targetWidth, targetHeight);
+    }
+
+    private static BufferedImage redraw(BufferedImage source, int width, int height) {
+        BufferedImage out = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = out.createGraphics();
+        try {
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            graphics.drawImage(source, 0, 0, width, height, null);
+        }
+        finally {
+            graphics.dispose();
+        }
+        return out;
+    }
+
+    /**
+     * Separable box blur, edges held rather than wrapped.
+     *
+     * <p>Run over a few thousand pixels once per track, so the running-sum form is not needed for
+     * speed so much as for staying obviously correct at the edges: a row is read into a buffer
+     * first and clamped at both ends, so the left of the wash never picks up the right of it.
+     */
+    private static void boxBlur(BufferedImage image, int radius) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        if (radius < 1 || width < 2 || height < 2) {
+            return;
+        }
+
+        int[] pixels = image.getRGB(0, 0, width, height, null, 0, width);
+        blurAxis(pixels, width, height, radius, true);
+        blurAxis(pixels, width, height, radius, false);
+        image.setRGB(0, 0, width, height, pixels, 0, width);
+    }
+
+    private static void blurAxis(int[] pixels, int width, int height, int radius, boolean horizontal) {
+        int lineLength = horizontal ? width : height;
+        int lineCount = horizontal ? height : width;
+        int[] line = new int[lineLength];
+        int span = radius * 2 + 1;
+
+        for (int outer = 0; outer < lineCount; outer++) {
+            for (int i = 0; i < lineLength; i++) {
+                line[i] = horizontal ? pixels[outer * width + i] : pixels[i * width + outer];
+            }
+
+            for (int i = 0; i < lineLength; i++) {
+                int a = 0, r = 0, g = 0, b = 0;
+                for (int k = -radius; k <= radius; k++) {
+                    int index = i + k;
+                    // Held, not wrapped: a wash whose left edge samples its right edge shows the
+                    // seam as a bright band down whichever side it borrowed from.
+                    index = index < 0 ? 0 : (index >= lineLength ? lineLength - 1 : index);
+                    int argb = line[index];
+                    a += (argb >>> 24) & 0xFF;
+                    r += (argb >> 16) & 0xFF;
+                    g += (argb >> 8) & 0xFF;
+                    b += argb & 0xFF;
+                }
+                int blended = ((a / span) << 24) | ((r / span) << 16) | ((g / span) << 8) | (b / span);
+                if (horizontal) {
+                    pixels[outer * width + i] = blended;
+                }
+                else {
+                    pixels[i * width + outer] = blended;
+                }
+            }
         }
     }
 
@@ -544,10 +628,13 @@ public final class SystemMediaClient {
     private static final class DecodedAlbumArt {
         private final String key;
         private final BufferedImage image;
+        /** The blurred backdrop, built on the same background thread as the decode. */
+        private final BufferedImage wash;
 
-        private DecodedAlbumArt(String key, BufferedImage image) {
+        private DecodedAlbumArt(String key, BufferedImage image, BufferedImage wash) {
             this.key = key;
             this.image = image;
+            this.wash = wash;
         }
     }
 

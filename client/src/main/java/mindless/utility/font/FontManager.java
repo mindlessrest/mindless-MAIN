@@ -30,6 +30,8 @@ public final class FontManager {
     // is never downsampled and glyphs stay crisp without bilinear blur.
     private static final float DEFAULT_CLICK_GUI_SMALL_HEIGHT = 9.0f;
     private static final float DEFAULT_NAMETAG_FONT_SIZE = 9.0f;
+    /** Nametags are magnified in world space after they are drawn; see getNametagRenderer. */
+    private static final float NAMETAG_ATLAS_BOOST = 2.5f;
     private static final BundledFont[] BUNDLED_FONTS = {
             new BundledFont("Sf-Regular", "Sf-Regular.ttf"),
             new BundledFont("Inter", "Inter.ttf"),
@@ -80,8 +82,40 @@ public final class FontManager {
         return getRendererForPixelHeight(family, DEFAULT_CLICK_GUI_SMALL_HEIGHT);
     }
 
+    /**
+     * Nametags are the one place text is magnified after it is drawn.
+     *
+     * <p>Every other renderer is rasterised at roughly the size it ends up on screen. A nametag is
+     * drawn at a fixed nine units and then scaled into world space, so how many pixels a glyph
+     * actually covers depends on how far away the player is standing -- close up it is two or
+     * three times what the atlas holds, and a magnified atlas is a blurry one. The boost gives it
+     * that headroom. Metrics are divided back down by the same factor, so nothing moves.
+     */
     public static RavenFontRenderer getNametagRenderer(String family) {
-        return getRenderer(family, DEFAULT_NAMETAG_FONT_SIZE);
+        float fontSize = DEFAULT_NAMETAG_FONT_SIZE;
+        BundledFont bundledFont;
+
+        if (family == null || isMinecraftFont(family)) {
+            return getMinecraftRenderer(fontSize);
+        }
+
+        bundledFont = BUNDLED_FONT_MAP.get(family);
+        if (bundledFont == null) {
+            return getMinecraftRenderer(fontSize);
+        }
+
+        String key = family + "#nametag#" + quantizeForCacheKey(fontSize) + "#" + getUiScale();
+        return getCachedRenderer(key, new Supplier<RavenFontRenderer>() {
+            @Override
+            public RavenFontRenderer get() {
+                Font baseFont = BASE_FONT_CACHE.computeIfAbsent(bundledFont.fileName, FontManager::loadBaseFont);
+                if (baseFont == null) {
+                    return getMinecraftRenderer(fontSize);
+                }
+
+                return new GlyphFontRenderer(baseFont.deriveFont(fontSize), true, NAMETAG_ATLAS_BOOST);
+            }
+        });
     }
 
     private static RavenFontRenderer getRenderer(String family, float fontSize) {

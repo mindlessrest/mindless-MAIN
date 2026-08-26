@@ -197,7 +197,9 @@ public class RoundedUtils {
         roundedShadowShader.setUniformf("softness", softness * sr.getScaleFactor());
         roundedShadowShader.setUniformf("color", getRed(color), getGreen(color), getBlue(color), getAlpha(color));
 
-        float expansion = softness * 2.5f + 2.0f;
+        // Wide enough that the taper has room to run out without eating into the shadow proper.
+        float expansion = softness * 3.5f + 2.0f;
+        roundedShadowShader.setUniformf("cutoff", expansion * sr.getScaleFactor());
         ShaderUtils.drawQuads(x - expansion, y - expansion,
                 width + expansion * 2.0f, height + expansion * 2.0f);
         roundedShadowShader.unload();

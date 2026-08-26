@@ -135,7 +135,7 @@ public class ShaderUtils {
                                             "}";
     private final String roundedShadow = "#version 120\n" +
                                          "uniform vec2 location, rectSize;\n" +
-                                         "uniform float radius, softness;\n" +
+                                         "uniform float radius, softness, cutoff;\n" +
                                          "uniform vec4 color;\n" +
                                          "float roundedSDF(vec2 p, vec2 halfSize, float r) {\n" +
                                          "    return length(max(abs(p) - halfSize + r, 0.0)) - r;\n" +
@@ -145,6 +145,12 @@ public class ShaderUtils {
                                          "    float distance = roundedSDF(p, rectSize * 0.5, radius);\n" +
                                          "    float outside = max(distance, 0.0);\n" +
                                          "    float fade = exp(-(outside * outside) / (2.0 * softness * softness));\n" +
+                                         // A Gaussian never reaches zero, so where the quad ends it is still worth two or
+                                         // three levels of alpha -- and a step of two levels along a dead straight line is
+                                         // perfectly visible against a smooth background, which is the faint rectangle that
+                                         // showed up under the panels against a bright sky. Taper the last stretch so there
+                                         // is genuinely nothing left by the time the geometry runs out.
+                                         "    fade *= 1.0 - smoothstep(cutoff * 0.6, cutoff, outside);\n" +
                                          "    float softEdge = smoothstep(-0.5, 1.5, distance);\n" +
                                          "    gl_FragColor = vec4(color.rgb, color.a * fade * softEdge);\n" +
                                          "}";

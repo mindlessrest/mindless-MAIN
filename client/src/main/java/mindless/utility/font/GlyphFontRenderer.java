@@ -28,6 +28,8 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
     private static final int GLYPH_MARGIN = 4;
     private static final float MIN_RENDER_SCALE = 2.0f;
     private static final float QUALITY_MULTIPLIER = 2.0f;
+    /** Ceiling on a boosted atlas, in pixels of rasterised font size. */
+    private static final float MAX_RASTERISED_GLYPH_SIZE = 64.0f;
     private static final String ALPHABET = "ABCDEFGHOKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private static final String COLOR_CODES = "0123456789abcdefklmnor";
 
@@ -45,7 +47,20 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
     private boolean destroyed;
 
     public GlyphFontRenderer(Font sourceFont, boolean antiAlias) {
-        float renderScale = resolveRenderScale();
+        this(sourceFont, antiAlias, 1.0f);
+    }
+
+    /**
+     * @param qualityBoost extra atlas resolution, on top of what the UI scale already asks for.
+     *                     Everything this renderer reports -- advances, heights, the quads it
+     *                     draws -- is divided back down by the same factor, so a boost changes
+     *                     nothing about layout. It buys headroom for text that gets magnified
+     *                     after it is drawn, which is every nametag: they are drawn at a fixed
+     *                     nine units and then scaled up in world space, so at a few blocks away
+     *                     a glyph covers two or three times the pixels it was rasterised at.
+     */
+    public GlyphFontRenderer(Font sourceFont, boolean antiAlias, float qualityBoost) {
+        float renderScale = boostedRenderScale(sourceFont, qualityBoost);
         this.drawScale = 1.0f / renderScale;
         this.rawScale = renderScale;
         this.renderFont = sourceFont.deriveFont(sourceFont.getStyle(), Math.max(1.0f, sourceFont.getSize2D() * renderScale));
@@ -452,6 +467,21 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
         }
 
         return new int[]{top, bottom};
+    }
+
+    /**
+     * The boosted scale, with a ceiling on how big a glyph is actually rasterised.
+     *
+     * <p>Every glyph gets its own texture, so the cost of a boost is the square of it across the
+     * whole 256-glyph set. Past around sixty pixels there is nothing more to be had for text that
+     * is only ever magnified two or three times, so the boost is taken up to that point and no
+     * further -- and never below what the UI scale asked for on its own.
+     */
+    private static float boostedRenderScale(Font sourceFont, float qualityBoost) {
+        float base = resolveRenderScale();
+        float boosted = base * Math.max(1.0f, qualityBoost);
+        float requestedSize = Math.max(1.0f, sourceFont.getSize2D());
+        return Math.min(boosted, Math.max(base, MAX_RASTERISED_GLYPH_SIZE / requestedSize));
     }
 
     private static float resolveRenderScale() {

@@ -232,7 +232,7 @@ public final class SpotifyWidgetRenderer {
         float lyricStripHeight = lyricLines.isEmpty()
                 ? 0.0F
                 : lyricFont.getFontHeight() * lyricLines.size()
-                        + (lyricLines.size() - 1) * 3.0F * lyricUiScale + PAD_Y * lyricUiScale * 1.6F;
+                        + (lyricLines.size() - 1) * 3.0F * lyricUiScale + PAD_Y * lyricUiScale * 2.3F;
         float lyricGap = lyricLines.isEmpty() ? 0.0F : LYRICS_GAP * uiScale;
         boolean bubbleDetached = SpotifyMiniPlayer.hasLyricsPosition();
 
@@ -421,9 +421,19 @@ public final class SpotifyWidgetRenderer {
         float eased = 1.0F - (1.0F - t) * (1.0F - t) * (1.0F - t);
 
         float lineHeight = font.getFontHeight() + 3.0F * uiScale;
-        float rise = (1.0F - eased) * lineHeight * 0.8F;
-        float cursor = y + (height - (lineHeight * lines.size() - 3.0F * uiScale)) * 0.5F + rise;
-        float inner = width - padX * 2.0F;
+        float block = lineHeight * lines.size() - 3.0F * uiScale;
+        // The lines fade up into place from below. How far they may travel has to come out of the
+        // room actually going spare, not a fixed fraction of a line: on a bubble sized close to
+        // its text a fixed rise starts the last line below the bottom edge and it is briefly drawn
+        // outside the panel every time the lyric changes. A third of the slack keeps the movement
+        // worth having and still lands clear of the edge at the furthest point of the animation.
+        float slack = Math.max(0.0F, height - block);
+        float travel = Math.min(lineHeight * 0.8F, slack * 0.34F);
+        float rise = (1.0F - eased) * travel;
+        float cursor = y + slack * 0.5F + rise;
+        // The shadow is drawn a fraction down and to the right of the text, so it is part of what
+        // has to fit.
+        float inner = width - padX * 2.0F - Math.max(0.6F, 1.1F * uiScale);
 
         int active = activeLyricIndex(lines.size());
         for (int i = 0; i < lines.size(); i++) {
@@ -612,15 +622,36 @@ public final class SpotifyWidgetRenderer {
      * <p>Measured per character rather than by average width, because the fonts here are
      * proportional and an average overshoots on a title full of narrow letters.
      */
+    /**
+     * Trims text to a width it genuinely fits in.
+     *
+     * <p>Adding up per-character widths does not give the width of the string. Every advance comes
+     * back as a whole number, so each character is measured up to half a pixel short, and across a
+     * line of lyrics the error adds up to more than the padding is wide -- the sum says it fits
+     * while the string as a whole does not. Since the line is then centred on its real width, what
+     * it overruns by is split between the two sides and it leaves the bubble at both ends. The
+     * running total is still the quick way to get close, so it is kept as a first guess and then
+     * checked against the real thing, which is one or two characters' work.
+     */
     private static String clip(RavenFontRenderer font, String text, float maxWidth) {
-        if (text == null || text.isEmpty() || font.getStringWidth(text) <= maxWidth) {
-            return text == null ? "" : text;
+        if (text == null || text.isEmpty()) {
+            return "";
         }
+        // A pixel in hand, so a line never ends up flush against the padding it was measured into.
+        float budget = maxWidth - 1.0F;
+        if (budget <= 0.0F) {
+            return "";
+        }
+        if (font.getStringWidth(text) <= budget) {
+            return text;
+        }
+
         String ellipsis = "...";
-        float room = maxWidth - font.getStringWidth(ellipsis);
+        float room = budget - font.getStringWidth(ellipsis);
         if (room <= 0.0F) {
-            return ellipsis;
+            return "";
         }
+
         StringBuilder out = new StringBuilder(text.length());
         float used = 0.0F;
         for (int i = 0; i < text.length(); i++) {
@@ -631,7 +662,11 @@ public final class SpotifyWidgetRenderer {
             used += advance;
             out.append(text.charAt(i));
         }
-        return out.append(ellipsis).toString();
+
+        while (out.length() > 0 && font.getStringWidth(out.toString() + ellipsis) > budget) {
+            out.setLength(out.length() - 1);
+        }
+        return out.length() == 0 ? "" : out.append(ellipsis).toString();
     }
 
     private static String formatTime(long millis) {
