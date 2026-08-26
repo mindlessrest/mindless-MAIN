@@ -67,8 +67,8 @@ public final class SpotifyWidgetRenderer {
     private static final float LYRICS_GAP = COVER * 0.08F;
 
     /** filter: drop-shadow(15px 15px 7px rgba(0,0,0,1)), pulled in so it stays behind the card. */
-    private static final float SHADOW_OFFSET = 3.0F;
-    private static final float SHADOW_SPREAD = 3.0F;
+    private static final float SHADOW_OFFSET = 3.5F;
+    private static final float SHADOW_SPREAD = 6.0F;
 
     /** #1F1F1F behind the progress fill, white in front of it. */
     private static final Color TRACK = new Color(31, 31, 31);
@@ -115,6 +115,12 @@ public final class SpotifyWidgetRenderer {
     private static float cardWidth;
     private static float cardHeight;
     private static boolean cardVisible;
+
+    private static float bubbleX;
+    private static float bubbleY;
+    private static float bubbleWidth;
+    private static float bubbleHeight;
+    private static boolean bubbleVisible;
 
     private static final Map<String, RavenFontRenderer> FONTS = new HashMap<String, RavenFontRenderer>();
 
@@ -171,6 +177,14 @@ public final class SpotifyWidgetRenderer {
         }
     }
 
+    /** Where the lyric bubble sits, for the drag-to-move screen. Null when it is not showing. */
+    public static float[] getLyricsRect() {
+        if (!bubbleVisible) {
+            return null;
+        }
+        return new float[]{bubbleX, bubbleY, bubbleX + bubbleWidth, bubbleY + bubbleHeight};
+    }
+
     /** Where the card sits, for the drag-to-move screen. Null until something has been drawn. */
     public static float[] getCurrentRect() {
         if (!cardVisible) {
@@ -209,16 +223,22 @@ public final class SpotifyWidgetRenderer {
         float rowHeight = cover + visualizerHeight;
 
         List<String> lyricLines = collectLyrics(info);
-        RavenFontRenderer lyricFont = fontOfHeight(LABEL_HEIGHT * uiScale * lyricScale());
+        // The bubble carries its own scale on top of the card's, so it can be sized to read from
+        // across the room without dragging the player up with it.
+        float lyricUiScale = uiScale * bubbleScale();
+        RavenFontRenderer lyricFont = fontOfHeight(LABEL_HEIGHT * lyricUiScale * lyricScale());
         // Padded top and bottom like the panel, so the strip reads as the same object rather
         // than a caption squeezed under one.
         float lyricStripHeight = lyricLines.isEmpty()
                 ? 0.0F
                 : lyricFont.getFontHeight() * lyricLines.size()
-                        + (lyricLines.size() - 1) * 3.0F * uiScale + PAD_Y * uiScale * 1.6F;
+                        + (lyricLines.size() - 1) * 3.0F * lyricUiScale + PAD_Y * lyricUiScale * 1.6F;
         float lyricGap = lyricLines.isEmpty() ? 0.0F : LYRICS_GAP * uiScale;
+        boolean bubbleDetached = SpotifyMiniPlayer.hasLyricsPosition();
 
-        float height = rowHeight + lyricGap + lyricStripHeight;
+        // A detached bubble is not part of the card, so the card must not grow to hold it --
+        // otherwise dragging the player picks up a rectangle with empty space hanging off it.
+        float height = rowHeight + (bubbleDetached ? 0.0F : lyricGap + lyricStripHeight);
 
         ScaledResolution resolution = ScaledResolutionCache.get();
         float[] position = position(resolution, width, height);
@@ -244,17 +264,27 @@ public final class SpotifyWidgetRenderer {
 
         dropShadow(x, y, cover, rowHeight, radius, uiScale, alpha);
         dropShadow(panelX, y, panelWidth, rowHeight, radius, uiScale, alpha);
-        if (lyricStripHeight > 0.0F) {
-            dropShadow(x, y + rowHeight + lyricGap, width, lyricStripHeight, radius, uiScale, alpha);
+        float bubbleW = lyricStripHeight <= 0.0F ? 0.0F : width * bubbleScale();
+        float[] bubblePos = lyricStripHeight <= 0.0F ? null
+                : bubbleDetached
+                        ? lyricsPosition(resolution, bubbleW, lyricStripHeight)
+                        : new float[]{x, y + rowHeight + lyricGap};
+        if (bubblePos != null) {
+            dropShadow(bubblePos[0], bubblePos[1], bubbleW, lyricStripHeight, radius, uiScale, alpha);
         }
 
         drawCover(art, wash, x, y, cover, radius, alpha);
         drawPanel(info, wash, panelX, y, panelWidth, rowHeight, radius, padX, uiScale,
                 visualizerHeight, alpha);
 
-        if (lyricStripHeight > 0.0F) {
-            drawLyricStrip(lyricLines, lyricFont, wash, x, y + rowHeight + lyricGap,
-                    width, lyricStripHeight, radius, padX, uiScale, alpha);
+        bubbleVisible = bubblePos != null;
+        if (bubblePos != null) {
+            bubbleX = bubblePos[0];
+            bubbleY = bubblePos[1];
+            bubbleWidth = bubbleW;
+            bubbleHeight = lyricStripHeight;
+            drawLyricStrip(lyricLines, lyricFont, wash, bubblePos[0], bubblePos[1],
+                    bubbleW, lyricStripHeight, radius, PAD * lyricUiScale, lyricUiScale, alpha);
         }
 
         // The rounded shaders leave a program bound, and anything drawn afterwards without
@@ -268,27 +298,19 @@ public final class SpotifyWidgetRenderer {
     // -------------------------------------------------------------------------------- the pieces
 
     /**
-     * The offset shadow the original drops the whole card onto.
+     * The shadow under the card.
      *
-     * <p>Stacked rounded rects rather than a real blur, which is close enough at this size. The
-     * spread has to be scaled with the card: left as fixed pixels it stayed full size while the
-     * card halved, and a shadow wider than the thing casting it does not read as a shadow at all,
-     * it reads as a grey box behind the player.
+     * <p>One shader pass with a real falloff, rather than the four rounded rectangles stacked
+     * inside each other this used to be. Those could only ever step from one flat alpha to the
+     * next, which is why it read as a translucent black box sitting behind the player instead of
+     * as light falling off. It is also three fewer draws than it was.
      */
     private static void dropShadow(float x, float y, float width, float height, float radius,
                                    float uiScale, float alpha) {
+        float softness = Math.max(2.0F, SHADOW_SPREAD * uiScale);
         float offset = SHADOW_OFFSET * uiScale;
-        int steps = 3;
-        for (int i = steps; i >= 1; i--) {
-            float spread = SHADOW_SPREAD * uiScale * i / steps;
-            int a = Math.round(58.0F * alpha * (1.0F - (i - 1) / (float) steps));
-            if (a <= 0) {
-                continue;
-            }
-            RoundedUtils.drawRound(x + offset - spread, y + offset - spread,
-                    width + spread * 2.0F, height + spread * 2.0F, radius + spread,
-                    new Color(0, 0, 0, a));
-        }
+        RoundedUtils.drawRoundShadow(x + offset * 0.4F, y + offset, width, height, radius,
+                softness, new Color(0, 0, 0, Math.round(150 * alpha)).getRGB());
     }
 
     private static void drawCover(ResourceLocation art, ResourceLocation wash, float x, float y,
@@ -334,17 +356,20 @@ public final class SpotifyWidgetRenderer {
         int primary = Utils.mergeAlpha(0xFFFFFF, textAlpha);
         int secondary = Utils.mergeAlpha(0xD2D2DC, Math.round(textAlpha * 0.86F));
 
-        drawShadowedString(titleFont, title, textX, top, primary, uiScale, alpha);
-        float afterTitle = top + titleFont.getFontHeight() + titleGap;
-        if (!artist.isEmpty()) {
-            drawShadowedString(labelFont, artist, textX, afterTitle, secondary, uiScale, alpha);
-            afterTitle += labelFont.getFontHeight();
-        }
-
         // The bar sits on the bottom padding and the times ride directly above it, so the block
         // is anchored to both edges instead of drifting with the title's height.
         float barY = bottom - barHeight;
         float timesY = barY - barGap - labelFont.getFontHeight();
+
+        drawShadowedString(titleFont, title, textX, top, primary, uiScale, alpha);
+        float afterTitle = top + titleFont.getFontHeight() + titleGap;
+        // Anchoring the times to the bottom and the title to the top means a short panel can run
+        // the two into each other, which is how the artist ended up printed across the elapsed
+        // time. The artist is drawn only where there is actually room for it.
+        if (!artist.isEmpty() && afterTitle + labelFont.getFontHeight() <= timesY - 1.0F) {
+            drawShadowedString(labelFont, artist, textX, afterTitle, secondary, uiScale, alpha);
+            afterTitle += labelFont.getFontHeight();
+        }
 
         if (visualizerHeight > 0.0F) {
             float visTop = afterTitle + timesGap * 0.4F;
@@ -551,6 +576,18 @@ public final class SpotifyWidgetRenderer {
 
     private static int activeLyricIndex(int lineCount) {
         return Math.max(0, Math.min(lineCount - 1, activeLyricIndex));
+    }
+
+    private static float bubbleScale() {
+        return SpotifyMiniPlayer.lyricsScale == null
+                ? 1.0F : (float) SpotifyMiniPlayer.lyricsScale.getInput();
+    }
+
+    private static float[] lyricsPosition(ScaledResolution resolution, float width, float height) {
+        float maxX = Math.max(0.0F, resolution.getScaledWidth() - width);
+        float maxY = Math.max(0.0F, resolution.getScaledHeight() - height);
+        return new float[]{maxX * SpotifyMiniPlayer.getLyricsNormalizedX(),
+                maxY * SpotifyMiniPlayer.getLyricsNormalizedY()};
     }
 
     private static float lyricScale() {

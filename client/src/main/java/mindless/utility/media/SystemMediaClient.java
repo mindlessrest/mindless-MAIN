@@ -33,7 +33,16 @@ public final class SystemMediaClient {
      * <p>Small enough that no feature of the cover survives as a feature, large enough that the
      * wash still moves across the panel rather than being one flat colour.
      */
-    private static final int ALBUM_ART_BLUR_SIZE = 16;
+    /**
+     * The softened copy is a wide band, not a square.
+     *
+     * <p>It gets stretched across a panel four times wider than it is tall. Taken as a square,
+     * that stretch is a fourfold horizontal smear and every feature in it turns into a streak.
+     * Cropping the cover to roughly the shape it will be drawn at first -- which is what any
+     * background-size: cover does -- leaves only a slight stretch to absorb.
+     */
+    private static final int ALBUM_ART_BLUR_WIDTH = 32;
+    private static final int ALBUM_ART_BLUR_HEIGHT = 10;
     private static final SystemMediaClient INSTANCE = new SystemMediaClient();
 
     private final Minecraft mc = Minecraft.getMinecraft();
@@ -423,7 +432,7 @@ public final class SystemMediaClient {
     }
 
     /**
-     * Reduces the artwork to {@link #ALBUM_ART_BLUR_SIZE} square, then puts the colour back.
+     * Crops the artwork to the shape it will be drawn at, shrinks it, and puts the colour back.
      *
      * <p>Averaging a cover down to a handful of pixels is what produces the blur, but it also
      * averages the colour out: mixing a sleeve's lights and darks together walks every pixel
@@ -435,13 +444,30 @@ public final class SystemMediaClient {
             return null;
         }
         try {
-            BufferedImage small = new BufferedImage(ALBUM_ART_BLUR_SIZE, ALBUM_ART_BLUR_SIZE,
+            int width = source.getWidth();
+            int height = source.getHeight();
+            float wanted = ALBUM_ART_BLUR_WIDTH / (float) ALBUM_ART_BLUR_HEIGHT;
+
+            // The centre band of the cover at the panel's proportions, so nothing is squashed
+            // into it that will have to be stretched back out at draw time.
+            int cropWidth = width;
+            int cropHeight = Math.max(1, Math.round(width / wanted));
+            if (cropHeight > height) {
+                cropHeight = height;
+                cropWidth = Math.max(1, Math.min(width, Math.round(height * wanted)));
+            }
+            int cropX = (width - cropWidth) / 2;
+            int cropY = (height - cropHeight) / 2;
+
+            BufferedImage small = new BufferedImage(ALBUM_ART_BLUR_WIDTH, ALBUM_ART_BLUR_HEIGHT,
                     BufferedImage.TYPE_INT_ARGB);
             Graphics2D graphics = small.createGraphics();
             try {
                 graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
                 graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                graphics.drawImage(source, 0, 0, ALBUM_ART_BLUR_SIZE, ALBUM_ART_BLUR_SIZE, null);
+                graphics.drawImage(source,
+                        0, 0, ALBUM_ART_BLUR_WIDTH, ALBUM_ART_BLUR_HEIGHT,
+                        cropX, cropY, cropX + cropWidth, cropY + cropHeight, null);
             }
             finally {
                 graphics.dispose();

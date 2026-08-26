@@ -43,6 +43,10 @@ public class SpotifyMiniPlayer extends Module {
     public static SliderSetting lyricTextScale;
     public static SliderSetting lyricAnimationSpeed;
     public static SliderSetting lyricSyncOffset;
+    /** The lyric bubble's own position and scale, independent of the card it sits under. */
+    public static SliderSetting lyricsPosX;
+    public static SliderSetting lyricsPosY;
+    public static SliderSetting lyricsScale;
 
     public SpotifyMiniPlayer() {
         super("Spotify Info", category.render);
@@ -68,12 +72,19 @@ public class SpotifyMiniPlayer extends Module {
         this.registerSetting(noBackground = new ButtonSetting("No background", false));
         this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));
         this.registerSetting(scale = new SliderSetting("UI scale", "x", 0.5, 0.4, 1.75, 0.05));
+        this.registerSetting(lyricsScale = new SliderSetting("Lyrics bubble size", "x", 1.0, 0.5, 2.0, 0.05));
         this.registerSetting(customPosX = new SliderSetting("Custom Position X", 0.0, -1.0, 1.0, 0.001));
         this.registerSetting(customPosY = new SliderSetting("Custom Position Y", 0.0, -1.0, 1.0, 0.001));
+        this.registerSetting(lyricsPosX = new SliderSetting("Lyrics Position X", 0.0, -1.0, 1.0, 0.001));
+        this.registerSetting(lyricsPosY = new SliderSetting("Lyrics Position Y", 0.0, -1.0, 1.0, 0.001));
         customPosX.visible = false;
         customPosY.visible = false;
+        lyricsPosX.visible = false;
+        lyricsPosY.visible = false;
         customPosX.setValueRaw(UNSET_CUSTOM_POSITION);
         customPosY.setValueRaw(UNSET_CUSTOM_POSITION);
+        lyricsPosX.setValueRaw(UNSET_CUSTOM_POSITION);
+        lyricsPosY.setValueRaw(UNSET_CUSTOM_POSITION);
         this.setEnabled(false);
     }
 
@@ -146,6 +157,9 @@ public class SpotifyMiniPlayer extends Module {
         if (lyricTextScale != null) {
             lyricTextScale.setVisible(lyricsVisible, this);
         }
+        if (lyricsScale != null) {
+            lyricsScale.setVisible(lyricsVisible && widget, this);
+        }
         if (lyricSyncOffset != null) {
             lyricSyncOffset.setVisible(lyricsVisible, this);
         }
@@ -165,6 +179,40 @@ public class SpotifyMiniPlayer extends Module {
 
     public static float getCustomNormalizedY() {
         return customPosY == null ? 0.0F : (float) Math.max(0.0D, Math.min(1.0D, customPosY.getInput()));
+    }
+
+    public static boolean hasLyricsPosition() {
+        return lyricsPosX != null && lyricsPosY != null
+                && lyricsPosX.getInput() >= 0.0D && lyricsPosY.getInput() >= 0.0D;
+    }
+
+    public static float getLyricsNormalizedX() {
+        return lyricsPosX == null ? 0.0F : (float) Math.max(0.0D, Math.min(1.0D, lyricsPosX.getInput()));
+    }
+
+    public static float getLyricsNormalizedY() {
+        return lyricsPosY == null ? 0.0F : (float) Math.max(0.0D, Math.min(1.0D, lyricsPosY.getInput()));
+    }
+
+    public static void setLyricsPositionFromAbsolute(float absoluteX, float absoluteY, float width, float height, ScaledResolution resolution) {
+        if (lyricsPosX == null || lyricsPosY == null || resolution == null) {
+            return;
+        }
+        float maxX = Math.max(0.0F, resolution.getScaledWidth() - width);
+        float maxY = Math.max(0.0F, resolution.getScaledHeight() - height);
+        float clampedX = Math.max(0.0F, Math.min(maxX, absoluteX));
+        float clampedY = Math.max(0.0F, Math.min(maxY, absoluteY));
+        lyricsPosX.setValueRaw(maxX <= 0.0F ? 0.0D : clampedX / maxX);
+        lyricsPosY.setValueRaw(maxY <= 0.0F ? 0.0D : clampedY / maxY);
+    }
+
+    public static void clearLyricsPosition() {
+        if (lyricsPosX != null) {
+            lyricsPosX.setValueRaw(UNSET_CUSTOM_POSITION);
+        }
+        if (lyricsPosY != null) {
+            lyricsPosY.setValueRaw(UNSET_CUSTOM_POSITION);
+        }
     }
 
     public static void clearCustomPosition() {
@@ -192,6 +240,8 @@ public class SpotifyMiniPlayer extends Module {
     public static class EditScreen extends GuiScreen {
         private MindlessButton resetPosition;
         private boolean dragging;
+        /** Which element the drag has hold of; the lyric bubble moves on its own. */
+        private boolean draggingLyrics;
         private float dragOffsetX;
         private float dragOffsetY;
 
@@ -220,7 +270,7 @@ public class SpotifyMiniPlayer extends Module {
                 float px = rect[0], py = rect[1];
                 float pw = rect[2] - rect[0], ph = rect[3] - rect[1];
 
-                if (dragging) {
+                if (dragging && !draggingLyrics) {
                     ScaledResolution sr = new ScaledResolution(this.mc);
                     float nx = Math.max(0.0F, Math.min(sr.getScaledWidth() - pw, mouseX - dragOffsetX));
                     float ny = Math.max(0.0F, Math.min(sr.getScaledHeight() - ph, mouseY - dragOffsetY));
@@ -233,8 +283,27 @@ public class SpotifyMiniPlayer extends Module {
                 drawOutline(px, py, pw, ph);
             }
 
+            float[] lyrics = MediaPlayerRenderer.getLyricsRect();
+            if (lyrics != null) {
+                float lx = lyrics[0], ly = lyrics[1];
+                float lw = lyrics[2] - lyrics[0], lh = lyrics[3] - lyrics[1];
+                if (dragging && draggingLyrics) {
+                    ScaledResolution sr = new ScaledResolution(this.mc);
+                    float nx = Math.max(0.0F, Math.min(sr.getScaledWidth() - lw, mouseX - dragOffsetX));
+                    float ny = Math.max(0.0F, Math.min(sr.getScaledHeight() - lh, mouseY - dragOffsetY));
+                    SpotifyMiniPlayer.setLyricsPositionFromAbsolute(nx, ny, lw, lh, sr);
+                    MediaPlayerRenderer.renderPreview();
+                    float[] moved = MediaPlayerRenderer.getLyricsRect();
+                    if (moved != null) {
+                        lx = moved[0]; ly = moved[1];
+                        lw = moved[2] - moved[0]; lh = moved[3] - moved[1];
+                    }
+                }
+                drawOutline(lx, ly, lw, lh);
+            }
+
             drawCenteredString(this.fontRendererObj, "Drag the Spotify mini player to move it.", this.width / 2, 18, Color.white.getRGB());
-            drawCenteredString(this.fontRendererObj, "Press Esc when you're done.", this.width / 2, 30, 0xFFD0D7DE);
+            drawCenteredString(this.fontRendererObj, "The lyrics bubble drags separately. Press Esc when you're done.", this.width / 2, 30, 0xFFD0D7DE);
             super.drawScreen(mouseX, mouseY, partialTicks);
         }
 
@@ -243,10 +312,22 @@ public class SpotifyMiniPlayer extends Module {
             super.mouseClicked(mouseX, mouseY, button);
             if (button != 0) return;
             float[] rect = MediaPlayerRenderer.renderPreview();
+            // The bubble is tested first: detached, it can sit over the card, and the thing on
+            // top is the thing you meant to grab.
+            float[] lyrics = MediaPlayerRenderer.getLyricsRect();
+            if (lyrics != null && mouseX >= lyrics[0] && mouseX <= lyrics[2]
+                    && mouseY >= lyrics[1] && mouseY <= lyrics[3]) {
+                dragging = true;
+                draggingLyrics = true;
+                dragOffsetX = mouseX - lyrics[0];
+                dragOffsetY = mouseY - lyrics[1];
+                return;
+            }
             if (rect == null) return;
             float px = rect[0], py = rect[1], pw = rect[2]-rect[0], ph = rect[3]-rect[1];
             if (mouseX >= px && mouseX <= px + pw && mouseY >= py && mouseY <= py + ph) {
                 dragging = true;
+                draggingLyrics = false;
                 dragOffsetX = mouseX - px;
                 dragOffsetY = mouseY - py;
             }
@@ -261,13 +342,17 @@ public class SpotifyMiniPlayer extends Module {
         @Override
         protected void mouseReleased(int mouseX, int mouseY, int state) {
             super.mouseReleased(mouseX, mouseY, state);
-            if (state == 0) dragging = false;
+            if (state == 0) {
+                dragging = false;
+                draggingLyrics = false;
+            }
         }
 
         @Override
         public void actionPerformed(GuiButton button) {
             if (button == resetPosition) {
                 SpotifyMiniPlayer.clearCustomPosition();
+                SpotifyMiniPlayer.clearLyricsPosition();
             }
         }
 

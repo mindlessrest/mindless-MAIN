@@ -33,6 +33,11 @@ public final class MediaPlayerRenderer {
                 : SpotifyMiniPlayerRenderer.renderPreview();
     }
 
+    /** The lyric bubble's own rectangle, when it is showing and is a separate thing to drag. */
+    public static float[] getLyricsRect() {
+        return widgetStyle() ? SpotifyWidgetRenderer.getLyricsRect() : null;
+    }
+
     public static float[] getCurrentRect() {
         return widgetStyle()
                 ? SpotifyWidgetRenderer.getCurrentRect()

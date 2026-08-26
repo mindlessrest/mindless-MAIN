@@ -1259,17 +1259,21 @@ public final class ModernClickGui extends ClickGui {
     /**
      * The saturation and brightness square.
      *
-     * <p>Two gradients rather than the grid of flat swatches this used to be. Horizontally from
-     * white to the pure hue, then black faded down over it: that is the whole of an HSB square,
-     * and every colour in between actually exists instead of being rounded to one of ninety-six
-     * tiles. It is also two draws instead of ninety-six.
+     * <p>One draw with a colour at each corner: white and the pure hue along the top, black along
+     * the whole bottom. That is exactly what an HSB square is, and because every corner is an
+     * opaque colour it composites correctly whatever the row is fading at.
+     *
+     * <p>The previous version laid transparent black over a white-to-hue fade, which only reaches
+     * true black if that overlay is fully opaque -- and scaled by the row's own fade it never
+     * quite was. White shows through a not-quite-opaque black far more than a saturated colour
+     * does, which is why the bottom left sat noticeably lighter than the bottom right instead of
+     * both being black.
      */
     private void drawSaturationBrightnessField(ColorSetting color, float alpha) {
         int hueRgb = 0xFF000000 | Color.HSBtoRGB(color.getHue() / 360f, 1f, 1f);
-        RenderUtils.drawHorizontalGradientRect(colorSB.x1, colorSB.y1, colorSB.x2, colorSB.y2,
-                fa(0xFFFFFFFF, alpha), fa(hueRgb, alpha));
-        RenderUtils.drawVerticalGradientRect(colorSB.x1, colorSB.y1, colorSB.x2, colorSB.y2,
-                fa(0x00000000, alpha), fa(0xFF000000, alpha));
+        int black = 0xFF000000;
+        RoundedUtils.drawGradientRound(colorSB.x1, colorSB.y1, colorSB.w(), colorSB.h(), 3f,
+                fa(black, alpha), fa(0xFFFFFFFF, alpha), fa(black, alpha), fa(hueRgb, alpha));
         outline(colorSB.x1, colorSB.y1, colorSB.x2, colorSB.y2, 3f, fa(BORDER, alpha));
     }
 
