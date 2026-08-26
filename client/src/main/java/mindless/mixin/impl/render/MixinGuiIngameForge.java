@@ -1,6 +1,6 @@
 package mindless.mixin.impl.render;
 
-import mindless.utility.media.SpotifyMiniPlayerRenderer;
+import mindless.utility.media.MediaPlayerRenderer;
 import mindless.utility.HudRenderBounds;
 import mindless.utility.shader.BlurUtils;
 import net.minecraftforge.client.GuiIngameForge;
@@ -32,6 +32,6 @@ public abstract class MixinGuiIngameForge {
         )
     )
     private void renderPersistentCenterBar(float partialTicks, CallbackInfo callbackInfo) {
-        SpotifyMiniPlayerRenderer.render();
+        MediaPlayerRenderer.render();
     }
 }

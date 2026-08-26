@@ -9,7 +9,7 @@ import mindless.runtime.GuiIngameState;
 import mindless.utility.RenderUtils;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.gui.MindlessButton;
-import mindless.utility.media.SpotifyMiniPlayerRenderer;
+import mindless.utility.media.MediaPlayerRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.FontRenderer;
@@ -284,7 +284,7 @@ public final class HudEditor {
                 elements.add(new Element("Music Player") {
                     @Override
                     void render() {
-                        setBounds(SpotifyMiniPlayerRenderer.renderPreview());
+                        setBounds(MediaPlayerRenderer.renderPreview());
                     }
 
                     @Override
@@ -293,7 +293,7 @@ public final class HudEditor {
                         float elementHeight = Math.max(1.0F, bottom - this.top);
                         SpotifyMiniPlayer.setCustomPositionFromAbsolute(left, top, elementWidth, elementHeight,
                                 new ScaledResolution(mc));
-                        setBounds(SpotifyMiniPlayerRenderer.renderPreview());
+                        setBounds(MediaPlayerRenderer.renderPreview());
                     }
 
                     @Override

@@ -6,7 +6,7 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.media.SystemMediaClient;
-import mindless.utility.media.SpotifyMiniPlayerRenderer;
+import mindless.utility.media.MediaPlayerRenderer;
 import mindless.utility.Utils;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
@@ -20,6 +20,8 @@ import java.awt.Color;
 public class SpotifyMiniPlayer extends Module {
     private static final double UNSET_CUSTOM_POSITION = -1.0D;
 
+    /** Swaps the whole player for the OBS widget layout. Off by default. */
+    public static ButtonSetting widgetStyle;
     public static ButtonSetting showAlbumArt;
     public static ButtonSetting showProgressBar;
     public static SliderSetting progressBarColorMode;
@@ -44,6 +46,7 @@ public class SpotifyMiniPlayer extends Module {
 
     public SpotifyMiniPlayer() {
         super("Spotify Info", category.render);
+        this.registerSetting(widgetStyle = new ButtonSetting("Widget style", false));
         this.registerSetting(showAlbumArt = new ButtonSetting("Show album art", true));
         this.registerSetting(showProgressBar = new ButtonSetting("Show progress bar", true));
         this.registerSetting(progressBarColorMode = new SliderSetting("Progress bar colors", 0, new String[]{"HUD gradient", "Album accent"}));
@@ -109,7 +112,7 @@ public class SpotifyMiniPlayer extends Module {
         mediaClient.setPlayerWantsArtwork(showAlbumArt.isToggled()
                 || (int) progressBarColorMode.getInput() == 1);
 
-        SpotifyMiniPlayerRenderer.render();
+        MediaPlayerRenderer.render();
     }
 
     public void openEditScreen() {
@@ -118,12 +121,24 @@ public class SpotifyMiniPlayer extends Module {
 
     @Override
     public void guiUpdate() {
+        boolean widget = widgetStyle != null && widgetStyle.isToggled();
+        // The widget has a fixed shape with no header row, no badge and no source line, so the
+        // settings for those are hidden rather than left on screen doing nothing.
+        if (showHeader != null) showHeader.setVisible(!widget, this);
+        if (showDetails != null) showDetails.setVisible(!widget, this);
+        if (showSourceApp != null) showSourceApp.setVisible(!widget, this);
+        if (showStatusBadge != null) showStatusBadge.setVisible(!widget, this);
+        if (showAlbumArt != null) showAlbumArt.setVisible(!widget, this);
+        if (noBackground != null) noBackground.setVisible(!widget, this);
+        if (fullLyricsView != null) fullLyricsView.setVisible(!widget, this);
+        if (karaokeLyrics != null) karaokeLyrics.setVisible(!widget, this);
+
         boolean lyricsVisible = showLyrics != null && showLyrics.isToggled();
         if (fullLyricsView != null) {
-            fullLyricsView.setVisible(lyricsVisible, this);
+            fullLyricsView.setVisible(lyricsVisible && !widget, this);
         }
         if (karaokeLyrics != null) {
-            karaokeLyrics.setVisible(lyricsVisible, this);
+            karaokeLyrics.setVisible(lyricsVisible && !widget, this);
         }
         if (animateLyrics != null) {
             animateLyrics.setVisible(lyricsVisible, this);
@@ -186,7 +201,7 @@ public class SpotifyMiniPlayer extends Module {
             this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
             // Force a preview render so panelVisible/bounds are populated immediately
             // even though onRenderTick skips rendering while a GUI screen is open.
-            float[] bounds = SpotifyMiniPlayerRenderer.renderPreview();
+            float[] bounds = MediaPlayerRenderer.renderPreview();
             if (bounds != null && !SpotifyMiniPlayer.hasCustomPosition()) {
                 ScaledResolution sr = new ScaledResolution(this.mc);
                 float w = bounds[2] - bounds[0], h = bounds[3] - bounds[1];
@@ -199,7 +214,7 @@ public class SpotifyMiniPlayer extends Module {
             drawRect(0, 0, this.width, this.height, 0x7A000000);
 
             // renderPreview() drives the renderer so panelX/Y/W/H are always fresh.
-            float[] rect = SpotifyMiniPlayerRenderer.renderPreview();
+            float[] rect = MediaPlayerRenderer.renderPreview();
 
             if (rect != null) {
                 float px = rect[0], py = rect[1];
@@ -211,7 +226,7 @@ public class SpotifyMiniPlayer extends Module {
                     float ny = Math.max(0.0F, Math.min(sr.getScaledHeight() - ph, mouseY - dragOffsetY));
                     SpotifyMiniPlayer.setCustomPositionFromAbsolute(nx, ny, pw, ph, sr);
                     // Re-render with updated position so outline matches
-                    rect = SpotifyMiniPlayerRenderer.renderPreview();
+                    rect = MediaPlayerRenderer.renderPreview();
                     if (rect != null) { px = rect[0]; py = rect[1]; pw = rect[2]-rect[0]; ph = rect[3]-rect[1]; }
                 }
 
@@ -227,7 +242,7 @@ public class SpotifyMiniPlayer extends Module {
         protected void mouseClicked(int mouseX, int mouseY, int button) throws java.io.IOException {
             super.mouseClicked(mouseX, mouseY, button);
             if (button != 0) return;
-            float[] rect = SpotifyMiniPlayerRenderer.renderPreview();
+            float[] rect = MediaPlayerRenderer.renderPreview();
             if (rect == null) return;
             float px = rect[0], py = rect[1], pw = rect[2]-rect[0], ph = rect[3]-rect[1];
             if (mouseX >= px && mouseX <= px + pw && mouseY >= py && mouseY <= py + ph) {

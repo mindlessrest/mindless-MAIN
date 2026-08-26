@@ -27,6 +27,13 @@ public final class SystemMediaClient {
     private static final long MAX_DRIFT_STEP_MS = 300L;
     private static final long MEDIA_STALE_GRACE_MS = 1800L;
     private static final int MAX_ALBUM_ART_SIZE = 256;
+    /**
+     * How few pixels the softened copy keeps.
+     *
+     * <p>Small enough that no feature of the cover survives as a feature, large enough that the
+     * wash still moves across the panel rather than being one flat colour.
+     */
+    private static final int ALBUM_ART_BLUR_SIZE = 12;
     private static final SystemMediaClient INSTANCE = new SystemMediaClient();
 
     private final Minecraft mc = Minecraft.getMinecraft();
@@ -65,6 +72,8 @@ public final class SystemMediaClient {
     private String uploadedAlbumArtKey = "";
     private ResourceLocation uploadedAlbumArtLocation;
     private DynamicTexture uploadedAlbumArtTexture;
+    private ResourceLocation uploadedBlurLocation;
+    private DynamicTexture uploadedBlurTexture;
     private String requestedAlbumArtKey = "";
     private DecodedAlbumArt decodedAlbumArt;
     /** Accent pulled from the current artwork, for anything that wants to match the record. */
@@ -200,6 +209,13 @@ public final class SystemMediaClient {
             try {
                 uploadedAlbumArtTexture = new DynamicTexture(imageToUpload);
                 uploadedAlbumArtLocation = mc.getTextureManager().getDynamicTextureLocation("mindless_media_album_art", uploadedAlbumArtTexture);
+
+                BufferedImage softened = softenAlbumArt(imageToUpload);
+                if (softened != null) {
+                    uploadedBlurTexture = new DynamicTexture(softened);
+                    uploadedBlurLocation = mc.getTextureManager().getDynamicTextureLocation("mindless_media_album_blur", uploadedBlurTexture);
+                }
+
                 uploadedAlbumArtKey = keyToUpload;
                 return uploadedAlbumArtLocation;
             }
@@ -375,14 +391,58 @@ public final class SystemMediaClient {
             mc.getTextureManager().deleteTexture(uploadedAlbumArtLocation);
             uploadedAlbumArtLocation = null;
         }
+        if (uploadedBlurLocation != null) {
+            mc.getTextureManager().deleteTexture(uploadedBlurLocation);
+            uploadedBlurLocation = null;
+        }
         uploadedAlbumArtTexture = null;
+        uploadedBlurTexture = null;
         uploadedAlbumArtKey = "";
+    }
+
+    /**
+     * A heavily softened copy of the artwork, for drawing behind text.
+     *
+     * <p>It is the same picture reduced to a handful of pixels. Drawn back at panel size with
+     * linear filtering, the hardware interpolates between those few samples and the result is a
+     * smooth wash of the record's colours -- which is what a CSS blur of the cover looks like, at
+     * a fraction of the cost of actually blurring anything.
+     *
+     * <p>Only meaningful once {@link #getAlbumArtTextureLocation} has run for the current track,
+     * since both are uploaded together.
+     */
+    public ResourceLocation getAlbumArtBlurTextureLocation() {
+        return enabled ? uploadedBlurLocation : null;
     }
 
     private void cancelAlbumArtDecodeLocked() {
         if (albumArtDecodeTask != null) {
             albumArtDecodeTask.cancel(true);
             albumArtDecodeTask = null;
+        }
+    }
+
+    /** Reduces the artwork to {@link #ALBUM_ART_BLUR_SIZE} square. See the getter for why. */
+    private static BufferedImage softenAlbumArt(BufferedImage source) {
+        if (source == null) {
+            return null;
+        }
+        try {
+            BufferedImage small = new BufferedImage(ALBUM_ART_BLUR_SIZE, ALBUM_ART_BLUR_SIZE,
+                    BufferedImage.TYPE_INT_ARGB);
+            Graphics2D graphics = small.createGraphics();
+            try {
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                graphics.drawImage(source, 0, 0, ALBUM_ART_BLUR_SIZE, ALBUM_ART_BLUR_SIZE, null);
+            }
+            finally {
+                graphics.dispose();
+            }
+            return small;
+        }
+        catch (Exception ignored) {
+            return null;
         }
     }
 
