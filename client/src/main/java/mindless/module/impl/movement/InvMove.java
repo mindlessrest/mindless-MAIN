@@ -43,8 +43,13 @@ public class InvMove extends Module {
     public int ticks;
     public boolean setMotion;
     private int movementReleaseTicks;
+    private int legitCloseReleaseTicks;
+    private boolean legitInventorySession;
+    private boolean restoreMovementAfterLegitClose;
+    private Packet legitClosePacket;
 
-    private ConcurrentLinkedQueue<Packet> blinkedPackets = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<Packet> blinkedPackets = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<Packet> legitPackets = new ConcurrentLinkedQueue<>();
 
     private final String[] INVENTORY_MODES = new String[] { "Vanilla", "Legit", "Legit (Slow)", "Blink", "Close" };
     private final String[] CHEST_AND_OTHER_MODES = new String[] { "Vanilla", "Blink" };
@@ -65,6 +70,8 @@ public class InvMove extends Module {
     public void onDisable() {
         reset();
         releasePackets();
+        releaseLegitPackets();
+        releaseLegitClosePacket();
     }
 
     @SubscribeEvent
@@ -99,6 +106,22 @@ public class InvMove extends Module {
             reset();
         }
 
+        releaseLegitPackets();
+        boolean releasedClose = false;
+        if (legitClosePacket != null) {
+            if (legitCloseReleaseTicks > 0) {
+                --legitCloseReleaseTicks;
+            } else {
+                releasedClose = releaseLegitClosePacket();
+            }
+        }
+        if (releasedClose && restoreMovementAfterLegitClose) {
+            restoreMovementAfterLegitClose = false;
+            if (mc.currentScreen == null) {
+                restoreMovementKeys();
+            }
+        }
+
         boolean releaseMovement = shouldReleaseMovement();
         if (releaseMovement) {
             releaseMovementKeys();
@@ -107,7 +130,7 @@ public class InvMove extends Module {
         else {
             restoreMovementKeys();
         }
-        boolean foodLvlMet = (float)mc.thePlayer.getFoodStats().getFoodLevel() > 6.0F || mc.thePlayer.capabilities.allowFlying; // from mc
+        boolean foodLvlMet = (float)mc.thePlayer.getFoodStats().getFoodLevel() > 6.0F || mc.thePlayer.capabilities.allowFlying;
         if (!releaseMovement && ((Utils.isBindDown(mc.gameSettings.keyBindSprint) || ModuleManager.sprint.isEnabled()) && mc.thePlayer.movementInput.moveForward >= 0.8F && foodLvlMet && !mc.thePlayer.isSprinting()) && allowSprinting.isToggled()) {
             mc.thePlayer.setSprinting(true);
         }
@@ -140,25 +163,47 @@ public class InvMove extends Module {
     @SubscribeEvent
     public void onSendPacket(SendPacketEvent e) {
         if (e.getPacket() instanceof C0EPacketClickWindow) {
+            boolean inventoryManagerClick = ModuleManager.invManager != null && ModuleManager.invManager.isSendingInventoryClick();
             if (isLegitInventoryMode() && mc.currentScreen instanceof GuiInventory) {
+                legitInventorySession = true;
                 movementReleaseTicks = Math.max(movementReleaseTicks, getMovementReleaseTicks());
                 releaseMovementKeys();
+                legitPackets.add(e.getPacket());
+                e.setCanceled(true);
             }
             if (modifyMotionPost.isToggled() || (slowWhenNecessary.isToggled() && !canBlink())) {
                 setMotion = true;
                 ticks = 0;
             }
-            if (canBlink()) {
+            if (!inventoryManagerClick && canBlink()) {
                 blinkedPackets.add(e.getPacket());
                 e.setCanceled(true);
             }
         }
         else if (e.getPacket() instanceof C0DPacketCloseWindow) {
-            if (canBlink()) {
-                if (inventory.getInput() == INVENTORY_MODE_CLOSE) {
-                    PacketUtils.sendPacketNoEvent(new C16PacketClientStatus(C16PacketClientStatus.EnumState.OPEN_INVENTORY_ACHIEVEMENT));
+            boolean pendingLegitClick = !legitPackets.isEmpty();
+            boolean legitInventoryClose = isLegitInventoryMode() && (mc.currentScreen instanceof GuiInventory || legitInventorySession);
+            if (legitInventoryClose || pendingLegitClick || legitClosePacket != null) {
+                if (pendingLegitClick) {
+                    movementReleaseTicks = Math.max(movementReleaseTicks, getMovementReleaseTicks());
+                    releaseMovementKeys();
+                } else {
+                    releaseCloseActionKeys();
                 }
-                releasePackets();
+                restoreMovementAfterLegitClose = true;
+                if (legitClosePacket == null) {
+                    legitClosePacket = e.getPacket();
+                    legitCloseReleaseTicks = pendingLegitClick ? 1 : 0;
+                }
+                e.setCanceled(true);
+            } else {
+                legitInventorySession = false;
+                if (canBlink()) {
+                    if (inventory.getInput() == INVENTORY_MODE_CLOSE) {
+                        PacketUtils.sendPacketNoEvent(new C16PacketClientStatus(C16PacketClientStatus.EnumState.OPEN_INVENTORY_ACHIEVEMENT));
+                    }
+                    releasePackets();
+                }
             }
         }
     }
@@ -217,6 +262,7 @@ public class InvMove extends Module {
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindRight));
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindLeft));
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), Utils.jumpDown());
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindSneak));
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindSprint));
     }
 
@@ -226,11 +272,27 @@ public class InvMove extends Module {
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), false);
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), false);
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), false);
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), false);
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
         if (mc.thePlayer != null && mc.thePlayer.movementInput != null) {
             mc.thePlayer.movementInput.moveForward = 0.0F;
             mc.thePlayer.movementInput.moveStrafe = 0.0F;
             mc.thePlayer.movementInput.jump = false;
+            mc.thePlayer.movementInput.sneak = false;
+            mc.thePlayer.setSprinting(false);
+        }
+    }
+
+    private void releaseCloseActionKeys() {
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindForward));
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindBack.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindBack));
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindRight.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindRight));
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindLeft.getKeyCode(), Utils.isBindDown(mc.gameSettings.keyBindLeft));
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindJump.getKeyCode(), Utils.jumpDown());
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), false);
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+        if (mc.thePlayer != null && mc.thePlayer.movementInput != null) {
+            mc.thePlayer.movementInput.sneak = false;
             mc.thePlayer.setSprinting(false);
         }
     }
@@ -242,5 +304,24 @@ public class InvMove extends Module {
             }
         }
         blinkedPackets.clear();
+    }
+
+    private void releaseLegitPackets() {
+        Packet packet;
+        while ((packet = legitPackets.poll()) != null) {
+            PacketUtils.sendPacketNoEvent(packet);
+        }
+    }
+
+    private boolean releaseLegitClosePacket() {
+        Packet packet = legitClosePacket;
+        if (packet == null) {
+            return false;
+        }
+        legitClosePacket = null;
+        legitCloseReleaseTicks = 0;
+        legitInventorySession = false;
+        PacketUtils.sendPacketNoEvent(packet);
+        return true;
     }
 }

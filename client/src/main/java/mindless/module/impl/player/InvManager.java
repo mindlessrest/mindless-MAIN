@@ -114,6 +114,7 @@ public class InvManager extends Module {
     private int cursorRecoveryInventoryIndex = -1;
     private double windowClickBudget;
     private boolean sessionOpen;
+    private boolean sendingInventoryClick;
     private SessionState sessionState = SessionState.ACTIVE;
     private long ticks = 0L;
     private long nextDelay = 0L;
@@ -2198,7 +2199,16 @@ public class InvManager extends Module {
 
     private void click(int slotId, int button, int mode) {
         inventoryActionPerformed = true;
-        mc.playerController.windowClick(mc.thePlayer.openContainer.windowId, slotId, button, mode, mc.thePlayer);
+        sendingInventoryClick = true;
+        try {
+            mc.playerController.windowClick(mc.thePlayer.openContainer.windowId, slotId, button, mode, mc.thePlayer);
+        } finally {
+            sendingInventoryClick = false;
+        }
+    }
+
+    public boolean isSendingInventoryClick() {
+        return sendingInventoryClick;
     }
 
     private boolean isManagedInventoryOpen() {
