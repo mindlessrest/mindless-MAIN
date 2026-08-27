@@ -1,7 +1,6 @@
 package mindless.module.impl.client;
 
 import mindless.module.ModuleManager;
-import mindless.module.impl.player.HideWindow;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
 import mindless.module.impl.render.Radar;
@@ -422,32 +421,6 @@ public final class HudEditor {
                 });
             }
 
-            if (ModuleManager.hideWindow != null) {
-                final HideWindow hideWindow = ModuleManager.hideWindow;
-                elements.add(new Element("Hide Window") {
-                    @Override
-                    void render() {
-                        setBounds(hideWindow.renderDesignerPreview(hideWindow.getPosX(), hideWindow.getPosY()));
-                    }
-
-                    @Override
-                    void moveTo(float left, float top) {
-                        float centerX = left + Math.max(1.0F, right - this.left) * 0.5F;
-                        float centerY = top + Math.max(1.0F, bottom - this.top) * 0.5F;
-                        setBounds(hideWindow.renderDesignerPreview(centerX, centerY));
-                    }
-
-                    @Override
-                    void reset() {
-                        hideWindow.resetPosition();
-                    }
-
-                    @Override
-                    SliderSetting scaleSetting() {
-                        return hideWindow.scaleSetting();
-                    }
-                });
-            }
 
             if (ModuleManager.radar != null) {
                 final Radar radar = ModuleManager.radar;

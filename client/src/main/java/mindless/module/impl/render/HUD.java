@@ -110,14 +110,6 @@ public class HUD extends Module {
         // behind a name nobody would think to open. Old profiles still resolve through the
         // legacy alias in ModuleManager.
         super("ArrayList", Module.category.render);
-        this.registerSetting(colorMode = new SliderSetting("Color mode", 0, COLOR_MODES));
-        this.registerSetting(hudColor = new ColorSetting("Color", 255, 255, 255));
-        this.registerSetting(hudColor2 = new ColorSetting("Color 2", 85, 85, 255));
-        this.registerSetting(waveAxis = new SliderSetting("Wave axis", 0, WAVE_AXES));
-        this.registerSetting(verticalWaveDirection = new SliderSetting("Wave direction", 0, VERTICAL_WAVE_DIRECTIONS));
-        this.registerSetting(horizontalWaveDirection = new SliderSetting("Wave direction", 0, HORIZONTAL_WAVE_DIRECTIONS));
-        this.registerSetting(waveSpeed = new SliderSetting("Wave speed", 1.0, 0.1, 5.0, 0.1));
-        this.registerSetting(waveLength = new SliderSetting("Wave length", 1.0, 0.5, 5.0, 0.1));
         this.registerSetting(font = new SliderSetting("Font", 0, HUD_FONT_OPTIONS));
         this.registerSetting(fontSize = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.1));
         this.registerSetting(outline = new SliderSetting("Outline", 0, OUTLINE_MODES));
@@ -146,31 +138,6 @@ public class HUD extends Module {
 
     @Override
     public void guiUpdate() {
-        int mode = colorMode == null ? 0 : (int) colorMode.getInput();
-        if (hudColor != null) {
-            hudColor.setVisible(mode == 0 || mode == 1, this);
-        }
-        if (hudColor2 != null) {
-            hudColor2.setVisible(mode == 1, this);
-        }
-        boolean showWaveSettings = mode == 1 || mode == 2;
-        boolean verticalAxis = hudWaveIsVertical();
-        if (waveAxis != null) {
-            waveAxis.setVisible(showWaveSettings, this);
-        }
-        if (verticalWaveDirection != null) {
-            verticalWaveDirection.setVisible(showWaveSettings && verticalAxis, this);
-        }
-        if (horizontalWaveDirection != null) {
-            horizontalWaveDirection.setVisible(showWaveSettings && !verticalAxis, this);
-        }
-        if (waveSpeed != null) {
-            waveSpeed.setVisible(showWaveSettings, this);
-        }
-        if (waveLength != null) {
-            waveLength.setVisible(showWaveSettings, this);
-        }
-
         boolean background = drawBackground != null && drawBackground.isToggled();
         if (backgroundMode != null) {
             backgroundMode.setVisible(background, this);
@@ -981,19 +948,7 @@ public class HUD extends Module {
      * Accent color for HUD rows/outlines. Other modules can match HUD when enabled.
      */
     public static int getHudColor(double gradientOffset) {
-        if (colorMode == null || hudColor == null) {
-            return 0xFFFFFFFF;
-        }
-        int mode = (int) colorMode.getInput();
-        if (mode == 2) {
-            return getRainbowWaveColor(gradientOffset);
-        }
-        if (mode == 1 && hudColor2 != null) {
-            java.awt.Color c1 = new java.awt.Color(hudColor.getRed(), hudColor.getGreen(), hudColor.getBlue());
-            java.awt.Color c2 = new java.awt.Color(hudColor2.getRed(), hudColor2.getGreen(), hudColor2.getBlue());
-            return getGradientWaveColor(c1, c2, gradientOffset);
-        }
-        return hudColor.getRGB() | 0xFF000000;
+        return mindless.utility.Theme.getGradient(10, gradientOffset) | 0xFF000000;
     }
 
     private static int getGradientWaveColor(java.awt.Color c1, java.awt.Color c2, double gradientOffset) {
