@@ -1,6 +1,8 @@
 package mindless.module.impl.combat;
 
 import mindless.Raven;
+import mindless.event.AttackEvent;
+import mindless.event.PreAttackEvent;
 import mindless.event.PrePlayerInteractEvent;
 import mindless.event.RightClickMouseEvent;
 import mindless.lag.api.EnumLagDirection;
@@ -30,12 +32,13 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Mouse;
 
 public class Autoblock extends Module {
-    private static final String[] MODES = new String[]{"Vanilla", "Predict", "Manual", "Lag"};
+    private static final String[] MODES = new String[]{"Vanilla", "Predict", "Manual", "Lag", "Beta"};
     private static final String[] UNBLOCK_OUT_OF_RANGE_MODES = new String[]{"Once", "Always"};
     private static final int MODE_VANILLA = 0;
     private static final int MODE_PREDICT = 1;
     private static final int MODE_MANUAL = 2;
     private static final int MODE_LAG = 3;
+    private static final int MODE_BETA = 4;
     private static final int UNBLOCK_ONCE = 0;
     private static final int UNBLOCK_ALWAYS = 1;
 
@@ -137,6 +140,7 @@ public class Autoblock extends Module {
         boolean lagMode = m == MODE_LAG;
         boolean predictMode = m == MODE_PREDICT;
         boolean manualMode = m == MODE_MANUAL;
+        boolean betaMode = m == MODE_BETA;
 
         lagChance.setVisible(lagMode, this);
         lagMaxDuration.setVisible(lagMode, this);
@@ -255,6 +259,16 @@ public class Autoblock extends Module {
     }
 
     @SubscribeEvent
+    public void onPreAttack(PreAttackEvent e) {
+        betaPreAttack();
+    }
+
+    @SubscribeEvent
+    public void onAttack(AttackEvent e) {
+        betaPostAttack();
+    }
+
+    @SubscribeEvent
     public void onPrePlayerInteract(PrePlayerInteractEvent e) {
         if (!Utils.nullCheck() || mc.thePlayer.isDead || mc.currentScreen != null) {
             resetState(true);
@@ -356,6 +370,11 @@ public class Autoblock extends Module {
 
         if (currentMode == MODE_MANUAL) {
             tickManual(conditionsMet);
+            return;
+        }
+
+        if (currentMode == MODE_BETA) {
+            tickBeta(conditionsMet);
             return;
         }
 
@@ -538,6 +557,50 @@ public class Autoblock extends Module {
             stopBlocking(true);
             manualReleaseTime = 0L;
         }
+    }
+
+    // --- Beta mode (slot-swap block) ---
+
+    private boolean betaBlocking;
+
+    private void tickBeta(boolean conditionsMet) {
+        if (!conditionsMet || !Utils.holdingSword()) {
+            if (betaBlocking) {
+                sendUnblock();
+                betaBlocking = false;
+            }
+            return;
+        }
+        if (!betaBlocking) {
+            sendBlock();
+            betaBlocking = true;
+        }
+    }
+
+    public void betaPreAttack() {
+        if ((int) mode.getInput() != MODE_BETA || !betaBlocking) return;
+        int current = mc.thePlayer.inventory.currentItem;
+        int swap = current == 0 ? 1 : 0;
+        mc.thePlayer.sendQueue.addToSendQueue(new net.minecraft.network.play.client.C09PacketHeldItemChange(swap));
+        mc.thePlayer.sendQueue.addToSendQueue(new net.minecraft.network.play.client.C09PacketHeldItemChange(current));
+    }
+
+    public void betaPostAttack() {
+        if ((int) mode.getInput() != MODE_BETA || !betaBlocking) return;
+        sendBlock();
+    }
+
+    private void sendBlock() {
+        if (!Utils.holdingSword()) return;
+        mc.thePlayer.sendQueue.addToSendQueue(
+                new net.minecraft.network.play.client.C08PacketPlayerBlockPlacement(mc.thePlayer.getHeldItem()));
+    }
+
+    private void sendUnblock() {
+        mc.thePlayer.sendQueue.addToSendQueue(
+                new net.minecraft.network.play.client.C07PacketPlayerDigging(
+                        net.minecraft.network.play.client.C07PacketPlayerDigging.Action.RELEASE_USE_ITEM,
+                        net.minecraft.util.BlockPos.ORIGIN, net.minecraft.util.EnumFacing.DOWN));
     }
 
     // --- Common ---
