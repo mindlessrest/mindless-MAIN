@@ -35,7 +35,6 @@ public class StatsHUD extends Module {
         this.registerSetting(showFps = new ButtonSetting("Show FPS", true));
         this.registerSetting(showBps = new ButtonSetting("Show BPS", true));
         this.registerSetting(showPing = new ButtonSetting("Show Ping", true));
-        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new HudEditor.Screen())));
     }
 
     public SliderSetting scaleSetting() { return scale; }

@@ -49,8 +49,6 @@ public class DynamicIsland extends Module {
     public DynamicIsland() {
         super("Watermark", category.render);
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
-        this.registerSetting(new mindless.module.setting.impl.ButtonSetting("Edit position",
-                () -> mc.displayGuiScreen(new mindless.module.impl.client.HudEditor.Screen())));
     }
 
     public void resetPosition() {

@@ -142,8 +142,6 @@ public class AudioVisualizer extends Module {
         this.registerSetting(standaloneWidth = new SliderSetting("Width", "px", 190, 60, 520, 5));
         this.registerSetting(standaloneHeight = new SliderSetting("Height", "px", 48, 16, 180, 2));
         this.registerSetting(standaloneScale = new SliderSetting("Scale", "x", 1.0, 0.5, 2.0, 0.05));
-        this.registerSetting(new ButtonSetting("Edit position",
-                () -> mc.displayGuiScreen(new HudEditor.Screen())));
 
         this.setEnabled(false);
     }

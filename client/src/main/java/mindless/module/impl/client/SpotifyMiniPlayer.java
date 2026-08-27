@@ -20,8 +20,7 @@ import java.awt.Color;
 public class SpotifyMiniPlayer extends Module {
     private static final double UNSET_CUSTOM_POSITION = -1.0D;
 
-    /** Swaps the whole player for the OBS widget layout. Off by default. */
-    public static ButtonSetting widgetStyle;
+    public static SliderSetting widgetStyle;
     public static ButtonSetting showAlbumArt;
     public static ButtonSetting showProgressBar;
     public static SliderSetting progressBarColorMode;
@@ -50,7 +49,7 @@ public class SpotifyMiniPlayer extends Module {
 
     public SpotifyMiniPlayer() {
         super("Spotify Info", category.render);
-        this.registerSetting(widgetStyle = new ButtonSetting("Widget style", true));
+        this.registerSetting(widgetStyle = new SliderSetting("Mode", 0, new String[]{"Modern", "Old"}));
         this.registerSetting(showAlbumArt = new ButtonSetting("Show album art", true));
         this.registerSetting(showProgressBar = new ButtonSetting("Show progress bar", true));
         this.registerSetting(progressBarColorMode = new SliderSetting("Progress bar colors", 0, new String[]{"HUD gradient", "Album accent"}));
@@ -132,7 +131,7 @@ public class SpotifyMiniPlayer extends Module {
 
     @Override
     public void guiUpdate() {
-        boolean widget = widgetStyle != null && widgetStyle.isToggled();
+        boolean widget = widgetStyle == null || (int) widgetStyle.getInput() == 0;
         // The widget has a fixed shape with no header row, no badge and no source line, so the
         // settings for those are hidden rather than left on screen doing nothing.
         if (showHeader != null) showHeader.setVisible(!widget, this);

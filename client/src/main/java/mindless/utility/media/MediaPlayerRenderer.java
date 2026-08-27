@@ -15,7 +15,7 @@ public final class MediaPlayerRenderer {
     }
 
     private static boolean widgetStyle() {
-        return SpotifyMiniPlayer.widgetStyle != null && SpotifyMiniPlayer.widgetStyle.isToggled();
+        return SpotifyMiniPlayer.widgetStyle == null || (int) SpotifyMiniPlayer.widgetStyle.getInput() == 0;
     }
 
     public static void render() {

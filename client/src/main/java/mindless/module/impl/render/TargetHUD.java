@@ -68,7 +68,6 @@ public class TargetHUD extends Module {
         this.registerSetting(theme = new SliderSetting("Theme", 0, Theme.THEMES_SETTING));
         this.registerSetting(glowSize = new SliderSetting("Glow size", 9.0, 2.0, 20.0, 0.5));
         this.registerSetting(positionMode = new SliderSetting("Position", 0, POSITION_MODES));
-        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new HudEditor.Screen())));
         this.registerSetting(renderEsp = new ButtonSetting("Render ESP", true));
         this.registerSetting(showDifference = new ButtonSetting("Show difference", true));
         this.registerSetting(showStatus = new ButtonSetting("Show win or loss", true));

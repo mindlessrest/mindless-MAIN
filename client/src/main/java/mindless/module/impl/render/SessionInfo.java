@@ -1,7 +1,6 @@
 package mindless.module.impl.render;
 
 import mindless.module.Module;
-import mindless.module.impl.client.HudEditor;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ScaledResolutionCache;
@@ -73,9 +72,11 @@ public class SessionInfo extends Module {
     private static final long RESULT_COOLDOWN_MS = 20_000L;
 
     private final SliderSetting scale;
+    private final ButtonSetting showKills;
+    private final ButtonSetting showDeaths;
+    private final ButtonSetting showWins;
+    private final ButtonSetting showLosses;
 
-    // Anchored on the right edge: the panel sits in the top-right by default and grows leftward,
-    // so storing the left edge would make it drift as the numbers get wider.
     private float posX = Float.NaN;
     private float posY = Float.NaN;
     private float relativePosX = Float.NaN;
@@ -87,8 +88,6 @@ public class SessionInfo extends Module {
     private long lastLineMs;
     private String lastVictim = "";
     private long lastVictimMs;
-    // Chat calls a nicked player by the nick, not the account, so the account name alone stops
-    // matching anything the moment you nick.
     private String nickName = "";
     private int kills;
     private int deaths;
@@ -98,7 +97,10 @@ public class SessionInfo extends Module {
     public SessionInfo() {
         super("Session Info", category.render);
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.6, 1.6, 0.05));
-        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new HudEditor.Screen())));
+        this.registerSetting(showKills = new ButtonSetting("Show kills", true));
+        this.registerSetting(showDeaths = new ButtonSetting("Show deaths", true));
+        this.registerSetting(showWins = new ButtonSetting("Show wins", true));
+        this.registerSetting(showLosses = new ButtonSetting("Show losses", true));
         this.registerSetting(new ButtonSetting("Reset", this::resetSession));
     }
 
@@ -266,6 +268,23 @@ public class SessionInfo extends Module {
         else if (isMe(killer)) kills++;
     }
 
+    @SubscribeEvent
+    public void onReceivePacket(mindless.event.ReceivePacketEvent event) {
+        if (!(event.getPacket() instanceof net.minecraft.network.play.server.S45PacketTitle)) return;
+        net.minecraft.network.play.server.S45PacketTitle packet =
+                (net.minecraft.network.play.server.S45PacketTitle) event.getPacket();
+        if (packet.getType() != net.minecraft.network.play.server.S45PacketTitle.Type.TITLE) return;
+        if (packet.getMessage() == null) return;
+        String text = EnumChatFormatting.getTextWithoutFormattingCodes(packet.getMessage().getUnformattedText());
+        if (text == null) return;
+        String upper = text.toUpperCase().trim();
+        if (upper.contains("WIN") || upper.contains("VICTORY")) {
+            recordResult(true);
+        } else if (upper.contains("LOST") || upper.contains("LOSS") || upper.contains("GAME OVER")) {
+            recordResult(false);
+        }
+    }
+
     /** The account name, or the nick when one is active. */
     private boolean isMe(String name) {
         if (name == null || mc.thePlayer == null) return false;
@@ -296,44 +315,70 @@ public class SessionInfo extends Module {
                 Math.min(2.0f, HUD.getSelectedFontScale() * 1.6f));
     }
 
-    private String[] values() {
-        return new String[] {
-                Integer.toString(kills), Integer.toString(deaths),
-                Integer.toString(wins), Integer.toString(losses)
-        };
+    private java.util.List<String> activeValues() {
+        java.util.List<String> vals = new java.util.ArrayList<>();
+        if (showKills.isToggled()) vals.add(Integer.toString(kills));
+        if (showDeaths.isToggled()) vals.add(Integer.toString(deaths));
+        if (showWins.isToggled()) vals.add(Integer.toString(wins));
+        if (showLosses.isToggled()) vals.add(Integer.toString(losses));
+        if (showKills.isToggled() && showDeaths.isToggled()) {
+            vals.add(deaths == 0 ? String.format("%.1f", (double) kills) : String.format("%.2f", (double) kills / deaths));
+        }
+        return vals;
     }
 
-    private static final String[] LABELS = { "KILLS", "DEATHS", "WINS", "LOSSES" };
-    private static final int[] VALUE_COLORS = { COL_UP, COL_DOWN, COL_UP, COL_DOWN };
-
-    private int[] counts() {
-        return new int[] { kills, deaths, wins, losses };
+    private java.util.List<String> activeLabels() {
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        if (showKills.isToggled()) labels.add("KILLS");
+        if (showDeaths.isToggled()) labels.add("DEATHS");
+        if (showWins.isToggled()) labels.add("WINS");
+        if (showLosses.isToggled()) labels.add("LOSSES");
+        if (showKills.isToggled() && showDeaths.isToggled()) labels.add("KDR");
+        return labels;
     }
 
-    /**
-     * The width one stat needs, taken from the widest of the four rather than each one's own
-     * label. Sizing every stat to itself put "KILLS" and "LOSSES" in columns of different
-     * widths, and with equal gaps between them the four numbers came out unevenly spaced.
-     */
-    private float cellWidth(RavenFontRenderer small, RavenFontRenderer big) {
-        String[] vals = values();
+    private java.util.List<Integer> activeColors() {
+        java.util.List<Integer> colors = new java.util.ArrayList<>();
+        if (showKills.isToggled()) colors.add(COL_UP);
+        if (showDeaths.isToggled()) colors.add(COL_DOWN);
+        if (showWins.isToggled()) colors.add(COL_UP);
+        if (showLosses.isToggled()) colors.add(COL_DOWN);
+        if (showKills.isToggled() && showDeaths.isToggled()) colors.add(COL_UP);
+        return colors;
+    }
+
+    private java.util.List<Integer> activeCounts() {
+        java.util.List<Integer> counts = new java.util.ArrayList<>();
+        if (showKills.isToggled()) counts.add(kills);
+        if (showDeaths.isToggled()) counts.add(deaths);
+        if (showWins.isToggled()) counts.add(wins);
+        if (showLosses.isToggled()) counts.add(losses);
+        if (showKills.isToggled() && showDeaths.isToggled()) counts.add(kills > 0 || deaths > 0 ? 1 : 0);
+        return counts;
+    }
+
+    private float cellWidth(RavenFontRenderer small, RavenFontRenderer big, java.util.List<String> vals, java.util.List<String> labels) {
         float widest = 0.0f;
-        for (int i = 0; i < 4; i++) {
-            widest = Math.max(widest, Math.max(big.getStringWidth(vals[i]),
-                    small.getStringWidth(LABELS[i])));
+        for (int i = 0; i < vals.size(); i++) {
+            widest = Math.max(widest, Math.max(big.getStringWidth(vals.get(i)),
+                    small.getStringWidth(labels.get(i))));
         }
         return widest;
     }
 
-    /** Panel size for the current contents, as {width, height}, or null when it cannot be drawn. */
     private float[] measure() {
         RavenFontRenderer small = HUD.getHudFontRenderer();
         RavenFontRenderer big = valueFont();
         if (small == null || big == null) return null;
 
+        java.util.List<String> vals = activeValues();
+        java.util.List<String> labels = activeLabels();
+        int count = vals.size();
+        if (count == 0) return null;
+
         float s = (float) scale.getInput();
 
-        float strip = cellWidth(small, big) * 4.0f + CELL_GAP * 3.0f;
+        float strip = cellWidth(small, big, vals, labels) * count + CELL_GAP * (count - 1);
         float header = small.getStringWidth("SESSION") + TITLE_GAP + small.getStringWidth(clock());
         float content = Math.max(strip, header);
 
@@ -410,37 +455,24 @@ public class SessionInfo extends Module {
         font(small, "SESSION", textLeft, textTop, COL_TITLE);
         font(small, clock, textRight - small.getStringWidth(clock), textTop, COL_CLOCK);
 
-        String[] vals = values();
-        int[] counts = counts();
+        java.util.List<String> vals = activeValues();
+        java.util.List<String> labels = activeLabels();
+        java.util.List<Integer> colors = activeColors();
+        java.util.List<Integer> counts = activeCounts();
+        int count = vals.size();
+        if (count == 0) { GlStateManager.popMatrix(); return new float[] { left, top, left + w, top + h }; }
 
         float valueTop = textTop + small.getFontHeight() + HEADER_GAP;
         float labelTop = valueTop + big.getFontHeight() + VALUE_GAP;
+        float slot = (textRight - textLeft) / (float) count;
 
-        // Four equal columns across the full content width. Even columns are what make the row
-        // read as a row; sizing each to its own label left the gaps visibly ragged.
-        float slot = (textRight - textLeft) / 4.0f;
-
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < count; i++) {
             float center = textLeft + slot * (i + 0.5f);
-            // Branch-free on purpose, and this is the one place in the client where that is
-            // worth the loss of readability.
-            //
-            // C2 compiled this method while the session was still fresh and every counter read
-            // zero, so it took the non-zero side as unreachable. The first kill of the session
-            // falsified that, and because the trap is Action_none the compiled method is never
-            // thrown away -- it just traps into the interpreter again, every single frame, for
-            // the rest of the session. A flight recording over eight minutes of play caught
-            // 58,869 deoptimisations here out of 59,153 in the entire JVM: 99.5% of them, all at
-            // this line, roughly one per frame, each one reinterpreting the rest of the panel.
-            // That is the frame rate falling through the floor once a fight starts and never
-            // recovering, which is exactly how it was reported.
-            //
-            // An arithmetic select has no branch to mispredict and nothing for the compiler to
-            // assume. The mask is 0 for a zero count and -1 for anything else.
-            int nonZero = (counts[i] | -counts[i]) >> 31;
-            int color = (VALUE_COLORS[i] & nonZero) | (COL_ZERO & ~nonZero);
-            font(big, vals[i], center - big.getStringWidth(vals[i]) * 0.5f, valueTop, color);
-            font(small, LABELS[i], center - small.getStringWidth(LABELS[i]) * 0.5f, labelTop, COL_LABEL);
+            int c = counts.get(i);
+            int nonZero = (c | -c) >> 31;
+            int color = (colors.get(i) & nonZero) | (COL_ZERO & ~nonZero);
+            font(big, vals.get(i), center - big.getStringWidth(vals.get(i)) * 0.5f, valueTop, color);
+            font(small, labels.get(i), center - small.getStringWidth(labels.get(i)) * 0.5f, labelTop, COL_LABEL);
         }
 
         GlStateManager.popMatrix();

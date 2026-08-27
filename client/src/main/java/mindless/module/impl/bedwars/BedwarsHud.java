@@ -46,8 +46,6 @@ public abstract class BedwarsHud extends Module {
         this.relativeX = defaultX;
         this.relativeY = defaultY;
         this.registerSetting(scale = new SliderSetting("Scale", "x", 1.0, 0.5, 1.5, 0.05));
-        this.registerSetting(new ButtonSetting("Edit position",
-                () -> mc.displayGuiScreen(new HudEditor.Screen())));
     }
 
     /** The lines to draw, top to bottom, or empty for nothing to say. Section signs are fine. */
