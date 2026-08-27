@@ -333,7 +333,7 @@ public class SessionInfo extends Module {
         }
 
         String timeStr = formatTime(System.currentTimeMillis() - sessionStartMs);
-        String headerLeft = "session";
+        String headerLeft = "Session";
         String headerRight = " Information";
 
         float lineH = font.getFontHeight() + 3.0f;

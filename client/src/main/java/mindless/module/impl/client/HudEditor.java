@@ -40,7 +40,6 @@ public final class HudEditor {
 
         private final List<Element> elements = new ArrayList<Element>();
         private MindlessButton doneButton;
-        private MindlessButton resetButton;
         private MindlessButton resetAllButton;
         private Element hovered;
         private Element dragging;
@@ -60,17 +59,12 @@ public final class HudEditor {
             super.initGui();
             buildElements();
             buttonList.add(doneButton = new MindlessButton(1, width - 90, height - 25, 85, 20, "Done"));
-            buttonList.add(resetButton = new MindlessButton(2, 5, height - 25, 125, 20, "Reset hovered"));
-            buttonList.add(resetAllButton = new MindlessButton(3, 135, height - 25, 90, 20, "Reset all"));
+            buttonList.add(resetAllButton = new MindlessButton(3, 5, height - 25, 90, 20, "Reset all"));
         }
 
         @Override
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-            drawRect(0, 0, width, height, 0x9A000000);
-            drawCenteredString(fontRendererObj, "Mindless HUD Editor", width / 2, 9, 0xFFFFFFFF);
-            drawCenteredString(fontRendererObj,
-                    "Drag to move. Pull a corner or edge to resize. Saved with your profile.",
-                    width / 2, 21, 0xFFC9D1DA);
+            drawRect(0, 0, width, height, 0x88000000);
 
             if (elements.isEmpty()) buildElements();
             if (dragging != null) {
@@ -99,8 +93,6 @@ public final class HudEditor {
                 }
             }
 
-            resetButton.enabled = hovered != null;
-            resetButton.displayString = hovered == null ? "Reset hovered" : "Reset " + hovered.name;
             super.drawScreen(mouseX, mouseY, partialTicks);
         }
 
@@ -138,10 +130,6 @@ public final class HudEditor {
         protected void actionPerformed(GuiButton button) {
             if (button == doneButton) {
                 mc.displayGuiScreen(null);
-            }
-            else if (button == resetButton && hovered != null) {
-                hovered.reset();
-                hovered.render();
             }
             else if (button == resetAllButton) {
                 for (Element element : elements) element.reset();
