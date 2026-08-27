@@ -882,26 +882,44 @@ public class Utils implements IMinecraftInstance {
             if (mc.thePlayer.isOnSameTeam((EntityLivingBase) entity)) {
                 return true;
             }
-            String own = teamColorCode(mc.thePlayer);
-            return !own.isEmpty() && own.equals(teamColorCode((EntityLivingBase) entity));
+            char own = detectTeamColor(mc.thePlayer);
+            return own != 0 && own == detectTeamColor((EntityLivingBase) entity);
         } catch (Exception ignored) {}
         return false;
     }
 
-    /**
-     * The colour code from an entity's scoreboard team prefix, or "" when there is nothing to
-     * read. White is treated as nothing: it is the default nametag colour and says no more about
-     * sides than an absent team does.
-     */
-    private static String teamColorCode(EntityLivingBase entity) {
+    private static char detectTeamColor(EntityLivingBase entity) {
+        if (entity instanceof EntityPlayer) {
+            char displayColor = displayNameColorCode((EntityPlayer) entity);
+            if (displayColor != 0) return displayColor;
+        }
+        return teamPrefixColorCode(entity);
+    }
+
+    private static char displayNameColorCode(EntityPlayer player) {
+        String name = player.getName();
+        String formatted = player.getDisplayName().getFormattedText();
+        if (formatted == null || !formatted.contains("§")) return 0;
+        int nameIndex = formatted.indexOf(name);
+        if (nameIndex <= 0) return 0;
+        for (int i = nameIndex - 1; i >= 0; i--) {
+            if (formatted.charAt(i) == '§' && i + 1 < formatted.length()) {
+                char c = Character.toLowerCase(formatted.charAt(i + 1));
+                if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+                    return c == 'f' ? 0 : c;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static char teamPrefixColorCode(EntityLivingBase entity) {
         net.minecraft.scoreboard.Team team = entity.getTeam();
         if (!(team instanceof ScorePlayerTeam)) {
-            return "";
+            return 0;
         }
         String prefix = ((ScorePlayerTeam) team).getColorPrefix();
         char color = 0;
-        // Last colour code wins, and style codes are skipped -- bold or italic in a prefix says
-        // nothing about which side the player is on.
         for (int i = 0; i + 1 < prefix.length(); i++) {
             if (prefix.charAt(i) != '§') {
                 continue;
@@ -911,7 +929,7 @@ public class Utils implements IMinecraftInstance {
                 color = c;
             }
         }
-        return color == 0 || color == 'f' ? "" : String.valueOf(color);
+        return color == 'f' ? 0 : color;
     }
 
     public static String getNetworkDisplayName() {

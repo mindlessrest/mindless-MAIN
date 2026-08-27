@@ -102,19 +102,48 @@ public class TargetFilter extends Module {
             return false;
         }
         try {
-            String own = getTeamColorCode(mc.thePlayer);
-            if (own.isEmpty()) {
+            char own = detectColorCode(mc.thePlayer);
+            if (own == 0) {
                 return false;
             }
-            return own.equals(getTeamColorCode(entity));
+            return own == detectColorCode(entity);
         } catch (Exception ignored) {}
         return false;
     }
 
-    private static String getTeamColorCode(EntityPlayer entity) {
+    private static char detectColorCode(EntityPlayer player) {
+        char color = getDisplayNameColorCode(player);
+        if (color == 0) {
+            color = getTeamPrefixColorCode(player);
+        }
+        return color;
+    }
+
+    private static char getDisplayNameColorCode(EntityPlayer player) {
+        String name = player.getName();
+        String formatted = player.getDisplayName().getFormattedText();
+        if (formatted == null || !formatted.contains("§")) {
+            return 0;
+        }
+        int nameIndex = formatted.indexOf(name);
+        if (nameIndex <= 0) {
+            return 0;
+        }
+        for (int i = nameIndex - 1; i >= 0; i--) {
+            if (formatted.charAt(i) == '§' && i + 1 < formatted.length()) {
+                char c = Character.toLowerCase(formatted.charAt(i + 1));
+                if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+                    return c == 'f' ? 0 : c;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static char getTeamPrefixColorCode(EntityPlayer entity) {
         net.minecraft.scoreboard.Team team = entity.getTeam();
         if (!(team instanceof ScorePlayerTeam)) {
-            return "";
+            return 0;
         }
         String prefix = ((ScorePlayerTeam) team).getColorPrefix();
         char color = 0;
@@ -127,6 +156,6 @@ public class TargetFilter extends Module {
                 color = c;
             }
         }
-        return color == 0 || color == 'f' ? "" : String.valueOf(color);
+        return color == 'f' ? 0 : color;
     }
 }
