@@ -50,7 +50,7 @@ public class SpotifyMiniPlayer extends Module {
 
     public SpotifyMiniPlayer() {
         super("Spotify Info", category.render);
-        this.registerSetting(widgetStyle = new ButtonSetting("Widget style", false));
+        this.registerSetting(widgetStyle = new ButtonSetting("Widget style", true));
         this.registerSetting(showAlbumArt = new ButtonSetting("Show album art", true));
         this.registerSetting(showProgressBar = new ButtonSetting("Show progress bar", true));
         this.registerSetting(progressBarColorMode = new SliderSetting("Progress bar colors", 0, new String[]{"HUD gradient", "Album accent"}));
