@@ -130,8 +130,9 @@ public class GlowBloomShader {
                 "    gl_FragColor = vec4(tint, glow);\n" +
                 "    return;\n" +
                 "  }\n" +
-                "  glow *= 1.0 - texture2D(original, uv).a;\n" +
-                "  glow = pow(clamp(glow * intensity, 0.0, 1.0), 3.0) * 0.5;\n" +
+                "  float mask = 1.0 - texture2D(original, uv).a;\n" +
+                "  glow *= mask;\n" +
+                "  glow = pow(clamp(glow * intensity, 0.0, 1.0), 1.5) * 0.65;\n" +
                 "  gl_FragColor = vec4(tint, glow);\n" +
                 "}";
 

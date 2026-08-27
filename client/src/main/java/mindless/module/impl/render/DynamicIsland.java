@@ -68,7 +68,7 @@ public class DynamicIsland extends Module {
         }
     }
 
-    private static final float WATERMARK_SCALE = 2.4f;
+    private static final float WATERMARK_SCALE = 4.0f;
 
     private mindless.utility.font.RavenFontRenderer getWatermarkFont() {
         return mindless.utility.font.FontManager.getHudRenderer(

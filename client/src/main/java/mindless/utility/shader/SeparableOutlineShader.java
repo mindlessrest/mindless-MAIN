@@ -52,12 +52,14 @@ public class SeparableOutlineShader {
                 "void main() {\n" +
                 "  vec2 uv = gl_TexCoord[0].xy;\n" +
                 "  if (finalPass == 1 && texture2D(original, uv).a > 0.0) { gl_FragColor = vec4(0.0); return; }\n" +
-                "  vec4 selected = vec4(0.0);\n" +
-                "  for (float offset = -2.0; offset <= 2.0; offset += 1.0) {\n" +
-                "    vec4 sampleColor = texture2D(tex, uv + direction * texelSize * offset);\n" +
-                "    if (sampleColor.a > 0.0) selected = sampleColor;\n" +
+                "  float bestAlpha = 0.0;\n" +
+                "  vec3 bestColor = vec3(0.0);\n" +
+                "  for (float offset = -3.0; offset <= 3.0; offset += 1.0) {\n" +
+                "    vec4 s = texture2D(tex, uv + direction * texelSize * offset);\n" +
+                "    float w = s.a * (1.0 - abs(offset) / 4.0);\n" +
+                "    if (w > bestAlpha) { bestAlpha = w; bestColor = s.rgb; }\n" +
                 "  }\n" +
-                "  gl_FragColor = selected;\n" +
+                "  gl_FragColor = vec4(bestColor, bestAlpha);\n" +
                 "}";
 
         private DirectionalShader() {
