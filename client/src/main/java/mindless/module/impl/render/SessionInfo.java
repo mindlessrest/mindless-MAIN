@@ -323,13 +323,13 @@ public class SessionInfo extends Module {
         float s = (float) scale.getInput();
 
         java.util.List<String> lines = new java.util.ArrayList<>();
-        if (showKills.isToggled()) lines.add("You have gotten " + kills + " kills");
-        if (showDeaths.isToggled()) lines.add("You have died " + deaths + " times");
-        if (showWins.isToggled()) lines.add("You have won " + wins + " games");
-        if (showLosses.isToggled()) lines.add("You have lost " + losses + " games");
+        if (showKills.isToggled()) lines.add(kills + " kills");
+        if (showDeaths.isToggled()) lines.add(deaths + " deaths");
+        if (showWins.isToggled()) lines.add(wins + " wins");
+        if (showLosses.isToggled()) lines.add(losses + " losses");
         if (showKdr.isToggled()) {
             String kdr = deaths == 0 ? String.format("%.1f", (double) kills) : String.format("%.2f", (double) kills / deaths);
-            lines.add("Your KDR is " + kdr);
+            lines.add(kdr + " kdr");
         }
 
         String timeStr = formatTime(System.currentTimeMillis() - sessionStartMs);
