@@ -5,6 +5,7 @@ import mindless.module.impl.player.HideWindow;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
 import mindless.module.impl.render.Radar;
+import mindless.module.impl.render.DynamicIsland;
 import mindless.module.impl.render.StatsHUD;
 import mindless.module.impl.render.TargetHUD;
 import mindless.module.setting.impl.SliderSetting;
@@ -516,6 +517,28 @@ public final class HudEditor {
                     @Override
                     SliderSetting scaleSetting() {
                         return stats.scaleSetting();
+                    }
+                });
+            }
+
+            if (ModuleManager.watermark != null) {
+                final DynamicIsland wm = ModuleManager.watermark;
+                elements.add(new Element("Watermark") {
+                    @Override
+                    void render() {
+                        setBounds(wm.getTextBounds());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        wm.textPosX = left;
+                        wm.textPosY = top;
+                        setBounds(wm.getTextBounds());
+                    }
+
+                    @Override
+                    void reset() {
+                        wm.resetPosition();
                     }
                 });
             }

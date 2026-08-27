@@ -24,7 +24,6 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 
-import java.awt.Color;
 import java.io.InputStream;
 
 public class DynamicIsland extends Module {
@@ -37,14 +36,26 @@ public class DynamicIsland extends Module {
     private static final float LOGO_GAP = 5.0f;
 
     private static final String[] MODES = new String[] { "Island", "Text" };
+    private static final float DEFAULT_TEXT_X = 5.0f;
+    private static final float DEFAULT_TEXT_Y = 5.0f;
 
     private final SliderSetting mode;
     private ResourceLocation logoTexture;
     private boolean textureLoaded;
 
+    public float textPosX = DEFAULT_TEXT_X;
+    public float textPosY = DEFAULT_TEXT_Y;
+
     public DynamicIsland() {
         super("Watermark", category.render);
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
+        this.registerSetting(new mindless.module.setting.impl.ButtonSetting("Edit position",
+                () -> mc.displayGuiScreen(new mindless.module.impl.client.HudEditor.Screen())));
+    }
+
+    public void resetPosition() {
+        textPosX = DEFAULT_TEXT_X;
+        textPosY = DEFAULT_TEXT_Y;
     }
 
     @SubscribeEvent
@@ -64,43 +75,26 @@ public class DynamicIsland extends Module {
         if (font == null) return;
 
         String text = "mindless";
-        float textW = font.getStringWidth(text);
-        float fontH = font.getFontHeight();
-        float padH = 12.0f;
-        float padV = 6.0f;
-        float totalW = textW + padH * 2;
-        float totalH = fontH + padV * 2;
+        float x = textPosX;
+        float y = textPosY;
 
-        ScaledResolution sr = ScaledResolutionCache.get();
-        float x = (sr.getScaledWidth() - totalW) * 0.5f;
-        float y = 4.0f;
+        // Glow behind text in theme color
+        int glowColor = HUD.getHudColor(45.0);
+        mindless.utility.TextGlowUtils.drawGlow(font, text, x, y, glowColor);
 
-        float radius = RADIUS * ThemeManager.roundingScale();
-
-        // Gradient background pill
-        int color1 = HUD.getHudColor(0);
-        int color2 = HUD.getHudColor(90.0);
-        int darkColor1 = darken(color1, 0.35f);
-        int darkColor2 = darken(color2, 0.35f);
-
-        BlurUtils.prepareBlur(x, y, totalW, totalH);
-        RoundedUtils.drawRound(x, y, totalW, totalH, radius, 0xFF000000);
-        BlurUtils.blurEndRegion(2, 2.0f, 0.7f, x - 2.0f, y - 2.0f, totalW + 4.0f, totalH + 4.0f);
-        RoundedUtils.drawGradientHorizontal(x, y, totalW, totalH, radius,
-                new Color(darkColor1, true), new Color(darkColor2, true));
-
-        GL20.glUseProgram(0);
-        GlStateManager.enableTexture2D();
-        GlStateManager.enableBlend();
-        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-
-        float textY = y + padV;
-        float textX = x + padH;
-
-        // Draw text with the moving gradient applied per-glyph
-        font.drawGlyphString(text, textX, textY, (character, xOffset, width, formattingColor) -> {
-            return HUD.getHudColor(HUD.hudWavePhase(0.0, textX + xOffset + width * 0.5f));
+        // Draw text with moving gradient per-glyph
+        font.drawGlyphString(text, x, y, (character, xOffset, width, formattingColor) -> {
+            return HUD.getHudColor(HUD.hudWavePhase(0.0, x + xOffset + width * 0.5f));
         }, false);
+    }
+
+    public float[] getTextBounds() {
+        RavenFontRenderer font = HUD.getHudFontRenderer();
+        if (font == null) return null;
+        String text = "mindless";
+        float w = font.getStringWidth(text);
+        float h = font.getFontHeight();
+        return new float[] { textPosX, textPosY, textPosX + w, textPosY + h };
     }
 
     private void renderIsland() {
@@ -199,10 +193,4 @@ public class DynamicIsland extends Module {
         } catch (Exception ignored) {}
     }
 
-    private static int darken(int rgb, float factor) {
-        int r = Math.max(0, (int) (((rgb >> 16) & 0xFF) * factor));
-        int g = Math.max(0, (int) (((rgb >> 8) & 0xFF) * factor));
-        int b = Math.max(0, (int) ((rgb & 0xFF) * factor));
-        return 0xFF000000 | (r << 16) | (g << 8) | b;
-    }
 }
