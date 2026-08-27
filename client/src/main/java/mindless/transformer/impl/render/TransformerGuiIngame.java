@@ -61,6 +61,9 @@ public abstract class TransformerGuiIngame {
     @CInject(method = "renderScoreboard", target = @CTarget("HEAD"), cancellable = true)
     private void raven$renderUnifiedScoreboard(ScoreObjective objective, ScaledResolution resolution,
                                                InjectionCallback callbackInfo) {
+        if (!mindless.module.impl.render.ScoreboardModule.isCustomScoreboardEnabled()) {
+            return;
+        }
         Scoreboard scoreboard = objective.getScoreboard();
         Collection<Score> sortedScores = scoreboard.getSortedScores(objective);
         GuiIngameState.visibleScores.clear();
@@ -82,10 +85,12 @@ public abstract class TransformerGuiIngame {
         }
 
         FontRenderer font = getFontRenderer();
-        int contentWidth = font.getStringWidth(objective.getDisplayName());
+        String displayTitle = mindless.module.impl.render.ScoreboardModule.applyTextSwaps(objective.getDisplayName());
+        int contentWidth = font.getStringWidth(displayTitle);
         for (Score score : GuiIngameState.visibleScores) {
             ScorePlayerTeam team = scoreboard.getPlayersTeam(score.getPlayerName());
             String line = ScorePlayerTeam.formatPlayerName(team, score.getPlayerName());
+            line = mindless.module.impl.render.ScoreboardModule.applyTextSwaps(line);
             GuiIngameState.visibleLines.add(line);
             contentWidth = Math.max(contentWidth, font.getStringWidth(line));
         }
@@ -131,13 +136,13 @@ public abstract class TransformerGuiIngame {
         GlStateManager.pushMatrix();
         GlStateManager.scale(GuiIngameState.SCOREBOARD_SCALE, GuiIngameState.SCOREBOARD_SCALE, 1.0f);
 
-        float titleVisualWidth = font.getStringWidth(objective.getDisplayName()) * GuiIngameState.SCOREBOARD_SCALE;
+        float titleVisualWidth = font.getStringWidth(displayTitle) * GuiIngameState.SCOREBOARD_SCALE;
         int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / GuiIngameState.SCOREBOARD_SCALE);
         int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / GuiIngameState.SCOREBOARD_SCALE);
         if (Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled()) {
-            TextGlowUtils.drawGlow(font, objective.getDisplayName(), titleX, titleY, 0xFFFFFFFF);
+            TextGlowUtils.drawGlow(font, displayTitle, titleX, titleY, 0xFFFFFFFF);
         }
-        font.drawString(objective.getDisplayName(), titleX, titleY, 0xFFFFFFFF);
+        font.drawString(displayTitle, titleX, titleY, 0xFFFFFFFF);
 
         for (int i = 0; i < GuiIngameState.visibleScores.size(); i++) {
             String playerText = GuiIngameState.visibleLines.get(i);

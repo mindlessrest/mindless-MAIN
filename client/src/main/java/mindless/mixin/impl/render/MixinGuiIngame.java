@@ -53,10 +53,15 @@ public abstract class MixinGuiIngame {
     @Inject(method = "renderScoreboard", at = @At("HEAD"), cancellable = true)
     private void raven$renderUnifiedScoreboard(ScoreObjective objective, ScaledResolution resolution,
                                                CallbackInfo callbackInfo) {
+        if (!mindless.module.impl.render.ScoreboardModule.isCustomScoreboardEnabled()) {
+            return;
+        }
         Scoreboard scoreboard = objective.getScoreboard();
         Collection<Score> sortedScores = scoreboard.getSortedScores(objective);
         raven$visibleScores.clear();
         raven$visibleLines.clear();
+        GuiIngameState.visibleScores.clear();
+        GuiIngameState.visibleLines.clear();
 
         for (Score score : sortedScores) {
             String playerName = score.getPlayerName();
@@ -74,11 +79,15 @@ public abstract class MixinGuiIngame {
         }
 
         FontRenderer font = getFontRenderer();
-        int contentWidth = font.getStringWidth(objective.getDisplayName());
+        String displayTitle = mindless.module.impl.render.ScoreboardModule.applyTextSwaps(objective.getDisplayName());
+        int contentWidth = font.getStringWidth(displayTitle);
         for (Score score : raven$visibleScores) {
             ScorePlayerTeam team = scoreboard.getPlayersTeam(score.getPlayerName());
-            String line = ScorePlayerTeam.formatPlayerName(team, score.getPlayerName());
+            String line = mindless.module.impl.render.ScoreboardModule.applyTextSwaps(
+                    ScorePlayerTeam.formatPlayerName(team, score.getPlayerName()));
             raven$visibleLines.add(line);
+            GuiIngameState.visibleScores.add(score);
+            GuiIngameState.visibleLines.add(line);
             contentWidth = Math.max(contentWidth, font.getStringWidth(line));
         }
 
@@ -125,13 +134,13 @@ public abstract class MixinGuiIngame {
         GlStateManager.pushMatrix();
         GlStateManager.scale(SCOREBOARD_SCALE, SCOREBOARD_SCALE, 1.0f);
 
-        float titleVisualWidth = font.getStringWidth(objective.getDisplayName()) * SCOREBOARD_SCALE;
+        float titleVisualWidth = font.getStringWidth(displayTitle) * SCOREBOARD_SCALE;
         int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / SCOREBOARD_SCALE);
         int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / SCOREBOARD_SCALE);
         if (Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled()) {
-            TextGlowUtils.drawGlow(font, objective.getDisplayName(), titleX, titleY, 0xFFFFFFFF);
+            TextGlowUtils.drawGlow(font, displayTitle, titleX, titleY, 0xFFFFFFFF);
         }
-        font.drawString(objective.getDisplayName(), titleX, titleY, 0xFFFFFFFF);
+        font.drawString(displayTitle, titleX, titleY, 0xFFFFFFFF);
 
         for (int i = 0; i < raven$visibleScores.size(); i++) {
             String playerText = raven$visibleLines.get(i);
