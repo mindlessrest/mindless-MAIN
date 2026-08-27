@@ -92,6 +92,7 @@ public class ModuleManager {
     public static AutoTool autoTool;
     public static AutoSwap autoSwap;
     public static Scaffold scaffold;
+    public static Stasis stasis;
     public static Clutch clutch;
     public static Sprint sprint;
     public static Weather weather;
@@ -175,7 +176,7 @@ public class ModuleManager {
         this.addModule(new NullMove());
         this.addModule(new Speed());
         this.addModule(sprint = new Sprint());
-        this.addModule(new Stasis());
+        this.addModule(stasis = new Stasis());
         this.addModule(new StopMotion());
         this.addModule(new InstantStop());
         this.addModule(new Jump45());
@@ -270,6 +271,7 @@ public class ModuleManager {
         this.addModule(new Slow());
 
         this.addModule(targetFilter = new mindless.module.impl.world.TargetFilter());
+        this.addModule(new mindless.module.impl.world.AntiVoid());
         this.addModule(weather = new Weather());
         this.addModule(ambience = new Ambience());
         this.addModule(new Particles());
