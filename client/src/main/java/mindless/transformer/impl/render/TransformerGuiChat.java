@@ -39,11 +39,11 @@ public abstract class TransformerGuiChat {
         GuiNewChatState.drawSurface(3, height - 15, width - 6, 13);
     }
 
-    @CRedirect(method = "drawScreen", target = @CTarget(
+/*    @CRedirect(method = "drawScreen", target = @CTarget(
             value = "INVOKE",
             target = "Lnet/minecraft/client/gui/Gui;drawRect(IIIII)V"))
     private void raven$removeVanillaBar(int left, int top, int right, int bottom, int color) {
-    }
+    }*/
 
     @CInline
     @CInject(method = "keyTyped(CI)V", target = @CTarget("RETURN"))
