@@ -27,8 +27,6 @@ public class SessionInfo extends Module {
 
     private static final float PAD_X = 12.0f;
     private static final float PAD_Y = 8.0f;
-    // The labels are all caps, so the descender space at the bottom of the last line is empty
-    // and an equal bottom padding measures larger than it looks.
     private static final float PAD_BOTTOM = 6.0f;
     private static final float HEADER_GAP = 9.0f;
     private static final float VALUE_GAP = 2.0f;
@@ -71,11 +69,15 @@ public class SessionInfo extends Module {
      */
     private static final long RESULT_COOLDOWN_MS = 20_000L;
 
+    private static final String[] MODES = { "Modern", "Classic" };
+
+    private final SliderSetting mode;
     private final SliderSetting scale;
     private final ButtonSetting showKills;
     private final ButtonSetting showDeaths;
     private final ButtonSetting showWins;
     private final ButtonSetting showLosses;
+    private final ButtonSetting showKdr;
 
     private float posX = Float.NaN;
     private float posY = Float.NaN;
@@ -96,11 +98,13 @@ public class SessionInfo extends Module {
 
     public SessionInfo() {
         super("Session Info", category.render);
+        this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.6, 1.6, 0.05));
         this.registerSetting(showKills = new ButtonSetting("Show kills", true));
         this.registerSetting(showDeaths = new ButtonSetting("Show deaths", true));
         this.registerSetting(showWins = new ButtonSetting("Show wins", true));
         this.registerSetting(showLosses = new ButtonSetting("Show losses", true));
+        this.registerSetting(showKdr = new ButtonSetting("Show KDR", true));
         this.registerSetting(new ButtonSetting("Reset", this::resetSession));
     }
 
@@ -187,7 +191,7 @@ public class SessionInfo extends Module {
 
     /** Draws the panel where it already sits and reports its bounds, for the HUD editor. */
     public float[] renderPreview() {
-        return draw();
+        return (int) mode.getInput() == 0 ? drawModern() : draw();
     }
 
     /** Draws the panel at a requested top-left and reports its bounds, for the HUD editor. */
@@ -306,7 +310,84 @@ public class SessionInfo extends Module {
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !Utils.nullCheck()) return;
         if (mc.currentScreen != null || mc.gameSettings.showDebugInfo) return;
-        draw();
+        if ((int) mode.getInput() == 0) drawModern();
+        else draw();
+    }
+
+    private float[] drawModern() {
+        RavenFontRenderer font = HUD.getHudFontRenderer();
+        RavenFontRenderer bigFont = valueFont();
+        if (font == null || bigFont == null) return null;
+
+        syncPositionToResolution();
+        float s = (float) scale.getInput();
+
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        if (showKills.isToggled()) lines.add("You have gotten " + kills + " kills");
+        if (showDeaths.isToggled()) lines.add("You have died " + deaths + " times");
+        if (showWins.isToggled()) lines.add("You have won " + wins + " games");
+        if (showLosses.isToggled()) lines.add("You have lost " + losses + " games");
+        if (showKdr.isToggled()) {
+            String kdr = deaths == 0 ? String.format("%.1f", (double) kills) : String.format("%.2f", (double) kills / deaths);
+            lines.add("Your KDR is " + kdr);
+        }
+
+        String timeStr = formatTime(System.currentTimeMillis() - sessionStartMs);
+        String headerLeft = "session";
+        String headerRight = " Information";
+
+        float lineH = font.getFontHeight() + 3.0f;
+        float bigH = bigFont.getFontHeight();
+        float contentW = 0;
+        contentW = Math.max(contentW, font.getStringWidth(headerLeft + headerRight));
+        contentW = Math.max(contentW, bigFont.getStringWidth(timeStr));
+        for (String line : lines) contentW = Math.max(contentW, font.getStringWidth(line));
+
+        float padX = 10.0f;
+        float padY = 8.0f;
+        float headerGap = 6.0f;
+        float timeGap = 6.0f;
+        float totalW = (contentW + padX * 2) * s;
+        float totalH = (padY + font.getFontHeight() + headerGap + bigH + timeGap + lineH * lines.size() + padY) * s;
+
+        float left = posX - totalW;
+        float top = posY;
+        float radius = 9.0f * mindless.module.impl.theme.ThemeManager.roundingScale();
+
+        BlurUtils.prepareBlur(left, top, totalW, totalH);
+        RoundedUtils.drawRound(left, top, totalW, totalH, radius, 0xFF000000);
+        BlurUtils.blurEndRegion(2, 2.4f, 0.85f, left - 2, top - 2, totalW + 4, totalH + 4);
+        RoundedUtils.drawRound(left, top, totalW, totalH, radius, new Color(0, 0, 0, 140));
+
+        GL20.glUseProgram(0);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+
+        GlStateManager.pushMatrix();
+        GlStateManager.scale(s, s, 1.0f);
+        float inv = 1.0f / s;
+
+        float tx = left * inv + padX;
+        float ty = top * inv + padY;
+
+        int themeColor = HUD.getHudColor(0);
+        font.drawString(headerLeft, tx, ty, themeColor, false);
+        font.drawString(headerRight, tx + font.getStringWidth(headerLeft), ty, 0xFFFFFFFF, false);
+        ty += font.getFontHeight() + headerGap;
+
+        bigFont.drawString(timeStr, tx, ty, 0xFFFFFFFF, false);
+        ty += bigH + timeGap;
+
+        int lineColor = new Color(190, 190, 190).getRGB();
+        for (String line : lines) {
+            font.drawString(line, tx, ty, lineColor, false);
+            ty += lineH;
+        }
+
+        GlStateManager.popMatrix();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        return new float[] { left, top, left + totalW, top + totalH };
     }
 
     /** A real larger face for the numbers, rather than scaling the small one up and blurring it. */
@@ -321,7 +402,7 @@ public class SessionInfo extends Module {
         if (showDeaths.isToggled()) vals.add(Integer.toString(deaths));
         if (showWins.isToggled()) vals.add(Integer.toString(wins));
         if (showLosses.isToggled()) vals.add(Integer.toString(losses));
-        if (showKills.isToggled() && showDeaths.isToggled()) {
+        if (showKdr.isToggled()) {
             vals.add(deaths == 0 ? String.format("%.1f", (double) kills) : String.format("%.2f", (double) kills / deaths));
         }
         return vals;
@@ -333,7 +414,7 @@ public class SessionInfo extends Module {
         if (showDeaths.isToggled()) labels.add("DEATHS");
         if (showWins.isToggled()) labels.add("WINS");
         if (showLosses.isToggled()) labels.add("LOSSES");
-        if (showKills.isToggled() && showDeaths.isToggled()) labels.add("KDR");
+        if (showKdr.isToggled()) labels.add("KDR");
         return labels;
     }
 
@@ -343,7 +424,7 @@ public class SessionInfo extends Module {
         if (showDeaths.isToggled()) colors.add(COL_DOWN);
         if (showWins.isToggled()) colors.add(COL_UP);
         if (showLosses.isToggled()) colors.add(COL_DOWN);
-        if (showKills.isToggled() && showDeaths.isToggled()) colors.add(COL_UP);
+        if (showKdr.isToggled()) colors.add(COL_UP);
         return colors;
     }
 
@@ -353,7 +434,7 @@ public class SessionInfo extends Module {
         if (showDeaths.isToggled()) counts.add(deaths);
         if (showWins.isToggled()) counts.add(wins);
         if (showLosses.isToggled()) counts.add(losses);
-        if (showKills.isToggled() && showDeaths.isToggled()) counts.add(kills > 0 || deaths > 0 ? 1 : 0);
+        if (showKdr.isToggled()) counts.add(kills > 0 || deaths > 0 ? 1 : 0);
         return counts;
     }
 
