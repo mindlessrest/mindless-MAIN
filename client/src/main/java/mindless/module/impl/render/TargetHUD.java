@@ -2,6 +2,7 @@ package mindless.module.impl.render;
 
 import mindless.module.Module;
 import mindless.module.ModuleManager;
+import mindless.module.impl.client.HudEditor;
 import mindless.module.impl.combat.KillAura;
 import mindless.module.impl.network.Backtrack;
 import mindless.module.impl.theme.ThemeManager;
@@ -15,8 +16,6 @@ import mindless.utility.Utils;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.entity.AbstractClientPlayer;
-import net.minecraft.client.gui.GuiButton;
-import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.client.renderer.GlStateManager;
@@ -24,14 +23,12 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
-import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.*;
-import java.io.IOException;
 
 public class TargetHUD extends Module {
     private SliderSetting mode;
@@ -71,9 +68,7 @@ public class TargetHUD extends Module {
         this.registerSetting(theme = new SliderSetting("Theme", 0, Theme.THEMES_SETTING));
         this.registerSetting(glowSize = new SliderSetting("Glow size", 9.0, 2.0, 20.0, 0.5));
         this.registerSetting(positionMode = new SliderSetting("Position", 0, POSITION_MODES));
-        this.registerSetting(new ButtonSetting("Edit position", () -> {
-            mc.displayGuiScreen(new EditScreen());
-        }));
+        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new HudEditor.Screen())));
         this.registerSetting(renderEsp = new ButtonSetting("Render ESP", true));
         this.registerSetting(showDifference = new ButtonSetting("Show difference", true));
         this.registerSetting(showStatus = new ButtonSetting("Show win or loss", true));
@@ -100,8 +95,8 @@ public class TargetHUD extends Module {
                 reset();
                 return;
             }
-            if (KillAura.attackingEntity != null) {
-                target = KillAura.attackingEntity;
+            if (KillAura.target != null) {
+                target = KillAura.target;
                 lastAliveMS = System.currentTimeMillis();
                 fadeTimer = null;
                 if (popInStart < 0) popInStart = System.currentTimeMillis();
@@ -467,105 +462,34 @@ public class TargetHUD extends Module {
         return new Color(color >> 16 & 255, color >> 8 & 255, color & 255, safeAlpha);
     }
 
-    class EditScreen extends GuiScreen {
-        MindlessButton resetPosition;
-        boolean d = false;
-        int miX = 0;
-        int miY = 0;
-        int maX = 0;
-        int maY = 0;
-        int aX = 70;
-        int aY = 30;
-        int laX = 0;
-        int laY = 0;
-        int lmX = 0;
-        int lmY = 0;
-        int clickMinX = 0;
+    public void resetPosition() {
+        posX = 70;
+        posY = 30;
+    }
 
-        public void initGui() {
-            super.initGui();
-            this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
-            this.aX = posX;
-            this.aY = posY;
+    public float[] renderPreview() {
+        return renderDesignerPreview(posX, posY);
+    }
+
+    public float[] renderDesignerPreview(float left, float top) {
+        posX = (int) left;
+        posY = (int) top;
+        String playerInfo = mc.thePlayer.getDisplayName().getFormattedText();
+        double health = mc.thePlayer.getHealth() / mc.thePlayer.getMaxHealth();
+        if (mc.thePlayer.isDead) {
+            health = 0;
         }
-
-        public void drawScreen(int mX, int mY, float pt) {
-            ScaledResolution res = new ScaledResolution(this.mc);
-            drawRect(0, 0, this.width, this.height, -1308622848);
-            int miX = this.aX;
-            int miY = this.aY;
-            String playerInfo = mc.thePlayer.getDisplayName().getFormattedText();
-            double health = mc.thePlayer.getHealth() / mc.thePlayer.getMaxHealth();
-            if (mc.thePlayer.isDead) {
-                health = 0;
-            }
-            lastHealth = health;
-            playerInfo += " " + Utils.getHealthStr(mc.thePlayer, true);
-            drawTargetHUD(null, playerInfo, health);
-            if (showStatus.isToggled()) {
-                playerInfo = playerInfo + " " + ((health <= Utils.getTotalHealth(mc.thePlayer) / mc.thePlayer.getMaxHealth()) ? "§aW" : "§cL");
-            }
-            int editHeadSize = mc.fontRendererObj.FONT_HEIGHT + 18;
-            int totalContentWidth = mc.fontRendererObj.getStringWidth(playerInfo) + 8 + editHeadSize + 10;
-            int maX = res.getScaledWidth() / 2 + miX + totalContentWidth / 2;
-            int maY = (res.getScaledHeight() / 2 + 15) +  miY + (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + 8;
-            this.miX = miX;
-            this.miY = miY;
-            this.maX = maX;
-            this.maY = maY;
-            this.clickMinX = miX;
-            posX = miX;
-            posY = miY;
-            String edit = "Edit the HUD position by dragging.";
-            int x = res.getScaledWidth() / 2 - fontRendererObj.getStringWidth(edit) / 2;
-            int y = res.getScaledHeight() / 2 - 20;
-            RenderUtils.drawColoredString(edit, '-', x, y, 2L, 0L, true, this.mc.fontRendererObj);
-
-            try {
-                this.handleInput();
-            }
-            catch (IOException var12) {
-            }
-
-            super.drawScreen(mX, mY, pt);
-        }
-
-        protected void mouseClickMove(int mX, int mY, int b, long t) {
-            super.mouseClickMove(mX, mY, b, t);
-            if (b == 0) {
-                if (this.d) {
-                    this.aX = this.laX + (mX - this.lmX);
-                    this.aY = this.laY + (mY - this.lmY);
-                }
-                else if (mX > this.clickMinX && mX < this.maX && mY > this.miY && mY < this.maY) {
-                    this.d = true;
-                    this.lmX = mX;
-                    this.lmY = mY;
-                    this.laX = this.aX;
-                    this.laY = this.aY;
-                }
-
-            }
-        }
-
-        protected void mouseReleased(int mX, int mY, int s) {
-            super.mouseReleased(mX, mY, s);
-            if (s == 0) {
-                this.d = false;
-            }
-
-        }
-
-        public void actionPerformed(GuiButton b) {
-            if (b == this.resetPosition) {
-                this.aX = posX = 70;
-                this.aY = posY = 30;
-            }
-
-        }
-
-        public boolean doesGuiPauseGame() {
-            return false;
-        }
+        lastHealth = health;
+        playerInfo += " " + Utils.getHealthStr(mc.thePlayer, true);
+        drawTargetHUD(null, playerInfo, health);
+        ScaledResolution res = new ScaledResolution(mc);
+        int headSize = mc.fontRendererObj.FONT_HEIGHT + 18;
+        int totalContentWidth = mc.fontRendererObj.getStringWidth(playerInfo) + 8 + headSize + 10;
+        int padding = 8;
+        float desiredX = (res.getScaledWidth() / 2 - totalContentWidth / 2) + posX;
+        float desiredY = (res.getScaledHeight() / 2 + 15) + posY;
+        float w = totalContentWidth + padding * 2;
+        float h = (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding * 2 + 13;
+        return new float[] { desiredX - padding, desiredY - padding, desiredX - padding + w, desiredY - padding + h };
     }
 }
