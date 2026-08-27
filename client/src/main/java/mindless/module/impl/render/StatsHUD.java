@@ -111,7 +111,8 @@ public class StatsHUD extends Module {
         float maxWidth = 0;
         int lineIndex = 0;
 
-        int themeColor = HUD.getHudColor(0);
+        int themeColor = mindless.module.impl.theme.ThemeManager.getStatsLabelColor();
+        int valueColor = mindless.module.impl.theme.ThemeManager.getStatsValueColor();
 
         if (showFps.isToggled()) {
             String label = "FPS ";
@@ -120,7 +121,7 @@ public class StatsHUD extends Module {
             float lw = font.getStringWidth(label + value);
             RenderUtils.drawRect(x - BG_PAD_H, ly - BG_PAD_V, x + lw + BG_PAD_H, ly + font.getFontHeight() + BG_PAD_V, BG_COLOR);
             font.drawString(label, x, ly, themeColor, false);
-            font.drawString(value, x + font.getStringWidth(label), ly, 0xFFFFFFFF, false);
+            font.drawString(value, x + font.getStringWidth(label), ly, valueColor, false);
             maxWidth = Math.max(maxWidth, lw);
             lineIndex++;
         }
@@ -133,7 +134,7 @@ public class StatsHUD extends Module {
             float lw = font.getStringWidth(label + value);
             RenderUtils.drawRect(x - BG_PAD_H, ly - BG_PAD_V, x + lw + BG_PAD_H, ly + font.getFontHeight() + BG_PAD_V, BG_COLOR);
             font.drawString(label, x, ly, themeColor, false);
-            font.drawString(value, x + font.getStringWidth(label), ly, 0xFFFFFFFF, false);
+            font.drawString(value, x + font.getStringWidth(label), ly, valueColor, false);
             maxWidth = Math.max(maxWidth, lw);
             lineIndex++;
         }
@@ -145,7 +146,7 @@ public class StatsHUD extends Module {
             float lw = font.getStringWidth(label + value);
             RenderUtils.drawRect(x - BG_PAD_H, ly - BG_PAD_V, x + lw + BG_PAD_H, ly + font.getFontHeight() + BG_PAD_V, BG_COLOR);
             font.drawString(label, x, ly, themeColor, false);
-            font.drawString(value, x + font.getStringWidth(label), ly, 0xFFFFFFFF, false);
+            font.drawString(value, x + font.getStringWidth(label), ly, valueColor, false);
             maxWidth = Math.max(maxWidth, lw);
             lineIndex++;
         }

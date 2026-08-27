@@ -948,7 +948,7 @@ public class HUD extends Module {
      * Accent color for HUD rows/outlines. Other modules can match HUD when enabled.
      */
     public static int getHudColor(double gradientOffset) {
-        return mindless.utility.Theme.getGradient(10, gradientOffset) | 0xFF000000;
+        return mindless.module.impl.theme.ThemeManager.getArrayListColor(gradientOffset);
     }
 
     private static int getGradientWaveColor(java.awt.Color c1, java.awt.Color c2, double gradientOffset) {

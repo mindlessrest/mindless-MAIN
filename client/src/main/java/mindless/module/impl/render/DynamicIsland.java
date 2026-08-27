@@ -89,7 +89,7 @@ public class DynamicIsland extends Module {
         float pad = 8.0f;
         BlurUtils.prepareBlur(x - pad, y - pad, w + pad * 2, h + pad * 2);
         font.drawGlyphString(text, x, y, (character, xOffset, width, formattingColor) -> {
-            return HUD.getHudColor(HUD.hudWavePhase(0.0, x + xOffset + width * 0.5f));
+            return mindless.module.impl.theme.ThemeManager.getWatermarkColor(xOffset * 0.1);
         }, false);
         BlurUtils.blurEndRegion(3, 4.0f, 0.6f, x - pad - 2, y - pad - 2, w + pad * 2 + 4, h + pad * 2 + 4);
 
@@ -98,9 +98,9 @@ public class DynamicIsland extends Module {
         GlStateManager.enableBlend();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
 
-        // Draw text with moving gradient per-glyph on top
+        // Draw text with gradient per-glyph on top
         font.drawGlyphString(text, x, y, (character, xOffset, width, formattingColor) -> {
-            return HUD.getHudColor(HUD.hudWavePhase(0.0, x + xOffset + width * 0.5f));
+            return mindless.module.impl.theme.ThemeManager.getWatermarkColor(xOffset * 0.1);
         }, false);
     }
 

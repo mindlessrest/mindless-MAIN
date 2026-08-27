@@ -91,6 +91,14 @@ public class ThemeManager extends Module {
     public static SliderSetting blurSize;
     public static SliderSetting rounding;
 
+    // Per-element HUD colour overrides
+    public static ButtonSetting customizeHud;
+    public static ColorSetting hudArrayListColor1, hudArrayListColor2;
+    public static ButtonSetting hudArrayListGradient;
+    public static ColorSetting hudWatermarkColor1, hudWatermarkColor2;
+    public static ButtonSetting hudWatermarkGradient;
+    public static ColorSetting hudStatsLabel, hudStatsValue;
+
     // Per-element colour overrides. When "Customize colors" is on these are used verbatim
     // instead of anything derived from the theme, so nothing is locked to the accent.
     public static ButtonSetting customizeColors;
@@ -137,6 +145,19 @@ public class ThemeManager extends Module {
         Collections.addAll(EDITOR, maker, customAccent, customText, customEnabled, customDisabled,
                 customGradFrom, customGradTo, customSurface, customHudGradient, copyPreset, saveApply);
         for (Setting setting : EDITOR) setting.visible = false;
+
+        // ---- per-element HUD colour overrides
+        this.registerSetting(customizeHud = new ButtonSetting("Customize HUD colors", false));
+        GroupSetting hudColors = new GroupSetting("HUD Colors");
+        this.registerSetting(hudColors);
+        this.registerSetting(hudArrayListColor1 = new ColorSetting(hudColors, "Array List color 1", 201, 184, 255));
+        this.registerSetting(hudArrayListColor2 = new ColorSetting(hudColors, "Array List color 2", 106, 90, 168));
+        this.registerSetting(hudArrayListGradient = new ButtonSetting(hudColors, "Array List gradient", true));
+        this.registerSetting(hudWatermarkColor1 = new ColorSetting(hudColors, "Watermark color 1", 201, 184, 255));
+        this.registerSetting(hudWatermarkColor2 = new ColorSetting(hudColors, "Watermark color 2", 106, 90, 168));
+        this.registerSetting(hudWatermarkGradient = new ButtonSetting(hudColors, "Watermark gradient", true));
+        this.registerSetting(hudStatsLabel = new ColorSetting(hudColors, "HUD label color", 201, 184, 255));
+        this.registerSetting(hudStatsValue = new ColorSetting(hudColors, "HUD value color", 255, 255, 255));
 
         // ---- per-element colour overrides, behind their own toggle
         this.registerSetting(customizeColors = new ButtonSetting("Customize colors", false));
@@ -267,6 +288,17 @@ public class ThemeManager extends Module {
             boolean open = create.isToggled();
             for (Setting setting : EDITOR) setting.setVisible(open, module);
         }
+        if (customizeHud != null) {
+            boolean open = customizeHud.isToggled();
+            if (hudArrayListColor1 != null) hudArrayListColor1.setVisible(open, module);
+            if (hudArrayListColor2 != null) hudArrayListColor2.setVisible(open, module);
+            if (hudArrayListGradient != null) hudArrayListGradient.setVisible(open, module);
+            if (hudWatermarkColor1 != null) hudWatermarkColor1.setVisible(open, module);
+            if (hudWatermarkColor2 != null) hudWatermarkColor2.setVisible(open, module);
+            if (hudWatermarkGradient != null) hudWatermarkGradient.setVisible(open, module);
+            if (hudStatsLabel != null) hudStatsLabel.setVisible(open, module);
+            if (hudStatsValue != null) hudStatsValue.setVisible(open, module);
+        }
         if (customizeColors != null) {
             boolean open = customizeColors.isToggled();
             for (Setting setting : COLOURS) setting.setVisible(open, module);
@@ -318,6 +350,42 @@ public class ThemeManager extends Module {
     }
 
     // ------------------------------------------------------------------ read by the ClickGUI
+
+    public static boolean isHudCustomized() {
+        return customizeHud != null && customizeHud.isToggled();
+    }
+
+    public static int getArrayListColor(double offset) {
+        if (!isHudCustomized()) return Theme.getGradient(10, offset) | 0xFF000000;
+        if (hudArrayListGradient != null && hudArrayListGradient.isToggled() && hudArrayListColor1 != null && hudArrayListColor2 != null) {
+            Color c1 = new Color(hudArrayListColor1.getRed(), hudArrayListColor1.getGreen(), hudArrayListColor1.getBlue());
+            Color c2 = new Color(hudArrayListColor2.getRed(), hudArrayListColor2.getGreen(), hudArrayListColor2.getBlue());
+            double phase = (Math.sin(System.currentTimeMillis() / 2000.0 + offset * 0.1) + 1.0) * 0.5;
+            return Theme.convert(c1, c2, phase).getRGB() | 0xFF000000;
+        }
+        return hudArrayListColor1 != null ? (hudArrayListColor1.getRGB() | 0xFF000000) : 0xFFFFFFFF;
+    }
+
+    public static int getWatermarkColor(double offset) {
+        if (!isHudCustomized()) return Theme.getGradient(10, offset) | 0xFF000000;
+        if (hudWatermarkGradient != null && hudWatermarkGradient.isToggled() && hudWatermarkColor1 != null && hudWatermarkColor2 != null) {
+            Color c1 = new Color(hudWatermarkColor1.getRed(), hudWatermarkColor1.getGreen(), hudWatermarkColor1.getBlue());
+            Color c2 = new Color(hudWatermarkColor2.getRed(), hudWatermarkColor2.getGreen(), hudWatermarkColor2.getBlue());
+            double phase = (Math.sin(System.currentTimeMillis() / 2000.0 + offset * 0.1) + 1.0) * 0.5;
+            return Theme.convert(c1, c2, phase).getRGB() | 0xFF000000;
+        }
+        return hudWatermarkColor1 != null ? (hudWatermarkColor1.getRGB() | 0xFF000000) : 0xFFFFFFFF;
+    }
+
+    public static int getStatsLabelColor() {
+        if (!isHudCustomized() || hudStatsLabel == null) return Theme.getGradient(10, 0) | 0xFF000000;
+        return hudStatsLabel.getRGB() | 0xFF000000;
+    }
+
+    public static int getStatsValueColor() {
+        if (!isHudCustomized() || hudStatsValue == null) return 0xFFFFFFFF;
+        return hudStatsValue.getRGB() | 0xFF000000;
+    }
 
     /** Corner-radius multiplier; 1.0 is the stock look. */
     public static float roundingScale() {
