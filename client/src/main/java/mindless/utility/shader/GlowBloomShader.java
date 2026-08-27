@@ -116,12 +116,12 @@ public class GlowBloomShader {
                 "uniform int finalPass;\n" +
                 "void main() {\n" +
                 "  vec2 uv = gl_TexCoord[0].xy;\n" +
-                "  vec2 sampleStep = direction * texelSize * (radius / 12.0);\n" +
+                "  vec2 sampleStep = direction * texelSize * (radius / 16.0);\n" +
                 "  float acc = 0.0;\n" +
                 "  float weightSum = 0.0;\n" +
-                "  for (int i = -12; i <= 12; i++) {\n" +
+                "  for (int i = -16; i <= 16; i++) {\n" +
                 "    float fi = float(i);\n" +
-                "    float w = exp(-fi * fi / 50.0);\n" +
+                "    float w = exp(-fi * fi / 72.0);\n" +
                 "    acc += texture2D(tex, uv + sampleStep * fi).a * w;\n" +
                 "    weightSum += w;\n" +
                 "  }\n" +
@@ -131,7 +131,7 @@ public class GlowBloomShader {
                 "    return;\n" +
                 "  }\n" +
                 "  glow *= 1.0 - texture2D(original, uv).a;\n" +
-                "  glow = pow(clamp(glow * intensity, 0.0, 1.0), 2.0) * 0.7;\n" +
+                "  glow = pow(clamp(glow * intensity, 0.0, 1.0), 3.0) * 0.5;\n" +
                 "  gl_FragColor = vec4(tint, glow);\n" +
                 "}";
 

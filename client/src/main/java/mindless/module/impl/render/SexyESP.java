@@ -128,8 +128,8 @@ public class SexyESP extends Module {
         GroupSetting outlineGroup = new GroupSetting("Outline");
         registerSetting(outlineGroup);
         registerSetting(outlineEnabled = new ButtonSetting(outlineGroup, "Enabled", false));
-        registerSetting(outlineGlowSize = new SliderSetting(outlineGroup, "Glow size", 4.0, 0.0, 10.0, 0.5));
-        registerSetting(outlineGlowStrength = new SliderSetting(outlineGroup, "Glow strength", 1.0, 0.1, 3.0, 0.1));
+        registerSetting(outlineGlowSize = new SliderSetting(outlineGroup, "Glow size", 3.0, 0.0, 10.0, 0.5));
+        registerSetting(outlineGlowStrength = new SliderSetting(outlineGroup, "Glow strength", 0.7, 0.1, 3.0, 0.1));
         registerSetting(outlineEdge = new ButtonSetting(outlineGroup, "Edge", false));
         registerSetting(outlineTeamColor = new ButtonSetting(outlineGroup, "Team color", false));
         registerSetting(outlineColor = new ColorSetting(outlineGroup, "Color", 180, 0, 255));

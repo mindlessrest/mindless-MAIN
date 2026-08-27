@@ -55,7 +55,7 @@ public class KawaseBloom implements IMinecraftInstance {
 
         RenderUtils.setAlphaLimit(0);
         GlStateManager.enableBlend();
-        GlStateManager.blendFunc(GL_ONE, GL_ONE);
+        GlStateManager.blendFunc(GL_SRC_ALPHA, GL_ONE);
 
         GL11.glClearColor(0, 0, 0, 0);
 
