@@ -70,6 +70,8 @@ public class ModuleManager {
     public static Velocity velocity;
     public static AntiDebuff antiDebuff;
     public static TargetHUD targetHUD;
+    public static StatsHUD statsHUD;
+    public static Radar radar;
     public static NoFall noFall;
     public static SexyESP sexyESP;
     public static MobESP mobESP;
@@ -247,7 +249,9 @@ public class ModuleManager {
         this.addModule(noHurtCam = new NoHurtCam());
         this.addModule(audioVisualizer = new AudioVisualizer());
         this.addModule(potionHUD = new PotionHUD());
-        this.addModule(new Radar());
+        this.addModule(radar = new Radar());
+        this.addModule(statsHUD = new StatsHUD());
+        this.addModule(new ScoreboardModule());
         this.addModule(new Saturation());
         this.addModule(targetHUD = new TargetHUD());
         this.addModule(new Trajectories());
