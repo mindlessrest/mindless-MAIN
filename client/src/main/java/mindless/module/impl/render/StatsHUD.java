@@ -5,6 +5,7 @@ import mindless.module.impl.client.HudEditor;
 import mindless.module.impl.player.Freecam;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.RavenFontRenderer;
@@ -17,7 +18,10 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 public class StatsHUD extends Module {
     private static final float DEFAULT_RELATIVE_X = 0.005f;
     private static final float DEFAULT_RELATIVE_Y = 0.015f;
-    private static final float LINE_GAP = 2.0f;
+    private static final float LINE_GAP = 1.0f;
+    private static final int BG_COLOR = 0x55000000;
+    private static final float BG_PAD_H = 3.0f;
+    private static final float BG_PAD_V = 1.0f;
 
     private final SliderSetting scale;
     private final ButtonSetting showFps;
@@ -113,9 +117,11 @@ public class StatsHUD extends Module {
             String label = "FPS ";
             String value = String.valueOf(Minecraft.getDebugFPS());
             float ly = y + lineHeight * lineIndex;
+            float lw = font.getStringWidth(label + value);
+            RenderUtils.drawRect(x - BG_PAD_H, ly - BG_PAD_V, x + lw + BG_PAD_H, ly + font.getFontHeight() + BG_PAD_V, BG_COLOR);
             font.drawString(label, x, ly, themeColor, false);
             font.drawString(value, x + font.getStringWidth(label), ly, 0xFFFFFFFF, false);
-            maxWidth = Math.max(maxWidth, font.getStringWidth(label + value));
+            maxWidth = Math.max(maxWidth, lw);
             lineIndex++;
         }
 
@@ -124,9 +130,11 @@ public class StatsHUD extends Module {
             String label = "BPS ";
             String value = String.format("%.1f", bps);
             float ly = y + lineHeight * lineIndex;
+            float lw = font.getStringWidth(label + value);
+            RenderUtils.drawRect(x - BG_PAD_H, ly - BG_PAD_V, x + lw + BG_PAD_H, ly + font.getFontHeight() + BG_PAD_V, BG_COLOR);
             font.drawString(label, x, ly, themeColor, false);
             font.drawString(value, x + font.getStringWidth(label), ly, 0xFFFFFFFF, false);
-            maxWidth = Math.max(maxWidth, font.getStringWidth(label + value));
+            maxWidth = Math.max(maxWidth, lw);
             lineIndex++;
         }
 
@@ -134,9 +142,11 @@ public class StatsHUD extends Module {
             String label = "PING ";
             String value = getPing() + "ms";
             float ly = y + lineHeight * lineIndex;
+            float lw = font.getStringWidth(label + value);
+            RenderUtils.drawRect(x - BG_PAD_H, ly - BG_PAD_V, x + lw + BG_PAD_H, ly + font.getFontHeight() + BG_PAD_V, BG_COLOR);
             font.drawString(label, x, ly, themeColor, false);
             font.drawString(value, x + font.getStringWidth(label), ly, 0xFFFFFFFF, false);
-            maxWidth = Math.max(maxWidth, font.getStringWidth(label + value));
+            maxWidth = Math.max(maxWidth, lw);
             lineIndex++;
         }
 

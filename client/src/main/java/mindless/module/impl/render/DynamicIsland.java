@@ -68,28 +68,46 @@ public class DynamicIsland extends Module {
         }
     }
 
+    private static final float WATERMARK_SCALE = 2.4f;
+
+    private mindless.utility.font.RavenFontRenderer getWatermarkFont() {
+        return mindless.utility.font.FontManager.getHudRenderer(
+                HUD.getSelectedFontName(), HUD.getSelectedFontScale() * WATERMARK_SCALE);
+    }
+
     private void renderTextWatermark() {
-        RavenFontRenderer font = HUD.getHudFontRenderer();
+        mindless.utility.font.RavenFontRenderer font = getWatermarkFont();
         if (font == null) return;
 
-        String text = "mindless";
+        String text = "Mindless";
         float x = textPosX;
         float y = textPosY;
+        float w = font.getStringWidth(text);
+        float h = font.getFontHeight();
 
-        // Glow behind text in theme color
-        int glowColor = HUD.getHudColor(45.0);
-        mindless.utility.TextGlowUtils.drawGlow(font, text, x, y, glowColor);
+        // Shader bloom glow behind text
+        float pad = 8.0f;
+        BlurUtils.prepareBlur(x - pad, y - pad, w + pad * 2, h + pad * 2);
+        font.drawGlyphString(text, x, y, (character, xOffset, width, formattingColor) -> {
+            return HUD.getHudColor(HUD.hudWavePhase(0.0, x + xOffset + width * 0.5f));
+        }, false);
+        BlurUtils.blurEndRegion(3, 4.0f, 0.6f, x - pad - 2, y - pad - 2, w + pad * 2 + 4, h + pad * 2 + 4);
 
-        // Draw text with moving gradient per-glyph
+        GL20.glUseProgram(0);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+
+        // Draw text with moving gradient per-glyph on top
         font.drawGlyphString(text, x, y, (character, xOffset, width, formattingColor) -> {
             return HUD.getHudColor(HUD.hudWavePhase(0.0, x + xOffset + width * 0.5f));
         }, false);
     }
 
     public float[] getTextBounds() {
-        RavenFontRenderer font = HUD.getHudFontRenderer();
+        mindless.utility.font.RavenFontRenderer font = getWatermarkFont();
         if (font == null) return null;
-        String text = "mindless";
+        String text = "Mindless";
         float w = font.getStringWidth(text);
         float h = font.getFontHeight();
         return new float[] { textPosX, textPosY, textPosX + w, textPosY + h };

@@ -109,7 +109,7 @@ public class HUD extends Module {
         // settings that control it -- colours, sorting, alignment, position -- were sitting
         // behind a name nobody would think to open. Old profiles still resolve through the
         // legacy alias in ModuleManager.
-        super("ArrayList", Module.category.render);
+        super("Array List", Module.category.render);
         this.registerSetting(font = new SliderSetting("Font", 0, HUD_FONT_OPTIONS));
         this.registerSetting(fontSize = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.1));
         this.registerSetting(outline = new SliderSetting("Outline", 0, OUTLINE_MODES));

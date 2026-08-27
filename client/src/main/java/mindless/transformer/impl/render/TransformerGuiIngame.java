@@ -85,12 +85,12 @@ public abstract class TransformerGuiIngame {
         }
 
         FontRenderer font = getFontRenderer();
-        String displayTitle = mindless.module.impl.render.ScoreboardModule.applyTextSwaps(objective.getDisplayName());
+        String displayTitle = objective.getDisplayName();
         int contentWidth = font.getStringWidth(displayTitle);
         for (Score score : GuiIngameState.visibleScores) {
             ScorePlayerTeam team = scoreboard.getPlayersTeam(score.getPlayerName());
             String line = ScorePlayerTeam.formatPlayerName(team, score.getPlayerName());
-            line = mindless.module.impl.render.ScoreboardModule.applyTextSwaps(line);
+
             GuiIngameState.visibleLines.add(line);
             contentWidth = Math.max(contentWidth, font.getStringWidth(line));
         }

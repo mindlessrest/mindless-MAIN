@@ -79,12 +79,12 @@ public abstract class MixinGuiIngame {
         }
 
         FontRenderer font = getFontRenderer();
-        String displayTitle = mindless.module.impl.render.ScoreboardModule.applyTextSwaps(objective.getDisplayName());
+        String displayTitle = objective.getDisplayName();
         int contentWidth = font.getStringWidth(displayTitle);
         for (Score score : raven$visibleScores) {
             ScorePlayerTeam team = scoreboard.getPlayersTeam(score.getPlayerName());
-            String line = mindless.module.impl.render.ScoreboardModule.applyTextSwaps(
-                    ScorePlayerTeam.formatPlayerName(team, score.getPlayerName()));
+            String line =
+                    ScorePlayerTeam.formatPlayerName(team, score.getPlayerName());
             raven$visibleLines.add(line);
             GuiIngameState.visibleScores.add(score);
             GuiIngameState.visibleLines.add(line);
