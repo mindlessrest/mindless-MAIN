@@ -4,6 +4,7 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.combat.AntiKnockback;
 import mindless.module.impl.combat.Velocity;
+import mindless.module.impl.client.HudEditor;
 import mindless.module.impl.client.Settings;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
@@ -17,21 +18,17 @@ import mindless.utility.Theme;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.RavenFontRenderer;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import org.lwjgl.opengl.GL11;
-import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
-import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent.RenderTickEvent;
 
 import java.awt.Color;
-import java.io.IOException;
 
 public class HUD extends Module {
     private static final String[] COLOR_MODES = new String[] { "Static", "Gradient", "Rainbow" };
@@ -124,7 +121,7 @@ public class HUD extends Module {
         this.registerSetting(font = new SliderSetting("Font", 0, HUD_FONT_OPTIONS));
         this.registerSetting(fontSize = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.1));
         this.registerSetting(outline = new SliderSetting("Outline", 0, OUTLINE_MODES));
-        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));
+        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new HudEditor.Screen())));
         this.registerSetting(alignRight = new ButtonSetting("Align right", false));
         this.registerSetting(alphabeticalSort = new ButtonSetting("Alphabetical sort", false));
         this.registerSetting(lineSpacing = new SliderSetting("Line spacing", 0.0, -2.0, 8.0, 0.5));
@@ -398,18 +395,32 @@ public class HUD extends Module {
 
     public static float[] renderDesignerPreview() {
         RavenFontRenderer font = getHudFontRenderer();
-        String[] lines = new String[] { "Kill Aura", "Player ESP", "Music Player" };
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        boolean removeVelocity = ModuleManager.antiKnockback != null && ModuleManager.antiKnockback.isEnabled();
+        for (Module module : ModuleManager.organizedModules) {
+            if (module.isEnabled() && !(module instanceof HUD) && !shouldSkipModule(module, removeVelocity)) {
+                lines.add(getHudRenderText(module));
+            }
+        }
+        if (lines.isEmpty()) {
+            lines.add("Kill Aura");
+            lines.add("Player ESP");
+            lines.add("Sprint");
+        }
         int maxWidth = 0;
         for (String line : lines) maxWidth = Math.max(maxWidth, font.getStringWidth(line));
         float rowHeight = Math.max(10.0F, font.getFontHeight() + 2.0F);
         float left = alignRight != null && alignRight.isToggled() ? posX - maxWidth : posX;
         float top = posY;
-        for (int i = 0; i < lines.length; i++) {
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
             float lineX = alignRight != null && alignRight.isToggled()
-                    ? posX - font.getStringWidth(lines[i]) : posX;
-            font.drawString(lines[i], lineX, top + i * rowHeight, getHudColor(i * 45.0D), shouldDrawTextShadow());
+                    ? posX - font.getStringWidth(line) : posX;
+            int color = getHudColor(i * 45.0D);
+            drawDecoration(font, line, lineX, top + i * rowHeight, color);
+            font.drawString(line, lineX, top + i * rowHeight, color, false);
         }
-        return new float[] { left, top, left + maxWidth, top + lines.length * rowHeight };
+        return new float[] { left, top, left + maxWidth, top + lines.size() * rowHeight };
     }
 
     public static void setDesignerTopLeft(float left, float top) {
@@ -448,272 +459,6 @@ public class HUD extends Module {
         return true;
     }
 
-    static class EditScreen extends GuiScreen {
-        private static final String EXAMPLE = "This is an-Example-HUD";
-
-        private MindlessButton resetPosition;
-        private boolean dragging = false;
-        private float minX = 0.0f;
-        private float minY = 0.0f;
-        private float maxX = 0.0f;
-        private float maxY = 0.0f;
-        private float actualX = 5.0f;
-        private float actualY = 70.0f;
-        private float lastActualX = 0.0f;
-        private float lastActualY = 0.0f;
-        private int lastMouseX = 0;
-        private int lastMouseY = 0;
-        private float clickMinX = 0.0f;
-
-        @Override
-        public void initGui() {
-            super.initGui();
-            this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
-            HUD.syncPositionToResolution(ScaledResolutionCache.get());
-            this.actualX = HUD.posX;
-            this.actualY = HUD.posY;
-        }
-
-        @Override
-        public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-            ScaledResolution resolution = ScaledResolutionCache.get();
-            if (!this.dragging) {
-                HUD.syncPositionToResolution(resolution);
-                this.actualX = HUD.posX;
-                this.actualY = HUD.posY;
-            }
-            drawRect(0, 0, this.width, this.height, -1308622848);
-            float previewX = this.actualX;
-            float previewY = this.actualY;
-            float previewMaxX = previewX + 50.0f;
-            float previewMaxY = previewY + 32.0f;
-            float[] clickPos = this.getPreviewBounds(EXAMPLE);
-
-            this.minX = previewX;
-            this.minY = previewY;
-
-            if (clickPos == null) {
-                this.maxX = previewMaxX;
-                this.maxY = previewMaxY;
-                this.clickMinX = previewX;
-            }
-            else {
-                this.maxX = clickPos[0];
-                this.maxY = clickPos[1];
-                this.clickMinX = clickPos[2];
-            }
-
-            HUD.setAbsolutePosition(previewX, previewY, resolution);
-
-            int textX = resolution.getScaledWidth() / 2 - 84;
-            int textY = resolution.getScaledHeight() / 2 - 20;
-            RenderUtils.drawColoredString("Edit the HUD position by dragging.", '-', textX, textY, 2L, 0L, true, this.mc.fontRendererObj);
-
-            try {
-                this.handleInput();
-            }
-            catch (IOException ignored) {
-            }
-
-            super.drawScreen(mouseX, mouseY, partialTicks);
-        }
-
-        private float[] getPreviewBounds(String text) {
-            RavenFontRenderer hudFont = HUD.getHudFontRenderer();
-
-            if (empty()) {
-                float x = this.minX;
-                float y = this.minY;
-                String[] lines = text.split("-");
-                int localTextTopPadding = getHudTextTopPadding();
-                int localTextBottomPadding = getHudTextBottomPadding();
-                int localRowHeight = getHudRowHeight(hudFont.getTextTopOffset(), hudFont.getTextBottomOffset(), localTextTopPadding, localTextBottomPadding);
-
-                for (String line : lines) {
-                    if (HUD.alignRight.isToggled()) {
-                        x += hudFont.getStringWidth(lines[0]) - hudFont.getStringWidth(line);
-                    }
-                    float textY = getHudTextY(y, hudFont.getTextTopOffset(), localTextTopPadding);
-                    drawHudText(hudFont, line, x, textY, Color.white.getRGB());
-                    y += localRowHeight;
-                }
-                return null;
-            }
-
-            int longestModule = getLongestModule();
-            float y = this.minY;
-            double verticalWaveAccum = 0.0;
-            boolean firstVisibleRow = true;
-            String previousModule = "";
-            int previousModuleWidth = 0;
-            double lastOutlineLeft = 0.0;
-            double lastOutlineRight = 0.0;
-            double lastBackgroundBottom = 0.0;
-            boolean removeVelocity = ModuleManager.antiKnockback.isEnabled();
-            int textTopOffset = hudFont.getTextTopOffset();
-            int textBottomOffset = hudFont.getTextBottomOffset();
-            int horizontalTextPadding = getHudHorizontalTextPadding();
-            int textTopPadding = getHudTextTopPadding();
-            int textBottomPadding = getHudTextBottomPadding();
-            int outlineThickness = getHudOutlineThickness();
-            int rowHeight = getHudRowHeight(textTopOffset, textBottomOffset, textTopPadding, textBottomPadding);
-
-            if (drawBackground.isToggled()) {
-                drawArrayListBackground(collectRowWidths(hudFont, removeVelocity),
-                        y, horizontalTextPadding, rowHeight);
-            }
-
-            try {
-                for (Module module : ModuleManager.organizedModules) {
-                    if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
-                        continue;
-                    }
-
-                    String moduleName = getHudRenderText(module);
-                    int moduleWidth = hudFont.getStringWidth(moduleName);
-                    float xPos = posX;
-                    float textY = getHudTextY(y, textTopOffset, textTopPadding);
-                    double backgroundLeft = xPos - horizontalTextPadding;
-                    double backgroundRight = xPos + moduleWidth + horizontalTextPadding;
-                    double backgroundTop = y;
-                    double backgroundBottom = y + rowHeight;
-                    double outlineLeft = backgroundLeft - outlineThickness;
-                    double outlineRight = backgroundRight + outlineThickness;
-                    double outlineTop = backgroundTop - outlineThickness;
-
-                    if (alignRight.isToggled()) {
-                        xPos -= moduleWidth;
-                        backgroundLeft = xPos - horizontalTextPadding;
-                        backgroundRight = xPos + moduleWidth + horizontalTextPadding;
-                        outlineLeft = backgroundLeft - outlineThickness;
-                        outlineRight = backgroundRight + outlineThickness;
-                    }
-
-                    double rowCenterX = (backgroundLeft + backgroundRight) * 0.5;
-                    double wavePhase = hudWavePhase(verticalWaveAccum, rowCenterX);
-                    int color = getHudColor(wavePhase);
-
-                    if (outline.getInput() == 1 && firstVisibleRow) {
-                        RenderUtils.drawRect(outlineLeft, outlineTop, outlineRight, backgroundTop, color);
-                    }
-
-                    if (hudWaveIsVertical()) {
-                        verticalWaveAccum += getVerticalWaveStep();
-                    }
-                    firstVisibleRow = false;
-
-                    if (outline.getInput() == 1 && !previousModule.isEmpty()) {
-                        double difference = previousModuleWidth - moduleWidth;
-                        if (alphabeticalSort.isToggled() && difference < 0) {
-                            RenderUtils.drawRect(outlineLeft, outlineTop, xPos - difference + horizontalTextPadding + outlineThickness, backgroundTop, color);
-                        }
-                        else if (alignRight.isToggled()) {
-                            RenderUtils.drawRect(xPos - difference - horizontalTextPadding - outlineThickness, outlineTop, backgroundLeft, backgroundTop, color);
-                        }
-                        else {
-                            RenderUtils.drawRect(backgroundRight, outlineTop, xPos + difference + moduleWidth + horizontalTextPadding + outlineThickness, backgroundTop, color);
-                        }
-                    }
-
-                    if (outline.getInput() > 0) {
-                        if (alignRight.isToggled()) {
-                            RenderUtils.drawRect(backgroundRight, backgroundTop, outlineRight, backgroundBottom, color);
-                        }
-                        else {
-                            RenderUtils.drawRect(outlineLeft, backgroundTop, backgroundLeft, backgroundBottom, color);
-                        }
-                    }
-
-                    if (outline.getInput() == 1) {
-                        if (alignRight.isToggled()) {
-                            RenderUtils.drawRect(outlineLeft, backgroundTop, backgroundLeft, backgroundBottom, color);
-                        }
-                        else {
-                            RenderUtils.drawRect(backgroundRight, backgroundTop, outlineRight, backgroundBottom, color);
-                        }
-                    }
-
-                    drawHudRow(hudFont, module, xPos, textY, color);
-                    previousModule = moduleName;
-                    previousModuleWidth = moduleWidth;
-                    lastOutlineLeft = outlineLeft;
-                    lastOutlineRight = outlineRight;
-                    lastBackgroundBottom = backgroundBottom;
-                    y += rowHeight;
-                }
-            }
-            catch (Exception exception) {
-                Utils.sendMessage("&cAn error occurred rendering HUD. check your logs");
-                exception.printStackTrace();
-            }
-
-            if (outline.getInput() == 1 && !previousModule.isEmpty()) {
-                double bottomCenterX = (lastOutlineLeft + lastOutlineRight) * 0.5;
-                double bottomPhase = hudWavePhase(verticalWaveAccum, bottomCenterX);
-                RenderUtils.drawRect(lastOutlineLeft, lastBackgroundBottom, lastOutlineRight, lastBackgroundBottom + outlineThickness, getHudColor(bottomPhase));
-            }
-
-            return new float[]{this.minX + longestModule, (float) Math.ceil(Math.max(y, lastBackgroundBottom)), this.minX - longestModule};
-        }
-
-        @Override
-        protected void mouseClickMove(int mouseX, int mouseY, int button, long timeSinceLastClick) {
-            super.mouseClickMove(mouseX, mouseY, button, timeSinceLastClick);
-
-            if (button != 0) {
-                return;
-            }
-
-            if (this.dragging) {
-                this.actualX = this.lastActualX + (mouseX - this.lastMouseX);
-                this.actualY = this.lastActualY + (mouseY - this.lastMouseY);
-            }
-            else if (mouseX > this.clickMinX && mouseX < this.maxX && mouseY > this.minY && mouseY < this.maxY) {
-                this.dragging = true;
-                this.lastMouseX = mouseX;
-                this.lastMouseY = mouseY;
-                this.lastActualX = this.actualX;
-                this.lastActualY = this.actualY;
-            }
-        }
-
-        @Override
-        protected void mouseReleased(int mouseX, int mouseY, int state) {
-            super.mouseReleased(mouseX, mouseY, state);
-            if (state == 0) {
-                this.dragging = false;
-            }
-        }
-
-        @Override
-        public void actionPerformed(GuiButton button) {
-            if (button == this.resetPosition) {
-                HUD.resetPosition(ScaledResolutionCache.get());
-                this.actualX = HUD.posX;
-                this.actualY = HUD.posY;
-            }
-        }
-
-        @Override
-        public boolean doesGuiPauseGame() {
-            return false;
-        }
-
-        private boolean empty() {
-            for (Module module : ModuleManager.organizedModules) {
-                if (module.isEnabled() && module != ModuleManager.hud) {
-                    if (module.isHidden()) {
-                        continue;
-                    }
-                    if (module == ModuleManager.commandLine) {
-                        continue;
-                    }
-                    return false;
-                }
-            }
-            return true;
-        }
-    }
 
     public static RavenFontRenderer getHudFontRenderer() {
         return FontManager.getHudRenderer(getSelectedFontName(), getSelectedFontScale());
@@ -1118,7 +863,7 @@ public class HUD extends Module {
         return waveAxis == null || (int) waveAxis.getInput() == 0;
     }
 
-    private static double hudWavePhase(double verticalAccum, double rowCenterX) {
+    public static double hudWavePhase(double verticalAccum, double rowCenterX) {
         if (hudWaveIsVertical()) {
             return verticalAccum;
         }
@@ -1133,17 +878,14 @@ public class HUD extends Module {
             drawHudText(hudFont, name, xPos, textY, color);
             return;
         }
-        // Decoration for the whole row at once, before either half is drawn. Giving the name and
-        // the value their own shadow put two of them on top of each other where the two halves
-        // meet, and that overlap was a visible dark notch between the module and its value.
-        drawDecoration(hudFont, name + info, xPos, textY);
+        drawDecoration(hudFont, name + info, xPos, textY, color);
         drawTextSegment(hudFont, name, xPos, textY, color, false);
         drawTextSegment(hudFont, info, xPos + hudFont.getStringWidth(name), textY,
                 getHudInfoColor(color), false);
     }
 
     private static void drawHudText(RavenFontRenderer hudFont, String moduleName, float xPos, float textY, int fallbackColor) {
-        drawDecoration(hudFont, moduleName, xPos, textY);
+        drawDecoration(hudFont, moduleName, xPos, textY, fallbackColor);
         drawTextSegment(hudFont, moduleName, xPos, textY, fallbackColor, false);
     }
 
@@ -1156,9 +898,9 @@ public class HUD extends Module {
      * drawn here rather than leaning on the renderer's built-in shadow, so Shadow opacity means
      * something for all of them.
      */
-    private static void drawDecoration(RavenFontRenderer hudFont, String text, float xPos, float textY) {
+    private static void drawDecoration(RavenFontRenderer hudFont, String text, float xPos, float textY, int color) {
         if (Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled()) {
-            TextGlowUtils.drawGlow(hudFont, text, xPos, textY, 0xFFFFFFFF);
+            TextGlowUtils.drawGlow(hudFont, text, xPos, textY, color);
         }
         if (!shouldDrawTextShadow()) {
             return;

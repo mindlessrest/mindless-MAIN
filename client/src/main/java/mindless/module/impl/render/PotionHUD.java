@@ -1,6 +1,7 @@
 package mindless.module.impl.render;
 
 import mindless.module.Module;
+import mindless.module.impl.client.HudEditor;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.PotionListSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -9,18 +10,14 @@ import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.RavenFontRenderer;
-import net.minecraft.client.gui.GuiButton;
-import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.potion.Potion;
 import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.StatCollector;
-import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.awt.Color;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -67,7 +64,7 @@ public class PotionHUD extends Module {
         this.registerSetting(verticalAlignment = new SliderSetting("Vertical Alignment", 0, VERTICAL_ALIGNMENT_OPTIONS, "Direction"));
         this.registerSetting(font = new SliderSetting("Font", 0, FONT_OPTIONS));
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.1));
-        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));
+        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new HudEditor.Screen())));
         this.registerSetting(excludePermanent = new ButtonSetting("Exclude permanent", false));
         this.registerSetting(drawBackground = new ButtonSetting("Draw background", false));
         this.registerSetting(textShadow = new ButtonSetting("Text shadow", true));
@@ -458,107 +455,4 @@ public class PotionHUD extends Module {
         return builder.toString();
     }
 
-    private class EditScreen extends GuiScreen {
-        private MindlessButton resetPosition;
-        private boolean dragging;
-        private float minX;
-        private float minY;
-        private float maxX;
-        private float maxY;
-        private float actualX;
-        private float actualY;
-        private float lastActualX;
-        private float lastActualY;
-        private int lastMouseX;
-        private int lastMouseY;
-
-        @Override
-        public void initGui() {
-            super.initGui();
-            this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
-            syncPositionToResolution(ScaledResolutionCache.get());
-            this.actualX = posX;
-            this.actualY = posY;
-        }
-
-        @Override
-        public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-            ScaledResolution resolution = ScaledResolutionCache.get();
-            if (!this.dragging) {
-                syncPositionToResolution(resolution);
-                this.actualX = posX;
-                this.actualY = posY;
-            }
-
-            drawRect(0, 0, this.width, this.height, -1308622848);
-            setAbsolutePosition(this.actualX, this.actualY, resolution);
-
-            RenderState state = buildRenderState(true);
-            adjustAnchorForLayoutChanges(resolution, state);
-            Bounds bounds = renderState(state);
-            drawBounds(bounds);
-
-            this.minX = bounds.left;
-            this.minY = bounds.top;
-            this.maxX = bounds.right;
-            this.maxY = bounds.bottom;
-            this.actualX = posX;
-            this.actualY = posY;
-
-            String message = "Edit the HUD position by dragging.";
-            int textX = resolution.getScaledWidth() / 2 - this.fontRendererObj.getStringWidth(message) / 2;
-            int textY = resolution.getScaledHeight() / 2 - 20;
-            RenderUtils.drawColoredString(message, '-', textX, textY, 2L, 0L, true, this.mc.fontRendererObj);
-
-            try {
-                this.handleInput();
-            }
-            catch (IOException ignored) {
-            }
-
-            super.drawScreen(mouseX, mouseY, partialTicks);
-        }
-
-        @Override
-        protected void mouseClickMove(int mouseX, int mouseY, int button, long timeSinceLastClick) {
-            super.mouseClickMove(mouseX, mouseY, button, timeSinceLastClick);
-            if (button != 0) {
-                return;
-            }
-
-            if (this.dragging) {
-                this.actualX = this.lastActualX + (mouseX - this.lastMouseX);
-                this.actualY = this.lastActualY + (mouseY - this.lastMouseY);
-            }
-            else if (mouseX >= this.minX && mouseX <= this.maxX && mouseY >= this.minY && mouseY <= this.maxY) {
-                this.dragging = true;
-                this.lastMouseX = mouseX;
-                this.lastMouseY = mouseY;
-                this.lastActualX = this.actualX;
-                this.lastActualY = this.actualY;
-            }
-        }
-
-        @Override
-        protected void mouseReleased(int mouseX, int mouseY, int state) {
-            super.mouseReleased(mouseX, mouseY, state);
-            if (state == 0) {
-                this.dragging = false;
-            }
-        }
-
-        @Override
-        public void actionPerformed(GuiButton button) {
-            if (button == this.resetPosition) {
-                resetPosition();
-                this.actualX = posX;
-                this.actualY = posY;
-            }
-        }
-
-        @Override
-        public boolean doesGuiPauseGame() {
-            return false;
-        }
-    }
 }

@@ -1,22 +1,19 @@
 package mindless.module.impl.render;
 
 import mindless.module.Module;
+import mindless.module.impl.client.HudEditor;
 import mindless.module.impl.world.AntiBot;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
-import net.minecraft.client.gui.GuiButton;
-import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.entity.player.EntityPlayer;
-import mindless.utility.gui.MindlessButton;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
-import java.io.IOException;
 
 public class Radar extends Module {
     private static final float BASE_SIZE = 100.0f;
@@ -40,7 +37,7 @@ public class Radar extends Module {
         this.registerSetting(range = new SliderSetting("Range", " block", 20, 8, 256, 1));
         this.registerSetting(radarScale = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.1));
         this.registerSetting(tracerLines = new ButtonSetting("Show tracer lines", false));
-        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));
+        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new HudEditor.Screen())));
     }
 
     @SubscribeEvent
@@ -214,97 +211,16 @@ public class Radar extends Module {
         relativePosY = posY / Math.max(1, resolution.getScaledHeight());
     }
 
-    private class EditScreen extends GuiScreen {
-        private MindlessButton resetPosition;
-        private boolean dragging;
-        private float actualX;
-        private float actualY;
-        private float lastActualX;
-        private float lastActualY;
-        private int lastMouseX;
-        private int lastMouseY;
+    public float[] renderPreview() {
+        renderRadar(true);
+        float size = getRadarSize();
+        return new float[] { posX, posY, posX + size, posY + size };
+    }
 
-        @Override
-        public void initGui() {
-            super.initGui();
-            this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
-            syncPositionToResolution(new ScaledResolution(this.mc));
-            this.actualX = posX;
-            this.actualY = posY;
-        }
-
-        @Override
-        public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-            ScaledResolution resolution = new ScaledResolution(this.mc);
-            if (!this.dragging) {
-                syncPositionToResolution(resolution);
-                this.actualX = posX;
-                this.actualY = posY;
-            }
-
-            drawRect(0, 0, this.width, this.height, 0xB2000000);
-            setAbsolutePosition(this.actualX, this.actualY, resolution);
-            renderRadar(true);
-            this.actualX = posX;
-            this.actualY = posY;
-
-            String message = "Drag the radar to reposition it.";
-            int textX = resolution.getScaledWidth() / 2 - this.fontRendererObj.getStringWidth(message) / 2;
-            int textY = resolution.getScaledHeight() / 2 - 10;
-            RenderUtils.drawColoredString(message, '-', textX, textY, 2L, 0L, true, this.mc.fontRendererObj);
-
-            try {
-                this.handleInput();
-            }
-            catch (IOException ignored) {
-            }
-
-            super.drawScreen(mouseX, mouseY, partialTicks);
-        }
-
-        @Override
-        protected void mouseClickMove(int mouseX, int mouseY, int button, long timeSinceLastClick) {
-            super.mouseClickMove(mouseX, mouseY, button, timeSinceLastClick);
-            if (button != 0) {
-                return;
-            }
-
-            if (this.dragging) {
-                this.actualX = this.lastActualX + (mouseX - this.lastMouseX);
-                this.actualY = this.lastActualY + (mouseY - this.lastMouseY);
-                return;
-            }
-
-            float size = getRadarSize();
-            if (mouseX >= posX && mouseX <= posX + size && mouseY >= posY && mouseY <= posY + size) {
-                this.dragging = true;
-                this.lastMouseX = mouseX;
-                this.lastMouseY = mouseY;
-                this.lastActualX = this.actualX;
-                this.lastActualY = this.actualY;
-            }
-        }
-
-        @Override
-        protected void mouseReleased(int mouseX, int mouseY, int state) {
-            super.mouseReleased(mouseX, mouseY, state);
-            if (state == 0) {
-                this.dragging = false;
-            }
-        }
-
-        @Override
-        public void actionPerformed(GuiButton button) {
-            if (button == this.resetPosition) {
-                resetPosition();
-                this.actualX = posX;
-                this.actualY = posY;
-            }
-        }
-
-        @Override
-        public boolean doesGuiPauseGame() {
-            return false;
-        }
+    public float[] renderDesignerPreview(float left, float top) {
+        setAbsolutePosition(left, top, new ScaledResolution(mc));
+        renderRadar(true);
+        float size = getRadarSize();
+        return new float[] { posX, posY, posX + size, posY + size };
     }
 }

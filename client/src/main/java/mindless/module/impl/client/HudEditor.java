@@ -4,6 +4,9 @@ import mindless.module.ModuleManager;
 import mindless.module.impl.player.HideWindow;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
+import mindless.module.impl.render.Radar;
+import mindless.module.impl.render.StatsHUD;
+import mindless.module.impl.render.TargetHUD;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.runtime.GuiIngameState;
 import mindless.utility.RenderUtils;
@@ -444,13 +447,94 @@ public final class HudEditor {
                     }
                 });
             }
+
+            if (ModuleManager.radar != null) {
+                final Radar radar = ModuleManager.radar;
+                elements.add(new Element("Radar") {
+                    @Override
+                    void render() {
+                        setBounds(radar.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        setBounds(radar.renderDesignerPreview(left, top));
+                    }
+
+                    @Override
+                    void reset() {
+                        radar.resetPosition();
+                    }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return radar.scaleSetting();
+                    }
+                });
+            }
+
+            if (ModuleManager.targetHUD != null) {
+                final TargetHUD targetHud = ModuleManager.targetHUD;
+                elements.add(new Element("TargetHUD") {
+                    @Override
+                    void render() {
+                        setBounds(targetHud.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        float offsetX = left - this.left + targetHud.posX;
+                        float offsetY = top - this.top + targetHud.posY;
+                        setBounds(targetHud.renderDesignerPreview(offsetX, offsetY));
+                    }
+
+                    @Override
+                    void reset() {
+                        targetHud.resetPosition();
+                    }
+                });
+            }
+
+            if (ModuleManager.statsHUD != null) {
+                final StatsHUD stats = ModuleManager.statsHUD;
+                elements.add(new Element("HUD") {
+                    @Override
+                    void render() {
+                        setBounds(stats.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        setBounds(stats.renderDesignerPreview(left, top));
+                    }
+
+                    @Override
+                    void reset() {
+                        stats.resetPosition();
+                    }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return stats.scaleSetting();
+                    }
+                });
+            }
         }
 
         private float[] renderScoreboardPreview(Float requestedX, Float requestedY) {
             ScaledResolution resolution = new ScaledResolution(mc);
             FontRenderer font = fontRendererObj;
-            String title = "MINDLESS";
-            String[] rows = new String[] { "Mode: Bed Wars", "Kills: 4", "Beds: 1", "Wins: 12" };
+            String title;
+            String[] rows;
+            if (!GuiIngameState.visibleLines.isEmpty()) {
+                net.minecraft.scoreboard.ScoreObjective obj = mc.theWorld != null
+                        ? mc.theWorld.getScoreboard().getObjectiveInDisplaySlot(1) : null;
+                title = obj != null ? obj.getDisplayName() : "Scoreboard";
+                rows = GuiIngameState.visibleLines.toArray(new String[0]);
+            } else {
+                title = "MINDLESS";
+                rows = new String[] { "Mode: Bed Wars", "Kills: 4", "Beds: 1", "Wins: 12" };
+            }
             float scale = GuiIngameState.SCOREBOARD_SCALE;
             int contentWidth = font.getStringWidth(title);
             for (String row : rows) contentWidth = Math.max(contentWidth, font.getStringWidth(row));
