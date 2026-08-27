@@ -6,8 +6,10 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -59,6 +61,15 @@ public class DiscordRPC {
     private volatile RichPresence desired;
     private volatile boolean running;
     private volatile long lastCycleAt;
+    /**
+     * The connection currently mid-handshake in {@link #findPipes()}, if any.
+     *
+     * <p>A handshake read has no timeout and happens before the connection is added to
+     * {@link #connections}, so the stall watchdog needs a second place to look — otherwise a
+     * Discord that opens the pipe but never answers the handshake wedges the worker forever with
+     * nothing in {@code connections} for {@link #update} to force-close.
+     */
+    private volatile Connection connectingPipe;
     private Thread worker;
 
     public DiscordRPC(String clientId) {
@@ -101,11 +112,16 @@ public class DiscordRPC {
         }
 
         // A worker that has not finished a cycle in this long is blocked in a pipe read. Closing
-        // the pipes under it is what makes that read throw so it can recover.
+        // the pipes under it is what makes that read throw so it can recover. That includes a
+        // connection still mid-handshake in findPipes(), which isn't in `connections` yet.
         if (System.currentTimeMillis() - lastCycleAt > STALL_TIMEOUT_MS) {
             System.out.println("[discord rpc] worker stalled, dropping connections to free it");
             for (Connection c : connections) {
                 c.forceClose();
+            }
+            Connection stuck = connectingPipe;
+            if (stuck != null) {
+                stuck.forceClose();
             }
         }
     }
@@ -170,12 +186,20 @@ public class DiscordRPC {
 
                 dropDeadConnections();
 
-                if (connections.isEmpty() && now >= nextConnectAt) {
+                // Probed on a timer regardless of whether we already have connections, so a
+                // Discord client launched after the first one is still picked up. findPipes()
+                // skips indices we're already attached to, so this is cheap once things are
+                // steady.
+                if (now >= nextConnectAt) {
                     nextConnectAt = now + RECONNECT_INTERVAL_MS;
+                    int before = connections.size();
                     findPipes();
-                    // A fresh Discord has no presence set, so whatever we last sent no longer
-                    // applies and has to go out again.
-                    sentSignature = null;
+                    if (connections.size() != before) {
+                        // A freshly attached client has no presence set yet, so whatever we
+                        // last sent to the others no longer applies everywhere and has to go
+                        // out again.
+                        sentSignature = null;
+                    }
                 }
 
                 RichPresence target = desired;
@@ -233,11 +257,31 @@ public class DiscordRPC {
         }
     }
 
+    /**
+     * Probes every pipe index not already attached.
+     *
+     * <p>Indices already in {@link #connections} are skipped so this is safe to call on every
+     * reconnect tick, not just when we have nothing -- that's what lets a second Discord client
+     * be discovered after the first one is already up.
+     */
     private void findPipes() {
+        Set<Integer> already = new HashSet<>();
+        for (Connection c : connections) {
+            already.add(c.getPipeIndex());
+        }
         for (int i = 0; i < MAX_PIPES; i++) {
+            if (already.contains(i)) {
+                continue;
+            }
             Connection c = new Connection(clientId, i);
-            if (c.connect()) {
-                connections.add(c);
+            connectingPipe = c;
+            try {
+                if (c.connect()) {
+                    connections.add(c);
+                }
+            }
+            finally {
+                connectingPipe = null;
             }
         }
     }
@@ -382,6 +426,10 @@ public class DiscordRPC {
 
         boolean isAlive() {
             return alive;
+        }
+
+        int getPipeIndex() {
+            return pipeIndex;
         }
 
         boolean connect() {

@@ -1879,7 +1879,14 @@ public final class ModernClickGui extends ClickGui {
                 }
             }
         }
-        Collections.sort(result, new Comparator<Module>() { public int compare(Module a, Module b) { return a.getName().compareToIgnoreCase(b.getName()); }});
+        Collections.sort(result, new Comparator<Module>() {
+            public int compare(Module a, Module b) {
+                boolean am = a instanceof Manager;
+                boolean bm = b instanceof Manager;
+                if (am != bm) return am ? -1 : 1;
+                return a.getName().compareToIgnoreCase(b.getName());
+            }
+        });
         return result;
     }
 
