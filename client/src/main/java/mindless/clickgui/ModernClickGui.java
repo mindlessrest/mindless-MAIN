@@ -210,12 +210,18 @@ public final class ModernClickGui extends ClickGui {
     private final Map<SliderSetting, Float> sliderProgressAnimation = new IdentityHashMap<SliderSetting, Float>();
     private final Object searchAnimationKey = new Object();
     private final Manager profileManagerModule = new Manager();
+    private float guiDragOffsetX = 0f;
+    private float guiDragOffsetY = 0f;
+    private boolean draggingGui = false;
+    private float dragStartMouseX, dragStartMouseY;
+    private float dragStartOffsetX, dragStartOffsetY;
     private long lastFrameNanos = System.nanoTime();
     private float frameDelta = 1f / 60f;
     private float resetHover;
     private float saveHover;
     private boolean uiTextureLoadAttempted;
     private ResourceLocation logoTexture;
+    private ResourceLocation mascotTexture;
     private final Map<Module.category, ResourceLocation> categoryIcons = new IdentityHashMap<Module.category, ResourceLocation>();
 
     @Override
@@ -304,6 +310,7 @@ public final class ModernClickGui extends ClickGui {
 
         // Screen-space rounded shaders cannot safely be matrix-scaled. Animate
         // detail width and content reveal without deforming panel geometry.
+        drawMascot();
         drawPanels();
         drawSidebar(mx, my);
         drawModulePanel(mx, my);
@@ -337,8 +344,8 @@ public final class ModernClickGui extends ClickGui {
         // center panel always occupies remaining space; detail + gap only counted when visible
         float usedByDetail = detailW > 1f ? detailW + gap : 0f;
         centerW = totalW - sideW - gap - usedByDetail;
-        baseX = Math.max(5f, (width - totalW) / 2f);
-        baseY = Math.max(6f, (height - panelH) / 2f);
+        baseX = Math.max(5f, (width - totalW) / 2f + guiDragOffsetX);
+        baseY = Math.max(6f, (height - panelH) / 2f + guiDragOffsetY);
         centerX = baseX + sideW + gap;
         detailX = centerX + centerW + gap;
     }
@@ -349,6 +356,18 @@ public final class ModernClickGui extends ClickGui {
         if (detailW > 2f) {
             panelSurface(detailX, baseY, detailX + detailW, baseY + panelH, PANEL_ALT);
         }
+    }
+
+    private void drawMascot() {
+        if (Gui.mascot == null || (int) Gui.mascot.getInput() != 0) return;
+        ensureUiTextures();
+        if (mascotTexture == null) return;
+        float mascotH = panelH * 0.75f;
+        float mascotW = mascotH;
+        float mx = baseX + sideW + gap + centerW - mascotW * 0.3f;
+        float my = baseY + panelH - mascotH + 8f;
+        drawTextureRegion(mascotTexture, mx, my, mascotW, mascotH,
+                0, 0, 1, 1, 1, 1, 1f, 1f, 1f, 0.55f);
     }
 
     private void drawDashboardShadows(float renderScale) {
@@ -1448,8 +1467,13 @@ public final class ModernClickGui extends ClickGui {
             if (inside(mx, my, ax, ay, ax + aw, ay + fullH)) return;
         }
 
-        // Mindless logo/title area (no action)
-        if (inside(mx, my, baseX + 10, baseY + 8, baseX + sideW - 10, baseY + 40)) {
+        // Mindless logo/title area — drag handle for the whole GUI
+        if (mouseButton == 0 && inside(mx, my, baseX + 10, baseY + 8, baseX + sideW - 10, baseY + 40)) {
+            draggingGui = true;
+            dragStartMouseX = mx;
+            dragStartMouseY = my;
+            dragStartOffsetX = guiDragOffsetX;
+            dragStartOffsetY = guiDragOffsetY;
             return;
         }
 
@@ -1657,6 +1681,7 @@ public final class ModernClickGui extends ClickGui {
         draggingSlider = null;
         colorDrag = 0;
         draggingScrollbar = 0;
+        draggingGui = false;
     }
 
     @Override
@@ -1747,7 +1772,11 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void updateDragging(int mx, int my) {
-        if (!Mouse.isButtonDown(0)) { draggingSlider = null; colorDrag = 0; draggingScrollbar = 0; return; }
+        if (!Mouse.isButtonDown(0)) { draggingSlider = null; colorDrag = 0; draggingScrollbar = 0; draggingGui = false; return; }
+        if (draggingGui) {
+            guiDragOffsetX = dragStartOffsetX + (mx - dragStartMouseX);
+            guiDragOffsetY = dragStartOffsetY + (my - dragStartMouseY);
+        }
         if (draggingScrollbar != 0) updateScrollbarDrag(my);
         if (draggingSlider != null) setSliderFromMouse(draggingSlider, mx, sliderRect.x1, sliderRect.x2);
         if (openColor != null && colorDrag != 0) updateColor(mx, my);
@@ -2403,6 +2432,7 @@ public final class ModernClickGui extends ClickGui {
         if (uiTextureLoadAttempted) return;
         uiTextureLoadAttempted = true;
         logoTexture = loadBundledTexture("mindless_modern_logo", LOGO_RESOURCE, true);
+        mascotTexture = loadBundledTexture("mindless_mascot_0", "/assets/mindless/textures/gui/mascot_0.png", true);
         for (Module.category cat : Module.category.values()) {
             String iconName = categoryIconName(cat);
             String path = "/assets/mindless/textures/gui/icons/" + iconName + ".png";

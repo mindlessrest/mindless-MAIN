@@ -31,6 +31,7 @@ public class Gui extends Module {
     public static ButtonSetting hideWatermark;
     public static ButtonSetting rainBowOutlines;
     public static ButtonSetting loadGuiPositions;
+    public static SliderSetting mascot;
 
     public Gui() {
         super("Gui", category.client, 54);
@@ -46,6 +47,7 @@ public class Gui extends Module {
         this.registerSetting(hidePlayerModel = new ButtonSetting("Remove player model", false));
         this.registerSetting(hideWatermark = new ButtonSetting("Remove watermark", false));
         this.registerSetting(loadGuiPositions = new ButtonSetting("Save category positions", false));
+        this.registerSetting(mascot = new SliderSetting("Mascot", 0, new String[]{"Cat", "None"}));
         this.registerSetting(new DescriptionSetting("Colors"));
         this.registerSetting(enabledColor = new ColorSetting("Enabled color", 24, 154, 255));
         this.registerSetting(disabledColor = new ColorSetting("Disabled color", 192, 192, 192));
