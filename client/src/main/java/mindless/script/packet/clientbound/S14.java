@@ -1,6 +1,6 @@
-package keystrokesmod.script.packet.clientbound;
+package mindless.script.packet.clientbound;
 
-import keystrokesmod.mixin.impl.accessor.IAccessorS14PacketEntity;
+import mindless.mixin.impl.accessor.IAccessorS14PacketEntity;
 import net.minecraft.network.play.server.S14PacketEntity;
 
 public class S14 extends SPacket {

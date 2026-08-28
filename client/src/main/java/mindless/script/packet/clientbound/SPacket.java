@@ -1,4 +1,4 @@
-package keystrokesmod.script.packet.clientbound;
+package mindless.script.packet.clientbound;
 
 public class SPacket {
     public String name;

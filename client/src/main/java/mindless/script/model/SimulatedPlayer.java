@@ -1,11 +1,11 @@
-package keystrokesmod.script.model;
+package mindless.script.model;
 
 import com.google.common.base.Predicate;
 import com.google.common.collect.Lists;
-import keystrokesmod.mixin.impl.accessor.IAccessorEntity;
-import keystrokesmod.mixin.impl.accessor.IAccessorEntityLivingBase;
-import keystrokesmod.module.ModuleManager;
-import keystrokesmod.module.impl.movement.NoSlow;
+import mindless.mixin.impl.accessor.IAccessorEntity;
+import mindless.mixin.impl.accessor.IAccessorEntityLivingBase;
+import mindless.module.ModuleManager;
+import mindless.module.impl.movement.NoSlow;
 import net.minecraft.block.*;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;

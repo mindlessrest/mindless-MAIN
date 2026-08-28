@@ -1,6 +1,6 @@
-package keystrokesmod.script.packet.serverbound;
+package mindless.script.packet.serverbound;
 
-import keystrokesmod.script.model.ItemStack;
+import mindless.script.model.ItemStack;
 import net.minecraft.network.play.client.C10PacketCreativeInventoryAction;
 
 public class C10 extends CPacket {

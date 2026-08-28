@@ -1,6 +1,6 @@
-package keystrokesmod.script.packet.clientbound;
+package mindless.script.packet.clientbound;
 
-import keystrokesmod.script.model.ItemStack;
+import mindless.script.model.ItemStack;
 import net.minecraft.network.play.server.S04PacketEntityEquipment;
 
 public class S04 extends SPacket {

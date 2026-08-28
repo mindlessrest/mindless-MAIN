@@ -1,4 +1,4 @@
-package keystrokesmod.script.model;
+package mindless.script.model;
 
 import com.google.common.collect.Iterables;
 import com.mojang.authlib.properties.Property;

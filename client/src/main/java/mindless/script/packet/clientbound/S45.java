@@ -1,6 +1,6 @@
-package keystrokesmod.script.packet.clientbound;
+package mindless.script.packet.clientbound;
 
-import keystrokesmod.utility.Utils;
+import mindless.utility.Utils;
 import net.minecraft.network.play.server.S45PacketTitle;
 import net.minecraft.util.ChatComponentText;
 

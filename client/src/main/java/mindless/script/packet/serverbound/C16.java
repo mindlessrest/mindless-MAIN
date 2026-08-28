@@ -1,6 +1,6 @@
-package keystrokesmod.script.packet.serverbound;
+package mindless.script.packet.serverbound;
 
-import keystrokesmod.utility.Utils;
+import mindless.utility.Utils;
 import net.minecraft.network.play.client.C16PacketClientStatus;
 
 public class C16 extends CPacket {

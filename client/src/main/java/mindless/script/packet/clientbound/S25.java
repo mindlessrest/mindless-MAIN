@@ -1,7 +1,7 @@
-package keystrokesmod.script.packet.clientbound;
+package mindless.script.packet.clientbound;
 
-import keystrokesmod.script.model.Block;
-import keystrokesmod.script.model.Vec3;
+import mindless.script.model.Block;
+import mindless.script.model.Vec3;
 import net.minecraft.network.play.server.S25PacketBlockBreakAnim;
 import net.minecraft.util.BlockPos;
 

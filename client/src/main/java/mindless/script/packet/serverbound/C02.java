@@ -1,8 +1,8 @@
-package keystrokesmod.script.packet.serverbound;
+package mindless.script.packet.serverbound;
 
-import keystrokesmod.script.model.Entity;
-import keystrokesmod.script.model.Vec3;
-import keystrokesmod.utility.Utils;
+import mindless.script.model.Entity;
+import mindless.script.model.Vec3;
+import mindless.utility.Utils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.client.C02PacketUseEntity;
 

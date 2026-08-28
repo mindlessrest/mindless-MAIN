@@ -1,6 +1,6 @@
-package keystrokesmod.script.model;
+package mindless.script.model;
 
-import keystrokesmod.utility.Utils;
+import mindless.utility.Utils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityItem;

@@ -1,6 +1,6 @@
-package keystrokesmod.script.model;
+package mindless.script.model;
 
-import keystrokesmod.event.PrePlayerInputEvent;
+import mindless.event.PrePlayerInputEvent;
 
 public class MovementInput {
     public float forward;

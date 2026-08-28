@@ -1,4 +1,4 @@
-package keystrokesmod.script.packet.clientbound;
+package mindless.script.packet.clientbound;
 
 import com.mojang.authlib.GameProfile;
 import net.minecraft.client.Minecraft;

@@ -1,4 +1,4 @@
-package keystrokesmod.script.model;
+package mindless.script.model;
 
 import com.google.gson.*;
 import java.util.*;

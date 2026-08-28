@@ -1,4 +1,4 @@
-package keystrokesmod.script.packet.clientbound;
+package mindless.script.packet.clientbound;
 
 import net.minecraft.network.play.server.S02PacketChat;
 import net.minecraft.util.ChatComponentText;

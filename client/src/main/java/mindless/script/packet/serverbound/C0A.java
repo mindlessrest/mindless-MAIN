@@ -1,4 +1,4 @@
-package keystrokesmod.script.packet.serverbound;
+package mindless.script.packet.serverbound;
 
 import net.minecraft.network.play.client.C0APacketAnimation;
 

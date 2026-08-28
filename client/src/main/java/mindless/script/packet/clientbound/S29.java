@@ -1,6 +1,6 @@
-package keystrokesmod.script.packet.clientbound;
+package mindless.script.packet.clientbound;
 
-import keystrokesmod.script.model.Vec3;
+import mindless.script.model.Vec3;
 import net.minecraft.network.play.server.S29PacketSoundEffect;
 
 public class S29 extends SPacket {

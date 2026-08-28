@@ -1,6 +1,6 @@
-package keystrokesmod.script.packet.serverbound;
+package mindless.script.packet.serverbound;
 
-import keystrokesmod.script.model.Vec3;
+import mindless.script.model.Vec3;
 import net.minecraft.network.play.client.C03PacketPlayer;
 
 public class C03 extends CPacket {

@@ -1,7 +1,7 @@
-package keystrokesmod.script.model;
+package mindless.script.model;
 
-import keystrokesmod.utility.BlockUtils;
-import keystrokesmod.utility.Utils;
+import mindless.utility.BlockUtils;
+import mindless.utility.Utils;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.BlockPos;
 

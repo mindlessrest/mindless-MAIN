@@ -1,7 +1,7 @@
-package keystrokesmod.script.model;
+package mindless.script.model;
 
-import keystrokesmod.script.ScriptDefaults;
-import keystrokesmod.utility.NetworkUtils;
+import mindless.script.ScriptDefaults;
+import mindless.utility.NetworkUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
 

@@ -1,4 +1,4 @@
-package keystrokesmod.script.model;
+package mindless.script.model;
 
 import net.minecraft.tileentity.TileEntitySkull;
 

@@ -1,6 +1,6 @@
-package keystrokesmod.script.packet.clientbound;
+package mindless.script.packet.clientbound;
 
-import keystrokesmod.script.model.Vec3;
+import mindless.script.model.Vec3;
 import net.minecraft.network.play.server.S27PacketExplosion;
 import net.minecraft.util.BlockPos;
 
