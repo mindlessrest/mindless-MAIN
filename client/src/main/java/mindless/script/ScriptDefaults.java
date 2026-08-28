@@ -5,7 +5,6 @@ import mindless.clickgui.ClickGui;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.clickgui.components.impl.ModuleComponent;
 import mindless.helper.RotationHelper;
-import mindless.mixin.impl.accessor.*;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
@@ -51,14 +50,10 @@ import net.minecraft.scoreboard.Team;
 import net.minecraft.util.*;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
-import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.util.glu.GLU;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -155,6 +150,10 @@ public class ScriptDefaults {
 
         public static void setTimer(float timer) {
             AccessorBridge.Minecraft_getTimer(mc).timerSpeed = timer;
+        }
+
+        public static void setTimer(double timer) {
+            AccessorBridge.Minecraft_getTimer(mc).timerSpeed = (float) timer;
         }
 
         public static boolean isCreative() {
@@ -545,12 +544,14 @@ public class ScriptDefaults {
         }
 
         public static void enableMovementFix() {
+            RotationHelper.get().forceMovementFix = true;
             if (ModuleManager.movementFix != null) {
                 ModuleManager.movementFix.enable();
             }
         }
 
         public static void disableMovementFix() {
+            RotationHelper.get().forceMovementFix = false;
             if (ModuleManager.movementFix != null) {
                 ModuleManager.movementFix.disable();
             }
@@ -1155,6 +1156,10 @@ public class ScriptDefaults {
         }
 
         public static void color(int r, int g, int b, int a) {
+            if (r <= 1 && g <= 1 && b <= 1 && a <= 1) {
+                GlStateManager.color(r, g, b, a);
+                return;
+            }
             GlStateManager.color(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
         }
 
@@ -1245,6 +1250,7 @@ public class ScriptDefaults {
 
         public static void resetColor() {
             GlStateManager.resetColor();
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         }
 
         public static void end() {
@@ -1277,7 +1283,7 @@ public class ScriptDefaults {
         }
 
         public static void normal(double x, double y, double z) {
-            GL11.glNormal3f((float) x, (float) y, (float) z);
+            GL11.glNormal3d(x, y, z);
         }
 
         public static void pop() {
@@ -1338,31 +1344,36 @@ public class ScriptDefaults {
         }
 
         private static void setGLEnable(int cap, boolean enable) {
-            setCapability(cap, enable);
+            if (enable) {
+                GL11.glEnable(cap);
+            }
+            else {
+                GL11.glDisable(cap);
+            }
         }
 
         private static void setCapability(int cap, boolean enable) {
             switch (cap) {
                 case GL11.GL_BLEND:
-                    if (enable) GlStateManager.enableBlend(); else GlStateManager.disableBlend();
+                    blend(enable);
                     return;
                 case GL11.GL_DEPTH_TEST:
-                    if (enable) GlStateManager.enableDepth(); else GlStateManager.disableDepth();
+                    depth(enable);
                     return;
                 case GL11.GL_TEXTURE_2D:
-                    if (enable) GlStateManager.enableTexture2D(); else GlStateManager.disableTexture2D();
+                    texture2d(enable);
                     return;
                 case GL11.GL_LIGHTING:
-                    if (enable) GlStateManager.enableLighting(); else GlStateManager.disableLighting();
+                    lighting(enable);
                     return;
                 case GL11.GL_ALPHA_TEST:
-                    if (enable) GlStateManager.enableAlpha(); else GlStateManager.disableAlpha();
+                    alpha(enable);
                     return;
                 case GL11.GL_FOG:
                     if (enable) GlStateManager.enableFog(); else GlStateManager.disableFog();
                     return;
                 case GL11.GL_CULL_FACE:
-                    if (enable) GlStateManager.enableCull(); else GlStateManager.disableCull();
+                    cull(enable);
                     return;
                 case GL11.GL_COLOR_MATERIAL:
                     if (enable) GlStateManager.enableColorMaterial(); else GlStateManager.disableColorMaterial();
@@ -1370,8 +1381,17 @@ public class ScriptDefaults {
                 case GL11.GL_NORMALIZE:
                     if (enable) GlStateManager.enableNormalize(); else GlStateManager.disableNormalize();
                     return;
+                case GL11.GL_COLOR_LOGIC_OP:
+                    if (enable) GlStateManager.enableColorLogic(); else GlStateManager.disableColorLogic();
+                    return;
+                case GL11.GL_POLYGON_OFFSET_FILL:
+                    polygonOffset(enable);
+                    return;
+                case 32826:
+                    if (enable) GlStateManager.enableRescaleNormal(); else GlStateManager.disableRescaleNormal();
+                    return;
                 default:
-                    if (enable) GL11.glEnable(cap); else GL11.glDisable(cap);
+                    setGLEnable(cap, enable);
             }
         }
     }
@@ -1467,10 +1487,18 @@ public class ScriptDefaults {
     }
 
     public static class render {
-        private static final IntBuffer VIEWPORT = GLAllocation.createDirectIntBuffer(16);
-        private static final FloatBuffer MODELVIEW = GLAllocation.createDirectFloatBuffer(16);
-        private static final FloatBuffer PROJECTION = GLAllocation.createDirectFloatBuffer(16);
-        private static final FloatBuffer SCREEN_COORDS = GLAllocation.createDirectFloatBuffer(3);
+        private static final double[] WORLD_TO_SCREEN_COORDS = new double[3];
+        private static RenderUtils.ProjectionContext worldToScreenContext;
+        private static boolean worldToScreenContextActive;
+
+        static void beginWorldToScreen(int scaleFactor) {
+            worldToScreenContext = RenderUtils.captureProjectionContext(worldToScreenContext, scaleFactor);
+            worldToScreenContextActive = true;
+        }
+
+        static void endWorldToScreen() {
+            worldToScreenContextActive = false;
+        }
 
         public static void block(Vec3 position, int color, boolean outline, boolean shade) {
             RenderUtils.renderBlock(new BlockPos(position.x, position.y, position.z), color, outline, shade);
@@ -1559,7 +1587,6 @@ public class ScriptDefaults {
         }
 
         public static void image(Image image, float x, float y, float width, float height) {
-            /*
             Image.releaseCollectedTextures();
             if (image == null || !image.isLoaded()) {
                 return;
@@ -1585,23 +1612,28 @@ public class ScriptDefaults {
             worldrenderer.pos(x, y, 0.0).tex(0.0, 0.0).color(255, 255, 255, 255).endVertex();
             tessellator.draw();
             GlStateManager.popMatrix();
-            */
         }
 
         public static Vec3 worldToScreen(double x, double y, double z, int scaleFactor, float partialTicks) {
+            boolean temporaryContext = !worldToScreenContextActive;
+            if (temporaryContext) {
+                AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, partialTicks, 0);
+                beginWorldToScreen(scaleFactor);
+            }
+
             x -= mc.getRenderManager().viewerPosX;
             y -= mc.getRenderManager().viewerPosY;
             z -= mc.getRenderManager().viewerPosZ;
-            AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks, 0);
-            GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, MODELVIEW);
-            GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, PROJECTION);
-            GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT);
-            if (GLU.gluProject((float)x, (float)y, (float)z, render.MODELVIEW, render.PROJECTION, render.VIEWPORT, render.SCREEN_COORDS)) {
-                Vec3 vec = new Vec3(render.SCREEN_COORDS.get(0) / scaleFactor, (Display.getHeight() - render.SCREEN_COORDS.get(1)) / scaleFactor, render.SCREEN_COORDS.get(2));
-                mc.entityRenderer.setupOverlayRendering();
-                return vec;
+
+            boolean projected = RenderUtils.projectTo2D(worldToScreenContext, x, y, z, WORLD_TO_SCREEN_COORDS);
+            mc.entityRenderer.setupOverlayRendering();
+            if (temporaryContext) {
+                endWorldToScreen();
             }
-            return null;
+            if (!projected) {
+                return null;
+            }
+            return new Vec3(WORLD_TO_SCREEN_COORDS[0], WORLD_TO_SCREEN_COORDS[1], WORLD_TO_SCREEN_COORDS[2]);
         }
 
         public static void roundedRect(float startX, float startY, float endX, float endY, float radius, int color) {
@@ -1658,7 +1690,10 @@ public class ScriptDefaults {
             GlStateManager.popMatrix();
         }
 
-        /** Alias for text2d — legacy script compatibility. */
+        public static void text(String text, float x, float y, float scale, int color, boolean shadow) {
+            text2d(text, x, y, scale, color, shadow);
+        }
+
         public static void text(String text, float x, float y, int scale, int color, boolean shadow) {
             text2d(text, x, y, (float) scale, color, shadow);
         }
@@ -1990,6 +2025,10 @@ public class ScriptDefaults {
             return -1;
         }
 
+        public static int getKeycode(final String key) {
+            return getKeyCode(key);
+        }
+
         public static int getKeyIndex(String key) {
             return Keyboard.getKeyIndex(key);
         }
@@ -2016,7 +2055,7 @@ public class ScriptDefaults {
     }
 
     public static class util {
-        public static final String colorSymbol = "Â§";
+        public static final String colorSymbol = "§";
 
         public static String color(String message) {
             return Utils.formatColor(message);

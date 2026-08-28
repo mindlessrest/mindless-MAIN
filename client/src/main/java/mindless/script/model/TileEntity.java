@@ -13,7 +13,8 @@ public class TileEntity {
         this.tileEntity = tileEntity;
         this.position = new Vec3(tileEntity.getPos().getX(), tileEntity.getPos().getY(), tileEntity.getPos().getZ());
         this.type = tileEntity.getBlockType().getClass().getSimpleName();
-        this.name = tileEntity.getBlockType().getRegistryName().replace("minecraft:", "");
+        net.minecraft.util.ResourceLocation loc = (net.minecraft.util.ResourceLocation) net.minecraft.block.Block.blockRegistry.getNameForObject(tileEntity.getBlockType());
+        this.name = loc != null ? loc.getResourcePath() : "unknown";
     }
 
     public Vec3 getPosition() {

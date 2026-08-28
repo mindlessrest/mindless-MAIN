@@ -2,8 +2,7 @@ package mindless.script.model;
 
 import com.google.common.base.Predicate;
 import com.google.common.collect.Lists;
-import mindless.mixin.impl.accessor.IAccessorEntity;
-import mindless.mixin.impl.accessor.IAccessorEntityLivingBase;
+import mindless.runtime.AccessorBridge;
 import mindless.module.ModuleManager;
 import mindless.module.impl.movement.NoSlow;
 import net.minecraft.block.*;
@@ -156,7 +155,7 @@ public class SimulatedPlayer {
         return new SimulatedPlayer(player,
                 player.getEntityBoundingBox(),
                 movementInput,
-                ((IAccessorEntityLivingBase) player).getJumpTicks(),
+                AccessorBridge.EntityLivingBase_getJumpTicks(player),
                 player.motionZ,
                 player.motionY,
                 player.motionX,
@@ -183,14 +182,14 @@ public class SimulatedPlayer {
                 player.fallDistance,
                 player.stepHeight,
                 player.isCollided,
-                ((IAccessorEntity) player).getFire(),
+                AccessorBridge.Entity_getFire(player),
                 player.distanceWalkedModified,
                 player.distanceWalkedOnStepModified,
-                ((IAccessorEntity) player).getNextStepDistance(),
+                AccessorBridge.Entity_getNextStepDistance(player),
                 player.height,
                 player.width,
                 player.fireResistance,
-                ((IAccessorEntity) player).getIsInWeb(),
+                AccessorBridge.Entity_getIsInWeb(player),
                 player.noClip,
                 player.isSprinting(),
                 foodStats
@@ -468,7 +467,7 @@ public class SimulatedPlayer {
     }
 
     private boolean isOpenBlockSpace(BlockPos pos) {
-        return getBlockState(pos).getBlock().isNormalCube();
+        return !getBlockState(pos).getBlock().isNormalCube();
     }
 
     private void playerSideMoveEntityWithHeading(float moveStrafing, float moveForward) {

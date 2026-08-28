@@ -13,6 +13,12 @@ import java.util.List;
 import java.util.Map;
 
 public class ItemStack {
+
+    private static String getItemName(Item item) {
+        ResourceLocation loc = (ResourceLocation) Item.itemRegistry.getNameForObject(item);
+        if (loc == null) return "unknown";
+        return loc.getResourcePath();
+    }
     public String type;
     public String name;
     public String displayName;
@@ -31,7 +37,7 @@ public class ItemStack {
         this.itemStack = itemStack;
         this.isBlock = itemStack.getItem() instanceof ItemBlock;
         this.type = isBlock ? ((ItemBlock) itemStack.getItem()).getBlock().getClass().getSimpleName() : itemStack.getItem().getClass().getSimpleName();
-        this.name = itemStack.getItem().getRegistryName().substring(10); // substring 10 to remove "minecraft:"
+        this.name = getItemName(itemStack.getItem());
         this.displayName = itemStack.getDisplayName();
         this.stackSize = itemStack.stackSize;
         this.maxStackSize = itemStack.getMaxStackSize();

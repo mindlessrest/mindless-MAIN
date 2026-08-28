@@ -248,7 +248,8 @@ public class Entity {
 
     public String getName() {
         if (entity instanceof EntityItem) {
-            return ((EntityItem) entity).getEntityItem().getItem().getRegistryName().substring(10);
+            net.minecraft.util.ResourceLocation loc = (net.minecraft.util.ResourceLocation) net.minecraft.item.Item.itemRegistry.getNameForObject(((EntityItem) entity).getEntityItem().getItem());
+            return loc != null ? loc.getResourcePath() : "unknown";
         }
         return entity.getName();
     }
@@ -310,14 +311,6 @@ public class Entity {
 
     public float getPrevYaw() {
         return entity.prevRotationYaw;
-    }
-
-    public void setPrevYaw(float prevYaw) {
-        entity.prevRotationYaw = prevYaw;
-    }
-
-    public void setPrevPitch(float prevPitch) {
-        entity.prevRotationPitch = prevPitch;
     }
 
     public float getPrevPitch() {
@@ -439,6 +432,22 @@ public class Entity {
 
     public void setYaw(float yaw) {
         entity.rotationYaw = yaw;
+    }
+
+    /**
+     * The rotation the renderer interpolates from.
+     *
+     * <p>Rendering lerps between the previous tick's rotation and this one, so setting only the
+     * current one makes the head swing to it over the frames that follow instead of being there.
+     * Setting both is how you place a rotation rather than animate towards it -- which is the
+     * whole point when the value being written is already the smoothed one.
+     */
+    public void setPrevYaw(float yaw) {
+        entity.prevRotationYaw = yaw;
+    }
+
+    public void setPrevPitch(float pitch) {
+        entity.prevRotationPitch = pitch;
     }
 
     public void moveTo(Vec3 position) {
