@@ -1559,6 +1559,7 @@ public class ScriptDefaults {
         }
 
         public static void image(Image image, float x, float y, float width, float height) {
+            /*
             Image.releaseCollectedTextures();
             if (image == null || !image.isLoaded()) {
                 return;
@@ -1584,6 +1585,7 @@ public class ScriptDefaults {
             worldrenderer.pos(x, y, 0.0).tex(0.0, 0.0).color(255, 255, 255, 255).endVertex();
             tessellator.draw();
             GlStateManager.popMatrix();
+            */
         }
 
         public static Vec3 worldToScreen(double x, double y, double z, int scaleFactor, float partialTicks) {
