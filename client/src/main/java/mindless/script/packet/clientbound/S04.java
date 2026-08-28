@@ -15,7 +15,7 @@ public class S04 extends SPacket {
         this.item = ItemStack.convert(e.getItemStack());
     }
 
-    public S04(int entityId, int slot, keystrokesmod.script.model.ItemStack item) {
+    public S04(int entityId, int slot, mindless.script.model.ItemStack item) {
         super(new S04PacketEntityEquipment(entityId, slot, item.itemStack));
         this.entityId = entityId;
         this.slot = slot;
