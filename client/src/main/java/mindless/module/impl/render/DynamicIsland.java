@@ -9,6 +9,7 @@ import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.BlurUtils;
+import mindless.utility.shader.HudGlowHelper;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
@@ -68,7 +69,7 @@ public class DynamicIsland extends Module {
         }
     }
 
-    private static final float WATERMARK_SCALE = 4.0f;
+    private static final float WATERMARK_SCALE = 3.0f;
 
     private mindless.utility.font.RavenFontRenderer getWatermarkFont() {
         return mindless.utility.font.FontManager.getHudRenderer(
@@ -82,23 +83,20 @@ public class DynamicIsland extends Module {
         String text = "Mindless";
         float x = textPosX;
         float y = textPosY;
-        float w = font.getStringWidth(text);
-        float h = font.getFontHeight();
 
-        // Shader bloom glow behind text
-        float pad = 8.0f;
-        BlurUtils.prepareBlur(x - pad, y - pad, w + pad * 2, h + pad * 2);
-        font.drawGlyphString(text, x, y, (character, xOffset, width, formattingColor) -> {
-            return mindless.module.impl.theme.ThemeManager.getWatermarkColor(xOffset * 0.1);
-        }, false);
-        BlurUtils.blurEndRegion(3, 4.0f, 0.6f, x - pad - 2, y - pad - 2, w + pad * 2 + 4, h + pad * 2 + 4);
+        int baseColor = mindless.module.impl.theme.ThemeManager.getWatermarkColor(0.0);
+        int r = (baseColor >> 16) & 0xFF;
+        int g = (baseColor >> 8) & 0xFF;
+        int b = baseColor & 0xFF;
 
-        GL20.glUseProgram(0);
-        GlStateManager.enableTexture2D();
-        GlStateManager.enableBlend();
-        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        if (mindless.utility.shader.HudGlowHelper.isAvailable()) {
+            mindless.utility.shader.HudGlowHelper.beginMask();
+            font.drawGlyphString(text, x, y, (character, xOffset, width, formattingColor) -> {
+                return mindless.module.impl.theme.ThemeManager.getWatermarkColor(xOffset * 0.1);
+            }, false);
+            mindless.utility.shader.HudGlowHelper.endAndComposite(8.0f, 1.2f, r, g, b);
+        }
 
-        // Draw text with gradient per-glyph on top
         font.drawGlyphString(text, x, y, (character, xOffset, width, formattingColor) -> {
             return mindless.module.impl.theme.ThemeManager.getWatermarkColor(xOffset * 0.1);
         }, false);

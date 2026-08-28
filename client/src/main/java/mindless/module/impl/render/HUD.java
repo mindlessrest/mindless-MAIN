@@ -11,6 +11,7 @@ import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.shader.BlurUtils;
+import mindless.utility.shader.HudGlowHelper;
 import mindless.utility.shader.RoundedUtils;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.ScaledResolutionCache;
@@ -248,6 +249,14 @@ public class HUD extends Module {
         double lastOutlineRight = 0.0;
         double lastBackgroundBottom = 0.0;
         boolean removeVelocity = ModuleManager.antiKnockback.isEnabled();
+
+        // Mask-based glow: pre-pass renders text into FBO, blurs it, composites as glow underneath
+        boolean useShaderGlow = Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled()
+                && HudGlowHelper.isAvailable();
+        if (useShaderGlow) {
+            renderArrayListGlowPass(hudFont, removeVelocity, rowHeight, horizontalTextPadding,
+                    textTopOffset, textTopPadding);
+        }
 
         // Backgrounds are drawn up front, from the same widths the loop below lays the rows out
         // with, so the two can never disagree about how wide or tall the list is.
@@ -866,7 +875,7 @@ public class HUD extends Module {
      * something for all of them.
      */
     private static void drawDecoration(RavenFontRenderer hudFont, String text, float xPos, float textY, int color) {
-        if (Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled()) {
+        if (Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled() && !HudGlowHelper.isAvailable()) {
             TextGlowUtils.drawGlow(hudFont, text, xPos, textY, color);
         }
         if (!shouldDrawTextShadow()) {
@@ -906,6 +915,45 @@ public class HUD extends Module {
                 hudFont.drawString(plain, xPos + unit, textY + unit, base << 24, false);
                 break;
         }
+    }
+
+    /**
+     * Pre-pass: renders all ArrayList text into the glow mask, blurs it, composites as glow.
+     * Glow follows actual glyphs rather than producing rectangular artifacts.
+     */
+    private static void renderArrayListGlowPass(RavenFontRenderer hudFont, boolean removeVelocity,
+                                                 int rowHeight, int horizontalTextPadding,
+                                                 int textTopOffset, int textTopPadding) {
+        HudGlowHelper.beginMask();
+        float yPos = posY;
+        double verticalWaveAccum = 0.0;
+        for (Module module : ModuleManager.organizedModules) {
+            if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
+                continue;
+            }
+            String moduleName = getHudRenderText(module);
+            int moduleWidth = hudFont.getStringWidth(moduleName);
+            float xPos = posX;
+            float textY = getHudTextY(yPos, textTopOffset, textTopPadding);
+            if (alignRight.isToggled()) {
+                xPos -= moduleWidth;
+            }
+            double backgroundLeft = xPos - horizontalTextPadding;
+            double backgroundRight = xPos + moduleWidth + horizontalTextPadding;
+            double rowCenterX = (backgroundLeft + backgroundRight) * 0.5;
+            double wavePhase = hudWavePhase(verticalWaveAccum, rowCenterX);
+            int color = getHudColor(wavePhase);
+            hudFont.drawString(moduleName, xPos, textY, color, false);
+            if (hudWaveIsVertical()) {
+                verticalWaveAccum += getVerticalWaveStep();
+            }
+            yPos += rowHeight;
+        }
+        int baseColor = getHudColor(0.0);
+        int r = (baseColor >> 16) & 0xFF;
+        int g = (baseColor >> 8) & 0xFF;
+        int b = baseColor & 0xFF;
+        HudGlowHelper.endAndComposite(6.0f, 1.0f, r, g, b);
     }
 
     private static void drawTextSegment(RavenFontRenderer hudFont, String text, float xPos, float textY,

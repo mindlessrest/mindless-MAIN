@@ -236,9 +236,10 @@ public final class SpotifyWidgetRenderer {
         float lyricGap = lyricLines.isEmpty() ? 0.0F : LYRICS_GAP * uiScale;
         boolean bubbleDetached = SpotifyMiniPlayer.hasLyricsPosition();
 
-        // A detached bubble is not part of the card, so the card must not grow to hold it --
-        // otherwise dragging the player picks up a rectangle with empty space hanging off it.
-        float height = rowHeight + (bubbleDetached ? 0.0F : lyricGap + lyricStripHeight);
+        // The lyrics strip always renders as its own visual block (with its own shadow and wash),
+        // so it must never inflate the card rect -- otherwise the edit outline covers the gap
+        // between card and lyrics, producing a visible border around empty space.
+        float height = rowHeight;
 
         ScaledResolution resolution = ScaledResolutionCache.get();
         float[] position = position(resolution, width, height);
@@ -269,9 +270,7 @@ public final class SpotifyWidgetRenderer {
                 : bubbleDetached
                         ? lyricsPosition(resolution, bubbleW, lyricStripHeight)
                         : new float[]{x, y + rowHeight + lyricGap};
-        if (bubblePos != null) {
-            dropShadow(bubblePos[0], bubblePos[1], bubbleW, lyricStripHeight, radius, uiScale, alpha);
-        }
+        // No drop shadow on lyrics bubble -- it sat below the panel and looked like a border artifact.
 
         drawCover(art, wash, x, y, cover, radius, alpha);
         drawPanel(info, wash, panelX, y, panelWidth, rowHeight, radius, padX, uiScale,

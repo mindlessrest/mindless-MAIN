@@ -16,9 +16,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public class StatsHUD extends Module {
-    private static final float DEFAULT_RELATIVE_X = 0.005f;
-    private static final float DEFAULT_RELATIVE_Y = 0.015f;
-    private static final float LINE_GAP = 1.0f;
     private static final int BG_COLOR = 0x55000000;
     private static final float BG_PAD_H = 3.0f;
     private static final float BG_PAD_V = 1.0f;
@@ -28,10 +25,9 @@ public class StatsHUD extends Module {
     private final ButtonSetting showBps;
     private final ButtonSetting showPing;
 
-    private float posX = Float.NaN;
-    private float posY = Float.NaN;
-    private float relativePosX = Float.NaN;
-    private float relativePosY = Float.NaN;
+    private final StatPanel fpsPanel = new StatPanel(0.005f, 0.015f);
+    private final StatPanel bpsPanel = new StatPanel(0.005f, 0.040f);
+    private final StatPanel pingPanel = new StatPanel(0.005f, 0.065f);
 
     public StatsHUD() {
         super("HUD", category.render);
@@ -43,121 +39,140 @@ public class StatsHUD extends Module {
 
     public SliderSetting scaleSetting() { return scale; }
 
-    public float getPosX() { syncPositionToResolution(); return posX; }
-    public float getPosY() { syncPositionToResolution(); return posY; }
+    public StatPanel getFpsPanel() { return fpsPanel; }
+    public StatPanel getBpsPanel() { return bpsPanel; }
+    public StatPanel getPingPanel() { return pingPanel; }
 
-    public float getRelativePosX() { syncPositionToResolution(); return relativePosX; }
-    public float getRelativePosY() { syncPositionToResolution(); return relativePosY; }
-
-    public void setRelativePosition(float normalizedX, float normalizedY) {
-        relativePosX = normalizedX;
-        relativePosY = normalizedY;
-        syncPositionToResolution();
-    }
-
-    public void setAbsolutePosition(float absoluteX, float absoluteY) {
-        ScaledResolution resolution = ScaledResolutionCache.get();
-        posX = absoluteX;
-        posY = absoluteY;
-        relativePosX = absoluteX / Math.max(1, resolution.getScaledWidth());
-        relativePosY = absoluteY / Math.max(1, resolution.getScaledHeight());
-    }
+    public boolean isFpsEnabled() { return showFps.isToggled(); }
+    public boolean isBpsEnabled() { return showBps.isToggled(); }
+    public boolean isPingEnabled() { return showPing.isToggled(); }
 
     public void resetPosition() {
-        setRelativePosition(DEFAULT_RELATIVE_X, DEFAULT_RELATIVE_Y);
-    }
-
-    private void syncPositionToResolution() {
-        ScaledResolution resolution = ScaledResolutionCache.get();
-        int scaledWidth = Math.max(1, resolution.getScaledWidth());
-        int scaledHeight = Math.max(1, resolution.getScaledHeight());
-
-        if (Float.isNaN(relativePosX) || Float.isNaN(relativePosY)) {
-            if (Float.isNaN(posX) || Float.isNaN(posY)) {
-                relativePosX = DEFAULT_RELATIVE_X;
-                relativePosY = DEFAULT_RELATIVE_Y;
-            } else {
-                relativePosX = posX / scaledWidth;
-                relativePosY = posY / scaledHeight;
-            }
-        }
-        posX = relativePosX * scaledWidth;
-        posY = relativePosY * scaledHeight;
-    }
-
-    public float[] renderPreview() { return draw(); }
-
-    public float[] renderDesignerPreview(float absoluteLeft, float absoluteTop) {
-        setAbsolutePosition(absoluteLeft, absoluteTop);
-        return draw();
+        fpsPanel.resetPosition();
+        bpsPanel.resetPosition();
+        pingPanel.resetPosition();
     }
 
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !Utils.nullCheck()) return;
         if (mc.currentScreen != null || mc.gameSettings.showDebugInfo) return;
-        draw();
+        if (showFps.isToggled()) drawStat(fpsPanel, "FPS ", String.valueOf(Minecraft.getDebugFPS()));
+        if (showBps.isToggled()) {
+            double bps = Utils.gbps((Freecam.freeEntity == null) ? mc.thePlayer : Freecam.freeEntity, 1);
+            drawStat(bpsPanel, "BPS ", String.format("%.1f", bps));
+        }
+        if (showPing.isToggled()) drawStat(pingPanel, "PING ", getPing() + "ms");
     }
 
-    private float[] draw() {
+    public float[] renderFpsPreview() {
+        if (!showFps.isToggled()) return null;
+        return drawStat(fpsPanel, "FPS ", String.valueOf(Minecraft.getDebugFPS()));
+    }
+
+    public float[] renderBpsPreview() {
+        if (!showBps.isToggled()) return null;
+        double bps = Utils.gbps((Freecam.freeEntity == null) ? mc.thePlayer : Freecam.freeEntity, 1);
+        return drawStat(bpsPanel, "BPS ", String.format("%.1f", bps));
+    }
+
+    public float[] renderPingPreview() {
+        if (!showPing.isToggled()) return null;
+        return drawStat(pingPanel, "PING ", getPing() + "ms");
+    }
+
+    public float[] renderFpsAt(float left, float top) {
+        fpsPanel.setAbsolutePosition(left, top);
+        return renderFpsPreview();
+    }
+
+    public float[] renderBpsAt(float left, float top) {
+        bpsPanel.setAbsolutePosition(left, top);
+        return renderBpsPreview();
+    }
+
+    public float[] renderPingAt(float left, float top) {
+        pingPanel.setAbsolutePosition(left, top);
+        return renderPingPreview();
+    }
+
+    private float[] drawStat(StatPanel panel, String label, String value) {
         RavenFontRenderer font = HUD.getHudFontRenderer();
         if (font == null) return null;
-        if (!showFps.isToggled() && !showBps.isToggled() && !showPing.isToggled()) return null;
 
-        syncPositionToResolution();
-        float x = posX;
-        float y = posY;
-        float lineHeight = font.getFontHeight() + LINE_GAP;
-        float maxWidth = 0;
-        int lineIndex = 0;
+        panel.syncPositionToResolution();
+        float x = panel.posX;
+        float y = panel.posY;
 
         int themeColor = mindless.module.impl.theme.ThemeManager.getStatsLabelColor();
         int valueColor = mindless.module.impl.theme.ThemeManager.getStatsValueColor();
 
-        if (showFps.isToggled()) {
-            String label = "FPS ";
-            String value = String.valueOf(Minecraft.getDebugFPS());
-            float ly = y + lineHeight * lineIndex;
-            float lw = font.getStringWidth(label + value);
-            RenderUtils.drawRect(x - BG_PAD_H, ly - BG_PAD_V, x + lw + BG_PAD_H, ly + font.getFontHeight() + BG_PAD_V, BG_COLOR);
-            font.drawString(label, x, ly, themeColor, false);
-            font.drawString(value, x + font.getStringWidth(label), ly, valueColor, false);
-            maxWidth = Math.max(maxWidth, lw);
-            lineIndex++;
-        }
+        float lw = font.getStringWidth(label + value);
+        RenderUtils.drawRect(x - BG_PAD_H, y - BG_PAD_V, x + lw + BG_PAD_H, y + font.getFontHeight() + BG_PAD_V, BG_COLOR);
+        font.drawString(label, x, y, themeColor, false);
+        font.drawString(value, x + font.getStringWidth(label), y, valueColor, false);
 
-        if (showBps.isToggled()) {
-            double bps = Utils.gbps((Freecam.freeEntity == null) ? mc.thePlayer : Freecam.freeEntity, 1);
-            String label = "BPS ";
-            String value = String.format("%.1f", bps);
-            float ly = y + lineHeight * lineIndex;
-            float lw = font.getStringWidth(label + value);
-            RenderUtils.drawRect(x - BG_PAD_H, ly - BG_PAD_V, x + lw + BG_PAD_H, ly + font.getFontHeight() + BG_PAD_V, BG_COLOR);
-            font.drawString(label, x, ly, themeColor, false);
-            font.drawString(value, x + font.getStringWidth(label), ly, valueColor, false);
-            maxWidth = Math.max(maxWidth, lw);
-            lineIndex++;
-        }
-
-        if (showPing.isToggled()) {
-            String label = "PING ";
-            String value = getPing() + "ms";
-            float ly = y + lineHeight * lineIndex;
-            float lw = font.getStringWidth(label + value);
-            RenderUtils.drawRect(x - BG_PAD_H, ly - BG_PAD_V, x + lw + BG_PAD_H, ly + font.getFontHeight() + BG_PAD_V, BG_COLOR);
-            font.drawString(label, x, ly, themeColor, false);
-            font.drawString(value, x + font.getStringWidth(label), ly, valueColor, false);
-            maxWidth = Math.max(maxWidth, lw);
-            lineIndex++;
-        }
-
-        float totalHeight = lineHeight * lineIndex - LINE_GAP;
-        return new float[] { x, y, x + maxWidth, y + totalHeight };
+        return new float[] { x - BG_PAD_H, y - BG_PAD_V, x + lw + BG_PAD_H, y + font.getFontHeight() + BG_PAD_V };
     }
 
     private int getPing() {
         if (mc.thePlayer == null || mc.getNetHandler() == null) return 0;
         NetworkPlayerInfo info = mc.getNetHandler().getPlayerInfo(mc.thePlayer.getUniqueID());
         return info != null ? (int) info.getResponseTime() : 0;
+    }
+
+    public static final class StatPanel {
+        private final float defaultRelX;
+        private final float defaultRelY;
+        float posX = Float.NaN;
+        float posY = Float.NaN;
+        private float relativePosX = Float.NaN;
+        private float relativePosY = Float.NaN;
+
+        StatPanel(float defaultRelX, float defaultRelY) {
+            this.defaultRelX = defaultRelX;
+            this.defaultRelY = defaultRelY;
+        }
+
+        public float getPosX() { syncPositionToResolution(); return posX; }
+        public float getPosY() { syncPositionToResolution(); return posY; }
+        public float getRelativePosX() { syncPositionToResolution(); return relativePosX; }
+        public float getRelativePosY() { syncPositionToResolution(); return relativePosY; }
+
+        public void setRelativePosition(float normalizedX, float normalizedY) {
+            relativePosX = normalizedX;
+            relativePosY = normalizedY;
+            syncPositionToResolution();
+        }
+
+        public void setAbsolutePosition(float absoluteX, float absoluteY) {
+            ScaledResolution resolution = ScaledResolutionCache.get();
+            posX = absoluteX;
+            posY = absoluteY;
+            relativePosX = absoluteX / Math.max(1, resolution.getScaledWidth());
+            relativePosY = absoluteY / Math.max(1, resolution.getScaledHeight());
+        }
+
+        public void resetPosition() {
+            setRelativePosition(defaultRelX, defaultRelY);
+        }
+
+        void syncPositionToResolution() {
+            ScaledResolution resolution = ScaledResolutionCache.get();
+            int scaledWidth = Math.max(1, resolution.getScaledWidth());
+            int scaledHeight = Math.max(1, resolution.getScaledHeight());
+
+            if (Float.isNaN(relativePosX) || Float.isNaN(relativePosY)) {
+                if (Float.isNaN(posX) || Float.isNaN(posY)) {
+                    relativePosX = defaultRelX;
+                    relativePosY = defaultRelY;
+                } else {
+                    relativePosX = posX / scaledWidth;
+                    relativePosY = posY / scaledHeight;
+                }
+            }
+            posX = relativePosX * scaledWidth;
+            posY = relativePosY * scaledHeight;
+        }
     }
 }

@@ -1816,6 +1816,7 @@ public final class ModernClickGui extends ClickGui {
             for (ModuleComponent component : c.getModules()) {
                 if (component.mod != null && Gui.shouldShowModule(component.mod)) result.add(component.mod);
             }
+            pinManagerToTop(result);
             return result;
         }
         if (Raven.getModuleManager() == null) return Collections.<Module>emptyList();
@@ -1823,7 +1824,18 @@ public final class ModernClickGui extends ClickGui {
         for (Module mod : Raven.getModuleManager().inCategory(category)) {
             if (Gui.shouldShowModule(mod)) visible.add(mod);
         }
+        pinManagerToTop(visible);
         return visible;
+    }
+
+    private static void pinManagerToTop(List<Module> list) {
+        for (int i = 1; i < list.size(); i++) {
+            if (list.get(i) instanceof mindless.script.Manager) {
+                Module manager = list.remove(i);
+                list.add(0, manager);
+                return;
+            }
+        }
     }
 
     /**

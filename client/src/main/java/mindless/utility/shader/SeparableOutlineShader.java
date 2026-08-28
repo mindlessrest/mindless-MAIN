@@ -54,9 +54,9 @@ public class SeparableOutlineShader {
                 "  if (finalPass == 1 && texture2D(original, uv).a > 0.0) { gl_FragColor = vec4(0.0); return; }\n" +
                 "  float bestAlpha = 0.0;\n" +
                 "  vec3 bestColor = vec3(0.0);\n" +
-                "  for (float offset = -3.0; offset <= 3.0; offset += 1.0) {\n" +
+                "  for (float offset = -2.0; offset <= 2.0; offset += 1.0) {\n" +
                 "    vec4 s = texture2D(tex, uv + direction * texelSize * offset);\n" +
-                "    float w = s.a * (1.0 - abs(offset) / 4.0);\n" +
+                "    float w = s.a * (1.0 - abs(offset) / 3.0);\n" +
                 "    if (w > bestAlpha) { bestAlpha = w; bestColor = s.rgb; }\n" +
                 "  }\n" +
                 "  gl_FragColor = vec4(bestColor, bestAlpha);\n" +

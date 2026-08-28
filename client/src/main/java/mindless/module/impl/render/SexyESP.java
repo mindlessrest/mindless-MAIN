@@ -596,16 +596,6 @@ public class SexyESP extends Module {
         private double height() { return bottom - top; }
     }
 
-    /** Collects all flat colored quads for an entity into as few GPU submissions as possible. */
-    private int getEntityColor(EntityPlayer player) {
-        int mode = (int) colorMode.getInput();
-        int rgb;
-        if (mode == 2) rgb = Utils.getColorFromEntity(player);
-        else if (mode == 1) rgb = Utils.getChroma(2L, 0L);
-        else rgb = color.getColor();
-        return Utils.mergeAlpha(rgb, 255);
-    }
-
     private void runOutlinePass(float partialTicks) {
         if (mindless.utility.Diagnostics.isEnabled() && !glowBloomShader.isValid()) {
             mindless.utility.Diagnostics.log("esp", "glow shader unavailable, falling back to bloom");

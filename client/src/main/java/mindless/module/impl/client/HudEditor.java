@@ -459,27 +459,42 @@ public final class HudEditor {
 
             if (ModuleManager.statsHUD != null) {
                 final StatsHUD stats = ModuleManager.statsHUD;
-                elements.add(new Element("HUD") {
-                    @Override
-                    void render() {
-                        setBounds(stats.renderPreview());
-                    }
-
-                    @Override
-                    void moveTo(float left, float top) {
-                        setBounds(stats.renderDesignerPreview(left, top));
-                    }
-
-                    @Override
-                    void reset() {
-                        stats.resetPosition();
-                    }
-
-                    @Override
-                    SliderSetting scaleSetting() {
-                        return stats.scaleSetting();
-                    }
-                });
+                if (stats.isFpsEnabled()) {
+                    elements.add(new Element("FPS") {
+                        @Override
+                        void render() { setBounds(stats.renderFpsPreview()); }
+                        @Override
+                        void moveTo(float left, float top) { setBounds(stats.renderFpsAt(left, top)); }
+                        @Override
+                        void reset() { stats.getFpsPanel().resetPosition(); }
+                        @Override
+                        SliderSetting scaleSetting() { return stats.scaleSetting(); }
+                    });
+                }
+                if (stats.isBpsEnabled()) {
+                    elements.add(new Element("BPS") {
+                        @Override
+                        void render() { setBounds(stats.renderBpsPreview()); }
+                        @Override
+                        void moveTo(float left, float top) { setBounds(stats.renderBpsAt(left, top)); }
+                        @Override
+                        void reset() { stats.getBpsPanel().resetPosition(); }
+                        @Override
+                        SliderSetting scaleSetting() { return stats.scaleSetting(); }
+                    });
+                }
+                if (stats.isPingEnabled()) {
+                    elements.add(new Element("Ping") {
+                        @Override
+                        void render() { setBounds(stats.renderPingPreview()); }
+                        @Override
+                        void moveTo(float left, float top) { setBounds(stats.renderPingAt(left, top)); }
+                        @Override
+                        void reset() { stats.getPingPanel().resetPosition(); }
+                        @Override
+                        SliderSetting scaleSetting() { return stats.scaleSetting(); }
+                    });
+                }
             }
 
             if (ModuleManager.watermark != null) {

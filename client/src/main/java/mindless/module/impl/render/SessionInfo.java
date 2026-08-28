@@ -197,9 +197,22 @@ public class SessionInfo extends Module {
     /** Draws the panel at a requested top-left and reports its bounds, for the HUD editor. */
     public float[] renderDesignerPreview(float absoluteLeft, float absoluteTop) {
         ScaledResolution resolution = ScaledResolutionCache.get();
+        boolean modern = (int) mode.getInput() == 0;
+        if (modern) {
+            // Modern anchors on the right edge; convert left-edge drag coordinate.
+            float s = (float) scale.getInput();
+            RavenFontRenderer font = HUD.getHudFontRenderer();
+            RavenFontRenderer bigFont = valueFont();
+            if (font == null || bigFont == null) return null;
+            // Estimate width for positioning
+            float[] prev = drawModern();
+            if (prev == null) return null;
+            float w = prev[2] - prev[0];
+            setAbsolutePosition(absoluteLeft + w, absoluteTop, resolution);
+            return drawModern();
+        }
         float[] size = measure();
         if (size == null) return null;
-        // The stored anchor is the panel's right edge, so a left-edge drag has to be converted.
         setAbsolutePosition(absoluteLeft + size[0], absoluteTop, resolution);
         return draw();
     }

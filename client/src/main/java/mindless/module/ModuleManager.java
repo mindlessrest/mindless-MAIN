@@ -271,7 +271,6 @@ public class ModuleManager {
         this.addModule(new Slow());
 
         this.addModule(targetFilter = new mindless.module.impl.world.TargetFilter());
-        this.addModule(new mindless.module.impl.world.AntiVoid());
         this.addModule(weather = new Weather());
         this.addModule(ambience = new Ambience());
         this.addModule(new Particles());
