@@ -1,0 +1,7 @@
+package mindless.event;
+
+import net.minecraftforge.fml.common.eventhandler.Event;
+
+public class GameWinEvent extends Event {
+    public GameWinEvent() {}
+}

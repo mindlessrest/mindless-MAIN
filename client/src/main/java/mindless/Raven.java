@@ -86,6 +86,7 @@ public class Raven {
         registerHandler(new ModuleUtils(), false);
         registerHandler(AttackPacketTimingTracker.INSTANCE, false);
         registerHandler(lagHandler = new UnifiedLagHandler(), false);
+        registerHandler(new mindless.helper.GameWinDetector(), false);
 
         // Account Manager
         AccountManager.init();

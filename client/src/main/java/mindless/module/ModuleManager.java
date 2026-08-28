@@ -156,6 +156,7 @@ public class ModuleManager {
 
         this.addModule(new AutoRequeue());
         this.addModule(new AntiMisplace());
+        this.addModule(new AutoGG());
         this.addModule(new PickupAlerts());
         this.addModule(new UpgradeAlerts());
         this.addModule(bedTracker = new BedTracker());
