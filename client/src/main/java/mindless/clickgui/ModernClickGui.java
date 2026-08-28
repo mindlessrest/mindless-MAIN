@@ -359,15 +359,17 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void drawMascot() {
+        /*
         if (Gui.mascot == null || (int) Gui.mascot.getInput() != 0) return;
         ensureUiTextures();
         if (mascotTexture == null) return;
         float mascotH = panelH * 0.75f;
         float mascotW = mascotH;
-        float mx = baseX + sideW + gap + centerW - mascotW * 0.3f;
-        float my = baseY + panelH - mascotH + 8f;
+        float mx = screenWidth - mascotW - 50f;
+        float my = screenHeight - mascotH - 50f;
         drawTextureRegion(mascotTexture, mx, my, mascotW, mascotH,
-                0, 0, 1, 1, 1, 1, 1f, 1f, 1f, 0.55f);
+                0, 0, 1, 1, 1, 1, 1f, 1f, 1f, 1f);
+         */
     }
 
     private void drawDashboardShadows(float renderScale) {
