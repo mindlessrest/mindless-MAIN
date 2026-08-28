@@ -1,23 +1,6 @@
 package mindless.command;
 
-import mindless.command.impl.Binds;
-import mindless.command.impl.Bind;
-import mindless.command.impl.Cname;
-import mindless.command.impl.Debug;
-import mindless.command.impl.Enemy;
-import mindless.command.impl.Friend;
-import mindless.command.impl.Help;
-import mindless.command.impl.HideAll;
-import mindless.command.impl.Name;
-import mindless.command.impl.Ping;
-import mindless.command.impl.Rpc;
-import mindless.command.impl.Prefix;
-import mindless.command.impl.Profiles;
-import mindless.command.impl.ShowAll;
-import mindless.command.impl.Toggle;
-import mindless.command.impl.Track;
-import mindless.command.impl.Urchin;
-import mindless.command.impl.Unbind;
+import mindless.command.impl.*;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.ChatCommands;
 import mindless.utility.Utils;
@@ -52,6 +35,7 @@ public class CommandManager {
         register(new ShowAll());
         register(new HideAll());
         register(new Urchin());
+        register(new Queue());
     }
 
     public boolean handleChatMessage(String message) {
