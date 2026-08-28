@@ -1,4 +1,4 @@
-package mindless.script.model;
+package keystrokesmod.script.model;
 
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.MathHelper;

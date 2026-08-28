@@ -1,6 +1,6 @@
-package mindless.script.packet.clientbound;
+package keystrokesmod.script.packet.clientbound;
 
-import mindless.runtime.AccessorBridge;
+import keystrokesmod.mixin.impl.accessor.IAccessorS14PacketEntity;
 import net.minecraft.network.play.server.S14PacketEntity;
 
 public class S14 extends SPacket {
@@ -15,7 +15,7 @@ public class S14 extends SPacket {
 
     public S14(S14PacketEntity e) {
         super(e);
-        this.entityId = AccessorBridge.S14PacketEntity_getEntityId(e);
+        this.entityId = ((IAccessorS14PacketEntity) e).getEntityId();
         this.posX = e.func_149062_c();
         this.posY = e.func_149061_d();
         this.posZ = e.func_149064_e();

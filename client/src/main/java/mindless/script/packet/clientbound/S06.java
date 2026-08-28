@@ -1,4 +1,4 @@
-package mindless.script.packet.clientbound;
+package keystrokesmod.script.packet.clientbound;
 
 import net.minecraft.network.play.server.S06PacketUpdateHealth;
 

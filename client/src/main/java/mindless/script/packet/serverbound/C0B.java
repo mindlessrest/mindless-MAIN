@@ -1,6 +1,6 @@
-package mindless.script.packet.serverbound;
+package keystrokesmod.script.packet.serverbound;
 
-import mindless.utility.Utils;
+import keystrokesmod.utility.Utils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.client.C0BPacketEntityAction;
 

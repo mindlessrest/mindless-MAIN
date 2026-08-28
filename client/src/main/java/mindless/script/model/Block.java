@@ -1,10 +1,9 @@
-package mindless.script.model;
+package keystrokesmod.script.model;
 
-import mindless.utility.BlockUtils;
-import mindless.utility.Utils;
+import keystrokesmod.utility.BlockUtils;
+import keystrokesmod.utility.Utils;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.BlockPos;
-import net.minecraft.util.ResourceLocation;
 
 public class Block {
     public String type;
@@ -18,15 +17,9 @@ public class Block {
     public double y;
     public double z;
 
-    private static String getBlockName(net.minecraft.block.Block block) {
-        ResourceLocation loc = (ResourceLocation) net.minecraft.block.Block.blockRegistry.getNameForObject(block);
-        if (loc == null) return "unknown";
-        return loc.getResourcePath();
-    }
-
     public Block(net.minecraft.block.Block block, BlockPos blockPos) {
         this.type = block.getClass().getSimpleName();
-        this.name = getBlockName(block);
+        this.name = block.getRegistryName().replace("minecraft:", "");
         this.interactable = BlockUtils.isInteractable(block);
         this.variant = block.getMetaFromState(BlockUtils.getBlockState(blockPos));
         this.height = block.getBlockBoundsMaxY() - block.getBlockBoundsMinY();
@@ -40,7 +33,7 @@ public class Block {
     public Block(IBlockState state, BlockPos blockPos) {
         final net.minecraft.block.Block block = state.getBlock();
         this.type = block.getClass().getSimpleName();
-        this.name = getBlockName(block);
+        this.name = block.getRegistryName().replace("minecraft:", "");
         this.interactable = BlockUtils.isInteractable(block);
         this.variant = block.getMetaFromState(state);
         this.height = block.getBlockBoundsMaxY() - block.getBlockBoundsMinY();

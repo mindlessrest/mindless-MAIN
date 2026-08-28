@@ -1,6 +1,6 @@
-package mindless.script.packet.clientbound;
+package keystrokesmod.script.packet.clientbound;
 
-import mindless.script.model.ItemStack;
+import keystrokesmod.script.model.ItemStack;
 import net.minecraft.network.play.server.S2FPacketSetSlot;
 
 public class S2F extends SPacket {

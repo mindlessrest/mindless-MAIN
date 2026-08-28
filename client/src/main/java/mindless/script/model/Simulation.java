@@ -1,4 +1,4 @@
-package mindless.script.model;
+package keystrokesmod.script.model;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.MovementInput;

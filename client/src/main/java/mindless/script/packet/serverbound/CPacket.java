@@ -1,4 +1,4 @@
-package mindless.script.packet.serverbound;
+package keystrokesmod.script.packet.serverbound;
 
 import net.minecraft.network.Packet;
 

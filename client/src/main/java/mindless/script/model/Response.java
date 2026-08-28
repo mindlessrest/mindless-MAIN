@@ -1,4 +1,4 @@
-package mindless.script.model;
+package keystrokesmod.script.model;
 
 import java.util.Collections;
 import java.util.List;

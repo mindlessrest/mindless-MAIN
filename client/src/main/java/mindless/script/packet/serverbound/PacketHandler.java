@@ -1,7 +1,7 @@
-package mindless.script.packet.serverbound;
+package keystrokesmod.script.packet.serverbound;
 
-import mindless.script.packet.PacketMappings;
-import mindless.script.packet.clientbound.*;
+import keystrokesmod.script.packet.PacketMappings;
+import keystrokesmod.script.packet.clientbound.*;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.*;
 import net.minecraft.network.play.server.*;

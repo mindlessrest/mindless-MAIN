@@ -1,10 +1,11 @@
-package mindless.script.model;
+package keystrokesmod.script.model;
 
 import com.google.common.base.Predicate;
 import com.google.common.collect.Lists;
-import mindless.runtime.AccessorBridge;
-import mindless.module.ModuleManager;
-import mindless.module.impl.movement.NoSlow;
+import keystrokesmod.mixin.impl.accessor.IAccessorEntity;
+import keystrokesmod.mixin.impl.accessor.IAccessorEntityLivingBase;
+import keystrokesmod.module.ModuleManager;
+import keystrokesmod.module.impl.movement.NoSlow;
 import net.minecraft.block.*;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
@@ -155,7 +156,7 @@ public class SimulatedPlayer {
         return new SimulatedPlayer(player,
                 player.getEntityBoundingBox(),
                 movementInput,
-                AccessorBridge.EntityLivingBase_getJumpTicks(player),
+                ((IAccessorEntityLivingBase) player).getJumpTicks(),
                 player.motionZ,
                 player.motionY,
                 player.motionX,
@@ -182,14 +183,14 @@ public class SimulatedPlayer {
                 player.fallDistance,
                 player.stepHeight,
                 player.isCollided,
-                AccessorBridge.Entity_getFire(player),
+                ((IAccessorEntity) player).getFire(),
                 player.distanceWalkedModified,
                 player.distanceWalkedOnStepModified,
-                AccessorBridge.Entity_getNextStepDistance(player),
+                ((IAccessorEntity) player).getNextStepDistance(),
                 player.height,
                 player.width,
                 player.fireResistance,
-                AccessorBridge.Entity_getIsInWeb(player),
+                ((IAccessorEntity) player).getIsInWeb(),
                 player.noClip,
                 player.isSprinting(),
                 foodStats
@@ -467,7 +468,7 @@ public class SimulatedPlayer {
     }
 
     private boolean isOpenBlockSpace(BlockPos pos) {
-        return !getBlockState(pos).getBlock().isNormalCube();
+        return getBlockState(pos).getBlock().isNormalCube();
     }
 
     private void playerSideMoveEntityWithHeading(float moveStrafing, float moveForward) {

@@ -1,6 +1,6 @@
-package mindless.script.model;
+package keystrokesmod.script.model;
 
-import mindless.utility.Utils;
+import keystrokesmod.utility.Utils;
 import net.minecraft.event.ClickEvent;
 import net.minecraft.event.HoverEvent;
 import net.minecraft.util.ChatComponentText;

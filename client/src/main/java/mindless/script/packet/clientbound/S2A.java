@@ -1,7 +1,7 @@
-package mindless.script.packet.clientbound;
+package keystrokesmod.script.packet.clientbound;
 
-import mindless.script.model.Vec3;
-import mindless.utility.Utils;
+import keystrokesmod.script.model.Vec3;
+import keystrokesmod.utility.Utils;
 import net.minecraft.network.play.server.S2APacketParticles;
 import net.minecraft.util.EnumParticleTypes;
 

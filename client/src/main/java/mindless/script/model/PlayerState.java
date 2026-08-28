@@ -1,6 +1,6 @@
-package mindless.script.model;
+package keystrokesmod.script.model;
 
-import mindless.event.PreMotionEvent;
+import keystrokesmod.event.PreMotionEvent;
 
 public class PlayerState {
     public double x;

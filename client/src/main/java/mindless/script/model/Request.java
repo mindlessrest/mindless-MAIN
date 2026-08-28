@@ -1,7 +1,7 @@
-package mindless.script.model;
+package keystrokesmod.script.model;
 
-import mindless.script.Manager;
-import mindless.utility.Utils;
+import keystrokesmod.script.Manager;
+import keystrokesmod.utility.Utils;
 
 import java.io.*;
 import java.net.HttpURLConnection;

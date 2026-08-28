@@ -1,7 +1,7 @@
-package mindless.script.model;
+package keystrokesmod.script.model;
 
-import mindless.script.Manager;
-import mindless.utility.Utils;
+import keystrokesmod.script.Manager;
+import keystrokesmod.utility.Utils;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 

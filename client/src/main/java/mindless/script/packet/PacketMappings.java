@@ -1,10 +1,10 @@
-package mindless.script.packet;
+package keystrokesmod.script.packet;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import mindless.script.packet.serverbound.*;
-import mindless.script.packet.clientbound.*;
+import keystrokesmod.script.packet.serverbound.*;
+import keystrokesmod.script.packet.clientbound.*;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.*;
 import net.minecraft.network.play.server.*;

@@ -1,6 +1,6 @@
-package mindless.script.packet.serverbound;
+package keystrokesmod.script.packet.serverbound;
 
-import mindless.script.model.ItemStack;
+import keystrokesmod.script.model.ItemStack;
 import net.minecraft.network.play.client.C0EPacketClickWindow;
 
 public class C0E extends CPacket {
