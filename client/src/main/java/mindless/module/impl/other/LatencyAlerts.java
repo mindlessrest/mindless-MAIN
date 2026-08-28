@@ -66,7 +66,7 @@ public class LatencyAlerts extends Module {
         if (currentMs - this.lastPacketTime >= this.highLatency.getInput() * 1000 && currentMs - this.lastAlert >= this.interval.getInput() * 1000) {
             String msSinceLastPacket = String.valueOf(Math.abs(System.currentTimeMillis() - this.lastPacketTime));
 
-            ChatComponentText component = new ChatComponentText(Utils.formatColor("&7[&dR&7]&r &7Packet loss detected: "));
+            ChatComponentText component = new ChatComponentText(Utils.formatColor("&7[&dMindless&7]&r &7Packet loss detected: "));
             ChatStyle style = new ChatStyle();
 
             String packetName = this.lastPacket == null ? "Unknown" : this.lastPacket.getClass().getSimpleName();
