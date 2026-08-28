@@ -87,7 +87,7 @@ public class ModuleManager {
     public static InvManager invManager;
     public static NoCameraClip noCameraClip;
     public static BedWars bedwars;
-    public static BHop bHop;
+    public static Speed speed;
     public static NoHurtCam noHurtCam;
     public static AutoTool autoTool;
     public static AutoSwap autoSwap;
@@ -164,7 +164,6 @@ public class ModuleManager {
         this.addModule(bedwars = new BedWars());
         this.addModule(shopHelper = new ShopHelper());
 
-        this.addModule(bHop = new BHop());
         this.addModule(movementFix = new MovementFix());
         this.addModule(new Boost());
         this.addModule(new Dolphin());
@@ -174,7 +173,7 @@ public class ModuleManager {
         this.addModule(longJump = new LongJump());
         this.addModule(noSlow = new NoSlow());
         this.addModule(new NullMove());
-        this.addModule(new Speed());
+        this.addModule(speed = new Speed());
         this.addModule(sprint = new Sprint());
         this.addModule(stasis = new Stasis());
         this.addModule(new StopMotion());

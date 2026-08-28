@@ -130,7 +130,7 @@ public class ModuleUtils implements IMinecraftInstance {
             LongJump.slotReset = false;
         }
 
-        if (!ModuleManager.bHop.hopping) {
+        if (!ModuleManager.speed.hopping) {
             allowFriction = false;
         }
         else if (!mc.thePlayer.onGround) {
@@ -167,7 +167,7 @@ public class ModuleUtils implements IMinecraftInstance {
     }
 
     private boolean bHopBoostConditions() {
-        if (ModuleManager.bHop.isEnabled() && ModuleManager.bHop.damageBoost.isToggled() && (!ModuleManager.bHop.damageBoostRequireKey.isToggled() || ModuleManager.bHop.damageBoostKey.isPressed())) {
+        if (ModuleManager.speed.isEnabled() && ModuleManager.speed.damageBoost.isToggled() && (!ModuleManager.speed.damageBoostRequireKey.isToggled() || ModuleManager.speed.damageBoostKey.isPressed())) {
             return true;
         }
         return false;
@@ -200,58 +200,10 @@ public class ModuleUtils implements IMinecraftInstance {
         Block block = BlockUtils.getBlock(new BlockPos(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ));
 
 
-        if (ModuleManager.bHop.didMove) {
-
+        if (ModuleManager.speed.didMove) {
             if ((!ModuleUtils.damage || Velocity.vertical.getInput() == 0) && !mc.thePlayer.isCollidedHorizontally) {
-
                 if (!(block instanceof BlockAir) || (blockBelow instanceof BlockAir && blockBelow2 instanceof BlockAir)) {
                     resetLowhop();
-                }
-                switch ((int) ModuleManager.bHop.mode.getInput()) {
-                    case 2: // 9 tick
-                        switch (simpleY) {
-                            case 13:
-                                mc.thePlayer.motionY = mc.thePlayer.motionY - 0.02483;
-                                break;
-                            case 2000:
-                                mc.thePlayer.motionY = mc.thePlayer.motionY - 0.1913;
-                                break;
-                            case 7016:
-                                mc.thePlayer.motionY = mc.thePlayer.motionY + 0.08;
-                                break;
-                        }
-                        if (ModuleUtils.inAirTicks > 6 && Utils.isMoving()) {
-                            Utils.setSpeed(Utils.getHorizontalSpeed(mc.thePlayer));
-                        }
-                        if (ModuleUtils.inAirTicks > 8) {
-                            resetLowhop();
-                        }
-                        break;
-                    case 3: // 8 tick
-                        switch (simpleY) {
-                            case 13:
-                                mc.thePlayer.motionY = mc.thePlayer.motionY - 0.045;//0.02483;
-                                break;
-                            case 2000:
-                                mc.thePlayer.motionY = mc.thePlayer.motionY - 0.175;//0.1913;
-                                resetLowhop();
-                                break;
-                        }
-                        break;
-                    case 4: // 7 tick
-                        switch (simpleY) {
-                            case 4200:
-                                mc.thePlayer.motionY = 0.39;
-                                break;
-                            case 1138:
-                                mc.thePlayer.motionY = mc.thePlayer.motionY - 0.13;
-                                break;
-                            case 2031:
-                                mc.thePlayer.motionY = mc.thePlayer.motionY - 0.2;
-                                resetLowhop();
-                                break;
-                        }
-                        break;
                 }
             }
         }
@@ -262,13 +214,13 @@ public class ModuleUtils implements IMinecraftInstance {
             resetLowhop();
         }
 
-        if (ModuleManager.bHop.setRotation) {
+        if (ModuleManager.speed.setRotation) {
             if (KillAura.target == null) {
                 float yaw = mc.thePlayer.rotationYaw - 55;
                 e.setYaw(yaw);
             }
             if (mc.thePlayer.onGround) {
-                ModuleManager.bHop.setRotation = false;
+                ModuleManager.speed.setRotation = false;
             }
         }
 
@@ -290,8 +242,8 @@ public class ModuleUtils implements IMinecraftInstance {
     }
 
     private void resetLowhop() {
-        ModuleManager.bHop.lowhop = false;
-        ModuleManager.bHop.didMove = false;
+        ModuleManager.speed.lowhop = false;
+        ModuleManager.speed.didMove = false;
         lowhopAir = false;
     }
 

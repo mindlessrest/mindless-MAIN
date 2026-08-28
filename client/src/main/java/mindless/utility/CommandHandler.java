@@ -5,7 +5,6 @@ import mindless.helper.PingHelper;
 import mindless.module.Module;
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.combat.Velocity;
-import mindless.module.impl.movement.BHop;
 import mindless.module.impl.movement.Fly;
 import mindless.module.impl.movement.Speed;
 import mindless.module.impl.other.FakeChat;
@@ -169,7 +168,7 @@ public class CommandHandler implements IMinecraftInstance {
                 Fly.horizontalSpeed.setValueRawWithEvent(value);
                 break;
             case "bhop":
-                BHop.speedSetting.setValueRawWithEvent(value);
+                Speed.speedSetting.setValueRawWithEvent(value);
                 break;
             case "speed":
                 Speed.multiplier.setValueRawWithEvent(value);
