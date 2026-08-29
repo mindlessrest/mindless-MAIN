@@ -92,6 +92,7 @@ public class Speed extends Module {
 
     @SubscribeEvent
     public void onPostPlayerInput(PostPlayerInputEvent e) {
+        if (!Utils.nullCheck()) return;
         int m = (int) speed.getInput();
         if (m != MODE_GROUND) return;
         if (!mc.thePlayer.onGround || mc.thePlayer.capabilities.isFlying) return;
@@ -102,6 +103,7 @@ public class Speed extends Module {
 
     @SubscribeEvent
     public void onPreMotion(PreMotionEvent e) {
+        if (!Utils.nullCheck()) return;
         int m = (int) speed.getInput();
 
         if (m == MODE_VANILLA || m == MODE_FLOAT) {
