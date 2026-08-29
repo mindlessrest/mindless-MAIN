@@ -305,7 +305,7 @@ public final class RavenTransformerManager {
                             + schemaChange + ")");
                     return null;
                 }
-                String danglingReference = findDanglingSelfMethodReference(result);
+                String danglingReference = findDanglingSelfMethodReference(result, originalBytes);
                 if (danglingReference != null) {
                     transformFailures.put(canonicalName,
                             "dangling self method reference: " + danglingReference);
@@ -504,13 +504,31 @@ public final class RavenTransformerManager {
      * transformed class before returning its bytecode to the native agent.
      */
     String findDanglingSelfMethodReference(byte[] transformedBytes) {
+        return findDanglingSelfMethodReference(transformedBytes, null);
+    }
+
+    String findDanglingSelfMethodReference(byte[] transformedBytes, byte[] originalBytes) {
         try {
             ClassNode node = ASMUtils.fromBytes(transformedBytes);
+            Set<String> preExistingCalls = new HashSet<>();
+            if (originalBytes != null) {
+                ClassNode original = ASMUtils.fromBytes(originalBytes);
+                for (MethodNode caller : original.methods) {
+                    for (AbstractInsnNode instruction : caller.instructions.toArray()) {
+                        if (!(instruction instanceof MethodInsnNode)) continue;
+                        MethodInsnNode inv = (MethodInsnNode) instruction;
+                        if (original.name.equals(inv.owner)) {
+                            preExistingCalls.add(inv.name + inv.desc);
+                        }
+                    }
+                }
+            }
             for (MethodNode caller : node.methods) {
                 for (AbstractInsnNode instruction : caller.instructions.toArray()) {
                     if (!(instruction instanceof MethodInsnNode)) continue;
                     MethodInsnNode invocation = (MethodInsnNode) instruction;
                     if (!node.name.equals(invocation.owner)) continue;
+                    if (preExistingCalls.contains(invocation.name + invocation.desc)) continue;
                     if (!methodExistsInHierarchy(node, invocation.name, invocation.desc,
                             new HashSet<String>())) {
                         return caller.name + caller.desc + " -> " + invocation.owner + "."
