@@ -492,6 +492,8 @@ public class ProfileManager implements IMinecraftInstance {
 
                     if (requestedState.enabled && !module.isEnabled()) {
                         module.enable();
+                    } else if (!requestedState.enabled && module.isEnabled()) {
+                        module.disable();
                     }
                 }
 
