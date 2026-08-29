@@ -26,7 +26,7 @@ public class NoSlow extends Module {
     public static ButtonSetting swordOnly;
     public static ButtonSetting vanillaSword;
 
-    private final String[] NOSLOW_MODES = new String[] { "Vanilla", "Watchdog" };
+    private final String[] NOSLOW_MODES = new String[] { "Vanilla", "Watchdog", "Blatant" };
 
     public boolean noSlowing;
     private boolean setJump;
@@ -77,6 +77,7 @@ public class NoSlow extends Module {
         if (mc.thePlayer.getHeldItem() == null || ModuleManager.noSlow == null || !ModuleManager.noSlow.isEnabled()) {
             return 0.2f;
         }
+        if ((int) mode.getInput() == 2) return 1.0f; // Blatant: no slowdown
         else {
             if (swordOnly.isToggled() && !(mc.thePlayer.getHeldItem().getItem() instanceof ItemSword)) {
                 return 0.2f;
