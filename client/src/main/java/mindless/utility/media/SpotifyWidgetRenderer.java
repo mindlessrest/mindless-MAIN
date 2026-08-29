@@ -270,7 +270,13 @@ public final class SpotifyWidgetRenderer {
                 : bubbleDetached
                         ? lyricsPosition(resolution, bubbleW, lyricStripHeight)
                         : new float[]{x, y + rowHeight + lyricGap};
-        // No drop shadow on lyrics bubble -- it sat below the panel and looked like a border artifact.
+        // The bubble gets the same shadow as the cover and the panel. It was dropped once for
+        // looking like a border artifact under the card, but the two are a pair and only one of
+        // them being lifted off the world is what made the lower one read as a flat pane of glass
+        // rather than a second panel.
+        if (bubblePos != null) {
+            dropShadow(bubblePos[0], bubblePos[1], bubbleW, lyricStripHeight, radius, uiScale, alpha);
+        }
 
         drawCover(art, wash, x, y, cover, radius, alpha);
         drawPanel(info, wash, panelX, y, panelWidth, rowHeight, radius, padX, uiScale,
@@ -334,7 +340,12 @@ public final class SpotifyWidgetRenderer {
         float textX = x + padX;
         float textWidth = width - padX * 2.0F;
 
-        RavenFontRenderer titleFont = fontOfHeight(BOLD_FAMILY, TITLE_HEIGHT * uiScale);
+        // The track title was pinned to Sf-Bold, so the Font setting appeared to do nothing: the
+        // largest and most obvious text on the widget was the one piece that ignored it. It takes
+        // the bold cut of the chosen family now, which for every family but SF is the family.
+        RavenFontRenderer titleFont = fontOfHeight(
+                mindless.utility.font.ModuleFont.boldVariant(SpotifyMiniPlayer.widgetFontName()),
+                TITLE_HEIGHT * uiScale);
         RavenFontRenderer labelFont = fontOfHeight(LABEL_HEIGHT * uiScale);
 
         String title = clip(titleFont, valueOr(info.getTitle(), "Nothing playing"), textWidth);

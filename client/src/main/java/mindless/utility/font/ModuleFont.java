@@ -34,6 +34,17 @@ public final class ModuleFont {
         return OPTIONS.clone();
     }
 
+    /**
+     * The bold cut of a family, where there is one.
+     *
+     * <p>Only the SF family ships a separate bold face; everything else has to serve as its own
+     * heading weight. Kept here so the one place that knows this does not have to be the ClickGUI.
+     */
+    public static String boldVariant(String family) {
+        if (family == null || family.isEmpty()) return family;
+        return "Sf-Regular".equals(family) ? "Sf-Bold" : family;
+    }
+
     /** The family such a setting names, or the HUD's when it is left on "Default". */
     public static String nameOf(SliderSetting setting) {
         if (setting == null) return HUD.getSelectedFontName();

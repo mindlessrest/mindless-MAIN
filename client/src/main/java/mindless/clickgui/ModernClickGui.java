@@ -192,6 +192,45 @@ public final class ModernClickGui extends ClickGui {
     /** Visible height of the open dropdown, recomputed each frame; 0 when closed. */
     private float dropdownViewH = 0f;
     private float dropdownFullH = 0f;
+    /** Top of the option box, which is above the control when it will not fit below it. */
+    private float dropdownRowTop = 0f;
+    private boolean dropdownFlipped = false;
+
+    /**
+     * Places the open dropdown's option box and sizes it.
+     *
+     * <p>It only ever opened downward, so a setting near the bottom of the panel got a box with a
+     * couple of pixels to live in -- clamped to one row and then clipped by the panel edge, which
+     * is the half-cut option you see under the last setting in a list. Opening upward when there is
+     * more room that way is what every other dropdown does, and the room is there: the control is
+     * at the bottom precisely because the panel above it is full.
+     *
+     * <p>One place computes this, because the draw, the hover test and the click test all have to
+     * agree on where the box is. They disagreed by construction when each recomputed it.
+     */
+    private void layoutDropdown() {
+        if (openDropdown == null || openDropdown.getOptions() == null) {
+            dropdownViewH = 0f;
+            dropdownFullH = 0f;
+            dropdownFlipped = false;
+            return;
+        }
+        float fullH = openDropdown.getOptions().length * 21f + 4f;
+        float panelTop = baseY + 8f;
+        float panelBottom = baseY + panelH - 4f;
+        float controlBottom = dropdownAnchorY + 30f;
+        float controlTop = dropdownAnchorY + 6f;
+        float roomBelow = panelBottom - controlBottom;
+        float roomAbove = controlTop - panelTop;
+        // Flip only when staying put would show less than about three rows, and only when turning
+        // round actually buys something. A box that fits stays where the eye expects it.
+        boolean flip = roomBelow < Math.min(fullH, 63f) && roomAbove > roomBelow;
+        float viewH = Math.max(23f, Math.min(fullH, flip ? roomAbove : roomBelow));
+        dropdownFullH = fullH;
+        dropdownViewH = viewH;
+        dropdownFlipped = flip;
+        dropdownRowTop = flip ? controlTop - viewH : controlBottom;
+    }
     private ColorSetting openColor;
     private int draggingScrollbar;
     private float scrollbarDragOffset;
@@ -1020,23 +1059,19 @@ public final class ModernClickGui extends ClickGui {
         // One source of truth, shared with the click and hover hit-boxes.
         float dw = overlayWidth();
         float dx1 = x2 - dw, dx2 = x2;
-        float rowTop = dropdownAnchorY + 30f; // just below the control
+        layoutDropdown();
+        float rowTop = dropdownRowTop;
         int n = openDropdown.getOptions().length;
-        float fullH = n * 21f + 4f;
-
-        // A long option list used to simply run off the bottom of the panel with no way to
-        // reach the hidden entries. Cap the box at the panel and scroll inside it instead.
-        float panelBottom = baseY + panelH - 4f;
-        float viewH = Math.max(23f, Math.min(fullH, panelBottom - rowTop));
-        dropdownFullH = fullH;
-        dropdownViewH = viewH;
+        float viewH = dropdownViewH;
+        float fullH = dropdownFullH;
         clampDropdownScroll();
         dropdownScroll += (dropdownScrollTarget - dropdownScroll) * .32f;
         if (Math.abs(dropdownScrollTarget - dropdownScroll) < .08f) dropdownScroll = dropdownScrollTarget;
 
-        // Slide-down: reveal from top using scissor height = open * viewH
-        float clipTop = rowTop;
-        float clipBottom = Math.min(panelBottom, rowTop + open * viewH);
+        // Revealed from the edge nearest the control, so it reads as coming out of the control
+        // either way round rather than sliding in from off-panel.
+        float clipTop = dropdownFlipped ? rowTop + viewH - open * viewH : rowTop;
+        float clipBottom = dropdownFlipped ? rowTop + viewH : rowTop + open * viewH;
         if (clipBottom <= clipTop) return;
 
         scissor(detailX + 4f, clipTop, detailX + detailW - 4f, clipBottom, true);
@@ -1107,8 +1142,7 @@ public final class ModernClickGui extends ClickGui {
     private boolean overDropdown(int mx, int my) {
         if (openDropdown == null || openDropdown.getOptions() == null) return false;
         float x2 = detailX + detailW - 15;
-        float top = dropdownAnchorY + 30f;
-        return inside(mx, my, x2 - overlayWidth(), top, x2, top + dropdownViewH);
+        return inside(mx, my, x2 - overlayWidth(), dropdownRowTop, x2, dropdownRowTop + dropdownViewH);
     }
 
     /** Overlay width: the trigger's width, widened to fit the longest option, capped to the panel. */
@@ -1625,7 +1659,7 @@ public final class ModernClickGui extends ClickGui {
             if (openDropdown != null && openDropdown.getOptions() != null) {
                 float x2 = detailX + detailW - 15;
                 float dx1 = x2 - overlayWidth(), dx2 = x2;
-                float overlayTop = dropdownAnchorY + 30f;
+                float overlayTop = dropdownRowTop;
                 // Hit-test the visible box, not the full list: rows clipped off the bottom
                 // are not on screen and must not swallow clicks meant for the panel.
                 float overlayBot = overlayTop + dropdownViewH;
@@ -2693,6 +2727,15 @@ public final class ModernClickGui extends ClickGui {
         return uiSmallFont().getStringWidth(text == null ? "" : text);
     }
 
+    /**
+     * As much of the text as fits, ending in an ellipsis.
+     *
+     * <p>It used to be possible to get back nothing but the ellipsis. The loop appended it and
+     * returned the moment the first character failed to leave room, and on a narrow column that is
+     * the very first pass -- so a description disappeared entirely and left two dots behind. An
+     * ellipsis on its own carries no information at all; a single letter carries some. When even
+     * one character plus the ellipsis will not fit, the ellipsis is what gets dropped.
+     */
     private String trimSmall(String text, float maxWidth) {
         if (text == null || text.isEmpty()) return "";
         RavenFontRenderer font = uiSmallFont();
@@ -2702,12 +2745,21 @@ public final class ModernClickGui extends ClickGui {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < text.length(); i++) {
             if (font.getStringWidth(sb.toString() + text.charAt(i)) + ellipsisW > maxWidth) {
+                if (sb.length() == 0) break;
                 sb.append(ellipsis);
                 return sb.toString();
             }
             sb.append(text.charAt(i));
         }
-        return sb.toString();
+        if (sb.length() > 0) return sb.toString();
+        return fitWithoutEllipsis(font, text, maxWidth);
+    }
+
+    /** The longest prefix that fits, with at least one character kept whatever the width. */
+    private static String fitWithoutEllipsis(RavenFontRenderer font, String text, float maxWidth) {
+        int length = text.length();
+        while (length > 1 && font.getStringWidth(text.substring(0, length)) > maxWidth) length--;
+        return text.substring(0, length);
     }
 
     private void drawText(String text, float x, float y, int color, float scale, boolean bold) {
@@ -2749,13 +2801,15 @@ public final class ModernClickGui extends ClickGui {
         drawText(title, x, top, titleColor, titleScale, true);
         drawText(subtitle, x, top + titleHeight + gap, subtitleColor, subtitleScale, false);
     }
+    /** {@link #trimSmall} at an arbitrary scale, and blanking the same way it used to. */
     private String trim(String text, float maxWidth, float scale, boolean bold) {
         if (text == null) return "";
         RavenFontRenderer f = scaledFont(scale, bold);
         if (f.getStringWidth(text) <= maxWidth) return text;
         String end = "..."; int i = text.length();
         while (i > 0 && f.getStringWidth(text.substring(0, i) + end) > maxWidth) i--;
-        return text.substring(0, i) + end;
+        if (i > 0) return text.substring(0, i) + end;
+        return fitWithoutEllipsis(f, text, maxWidth);
     }
 
     private void scissor(float x1, float y1, float x2, float y2, boolean enable) {
