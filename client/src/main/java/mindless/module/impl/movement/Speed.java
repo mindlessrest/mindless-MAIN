@@ -34,12 +34,13 @@ public class Speed extends Module {
     public ButtonSetting damageBoost, damageBoostRequireKey;
     public KeySetting damageBoostKey;
 
-    private static final String[] MODES = {"Vanilla", "Float", "Strafe", "Ground", "Grim"};
+    private static final String[] MODES = {"Vanilla", "Float", "Strafe", "Ground", "Grim", "Blatant"};
     private static final int MODE_VANILLA = 0;
     private static final int MODE_FLOAT = 1;
     private static final int MODE_STRAFE = 2;
     private static final int MODE_GROUND = 3;
     private static final int MODE_GRIM = 4;
+    private static final int MODE_BLATANT = 5;
 
     public boolean hopping, lowhop, didMove, setRotation;
     private boolean canFloat, requireJump;
@@ -67,7 +68,7 @@ public class Speed extends Module {
         int m = (int) speed.getInput();
         boolean isBhop = m == MODE_STRAFE || m == MODE_GROUND;
         boolean isGrim = m == MODE_GRIM;
-        multiplier.setVisible(m == MODE_VANILLA, this);
+        multiplier.setVisible(m == MODE_VANILLA || m == MODE_BLATANT, this);
         speedSetting.setVisible(isBhop, this);
         onlyForward.setVisible(m == MODE_VANILLA || m == MODE_FLOAT, this);
         onlyStrafe.setVisible(m == MODE_VANILLA || m == MODE_FLOAT, this);
@@ -113,6 +114,11 @@ public class Speed extends Module {
 
         if (m == MODE_GRIM) {
             tickGrim(e);
+            return;
+        }
+
+        if (m == MODE_BLATANT) {
+            tickBlatant();
             return;
         }
 
@@ -215,6 +221,15 @@ public class Speed extends Module {
         } else {
             grimAirTicks++;
         }
+    }
+
+    private void tickBlatant() {
+        if (!Utils.isMoving()) return;
+        mc.thePlayer.setSprinting(true);
+        if (mc.thePlayer.onGround) {
+            mc.thePlayer.jump();
+        }
+        Utils.setSpeed(Utils.getHorizontalSpeed() * multiplier.getInput());
     }
 
     public boolean settingsMet() {
