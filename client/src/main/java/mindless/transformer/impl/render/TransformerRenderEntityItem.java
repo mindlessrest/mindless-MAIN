@@ -31,7 +31,6 @@ public abstract class TransformerRenderEntityItem {
         ci.setCancelled(true);
 
         Minecraft mc = Minecraft.getMinecraft();
-        RenderEntityItem self = (RenderEntityItem) (Object) this;
 
         double speed = ItemPhysics.instance.rotationSpeed.getInput();
         ItemPhysicsState.rotation = (System.nanoTime() - ItemPhysicsState.lastNano) / 2500000.0 * speed;
@@ -48,7 +47,7 @@ public abstract class TransformerRenderEntityItem {
         ItemPhysicsState.random.setSeed(seed);
 
         mc.getTextureManager().bindTexture(TextureMap.locationBlocksTexture);
-        self.getRenderManager().renderEngine.getTexture(TextureMap.locationBlocksTexture).setBlurMipmap(false, false);
+        mc.getRenderManager().renderEngine.getTexture(TextureMap.locationBlocksTexture).setBlurMipmap(false, false);
 
         GlStateManager.enableRescaleNormal();
         GlStateManager.alphaFunc(516, 0.1f);
@@ -113,6 +112,6 @@ public abstract class TransformerRenderEntityItem {
         GlStateManager.disableBlend();
 
         mc.getTextureManager().bindTexture(TextureMap.locationBlocksTexture);
-        self.getRenderManager().renderEngine.getTexture(TextureMap.locationBlocksTexture).restoreLastBlurMipmap();
+        mc.getRenderManager().renderEngine.getTexture(TextureMap.locationBlocksTexture).restoreLastBlurMipmap();
     }
 }
