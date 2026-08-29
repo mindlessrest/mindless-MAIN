@@ -22,6 +22,7 @@ public class Gui extends Module {
     public static final int UNSAVED_COLOR = new Color(114, 188, 250).getRGB();
     public static final int INVALID_COLOR = new Color(255, 80, 80).getRGB();
 
+    public static SliderSetting style;
     public static SliderSetting guiScale;
     public static SliderSetting font;
     public static SliderSetting backgroundBlur;
@@ -36,6 +37,7 @@ public class Gui extends Module {
     public Gui() {
         super("Gui", category.client, 54);
         this.liteModule = true;
+        this.registerSetting(style = new SliderSetting("Style", 0, new String[]{"Central", "Frames"}));
         this.registerSetting(guiScale = new SliderSetting("Gui scale", "x", 1.0, 0.5, 2.0, 0.01));
         this.registerSetting(font = new SliderSetting("Font", 0, GUI_FONT_OPTIONS));
         this.registerSetting(backgroundBlur = new SliderSetting("Background blur", "%", 0, 0, 100, 1));
@@ -55,12 +57,20 @@ public class Gui extends Module {
 
     @Override
     public void onEnable() {
-        if (Utils.nullCheck() && mc.currentScreen != Raven.clickGui) {
-            mc.displayGuiScreen(Raven.clickGui);
-            Raven.clickGui.initMain();
+        if (Utils.nullCheck()) {
+            mindless.clickgui.ClickGui gui = getActiveGui();
+            if (mc.currentScreen != gui) {
+                mc.displayGuiScreen(gui);
+                gui.initMain();
+            }
         }
 
         this.disable();
+    }
+
+    public static mindless.clickgui.ClickGui getActiveGui() {
+        if (style != null && (int) style.getInput() == 1) return Raven.framesGui;
+        return Raven.clickGui;
     }
 
     public static String getSelectedFontName() {

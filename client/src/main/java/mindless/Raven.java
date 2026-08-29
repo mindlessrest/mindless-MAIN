@@ -56,6 +56,7 @@ public class Raven {
 
     public static ModuleManager moduleManager;
     public static ClickGui clickGui;
+    public static ClickGui framesGui;
     public static ProfileManager profileManager;
     public static ScriptManager scriptManager;
     public static CommandManager commandManager;
@@ -100,6 +101,7 @@ public class Raven {
         registerHandler(new BlockHighlightSharedHandler(), true);
         scriptManager = new ScriptManager();
         clickGui = new ModernClickGui();
+        framesGui = new mindless.clickgui.FramesClickGui();
         profileManager = new ProfileManager();
         ScriptDefaults.reloadModules();
         scriptManager.loadScripts();

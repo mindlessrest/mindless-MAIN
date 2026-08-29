@@ -109,7 +109,7 @@ public final class ModernClickGui extends ClickGui {
     private static final int DEFAULT_CONTROL = argb(118, 7, 9, 10);
     private static final int DEFAULT_CONTROL_HOVER = argb(150, 28, 30, 31);
     private static final int DEFAULT_BORDER = argb(52, 210, 210, 204);
-    private static final int DEFAULT_DIVIDER = argb(45, 210, 210, 204);
+    private static final int DEFAULT_DIVIDER = argb(65, 210, 210, 204);
 
     private static int PANEL = DEFAULT_PANEL;
     private static int PANEL_ALT = DEFAULT_PANEL_ALT;
@@ -344,8 +344,8 @@ public final class ModernClickGui extends ClickGui {
         // center panel always occupies remaining space; detail + gap only counted when visible
         float usedByDetail = detailW > 1f ? detailW + gap : 0f;
         centerW = totalW - sideW - gap - usedByDetail;
-        baseX = Math.max(5f, (width - totalW) / 2f + guiDragOffsetX);
-        baseY = Math.max(6f, (height - panelH) / 2f + guiDragOffsetY);
+        baseX = Math.round(Math.max(5f, (width - totalW) / 2f + guiDragOffsetX));
+        baseY = Math.round(Math.max(6f, (height - panelH) / 2f + guiDragOffsetY));
         centerX = baseX + sideW + gap;
         detailX = centerX + centerW + gap;
     }
@@ -2185,7 +2185,7 @@ public final class ModernClickGui extends ClickGui {
     private void line(float x1, float y1, float x2, float y2, int color) {
         // Fractional geometry stays visually one physical pixel after the GUI
         // scale is applied; Gui.drawRect rounded every divider up too heavily.
-        RenderUtils.drawRect(x1, y1, x2, Math.max(y1 + .5f, y2), color);
+        RenderUtils.drawRect(x1, y1, x2, Math.max(y1 + 1f, y2), color);
     }
 
     private void drawToggle(float x, float y, boolean on, Object animationKey) {

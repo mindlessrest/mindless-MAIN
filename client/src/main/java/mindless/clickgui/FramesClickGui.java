@@ -1,26 +1,20 @@
-/*package mindless.clickgui;
+package mindless.clickgui;
 
 import mindless.Raven;
 import mindless.module.Module;
 import mindless.module.impl.client.Gui;
-import mindless.module.impl.theme.ThemeManager;
 import mindless.module.setting.Setting;
 import mindless.module.setting.impl.ButtonSetting;
-import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
-import mindless.utility.font.FontManager;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
-import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.util.ChatAllowedCharacters;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.input.Keyboard;
-import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL20;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -28,12 +22,25 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 public final class FramesClickGui extends ClickGui {
+
+    private static final float FRAME_WIDTH = 150f;
+    private static final float HEADER_HEIGHT = 26f;
+    private static final float MODULE_HEIGHT = 18f;
+    private static final float MODULE_PAD = 3f;
+    private static final float FRAME_PAD = 8f;
+    private static final float FRAME_RADIUS = 8f;
+    private static final float TAB_BAR_HEIGHT = 28f;
+    private static final float SEARCH_BAR_HEIGHT = 28f;
+    private static final float SEARCH_BAR_WIDTH = 220f;
+
+    private static final int TAB_MODULES = 0;
+    private static final int TAB_THEME = 1;
 
     private static final Module.category[] FRAME_CATEGORIES = {
             Module.category.combat, Module.category.movement, Module.category.player,
@@ -41,28 +48,18 @@ public final class FramesClickGui extends ClickGui {
             Module.category.other, Module.category.client
     };
 
-    private static final int TAB_MODULES = 0;
-    private static final int TAB_THEME = 1;
-    private static final String[] TAB_NAMES = {"Modules", "Theme"};
+    private final Map<Module.category, float[]> framePositions = new HashMap<>();
+    private final Map<Module, Boolean> expandedModules = new HashMap<>();
 
-    private static final float FRAME_WIDTH = 140f;
-    private static final float HEADER_HEIGHT = 26f;
-    private static final float MODULE_ROW_HEIGHT = 18f;
-    private static final float FRAME_PAD = 8f;
-    private static final float FRAME_RADIUS = 8f;
-    private static final float TOP_BAR_HEIGHT = 28f;
-    private static final float SEARCH_BAR_HEIGHT = 28f;
-    private static final float SETTING_ROW_HEIGHT = 16f;
-
-    private final Map<Module.category, Frame> frames = new LinkedHashMap<>();
     private int activeTab = TAB_MODULES;
-    private String search = "";
-    private boolean searchFocused;
-    private Module expandedModule;
-    private Frame draggingFrame;
+    private String searchQuery = "";
+    private boolean searchFocused = false;
+
+    private Module.category draggingFrame = null;
     private float dragOffsetX, dragOffsetY;
+
     private ResourceLocation mascotTexture;
-    private boolean textureLoaded;
+    private boolean texturesLoaded;
 
     public FramesClickGui() {
         super();
@@ -72,16 +69,13 @@ public final class FramesClickGui extends ClickGui {
     private void initFramePositions() {
         int col = 0;
         float startX = 30f;
-        float startY = TOP_BAR_HEIGHT + 20f;
+        float startY = TAB_BAR_HEIGHT + 20f;
         float gap = 16f;
         for (Module.category cat : FRAME_CATEGORIES) {
-            Frame f = new Frame();
-            f.category = cat;
-            f.x = startX + col * (FRAME_WIDTH + gap);
-            f.y = startY;
-            frames.put(cat, f);
+            float x = startX + col * (FRAME_WIDTH + gap);
+            framePositions.put(cat, new float[]{x, startY});
             col++;
-            if (f.x + FRAME_WIDTH * 2 > 1200) {
+            if (col >= 5) {
                 col = 0;
                 startY += 300f;
             }
@@ -91,18 +85,13 @@ public final class FramesClickGui extends ClickGui {
     @Override
     public void initGui() {
         super.initGui();
-        Keyboard.enableRepeatEvents(true);
-    }
-
-    @Override
-    public void onGuiClosed() {
-        super.onGuiClosed();
-        Keyboard.enableRepeatEvents(false);
     }
 
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        ensureTextures();
         float scale = Gui.getClickGuiScale();
+
         int mx = (int) (mouseX / scale);
         int my = (int) (mouseY / scale);
 
@@ -110,354 +99,380 @@ public final class FramesClickGui extends ClickGui {
         GlStateManager.scale(scale, scale, 1f);
 
         drawBackground();
-        drawTopBar(mx, my);
+        drawTabBar(mx, my);
 
         if (activeTab == TAB_MODULES) {
             drawFrames(mx, my);
             drawSearchBar(mx, my);
+            drawMascot();
         } else {
             drawThemePanel(mx, my);
         }
-
-        drawMascot();
 
         GlStateManager.popMatrix();
     }
 
     private void drawBackground() {
-        float sw = width / Gui.getClickGuiScale();
-        float sh = height / Gui.getClickGuiScale();
+        ScaledResolution sr = new ScaledResolution(mc);
+        float w = sr.getScaledWidth() / Gui.getClickGuiScale();
+        float h = sr.getScaledHeight() / Gui.getClickGuiScale();
+
         if (Gui.darkBackground != null && Gui.darkBackground.isToggled()) {
-            drawRect(0, 0, (int) sw, (int) sh, new Color(0, 0, 0, 120).getRGB());
+            drawRect(0, 0, (int) w, (int) h, new Color(0, 0, 0, 140).getRGB());
         }
-        if (Gui.backgroundBlur != null && (int) Gui.backgroundBlur.getInput() > 0) {
-            float pct = (float) Gui.backgroundBlur.getInput() / 100f;
-            BlurUtils.prepareBlur();
-            BlurUtils.blurEndRegion(2, 2f * pct, 0.85f, 0, 0, sw, sh);
-            GL20.glUseProgram(0);
-            GlStateManager.enableTexture2D();
-            GlStateManager.enableBlend();
+
+        if (Gui.backgroundBlur != null && Gui.backgroundBlur.getInput() > 0) {
+            BlurUtils.prepareBlur(0, 0, w, h);
+            drawRect(0, 0, (int) w, (int) h, 0xFF000000);
+            BlurUtils.blurEndRegion(2, (float) (Gui.backgroundBlur.getInput() / 100.0 * 4.0), 0.85f, 0, 0, w, h);
         }
     }
 
-    private void drawTopBar(int mx, int my) {
-        float sw = width / Gui.getClickGuiScale();
-        int barColor = new Color(10, 12, 14, 220).getRGB();
-        RoundedUtils.drawRound(0, 0, sw, TOP_BAR_HEIGHT, 0f, barColor);
+    private void drawTabBar(int mx, int my) {
+        ScaledResolution sr = new ScaledResolution(mc);
+        float screenW = sr.getScaledWidth() / Gui.getClickGuiScale();
 
-        RavenFontRenderer font = getHeaderFont();
+        RavenFontRenderer font = Gui.getClickGuiHeaderFontRenderer();
         if (font == null) return;
 
-        float tabW = 80f;
-        float tabStartX = (sw - tabW * TAB_NAMES.length) / 2f;
         int accent = getAccentColor();
+        int textCol = getTextColor();
 
-        for (int i = 0; i < TAB_NAMES.length; i++) {
-            float tx = tabStartX + i * tabW;
-            float textX = tx + (tabW - font.getStringWidth(TAB_NAMES[i])) / 2f;
-            float textY = (TOP_BAR_HEIGHT - font.getFontHeight()) / 2f;
-            int color = (i == activeTab) ? accent : new Color(200, 200, 200).getRGB();
-            font.drawString(TAB_NAMES[i], textX, textY, color, false);
+        RoundedUtils.drawRound(0, 0, screenW, TAB_BAR_HEIGHT, 0, new Color(10, 12, 14, 220));
+
+        String[] tabs = {"Modules", "Theme"};
+        float tabW = 80f;
+        float totalW = tabs.length * tabW;
+        float startX = (screenW - totalW) / 2f;
+
+        for (int i = 0; i < tabs.length; i++) {
+            float tx = startX + i * tabW;
+            float textW = font.getStringWidth(tabs[i]);
+            float textX = tx + (tabW - textW) / 2f;
+            float textY = (TAB_BAR_HEIGHT - font.getFontHeight()) / 2f;
+
+            int color = (i == activeTab) ? accent : textCol;
+            font.drawString(tabs[i], textX, textY, color, false);
+
             if (i == activeTab) {
-                RoundedUtils.drawRound(tx + 10, TOP_BAR_HEIGHT - 2.5f, tabW - 20, 2f, 1f, new Color(accent, true));
+                RoundedUtils.drawRound(textX, TAB_BAR_HEIGHT - 3f, textW, 2f, 1f, new Color(accent));
             }
         }
     }
 
     private void drawFrames(int mx, int my) {
-        RavenFontRenderer headerFont = getHeaderFont();
-        RavenFontRenderer bodyFont = getBodyFont();
-        if (headerFont == null || bodyFont == null) return;
+        RavenFontRenderer headerFont = Gui.getClickGuiHeaderFontRenderer();
+        RavenFontRenderer moduleFont = Gui.getClickGuiSettingFontRenderer();
+        if (headerFont == null || moduleFont == null) return;
 
         int accent = getAccentColor();
-        float radius = FRAME_RADIUS * ThemeManager.roundingScale();
-        String searchLower = search.toLowerCase(Locale.ROOT);
+        int textCol = getTextColor();
+        int disabledCol = Gui.disabledColor != null ? Gui.disabledColor.getColor() : new Color(160, 160, 160).getRGB();
 
-        for (Frame frame : frames.values()) {
-            List<Module> modules = getModulesForCategory(frame.category);
-            if (!searchLower.isEmpty()) {
-                List<Module> filtered = new ArrayList<>();
-                for (Module m : modules) {
-                    if (m.getName().toLowerCase(Locale.ROOT).contains(searchLower)) filtered.add(m);
-                }
-                if (filtered.isEmpty()) continue;
-                modules = filtered;
+        for (Module.category cat : FRAME_CATEGORIES) {
+            float[] pos = framePositions.get(cat);
+            if (pos == null) continue;
+
+            List<Module> modules = getModulesForCategory(cat);
+            if (!searchQuery.isEmpty()) {
+                modules = filterModules(modules);
+                if (modules.isEmpty()) continue;
             }
 
-            float frameH = HEADER_HEIGHT + modules.size() * MODULE_ROW_HEIGHT + FRAME_PAD;
-            if (expandedModule != null && modules.contains(expandedModule)) {
-                frameH += getSettingsHeight(expandedModule);
-            }
-
-            // Panel background
-            BlurUtils.prepareBlur(frame.x, frame.y, FRAME_WIDTH, frameH);
-            RoundedUtils.drawRound(frame.x, frame.y, FRAME_WIDTH, frameH, radius, 0xFF000000);
-            BlurUtils.blurEndRegion(2, 2.2f, 0.8f, frame.x - 2, frame.y - 2, FRAME_WIDTH + 4, frameH + 4);
-            GL20.glUseProgram(0);
-            GlStateManager.enableTexture2D();
-            GlStateManager.enableBlend();
-            GlStateManager.color(1f, 1f, 1f, 1f);
-            RoundedUtils.drawRound(frame.x, frame.y, FRAME_WIDTH, frameH, radius, new Color(15, 17, 20, 200));
-            RoundedUtils.drawRoundOutline(frame.x, frame.y, FRAME_WIDTH, frameH, radius, 1f,
-                    new Color(0, 0, 0, 0), new Color(255, 255, 255, 20));
-
-            // Header
-            String catName = capitalize(frame.category.name());
-            headerFont.drawString(catName, frame.x + FRAME_PAD, frame.y + (HEADER_HEIGHT - headerFont.getFontHeight()) / 2f, accent, false);
-
-            // Modules
-            float rowY = frame.y + HEADER_HEIGHT;
+            float frameH = HEADER_HEIGHT + FRAME_PAD;
             for (Module mod : modules) {
-                boolean hovered = mx >= frame.x && mx <= frame.x + FRAME_WIDTH && my >= rowY && my < rowY + MODULE_ROW_HEIGHT;
-                if (hovered) {
-                    RoundedUtils.drawRound(frame.x + 3, rowY, FRAME_WIDTH - 6, MODULE_ROW_HEIGHT, 4f, new Color(255, 255, 255, 20));
-                }
-                int textColor = mod.isEnabled() ? accent : new Color(200, 200, 200).getRGB();
-                bodyFont.drawString(mod.getName(), frame.x + FRAME_PAD + 4, rowY + (MODULE_ROW_HEIGHT - bodyFont.getFontHeight()) / 2f, textColor, false);
-                rowY += MODULE_ROW_HEIGHT;
-
-                // Expanded settings
-                if (mod == expandedModule) {
-                    rowY = drawModuleSettings(mod, frame.x, rowY, bodyFont);
+                frameH += MODULE_HEIGHT + MODULE_PAD;
+                if (Boolean.TRUE.equals(expandedModules.get(mod))) {
+                    frameH += getSettingsHeight(mod);
                 }
             }
+            frameH += FRAME_PAD;
 
-            frame.lastRenderedHeight = frameH;
+            float fx = pos[0];
+            float fy = pos[1];
+
+            BlurUtils.prepareBlur(fx, fy, FRAME_WIDTH, frameH);
+            RoundedUtils.drawRound(fx, fy, FRAME_WIDTH, frameH, FRAME_RADIUS, new Color(0, 0, 0, 200));
+            BlurUtils.blurEndRegion(2, 2f, 0.85f, fx - 2, fy - 2, FRAME_WIDTH + 4, frameH + 4);
+            RoundedUtils.drawRound(fx, fy, FRAME_WIDTH, frameH, FRAME_RADIUS, new Color(15, 17, 20, 210));
+            RoundedUtils.drawRoundOutline(fx, fy, FRAME_WIDTH, frameH, FRAME_RADIUS, 1f,
+                    new Color(0, 0, 0, 0), new Color(255, 255, 255, 25));
+
+            String catName = capitalize(cat.name());
+            headerFont.drawString(catName, fx + FRAME_PAD, fy + (HEADER_HEIGHT - headerFont.getFontHeight()) / 2f, accent, false);
+
+            RoundedUtils.drawRound(fx + FRAME_PAD, fy + HEADER_HEIGHT - 1, FRAME_WIDTH - FRAME_PAD * 2, 1f, 0.5f, new Color(255, 255, 255, 30));
+
+            float cy = fy + HEADER_HEIGHT + FRAME_PAD;
+            for (Module mod : modules) {
+                boolean hovered = mx >= fx && mx <= fx + FRAME_WIDTH && my >= cy && my < cy + MODULE_HEIGHT;
+
+                if (hovered) {
+                    RoundedUtils.drawRound(fx + 4, cy, FRAME_WIDTH - 8, MODULE_HEIGHT, 4f, new Color(255, 255, 255, 20));
+                }
+
+                int modColor = mod.isEnabled() ? accent : disabledCol;
+                moduleFont.drawString(mod.getName(), fx + FRAME_PAD + 4, cy + (MODULE_HEIGHT - moduleFont.getFontHeight()) / 2f, modColor, false);
+                cy += MODULE_HEIGHT + MODULE_PAD;
+
+                if (Boolean.TRUE.equals(expandedModules.get(mod))) {
+                    cy = drawModuleSettings(mod, fx, cy, moduleFont, accent, textCol);
+                }
+            }
         }
     }
 
-    private float drawModuleSettings(Module mod, float frameX, float startY, RavenFontRenderer font) {
-        float y = startY;
-        int accent = getAccentColor();
-        float padLeft = frameX + FRAME_PAD + 10f;
+    private float drawModuleSettings(Module mod, float fx, float startY, RavenFontRenderer font, int accent, int textCol) {
+        float cy = startY;
+        float indent = FRAME_PAD + 10f;
 
         for (Setting setting : mod.getSettings()) {
-            if (setting instanceof DescriptionSetting) continue;
+            if (!setting.visible) continue;
 
             if (setting instanceof ButtonSetting) {
                 ButtonSetting btn = (ButtonSetting) setting;
-                int col = btn.isToggled() ? accent : new Color(130, 130, 130).getRGB();
-                font.drawString(setting.name, padLeft, y + 2f, col, false);
-                y += SETTING_ROW_HEIGHT;
+                int color = btn.isToggled() ? accent : new Color(120, 120, 120).getRGB();
+                String indicator = btn.isToggled() ? "• " : "  ";
+                font.drawString(indicator + setting.name, fx + indent, cy + 2, color, false);
+                cy += MODULE_HEIGHT;
             } else if (setting instanceof SliderSetting) {
                 SliderSetting slider = (SliderSetting) setting;
                 String[] opts = slider.getOptions();
                 String val;
                 if (opts != null && opts.length > 0) {
-                    int idx = (int) Math.max(0, Math.min(opts.length - 1, slider.getInput()));
-                    val = opts[idx];
+                    val = opts[Math.max(0, Math.min(opts.length - 1, (int) slider.getInput()))];
                 } else {
                     val = String.format("%.1f", slider.getInput());
                 }
-                font.drawString(setting.name + ": " + val, padLeft, y + 2f, new Color(170, 170, 170).getRGB(), false);
-                y += SETTING_ROW_HEIGHT;
+                font.drawString(setting.name + ": " + val, fx + indent, cy + 2, textCol, false);
+                cy += MODULE_HEIGHT;
             }
         }
-        return y;
+        return cy;
     }
 
     private float getSettingsHeight(Module mod) {
         float h = 0;
         for (Setting setting : mod.getSettings()) {
-            if (setting instanceof DescriptionSetting) continue;
+            if (!setting.visible) continue;
             if (setting instanceof ButtonSetting || setting instanceof SliderSetting) {
-                h += SETTING_ROW_HEIGHT;
+                h += MODULE_HEIGHT;
             }
         }
         return h;
     }
 
     private void drawSearchBar(int mx, int my) {
-        float sw = width / Gui.getClickGuiScale();
-        float sh = height / Gui.getClickGuiScale();
-        float barW = 260f;
-        float barX = (sw - barW) / 2f;
-        float barY = sh - SEARCH_BAR_HEIGHT - 16f;
+        ScaledResolution sr = new ScaledResolution(mc);
+        float screenW = sr.getScaledWidth() / Gui.getClickGuiScale();
+        float screenH = sr.getScaledHeight() / Gui.getClickGuiScale();
 
-        RoundedUtils.drawRound(barX, barY, barW, SEARCH_BAR_HEIGHT, 6f * ThemeManager.roundingScale(), new Color(15, 17, 20, 220));
-        RoundedUtils.drawRoundOutline(barX, barY, barW, SEARCH_BAR_HEIGHT, 6f * ThemeManager.roundingScale(), 1f,
-                new Color(0, 0, 0, 0), new Color(255, 255, 255, searchFocused ? 40 : 15));
-
-        RavenFontRenderer font = getBodyFont();
+        RavenFontRenderer font = Gui.getClickGuiSettingFontRenderer();
         if (font == null) return;
 
-        float textY = barY + (SEARCH_BAR_HEIGHT - font.getFontHeight()) / 2f;
-        if (search.isEmpty() && !searchFocused) {
-            font.drawString("Search...", barX + 10f, textY, new Color(100, 100, 100).getRGB(), false);
-        } else {
-            font.drawString(search + (searchFocused ? "_" : ""), barX + 10f, textY, new Color(210, 210, 210).getRGB(), false);
-        }
-    }
+        float barX = (screenW - SEARCH_BAR_WIDTH) / 2f;
+        float barY = screenH - SEARCH_BAR_HEIGHT - 20f;
 
-    private void drawThemePanel(int mx, int my) {
-        float sw = width / Gui.getClickGuiScale();
-        float sh = height / Gui.getClickGuiScale();
-        float panelW = 300f;
-        float panelH = 200f;
-        float px = (sw - panelW) / 2f;
-        float py = (sh - panelH) / 2f;
+        int accent = getAccentColor();
+        Color borderColor = searchFocused ? new Color(accent) : new Color(255, 255, 255, 40);
 
-        RoundedUtils.drawRound(px, py, panelW, panelH, 8f * ThemeManager.roundingScale(), new Color(15, 17, 20, 220));
-        RavenFontRenderer font = getBodyFont();
-        if (font == null) return;
+        RoundedUtils.drawRound(barX, barY, SEARCH_BAR_WIDTH, SEARCH_BAR_HEIGHT, 6f, new Color(15, 17, 20, 220));
+        RoundedUtils.drawRoundOutline(barX, barY, SEARCH_BAR_WIDTH, SEARCH_BAR_HEIGHT, 6f, 1f,
+                new Color(0, 0, 0, 0), borderColor);
 
-        float y = py + 14f;
-        font.drawString("Theme settings are available in the Central GUI style.", px + 14f, y, new Color(170, 170, 170).getRGB(), false);
+        String displayText = searchQuery.isEmpty() ? "Search modules..." : searchQuery;
+        int textColor = searchQuery.isEmpty() ? new Color(120, 120, 120).getRGB() : 0xFFFFFFFF;
+        font.drawString(displayText, barX + 10, barY + (SEARCH_BAR_HEIGHT - font.getFontHeight()) / 2f, textColor, false);
     }
 
     private void drawMascot() {
         if (Gui.mascot == null || (int) Gui.mascot.getInput() != 0) return;
-        ensureMascotTexture();
         if (mascotTexture == null) return;
 
-        float sw = width / Gui.getClickGuiScale();
-        float sh = height / Gui.getClickGuiScale();
-        float size = 120f;
-        float mx = sw - size - 30f;
-        float my = sh - size - 50f;
+        ScaledResolution sr = new ScaledResolution(mc);
+        float screenW = sr.getScaledWidth() / Gui.getClickGuiScale();
+        float screenH = sr.getScaledHeight() / Gui.getClickGuiScale();
+        float mascotH = screenH * 0.35f;
+        float mascotW = mascotH;
+        float mxPos = screenW - mascotW - 20f;
+        float myPos = screenH - mascotH - 20f;
 
         GlStateManager.enableTexture2D();
         GlStateManager.enableAlpha();
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
-        GlStateManager.color(1f, 1f, 1f, 1f);
+        GlStateManager.color(1f, 1f, 1f, 0.8f);
         mc.getTextureManager().bindTexture(mascotTexture);
         GL11.glBegin(GL11.GL_QUADS);
-        GL11.glTexCoord2f(0, 0); GL11.glVertex2f(mx, my);
-        GL11.glTexCoord2f(0, 1); GL11.glVertex2f(mx, my + size);
-        GL11.glTexCoord2f(1, 1); GL11.glVertex2f(mx + size, my + size);
-        GL11.glTexCoord2f(1, 0); GL11.glVertex2f(mx + size, my);
+        GL11.glTexCoord2f(0, 0); GL11.glVertex2f(mxPos, myPos);
+        GL11.glTexCoord2f(0, 1); GL11.glVertex2f(mxPos, myPos + mascotH);
+        GL11.glTexCoord2f(1, 1); GL11.glVertex2f(mxPos + mascotW, myPos + mascotH);
+        GL11.glTexCoord2f(1, 0); GL11.glVertex2f(mxPos + mascotW, myPos);
         GL11.glEnd();
         GlStateManager.color(1f, 1f, 1f, 1f);
+        GlStateManager.disableBlend();
     }
 
-    private void ensureMascotTexture() {
-        if (textureLoaded) return;
-        textureLoaded = true;
-        try (InputStream stream = FramesClickGui.class.getResourceAsStream("/assets/mindless/textures/gui/mascot_0.png")) {
-            if (stream == null) return;
-            BufferedImage image = ImageIO.read(stream);
-            if (image == null) return;
-            DynamicTexture tex = new DynamicTexture(image);
-            tex.setBlurMipmap(true, false);
-            mascotTexture = mc.getTextureManager().getDynamicTextureLocation("mindless_frames_mascot", tex);
-        } catch (Exception ignored) {}
+    private void drawThemePanel(int mx, int my) {
+        ScaledResolution sr = new ScaledResolution(mc);
+        float screenW = sr.getScaledWidth() / Gui.getClickGuiScale();
+        float screenH = sr.getScaledHeight() / Gui.getClickGuiScale();
+
+        RavenFontRenderer font = Gui.getClickGuiSettingFontRenderer();
+        if (font == null) return;
+
+        float panelW = 300f;
+        float panelH = 200f;
+        float px = (screenW - panelW) / 2f;
+        float py = (screenH - panelH) / 2f;
+
+        RoundedUtils.drawRound(px, py, panelW, panelH, FRAME_RADIUS, new Color(15, 17, 20, 220));
+        RoundedUtils.drawRoundOutline(px, py, panelW, panelH, FRAME_RADIUS, 1f,
+                new Color(0, 0, 0, 0), new Color(255, 255, 255, 25));
+
+        Module themeModule = null;
+        if (Raven.getModuleManager() != null) {
+            List<Module> themes = Raven.getModuleManager().inCategory(Module.category.theme);
+            if (!themes.isEmpty()) themeModule = themes.get(0);
+        }
+
+        float cy = py + 12f;
+        int accent = getAccentColor();
+        font.drawString("Theme Settings", px + 12f, cy, accent, false);
+        cy += 24f;
+
+        if (themeModule != null) {
+            for (Setting setting : themeModule.getSettings()) {
+                if (!setting.visible) continue;
+                if (setting instanceof ButtonSetting) {
+                    ButtonSetting btn = (ButtonSetting) setting;
+                    int color = btn.isToggled() ? accent : new Color(120, 120, 120).getRGB();
+                    font.drawString((btn.isToggled() ? "• " : "  ") + setting.name, px + 16f, cy, color, false);
+                    cy += MODULE_HEIGHT;
+                } else if (setting instanceof SliderSetting) {
+                    SliderSetting slider = (SliderSetting) setting;
+                    font.drawString(setting.name + ": " + String.format("%.1f", slider.getInput()), px + 16f, cy, 0xFFFFFFFF, false);
+                    cy += MODULE_HEIGHT;
+                }
+                if (cy > py + panelH - 12f) break;
+            }
+        }
     }
 
-    // ---- Input handling ----
+    // ------------------------------------------------------------------ input
 
     @Override
-    protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
+    public void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
         float scale = Gui.getClickGuiScale();
         int mx = (int) (mouseX / scale);
         int my = (int) (mouseY / scale);
 
-        // Top bar tabs
-        if (my < TOP_BAR_HEIGHT) {
-            float sw = width / scale;
+        // Tab bar
+        if (my < TAB_BAR_HEIGHT) {
+            ScaledResolution sr = new ScaledResolution(mc);
+            float screenW = sr.getScaledWidth() / scale;
             float tabW = 80f;
-            float tabStartX = (sw - tabW * TAB_NAMES.length) / 2f;
-            for (int i = 0; i < TAB_NAMES.length; i++) {
-                float tx = tabStartX + i * tabW;
-                if (mx >= tx && mx <= tx + tabW) {
-                    activeTab = i;
-                    return;
-                }
+            float totalW = 2 * tabW;
+            float startX = (screenW - totalW) / 2f;
+            if (mx >= startX && mx < startX + totalW) {
+                activeTab = (int) ((mx - startX) / tabW);
+                return;
             }
         }
 
         if (activeTab != TAB_MODULES) return;
 
-        // Search bar click
-        float sw = width / scale;
-        float sh = height / scale;
-        float barW = 260f;
-        float barX = (sw - barW) / 2f;
-        float barY = sh - SEARCH_BAR_HEIGHT - 16f;
-        searchFocused = mx >= barX && mx <= barX + barW && my >= barY && my <= barY + SEARCH_BAR_HEIGHT;
+        // Search bar
+        ScaledResolution sr = new ScaledResolution(mc);
+        float screenW = sr.getScaledWidth() / scale;
+        float screenH = sr.getScaledHeight() / scale;
+        float barX = (screenW - SEARCH_BAR_WIDTH) / 2f;
+        float barY = screenH - SEARCH_BAR_HEIGHT - 20f;
+        searchFocused = mx >= barX && mx <= barX + SEARCH_BAR_WIDTH && my >= barY && my <= barY + SEARCH_BAR_HEIGHT;
 
         // Frame interactions
-        String searchLower = search.toLowerCase(Locale.ROOT);
-        for (Frame frame : frames.values()) {
-            List<Module> modules = getFilteredModules(frame.category, searchLower);
+        for (Module.category cat : FRAME_CATEGORIES) {
+            float[] pos = framePositions.get(cat);
+            if (pos == null) continue;
+
+            List<Module> modules = getModulesForCategory(cat);
+            if (!searchQuery.isEmpty()) modules = filterModules(modules);
             if (modules.isEmpty()) continue;
 
+            float fx = pos[0];
+            float fy = pos[1];
+
             // Header drag
-            if (mx >= frame.x && mx <= frame.x + FRAME_WIDTH && my >= frame.y && my < frame.y + HEADER_HEIGHT) {
-                if (mouseButton == 0) {
-                    draggingFrame = frame;
-                    dragOffsetX = mx - frame.x;
-                    dragOffsetY = my - frame.y;
-                }
+            if (mx >= fx && mx <= fx + FRAME_WIDTH && my >= fy && my < fy + HEADER_HEIGHT) {
+                draggingFrame = cat;
+                dragOffsetX = mx - fx;
+                dragOffsetY = my - fy;
                 return;
             }
 
-            // Module click
-            float rowY = frame.y + HEADER_HEIGHT;
+            // Module clicks
+            float cy = fy + HEADER_HEIGHT + FRAME_PAD;
             for (Module mod : modules) {
-                if (mx >= frame.x && mx <= frame.x + FRAME_WIDTH && my >= rowY && my < rowY + MODULE_ROW_HEIGHT) {
+                if (mx >= fx && mx <= fx + FRAME_WIDTH && my >= cy && my < cy + MODULE_HEIGHT) {
                     if (mouseButton == 0) {
                         mod.toggle();
                     } else if (mouseButton == 1) {
-                        expandedModule = (expandedModule == mod) ? null : mod;
+                        Boolean expanded = expandedModules.getOrDefault(mod, false);
+                        expandedModules.put(mod, !expanded);
                     }
                     return;
                 }
-                rowY += MODULE_ROW_HEIGHT;
-                if (mod == expandedModule) {
+                cy += MODULE_HEIGHT + MODULE_PAD;
+                if (Boolean.TRUE.equals(expandedModules.get(mod))) {
                     float settingsH = getSettingsHeight(mod);
-                    // Click on settings area - toggle buttons
-                    if (mx >= frame.x && mx <= frame.x + FRAME_WIDTH && my >= rowY && my < rowY + settingsH) {
-                        handleSettingClick(mod, frame.x, rowY, mx, my);
+                    if (mx >= fx && mx <= fx + FRAME_WIDTH && my >= cy && my < cy + settingsH) {
+                        handleSettingClick(mod, fx, cy, mx, my);
                         return;
                     }
-                    rowY += settingsH;
+                    cy += settingsH;
                 }
             }
         }
     }
 
-    private void handleSettingClick(Module mod, float frameX, float startY, int mx, int my) {
-        float y = startY;
+    private void handleSettingClick(Module mod, float fx, float startY, int mx, int my) {
+        float cy = startY;
         for (Setting setting : mod.getSettings()) {
-            if (setting instanceof DescriptionSetting) continue;
+            if (!setting.visible) continue;
             if (setting instanceof ButtonSetting) {
-                if (my >= y && my < y + SETTING_ROW_HEIGHT) {
+                if (my >= cy && my < cy + MODULE_HEIGHT) {
                     ((ButtonSetting) setting).toggle();
                     return;
                 }
-                y += SETTING_ROW_HEIGHT;
+                cy += MODULE_HEIGHT;
             } else if (setting instanceof SliderSetting) {
-                if (my >= y && my < y + SETTING_ROW_HEIGHT) {
-                    SliderSetting slider = (SliderSetting) setting;
-                    String[] opts = slider.getOptions();
-                    if (opts != null && opts.length > 0) {
-                        int idx = (int) slider.getInput();
-                        slider.setValue((idx + 1) % opts.length);
-                    }
-                    return;
-                }
-                y += SETTING_ROW_HEIGHT;
+                cy += MODULE_HEIGHT;
             }
         }
     }
 
     @Override
-    protected void mouseReleased(int mouseX, int mouseY, int state) {
+    public void mouseReleased(int mouseX, int mouseY, int state) {
         draggingFrame = null;
+        super.mouseReleased(mouseX, mouseY, state);
     }
 
     @Override
     protected void mouseClickMove(int mouseX, int mouseY, int clickedMouseButton, long timeSinceLastClick) {
         if (draggingFrame != null) {
             float scale = Gui.getClickGuiScale();
-            draggingFrame.x = mouseX / scale - dragOffsetX;
-            draggingFrame.y = mouseY / scale - dragOffsetY;
+            int mx = (int) (mouseX / scale);
+            int my = (int) (mouseY / scale);
+            float[] pos = framePositions.get(draggingFrame);
+            if (pos != null) {
+                pos[0] = mx - dragOffsetX;
+                pos[1] = my - dragOffsetY;
+            }
         }
     }
 
     @Override
-    protected void keyTyped(char typedChar, int keyCode) throws IOException {
+    public void keyTyped(char typedChar, int keyCode) {
         if (keyCode == Keyboard.KEY_ESCAPE) {
             mc.displayGuiScreen(null);
             return;
@@ -465,38 +480,30 @@ public final class FramesClickGui extends ClickGui {
 
         if (searchFocused) {
             if (keyCode == Keyboard.KEY_BACK) {
-                if (!search.isEmpty()) search = search.substring(0, search.length() - 1);
-            } else if (ChatAllowedCharacters.isAllowedCharacter(typedChar)) {
-                search += typedChar;
+                if (!searchQuery.isEmpty()) searchQuery = searchQuery.substring(0, searchQuery.length() - 1);
+            } else if (typedChar >= 32 && typedChar < 127) {
+                searchQuery += typedChar;
             }
+            return;
         }
+
+        super.keyTyped(typedChar, keyCode);
     }
 
-    @Override
-    public void handleMouseInput() throws IOException {
-        super.handleMouseInput();
-        // Could add scroll for frames later
-    }
-
-    // ---- Helpers ----
+    // ------------------------------------------------------------------ util
 
     private List<Module> getModulesForCategory(Module.category category) {
         if (Raven.getModuleManager() == null) return new ArrayList<>();
-        List<Module> result = new ArrayList<>();
-        for (Module mod : Raven.getModuleManager().inCategory(category)) {
-            if (Gui.shouldShowModule(mod)) result.add(mod);
-        }
-        return result;
+        return Raven.getModuleManager().inCategory(category);
     }
 
-    private List<Module> getFilteredModules(Module.category category, String searchLower) {
-        List<Module> modules = getModulesForCategory(category);
-        if (searchLower.isEmpty()) return modules;
-        List<Module> filtered = new ArrayList<>();
-        for (Module m : modules) {
-            if (m.getName().toLowerCase(Locale.ROOT).contains(searchLower)) filtered.add(m);
+    private List<Module> filterModules(List<Module> modules) {
+        String q = searchQuery.toLowerCase(Locale.ROOT);
+        List<Module> result = new ArrayList<>();
+        for (Module mod : modules) {
+            if (mod.getName().toLowerCase(Locale.ROOT).contains(q)) result.add(mod);
         }
-        return filtered;
+        return result;
     }
 
     private int getAccentColor() {
@@ -504,23 +511,26 @@ public final class FramesClickGui extends ClickGui {
         return new Color(159, 143, 210).getRGB();
     }
 
-    private RavenFontRenderer getHeaderFont() {
-        return FontManager.getClickGuiHeaderRenderer(Gui.getSelectedFontName());
+    private int getTextColor() {
+        if (Gui.themeTextColor != null) return Gui.themeTextColor.getColor();
+        return new Color(235, 234, 230).getRGB();
     }
 
-    private RavenFontRenderer getBodyFont() {
-        return FontManager.getClickGuiSettingRenderer(Gui.getSelectedFontName());
-    }
-
-    private static String capitalize(String s) {
+    private String capitalize(String s) {
         if (s == null || s.isEmpty()) return s;
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
-    private static class Frame {
-        Module.category category;
-        float x, y;
-        float lastRenderedHeight;
+    private void ensureTextures() {
+        if (texturesLoaded) return;
+        texturesLoaded = true;
+        try (InputStream stream = FramesClickGui.class.getResourceAsStream("/assets/mindless/textures/gui/mascot_0.png")) {
+            if (stream == null) return;
+            BufferedImage image = ImageIO.read(stream);
+            if (image == null) return;
+            DynamicTexture texture = new DynamicTexture(image);
+            texture.setBlurMipmap(true, false);
+            mascotTexture = mc.getTextureManager().getDynamicTextureLocation("mindless_frames_mascot", texture);
+        } catch (Exception ignored) {}
     }
 }
-*/
