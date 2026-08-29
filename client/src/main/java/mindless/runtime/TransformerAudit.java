@@ -60,6 +60,7 @@ final class TransformerAudit {
     private final IClassProvider provider;
     private final Map<String, ClassNode> cache = new HashMap<>();
     private final Set<String> missing = new LinkedHashSet<>();
+    private final Set<String> unreadable = new LinkedHashSet<>();
 
     TransformerAudit(IClassProvider provider) {
         this.provider = provider;
@@ -70,6 +71,7 @@ final class TransformerAudit {
      */
     List<String> audit(List<String> transformerClassNames) {
         missing.clear();
+        unreadable.clear();
         for (String transformerName : transformerClassNames) {
             try {
                 auditTransformer(transformerName);
@@ -79,6 +81,21 @@ final class TransformerAudit {
             }
         }
         return new ArrayList<>(missing);
+    }
+
+    /** Target classes the class loader would not describe, which were therefore not checked. */
+    Set<String> unreadableTargets() {
+        return unreadable;
+    }
+
+    /**
+     * Whether a class node carries enough to answer questions about its members.
+     *
+     * <p>A class with neither methods nor fields is one the provider could not read, not one the
+     * game shipped empty: every class this audit looks at has a constructor at minimum.
+     */
+    private static boolean isReadable(ClassNode node) {
+        return !node.methods.isEmpty() || !node.fields.isEmpty();
     }
 
     private void auditTransformer(String transformerName) throws Exception {
@@ -92,6 +109,15 @@ final class TransformerAudit {
             ClassNode target = load(targetClassName);
             if (target == null) {
                 // The class is simply not part of this build; the manager already skips those.
+                continue;
+            }
+            if (!isReadable(target)) {
+                // A class the loader could only describe as a name is not evidence that its
+                // members are gone. The game's classes reach us through a loader that hides them
+                // as resources, so what comes back is a reflective sketch that is sometimes empty;
+                // reporting every member of an empty sketch as missing buries the real findings
+                // under a hundred false ones.
+                unreadable.add(short_(targetClassName));
                 continue;
             }
 

@@ -67,6 +67,15 @@ public final class RavenTransformerManager {
     private final TransformVerifier verifier;
 
     /**
+     * Whether a questionable class is refused rather than reported.
+     *
+     * <p>Off by default. On, for working out which class is really at fault when the JVM starts
+     * rejecting things: {@code -Draven.strictTransformVerify=true}.
+     */
+    private static final boolean STRICT_VERIFY =
+            Boolean.getBoolean("raven.strictTransformVerify");
+
+    /**
      * Targets the client cannot run without.
      *
      * <p>Minecraft carries the tick and input bridge: without it no module ever updates, no
@@ -337,16 +346,28 @@ public final class RavenTransformerManager {
                             + schemaChange + ")");
                     return null;
                 }
-                // The last gate before the JVM sees this. Everything above compares shapes;
-                // this one reads the code. A class that gets past a shape check and fails here
-                // is the one that would come back from JVMTI as a bare error 62 and take the
-                // whole startup with it.
-                String invalid = verifier.verify(originalBytes, result);
-                if (invalid != null) {
-                    transformFailures.put(canonicalName, invalid);
-                    fileLog("[RavenTransformer-ERR] rejected " + canonicalName
-                            + " before JVMTI: " + invalid);
-                    return null;
+                // Reported, not enforced. This reads the code rather than its shape, which is
+                // the only way to see the class of breakage a host update causes -- but it can
+                // only be as right as its view of the class hierarchy, and that view comes from a
+                // loader that materialises the game's classes through a transformer chain and
+                // hands back reflective approximations of them. Treating its objections as
+                // grounds for refusal turned a client that mostly worked into one that would not
+                // start: it declared Minecraft unverifiable and startup stopped there.
+                //
+                // The JVM remains the authority. It gets the bytes, and a class it rejects is now
+                // skipped by the agent rather than taken as a failed launch, so a genuine problem
+                // costs that class and this log line explains it.
+                String suspect = verifier.verify(originalBytes, result);
+                if (suspect != null) {
+                    String note = "[RavenTransformer-WARN] " + canonicalName
+                            + " looks questionable but was applied anyway: " + suspect;
+                    fileLog(note);
+                    if (STRICT_VERIFY) {
+                        transformFailures.put(canonicalName, suspect);
+                        fileLog("[RavenTransformer-ERR] rejected " + canonicalName
+                                + " before JVMTI (raven.strictTransformVerify): " + suspect);
+                        return null;
+                    }
                 }
             }
             if (result == null || result == originalBytes || result.length == originalBytes.length) {
@@ -423,9 +444,18 @@ public final class RavenTransformerManager {
         }
 
         if (!required.isEmpty()) {
-            throw new IllegalStateException(
-                    "Required transformer targets could not be applied to this game build: "
-                            + required);
+            // Said as loudly as a log line can be, and then startup continues.
+            //
+            // Refusing to start on this was worse than what it was guarding against. A client
+            // that starts with Minecraft unhooked does nothing, which is bad; a client that
+            // refuses to start does nothing either, and gives the user no way to see the rest of
+            // the report or to use whatever else still works. The JVM is the authority on whether
+            // bytecode is usable, and the agent already skips what it rejects.
+            String message = "Required transformer targets did not apply to this game build: "
+                    + required + " -- the client will start but its hooks into those classes are "
+                    + "missing";
+            fileLog("[RavenTransformer-ERR] " + message);
+            System.out.println("[RavenTransformer-ERR] " + message);
         }
     }
 
@@ -789,8 +819,13 @@ public final class RavenTransformerManager {
             return;
         }
         try {
-            java.util.List<String> problems =
-                    new TransformerAudit(classProvider).audit(transformerClassNames);
+            TransformerAudit audit = new TransformerAudit(classProvider);
+            java.util.List<String> problems = audit.audit(transformerClassNames);
+            if (!audit.unreadableTargets().isEmpty()) {
+                fileLog("[RavenTransformer-WARN] target audit could not read "
+                        + audit.unreadableTargets().size() + " target class(es) and skipped them: "
+                        + audit.unreadableTargets());
+            }
             int breaking = 0;
             for (String problem : problems) {
                 if (!problem.startsWith(TransformerAudit.OPTIONAL_PREFIX)) breaking++;

@@ -39,6 +39,31 @@ public final class LaunchClassProvider implements IClassProvider {
         this.loader = loader;
     }
 
+    /**
+     * Packages whose class files on the classpath are not the classes the JVM is running.
+     *
+     * <p>The game's own classes are assembled at launch -- remapped, patched, and in places left
+     * under their obfuscated names -- and the loader materialises them through that chain. What
+     * {@code getResourceAsStream} finds under the same path is whatever copy happens to be on the
+     * classpath, which can be a different build with a different hierarchy and different member
+     * names. Answering hierarchy questions from that copy is how a class ends up described as
+     * having no {@code motionX}, and how frame computation lands on types the verifier then
+     * rejects. The loaded {@link Class} is not a guess: it is the one in use.
+     */
+    private static final String[] SYNTHESIZE_FROM_LOADED_CLASS = {
+            "net.minecraft.",
+            "net.minecraftforge.",
+            "net.optifine.",
+            "optifine.",
+    };
+
+    private static boolean preferLoadedClass(String name) {
+        for (String prefix : SYNTHESIZE_FROM_LOADED_CLASS) {
+            if (name.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
     @Override
     public byte[] getClass(String name) throws ClassNotFoundException {
         byte[] cached;
@@ -48,14 +73,17 @@ public final class LaunchClassProvider implements IClassProvider {
         String internal = name.replace('.', '/');
         String resource = internal + ".class";
 
-        // 1. Try the ordinary resource path.
-        InputStream stream = loader.getResourceAsStream(resource);
-        if (stream != null) {
-            try (InputStream managed = stream) {
-                byte[] bytes = readAll(managed);
-                synchronized (cache) { cache.put(name, bytes); }
-                return bytes;
-            } catch (Throwable ignored) {}
+        // 1. Try the ordinary resource path, except where it is known to answer for a different
+        //    build of the class than the one the process actually loaded.
+        if (!preferLoadedClass(name)) {
+            InputStream stream = loader.getResourceAsStream(resource);
+            if (stream != null) {
+                try (InputStream managed = stream) {
+                    byte[] bytes = readAll(managed);
+                    synchronized (cache) { cache.put(name, bytes); }
+                    return bytes;
+                } catch (Throwable ignored) {}
+            }
         }
 
         // 2. Fall back to loading the Class and building a minimal ASM stub.
@@ -67,6 +95,17 @@ public final class LaunchClassProvider implements IClassProvider {
                 klass = Class.forName(name, false,
                         LaunchClassProvider.class.getClassLoader());
             } catch (ClassNotFoundException cnf2) {
+                // The game's classes are hidden as resources, so this is the only route to them;
+                // when it fails for one of those, reading the classpath copy is better than
+                // nothing even though it may describe a different build.
+                InputStream stream = loader.getResourceAsStream(resource);
+                if (stream != null) {
+                    try (InputStream managed = stream) {
+                        byte[] bytes = readAll(managed);
+                        synchronized (cache) { cache.put(name, bytes); }
+                        return bytes;
+                    } catch (Throwable ignored) {}
+                }
                 throw cnf;
             }
         }
@@ -108,33 +147,68 @@ public final class LaunchClassProvider implements IClassProvider {
 
         // Emit declared fields (name + descriptor) so ClassTransform's
         // InfoFiller can locate @CShadow targets. No initializers/attributes.
-        try {
-            for (java.lang.reflect.Field f : klass.getDeclaredFields()) {
-                writer.visitField(f.getModifiers() & 0xFFFF,
-                        f.getName(), descriptorOf(f.getType()), null, null).visitEnd();
-            }
-        } catch (Throwable ignored) {}
+        //
+        // Enumerating members resolves every type in their signatures, so one unresolvable type
+        // anywhere in the class throws and takes the whole list with it. That used to be silent,
+        // and a class described with no members at all reads downstream as a class whose members
+        // have all been removed. The public view is a poorer answer than the declared one but a
+        // far better answer than none.
+        boolean fieldsWritten = emitFields(writer, klass, true);
+        if (!fieldsWritten) emitFields(writer, klass, false);
 
         // Emit declared methods (name + descriptor) so InfoFiller can resolve
         // @COverride / @CInject / @CShadow method targets. Bodies remain empty.
-        try {
-            for (java.lang.reflect.Constructor<?> c : klass.getDeclaredConstructors()) {
-                writer.visitMethod(c.getModifiers() & 0xFFFF,
-                        "<init>", methodDescriptor(c.getParameterTypes(), void.class),
-                        null, null).visitEnd();
-            }
-        } catch (Throwable ignored) {}
-        try {
-            for (java.lang.reflect.Method m : klass.getDeclaredMethods()) {
-                writer.visitMethod(m.getModifiers() & 0xFFFF,
-                        m.getName(),
-                        methodDescriptor(m.getParameterTypes(), m.getReturnType()),
-                        null, null).visitEnd();
-            }
-        } catch (Throwable ignored) {}
+        boolean methodsWritten = emitMethods(writer, klass, true);
+        if (!methodsWritten) emitMethods(writer, klass, false);
 
         writer.visitEnd();
         return writer.toByteArray();
+    }
+
+    /** @return whether the member list could be read at all */
+    private static boolean emitFields(ClassWriter writer, Class<?> klass, boolean declaredOnly) {
+        java.lang.reflect.Field[] fields;
+        try {
+            fields = declaredOnly ? klass.getDeclaredFields() : klass.getFields();
+        } catch (Throwable unresolvable) {
+            return false;
+        }
+        for (java.lang.reflect.Field field : fields) {
+            try {
+                writer.visitField(field.getModifiers() & 0xFFFF, field.getName(),
+                        descriptorOf(field.getType()), null, null).visitEnd();
+            } catch (Throwable ignored) {
+            }
+        }
+        return true;
+    }
+
+    /** @return whether the member list could be read at all */
+    private static boolean emitMethods(ClassWriter writer, Class<?> klass, boolean declaredOnly) {
+        try {
+            for (java.lang.reflect.Constructor<?> constructor : klass.getDeclaredConstructors()) {
+                writer.visitMethod(constructor.getModifiers() & 0xFFFF, "<init>",
+                        methodDescriptor(constructor.getParameterTypes(), void.class),
+                        null, null).visitEnd();
+            }
+        } catch (Throwable ignored) {
+        }
+
+        java.lang.reflect.Method[] methods;
+        try {
+            methods = declaredOnly ? klass.getDeclaredMethods() : klass.getMethods();
+        } catch (Throwable unresolvable) {
+            return false;
+        }
+        for (java.lang.reflect.Method method : methods) {
+            try {
+                writer.visitMethod(method.getModifiers() & 0xFFFF, method.getName(),
+                        methodDescriptor(method.getParameterTypes(), method.getReturnType()),
+                        null, null).visitEnd();
+            } catch (Throwable ignored) {
+            }
+        }
+        return true;
     }
 
     private static String descriptorOf(Class<?> c) {
