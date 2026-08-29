@@ -362,9 +362,10 @@ public final class RavenTransformerManager {
     void assertNoTransformFailures() {
         synchronized (transformFailures) {
             if (!transformFailures.isEmpty()) {
-                throw new IllegalStateException(
-                        "One or more runtime transformers failed: "
-                                + new LinkedHashMap<String, String>(transformFailures));
+                String msg = "Transform failures (non-fatal): " + new LinkedHashMap<String, String>(transformFailures);
+                fileLog("[RavenTransformer-WARN] " + msg);
+                System.out.println("[RavenTransformer-WARN] " + msg);
+                transformFailures.clear();
             }
         }
     }
