@@ -20,7 +20,7 @@ public class KeepSprint extends Module {
     public static ButtonSetting disableWhileJump;
     public static ButtonSetting reduceReachHits;
 
-    private static final String[] MODES = {"Vanilla", "Watchdog"};
+    private static final String[] MODES = {"Vanilla", "Watchdog", "Blatant"};
 
     private int wdState;
     private int wdTicks;
@@ -45,10 +45,11 @@ public class KeepSprint extends Module {
 
     @Override
     public void guiUpdate() {
-        boolean wd = (int) mode.getInput() == 1;
-        stopSprint.setVisible(!wd, this);
-        disableWhileJump.setVisible(!wd, this);
-        reduceReachHits.setVisible(!wd, this);
+        boolean vanilla = (int) mode.getInput() == 0;
+        slow.setVisible(vanilla, this);
+        stopSprint.setVisible(vanilla, this);
+        disableWhileJump.setVisible(vanilla, this);
+        reduceReachHits.setVisible(vanilla, this);
     }
 
     @Override
@@ -84,7 +85,9 @@ public class KeepSprint extends Module {
     }
 
     public static void keepSprint(Entity en) {
-        if ((int) mode.getInput() == 1) {
+        int m = (int) mode.getInput();
+        if (m == 2) return; // Blatant: no slowdown at all
+        if (m == 1) {
             keepSprintWatchdog(en);
             return;
         }
