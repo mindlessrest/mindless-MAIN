@@ -230,8 +230,28 @@ public final class ModernClickGui extends ClickGui {
     private final Map<SliderSetting, Float> sliderProgressAnimation = new IdentityHashMap<SliderSetting, Float>();
     private final Object searchAnimationKey = new Object();
     private final Manager profileManagerModule = new Manager();
-    private float guiDragOffsetX = 0f;
-    private float guiDragOffsetY = 0f;
+    /**
+     * Where the window has been dragged to, relative to centred.
+     *
+     * <p>Static because the screen object is thrown away and rebuilt every time the GUI is opened,
+     * so an instance field put the panel back in the middle on each open. Static also lets the
+     * profile read and restore it without holding a screen.
+     */
+    private static float guiDragOffsetX = 0f;
+    private static float guiDragOffsetY = 0f;
+
+    public static float getDragOffsetX() {
+        return guiDragOffsetX;
+    }
+
+    public static float getDragOffsetY() {
+        return guiDragOffsetY;
+    }
+
+    public static void setDragOffset(float x, float y) {
+        guiDragOffsetX = x;
+        guiDragOffsetY = y;
+    }
     private boolean draggingGui = false;
     private float dragStartMouseX, dragStartMouseY;
     private float dragStartOffsetX, dragStartOffsetY;

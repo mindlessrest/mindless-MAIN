@@ -372,6 +372,13 @@ public class ProfileManager implements IMinecraftInstance {
             for (CategoryComponent c : ClickGui.categories) {
                 moduleInformation.addProperty(c.category.name(), c.x + "," + c.y + "," + c.opened);
             }
+            // Where the modern window was dragged to. The legacy category panels above have always
+            // been saved; this one was not, so the window went back to the middle of the screen on
+            // every launch however far it had been moved.
+            moduleInformation.addProperty("modernGuiOffsetX",
+                    mindless.clickgui.ModernClickGui.getDragOffsetX());
+            moduleInformation.addProperty("modernGuiOffsetY",
+                    mindless.clickgui.ModernClickGui.getDragOffsetY());
         }
         for (Setting setting : module.getSettings()) {
             if (setting instanceof ButtonSetting && !((ButtonSetting) setting).isMethodButton) {
@@ -456,6 +463,7 @@ public class ProfileManager implements IMinecraftInstance {
         Map<Module, RequestedModuleState> requestedModuleStates = createDefaultRequestedModuleStates(loadableModules);
         Map<Module, JsonObject> loadedModuleData = new LinkedHashMap<Module, JsonObject>();
         Map<String, SavedCategoryState> savedGuiCategoryState = new HashMap<String, SavedCategoryState>();
+        float[] savedModernGuiOffset = null;
         boolean loadedRelationshipsState = false;
 
         for (JsonElement moduleJson : modules) {
@@ -492,6 +500,16 @@ public class ProfileManager implements IMinecraftInstance {
 
             if (module.getName().equals("Gui")) {
                 readGuiCategoryState(moduleInformation, savedGuiCategoryState);
+                if (moduleInformation.has("modernGuiOffsetX") && moduleInformation.has("modernGuiOffsetY")) {
+                    try {
+                        savedModernGuiOffset = new float[] {
+                                moduleInformation.get("modernGuiOffsetX").getAsFloat(),
+                                moduleInformation.get("modernGuiOffsetY").getAsFloat() };
+                    } catch (Exception malformed) {
+                        // A profile written before this existed, or hand-edited. Leave it centred.
+                        savedModernGuiOffset = null;
+                    }
+                }
             }
 
             if (module.canBeEnabled()) {
@@ -593,6 +611,10 @@ public class ProfileManager implements IMinecraftInstance {
                     if (state != null) {
                         c.applySavedState(state.x, state.y, state.opened, true);
                     }
+                }
+                if (savedModernGuiOffset != null) {
+                    mindless.clickgui.ModernClickGui.setDragOffset(
+                            savedModernGuiOffset[0], savedModernGuiOffset[1]);
                 }
             }
             Raven.clickGui.enforceHorizontalProfileLayout();

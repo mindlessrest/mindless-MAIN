@@ -1,5 +1,6 @@
 package mindless.module;
 
+import mindless.module.impl.client.HideModules;
 import mindless.module.impl.client.ChatCommands;
 import mindless.module.impl.client.CommandLine;
 import mindless.module.impl.client.Gui;
@@ -117,6 +118,7 @@ public class ModuleManager {
         this.addModule(commandLine = new CommandLine());
         this.addModule(new Gui());
         this.addModule(new Settings());
+        this.addModule(new HideModules());
         this.addModule(themeManager = new ThemeManager());
         this.addModule(spotifyMiniPlayer = new SpotifyMiniPlayer());
         this.addModule(relationships = new Relationships());
