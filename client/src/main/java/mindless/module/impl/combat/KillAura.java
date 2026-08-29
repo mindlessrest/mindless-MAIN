@@ -675,14 +675,18 @@ public class KillAura extends Module {
     }
 
     private void startBlocking() {
-        if (blocking) return;
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), true);
+        if (blocking || !Utils.holdingSword()) return;
+        mc.thePlayer.sendQueue.addToSendQueue(
+                new net.minecraft.network.play.client.C08PacketPlayerBlockPlacement(mc.thePlayer.getHeldItem()));
         blocking = true;
     }
 
     private void stopBlocking() {
         if (!blocking) return;
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
+        mc.thePlayer.sendQueue.addToSendQueue(
+                new net.minecraft.network.play.client.C07PacketPlayerDigging(
+                        net.minecraft.network.play.client.C07PacketPlayerDigging.Action.RELEASE_USE_ITEM,
+                        net.minecraft.util.BlockPos.ORIGIN, net.minecraft.util.EnumFacing.DOWN));
         blocking = false;
     }
 
