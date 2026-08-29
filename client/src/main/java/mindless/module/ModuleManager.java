@@ -137,6 +137,7 @@ public class ModuleManager {
         this.addModule(hitBox = new HitBox());
         this.addModule(new JumpReset());
         this.addModule(new Criticals());
+        this.addModule(new Regen());
         this.addModule(killAura = new KillAura());
         this.addModule(knockbackDelay = new KnockbackDelay());
         this.addModule(piercing = new Piercing());
@@ -174,6 +175,7 @@ public class ModuleManager {
         this.addModule(noSlow = new NoSlow());
         this.addModule(new NullMove());
         this.addModule(speed = new Speed());
+        this.addModule(new TargetStrafe());
         this.addModule(sprint = new Sprint());
         this.addModule(stasis = new Stasis());
         this.addModule(new StopMotion());
