@@ -42,7 +42,7 @@ public class TransformerRenderGlobal {
                     ordinal = 1,
                     optional = true))
     private boolean forceShouldRenderInPass(Entity instance, int pass) {
-        return pass == 1 || instance.shouldRenderInPass(pass);
+        return pass == 1 || RenderGlobalState.shouldRenderInPass(instance, pass);
     }
 
     @CInline
@@ -52,15 +52,17 @@ public class TransformerRenderGlobal {
                     ordinal = 1,
                     optional = true))
     private boolean forceShouldRenderInPassOptiFine(Object instance, Object reflectorMethod, Object[] parameters) {
-        int pass = ((Integer) parameters[0]).intValue();
-        return pass == 1 || ((Entity) instance).shouldRenderInPass(pass);
+        int pass = parameters != null && parameters.length > 0 && parameters[0] instanceof Integer
+                ? ((Integer) parameters[0]).intValue() : 0;
+        return pass == 1 || RenderGlobalState.shouldRenderInPass(instance, pass);
     }
 
     @CInline
     @CRedirect(method = "renderEntities",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/entity/Entity;isInRangeToRender3d(DDD)Z",
-                    ordinal = 1))
+                    ordinal = 1,
+                    optional = true))
     private boolean forceIsInRangeToRender(Entity instance, double x, double y, double z) {
         return instance.isInRangeToRender3d(x, y, z)
                 && RenderGlobalState.isOutlineActive(instance, this.mc);

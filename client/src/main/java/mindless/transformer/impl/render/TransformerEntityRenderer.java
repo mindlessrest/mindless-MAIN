@@ -51,7 +51,8 @@ public class TransformerEntityRenderer {
     @CInject(method = "renderWorldPass",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/EntityRenderer;setupCameraTransform(FI)V",
-                    shift = CTarget.Shift.AFTER))
+                    shift = CTarget.Shift.AFTER,
+                    optional = true))
     private void captureWorldProjection(int pass, float partialTicks, long finishTimeNano,
                                         InjectionCallback ci) {
         SexyESP.captureForWorldProjection(ScaledResolutionCache.get().getScaleFactor());
@@ -61,7 +62,8 @@ public class TransformerEntityRenderer {
     @CInject(method = "renderWorldPass",
             target = @CTarget(value = "FIELD",
                     target = "Lnet/minecraft/client/renderer/EntityRenderer;renderHand:Z",
-                    shift = CTarget.Shift.BEFORE))
+                    shift = CTarget.Shift.BEFORE,
+                    optional = true))
     private void onRenderWorldLast(int pass, float partialTicks, long finishTimeNano,
                                    InjectionCallback ci) {
         LunarEventBridge.postRenderWorld(partialTicks);
@@ -85,7 +87,8 @@ public class TransformerEntityRenderer {
     @CInject(method = "getMouseOver",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/profiler/Profiler;endSection()V",
-                    shift = CTarget.Shift.BEFORE))
+                    shift = CTarget.Shift.BEFORE,
+                    optional = true))
     private void applyPiercingMouseOver(float partialTicks, InjectionCallback ci) {
         if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()
                 && !ModuleManager.bedAura.isPrioritizingKillAura()) {
@@ -117,7 +120,8 @@ public class TransformerEntityRenderer {
     @CInline
     @CRedirect(method = "hurtCameraEffect",
             target = @CTarget(value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/GlStateManager;rotate(FFFF)V"))
+                    target = "Lnet/minecraft/client/renderer/GlStateManager;rotate(FFFF)V",
+                    optional = true))
     public void injectNoHurtCam(float angle, float x, float y, float z) {
         if (ModuleManager.noHurtCam != null && ModuleManager.noHurtCam.isEnabled()) {
             angle = (float) (angle / 14 * ModuleManager.noHurtCam.multiplier.getInput());
@@ -128,7 +132,8 @@ public class TransformerEntityRenderer {
     @CInline
     @CRedirect(method = "orientCamera",
             target = @CTarget(value = "INVOKE",
-                    target = "Lnet/minecraft/util/Vec3;distanceTo(Lnet/minecraft/util/Vec3;)D"))
+                    target = "Lnet/minecraft/util/Vec3;distanceTo(Lnet/minecraft/util/Vec3;)D",
+                    optional = true))
     public double injectNoCameraClip(Vec3 raytrace, Vec3 original) {
         if (ModuleManager.noCameraClip != null && ModuleManager.noCameraClip.isEnabled()) {
             return ModuleManager.extendCamera != null && ModuleManager.extendCamera.isEnabled()
@@ -141,7 +146,8 @@ public class TransformerEntityRenderer {
     @CInject(method = "updateLightmap",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/texture/DynamicTexture;updateDynamicTexture()V",
-                    shift = CTarget.Shift.BEFORE))
+                    shift = CTarget.Shift.BEFORE,
+                    optional = true))
     private void onUpdateLightmap(float partialTicks, InjectionCallback ci) {
         MinecraftForge.EVENT_BUS.post(new LightmapUpdateEvent(lightmapColors));
     }
@@ -188,7 +194,7 @@ public class TransformerEntityRenderer {
 
     @CInline
     @CRedirect(method = "orientCamera",
-            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;rotationYaw:F"))
+            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;rotationYaw:F", optional = true))
     private float freelookRotationYaw(Entity entity) {
         if (ModuleManager.freelook != null && ModuleManager.freelook.isEnabled() && Freelook.perspectiveToggled) {
             return Freelook.cameraYaw;
@@ -198,7 +204,7 @@ public class TransformerEntityRenderer {
 
     @CInline
     @CRedirect(method = "orientCamera",
-            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;prevRotationYaw:F"))
+            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;prevRotationYaw:F", optional = true))
     private float freelookPrevRotationYaw(Entity entity) {
         if (ModuleManager.freelook != null && ModuleManager.freelook.isEnabled() && Freelook.perspectiveToggled) {
             return Freelook.cameraYaw;
@@ -208,7 +214,7 @@ public class TransformerEntityRenderer {
 
     @CInline
     @CRedirect(method = "orientCamera",
-            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;rotationPitch:F"))
+            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;rotationPitch:F", optional = true))
     private float freelookRotationPitch(Entity entity) {
         if (ModuleManager.freelook != null && ModuleManager.freelook.isEnabled() && Freelook.perspectiveToggled) {
             return Freelook.cameraPitch;
@@ -218,7 +224,7 @@ public class TransformerEntityRenderer {
 
     @CInline
     @CRedirect(method = "orientCamera",
-            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;prevRotationPitch:F"))
+            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;prevRotationPitch:F", optional = true))
     private float freelookPrevRotationPitch(Entity entity) {
         if (ModuleManager.freelook != null && ModuleManager.freelook.isEnabled() && Freelook.perspectiveToggled) {
             return Freelook.cameraPitch;
@@ -228,7 +234,7 @@ public class TransformerEntityRenderer {
 
     @CInline
     @CRedirect(method = "updateCameraAndRender",
-            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/client/Minecraft;inGameHasFocus:Z"))
+            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/client/Minecraft;inGameHasFocus:Z", optional = true))
     private boolean freelookMouse(Minecraft mc) {
         return Freelook.overrideMouse(mc);
     }

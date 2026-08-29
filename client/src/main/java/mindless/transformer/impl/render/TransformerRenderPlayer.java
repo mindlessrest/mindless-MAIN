@@ -36,7 +36,7 @@ public class TransformerRenderPlayer {
 
     @CInline
     @CRedirect(method = "setModelVisibilities(Lnet/minecraft/client/entity/AbstractClientPlayer;)V",
-            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/entity/player/InventoryPlayer;getCurrentItem()Lnet/minecraft/item/ItemStack;"))
+            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/entity/player/InventoryPlayer;getCurrentItem()Lnet/minecraft/item/ItemStack;", optional = true))
     private ItemStack redirectGetCurrentItem(InventoryPlayer inventory) {
         if (Minecraft.getMinecraft().gameSettings.thirdPersonView == 0 && inventory.player == Minecraft.getMinecraft().thePlayer) {
             return Utils.getSpoofedItem(inventory.getCurrentItem());
@@ -48,7 +48,7 @@ public class TransformerRenderPlayer {
 
     @CInline
     @CRedirect(method = "setModelVisibilities(Lnet/minecraft/client/entity/AbstractClientPlayer;)V",
-            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/client/entity/AbstractClientPlayer;getItemInUseCount()I"))
+            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/client/entity/AbstractClientPlayer;getItemInUseCount()I", optional = true))
     private int redirectGetItemInUseCount(AbstractClientPlayer clientPlayer) {
         int actualCount = clientPlayer.getItemInUseCount();
         if (actualCount > 0) {

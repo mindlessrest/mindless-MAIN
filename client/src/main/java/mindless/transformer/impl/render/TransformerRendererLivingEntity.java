@@ -49,7 +49,7 @@ public abstract class TransformerRendererLivingEntity {
 
     @CInline
     @CRedirect(method = "doRender(Lnet/minecraft/entity/EntityLivingBase;DDDFF)V",
-            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/client/renderer/entity/RendererLivingEntity;setScoreTeamColor(Lnet/minecraft/entity/EntityLivingBase;)Z"))
+            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/client/renderer/entity/RendererLivingEntity;setScoreTeamColor(Lnet/minecraft/entity/EntityLivingBase;)Z", optional = true))
     private boolean setOutlineColor(RendererLivingEntity instance, EntityLivingBase entityLivingBaseIn) {
         int i = 16777215;
         boolean drawOutline = RendererLivingEntityState.shouldRender() && ((entityLivingBaseIn != Minecraft.getMinecraft().thePlayer && !AntiBot.isBot(entityLivingBaseIn)) || (entityLivingBaseIn == Minecraft.getMinecraft().thePlayer && ModuleManager.sexyESP.isRenderSelf()));

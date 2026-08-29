@@ -54,7 +54,7 @@ public abstract class TransformerEntity {
 
     @CInline
     @CRedirect(method = "moveEntity",
-            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;stepHeight:F", ordinal = 0))
+            target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;stepHeight:F", ordinal = 0, optional = true))
     private float redirectStepHeight(Entity instance) {
         StepHeightEvent stepHeightEvent = new StepHeightEvent(instance, instance.stepHeight);
         MinecraftForge.EVENT_BUS.post(stepHeightEvent);
@@ -73,7 +73,7 @@ public abstract class TransformerEntity {
      */
     @CInline
     @CRedirect(method = "moveEntity",
-            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;isSneaking()Z"))
+            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;isSneaking()Z", optional = true))
     private boolean redirectSafeWalkSneak(Entity instance) {
         return SafeWalkState.shouldSafeWalk(instance);
     }

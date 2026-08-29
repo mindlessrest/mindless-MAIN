@@ -63,7 +63,7 @@ public class TransformerMinecraft {
 
     @CInline
     @CRedirect(method = "runTick",
-            target = @CTarget(value = "INVOKE", target = "Lorg/lwjgl/input/Mouse;next()Z"))
+            target = @CTarget(value = "INVOKE", target = "Lorg/lwjgl/input/Mouse;next()Z", optional = true))
     private boolean bridgeLunarMouseEvents() {
         return LunarEventBridge.nextMouseEvent();
     }
@@ -72,7 +72,8 @@ public class TransformerMinecraft {
     @CInject(method = "runTick",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/EntityRenderer;getMouseOver(F)V",
-                    shift = CTarget.Shift.BEFORE))
+                    shift = CTarget.Shift.BEFORE,
+                    optional = true))
     private void beforeMouseOver(InjectionCallback ci) {
         RotationHelper.get().updateServerRotations();
     }
@@ -80,7 +81,8 @@ public class TransformerMinecraft {
     @CInline
     @CInject(method = "runTick",
             target = @CTarget(value = "FIELD",
-                    target = "Lnet/minecraft/client/settings/GameSettings;chatVisibility:Lnet/minecraft/entity/player/EntityPlayer$EnumChatVisibility;"))
+                    target = "Lnet/minecraft/client/settings/GameSettings;chatVisibility:Lnet/minecraft/entity/player/EntityPlayer$EnumChatVisibility;",
+                    optional = true))
     private void beforePlayerInteraction(InjectionCallback ci) {
         MinecraftForge.EVENT_BUS.post(new PrePlayerInteractEvent());
     }
@@ -133,7 +135,8 @@ public class TransformerMinecraft {
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/profiler/Profiler;startSection(Ljava/lang/String;)V",
                     ordinal = 0,
-                    shift = CTarget.Shift.BEFORE))
+                    shift = CTarget.Shift.BEFORE,
+                    optional = true))
     private void afterRightClickDelay(InjectionCallback ci) {
         MinecraftForge.EVENT_BUS.post(new RightClickDelayTickEvent());
     }
@@ -142,7 +145,8 @@ public class TransformerMinecraft {
     @CInject(method = "runTick",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/profiler/Profiler;endStartSection(Ljava/lang/String;)V",
-                    ordinal = 2))
+                    ordinal = 2,
+                    optional = true))
     private void onRunTick(InjectionCallback ci) {
         MinecraftForge.EVENT_BUS.post(new PreInputEvent());
     }
@@ -161,7 +165,8 @@ public class TransformerMinecraft {
     @CInline
     @CRedirect(method = "runTick",
             target = @CTarget(value = "INVOKE",
-                    target = "Lnet/minecraft/entity/player/InventoryPlayer;changeCurrentItem(I)V"))
+                    target = "Lnet/minecraft/entity/player/InventoryPlayer;changeCurrentItem(I)V",
+                    optional = true))
     public void changeCurrentItem(InventoryPlayer inventoryPlayer, int slot) {
         PreSlotScrollEvent event = new PreSlotScrollEvent(slot, inventoryPlayer.currentItem);
         MinecraftForge.EVENT_BUS.post(event);

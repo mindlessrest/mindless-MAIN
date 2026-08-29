@@ -34,7 +34,8 @@ public abstract class TransformerItemRendererAnimations {
     @CInline
     @CRedirect(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
-                    target = "Lnet/minecraft/client/entity/AbstractClientPlayer;getSwingProgress(F)F"))
+                    target = "Lnet/minecraft/client/entity/AbstractClientPlayer;getSwingProgress(F)F",
+                    optional = true))
     private float useVisualSwingProgress(AbstractClientPlayer player, float partialTicks) {
         float vanilla = player.getSwingProgress(partialTicks);
         return Slow.getVisualSwingProgress(player, vanilla);
@@ -44,7 +45,8 @@ public abstract class TransformerItemRendererAnimations {
     @CRedirect(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/ItemRenderer;transformFirstPersonItem(FF)V",
-                    ordinal = 2))
+                    ordinal = 2,
+                    optional = true))
     private void replaceBlockingBaseTransform(ItemRenderer self, float equip, float swing) {
         if (!Animations.enabled || !isRenderedSword()) {
             transformFirstPersonItem(equip, swing);
@@ -55,7 +57,8 @@ public abstract class TransformerItemRendererAnimations {
     @CInject(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/ItemRenderer;doBlockTransformations()V",
-                    shift = CTarget.Shift.BEFORE))
+                    shift = CTarget.Shift.BEFORE,
+                    optional = true))
     private void applyBlockingAnimation(float partialTicks, InjectionCallback ci) {
         if (Animations.enabled && isRenderedSword()) {
             applyAnimationTransform(partialTicks);
@@ -66,7 +69,8 @@ public abstract class TransformerItemRendererAnimations {
     @CRedirect(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/ItemRenderer;transformFirstPersonItem(FF)V",
-                    ordinal = 4))
+                    ordinal = 4,
+                    optional = true))
     private void replaceNormalBaseTransform(ItemRenderer self, float equip, float swing) {
         if (!shouldApplyNormalAnimation()) {
             transformFirstPersonItem(equip, swing);
@@ -202,7 +206,8 @@ public abstract class TransformerItemRendererAnimations {
     @CInject(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/ItemRenderer;renderItem(Lnet/minecraft/entity/EntityLivingBase;Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/renderer/block/model/ItemCameraTransforms$TransformType;)V",
-                    shift = CTarget.Shift.BEFORE))
+                    shift = CTarget.Shift.BEFORE,
+                    optional = true))
     public void applyScale(float partialTicks, InjectionCallback ci) {
         if (!Animations.enabled) return;
         if (!isRenderedSword()) return;

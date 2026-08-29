@@ -134,6 +134,12 @@ dependencies {
     }
 
     testImplementation("junit:junit:4.13.2")
+    // The transformer compatibility tests are written against the weaving library and ASM, which
+    // reach the main source set through compileOnly/shadow and so never landed on the test
+    // classpath. Without these the whole test source set fails to compile, which is why the
+    // transformer suite has been skipped rather than run.
+    testImplementation("net.lenni0451.classtransform:core:1.15.1")
+    testImplementation("net.lenni0451.classtransform:additionalclassprovider:1.15.1")
 }
 
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {

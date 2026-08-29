@@ -62,7 +62,8 @@ public abstract class TransformerItemRenderer {
     @CInline
     @CRedirect(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
-                    target = "Lnet/minecraft/client/entity/AbstractClientPlayer;getItemInUseCount()I"))
+                    target = "Lnet/minecraft/client/entity/AbstractClientPlayer;getItemInUseCount()I",
+                    optional = true))
     private int forceSwordUseCount(AbstractClientPlayer player) {
         return ItemRendererState.shouldRenderForcedSwordBlock(this.itemToRender)
                 ? 71999 : player.getItemInUseCount();
@@ -71,7 +72,8 @@ public abstract class TransformerItemRenderer {
     @CInline
     @CRedirect(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
-                    target = "Lnet/minecraft/item/ItemStack;getItemUseAction()Lnet/minecraft/item/EnumAction;"))
+                    target = "Lnet/minecraft/item/ItemStack;getItemUseAction()Lnet/minecraft/item/EnumAction;",
+                    optional = true))
     private EnumAction forceSwordUseAction(ItemStack stack) {
         return ItemRendererState.shouldRenderForcedSwordBlock(stack)
                 ? EnumAction.BLOCK : stack.getItemUseAction();
@@ -84,7 +86,8 @@ public abstract class TransformerItemRenderer {
     @CInline
     @CRedirect(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
-                    target = "Lnet/minecraft/client/entity/AbstractClientPlayer;getSwingProgress(F)F"))
+                    target = "Lnet/minecraft/client/entity/AbstractClientPlayer;getSwingProgress(F)F",
+                    optional = true))
     private float useVisualSwingProgress(AbstractClientPlayer player, float partialTicks) {
         float vanilla = player.getSwingProgress(partialTicks);
         return Slow.getVisualSwingProgress(player, vanilla);
@@ -98,7 +101,8 @@ public abstract class TransformerItemRenderer {
     @CInject(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/ItemRenderer;doBlockTransformations()V",
-                    shift = CTarget.Shift.BEFORE))
+                    shift = CTarget.Shift.BEFORE,
+                    optional = true))
     private void applyBlockingAnimation(float partialTicks, InjectionCallback ci) {
         if (Animations.enabled && ItemRendererState.isRenderedSword(this.itemToRender)) {
             ItemRendererState.applyAnimationTransform(this.equippedProgress, this.prevEquippedProgress, partialTicks);
@@ -113,7 +117,8 @@ public abstract class TransformerItemRenderer {
     @CInject(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/ItemRenderer;renderItem(Lnet/minecraft/entity/EntityLivingBase;Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/renderer/block/model/ItemCameraTransforms$TransformType;)V",
-                    shift = CTarget.Shift.BEFORE))
+                    shift = CTarget.Shift.BEFORE,
+                    optional = true))
     private void applyScale(float partialTicks, InjectionCallback ci) {
         if (!Animations.enabled || !ItemRendererState.isRenderedSword(this.itemToRender)) return;
         double s = Animations.scale / 100.0 * (1.0 + Animations.itemSize);

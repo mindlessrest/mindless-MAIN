@@ -61,7 +61,8 @@ public class TransformerWorld {
     @CInline
     @CRedirect(method = {"getMoonPhase", "getCelestialAngle"},
             target = @CTarget(value = "INVOKE",
-                    target = "Lnet/minecraft/world/storage/WorldInfo;getWorldTime()J"))
+                    target = "Lnet/minecraft/world/storage/WorldInfo;getWorldTime()J",
+                    optional = true))
     private long setTimeForMoonPhase(WorldInfo worldInfo) {
         if (ModuleManager.weather != null && ModuleManager.weather.isEnabled()
                 && ModuleManager.weather.customTime.isToggled()) {

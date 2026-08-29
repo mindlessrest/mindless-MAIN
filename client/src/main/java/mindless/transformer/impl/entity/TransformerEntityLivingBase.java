@@ -33,7 +33,7 @@ public abstract class TransformerEntityLivingBase {
 
     @CInline
     @CRedirect(method = "onLivingUpdate",
-            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/entity/EntityLivingBase;moveEntityWithHeading(FF)V"))
+            target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/entity/EntityLivingBase;moveEntityWithHeading(FF)V", optional = true))
     private void onMoveEntityWithHeadingRedirect(EntityLivingBase self, float originalStrafing, float originalForward) {
         if (self instanceof EntityPlayerSP) {
             PrePlayerMovementInputEvent event = new PrePlayerMovementInputEvent(originalForward, originalStrafing);

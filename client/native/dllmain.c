@@ -1302,6 +1302,40 @@ cleanup:
     return result;
 }
 
+/* Targets the client cannot run without.
+ *
+ * Minecraft carries the tick and input bridge, so without it nothing updates, no keybind is read
+ * and no event is posted -- a client that started anyway would be indistinguishable from one that
+ * never started. Everything else is a single feature, and a host update that refactors one of
+ * those classes should cost that feature and nothing more. Requiring the whole batch is what
+ * turned one refactored class into a client that never called NativeBootstrap.start. */
+static int is_required_target(const char *class_signature) {
+    if (class_signature == NULL) return 0;
+    return strcmp(class_signature, "Lnet/minecraft/client/Minecraft;") == 0;
+}
+
+/* JVMTI numbers alone say nothing about what went wrong; 62 in particular is the one a host
+ * update produces and the one worth recognising on sight. */
+static const wchar_t *jvmti_error_name(jvmtiError error) {
+    switch (error) {
+        case JVMTI_ERROR_UNMODIFIABLE_CLASS: return L"UNMODIFIABLE_CLASS";
+        case JVMTI_ERROR_INVALID_CLASS: return L"INVALID_CLASS";
+        case JVMTI_ERROR_UNSUPPORTED_VERSION: return L"UNSUPPORTED_VERSION";
+        case JVMTI_ERROR_INVALID_CLASS_FORMAT: return L"INVALID_CLASS_FORMAT";
+        case JVMTI_ERROR_CIRCULAR_CLASS_DEFINITION: return L"CIRCULAR_CLASS_DEFINITION";
+        case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_ADDED: return L"REDEFINITION_METHOD_ADDED";
+        case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_SCHEMA_CHANGED: return L"REDEFINITION_SCHEMA_CHANGED";
+        case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_HIERARCHY_CHANGED: return L"REDEFINITION_HIERARCHY_CHANGED";
+        case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_DELETED: return L"REDEFINITION_METHOD_DELETED";
+        case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_CLASS_MODIFIERS_CHANGED: return L"REDEFINITION_CLASS_MODIFIERS_CHANGED";
+        case JVMTI_ERROR_UNSUPPORTED_REDEFINITION_METHOD_MODIFIERS_CHANGED: return L"REDEFINITION_METHOD_MODIFIERS_CHANGED";
+        case JVMTI_ERROR_FAILS_VERIFICATION: return L"FAILS_VERIFICATION";
+        case JVMTI_ERROR_NAMES_DONT_MATCH: return L"NAMES_DONT_MATCH";
+        case JVMTI_ERROR_OUT_OF_MEMORY: return L"OUT_OF_MEMORY";
+        default: return L"?";
+    }
+}
+
 static int retransform_registered_targets(JNIEnv *env, jobject class_loader) {
     jsize i;
     jclass *classes_to_retransform = NULL;
@@ -1332,6 +1366,7 @@ static int retransform_registered_targets(JNIEnv *env, jobject class_loader) {
      * result also prevents one failure from hiding which target caused it. */
     {
         jint succeeded = 0;
+        jint required_failed = 0;
         int batch_succeeded;
         for (i = 0; i < retransform_count; ++i) {
             jvmtiError err;
@@ -1351,18 +1386,31 @@ static int retransform_registered_targets(JNIEnv *env, jobject class_loader) {
             if (err == JVMTI_ERROR_NONE) {
                 retransform_succeeded[i] = 1;
                 ++succeeded;
+            } else if (is_required_target(sig)) {
+                ++required_failed;
+                vape_log(L"RetransformClasses FAILED (err=%d %ls) for REQUIRED target %hs",
+                        err, jvmti_error_name(err), sig ? sig : "<unknown>");
             } else {
-                vape_log(L"RetransformClasses skipped (err=%d) for %hs",
-                        err, sig ? sig : "<unknown>");
+                vape_log(L"RetransformClasses skipped (err=%d %ls) for %hs — "
+                        L"that hook will be missing, startup continues",
+                        err, jvmti_error_name(err), sig ? sig : "<unknown>");
             }
             if (sig) (*g_jvmti)->Deallocate(g_jvmti, (unsigned char *)sig);
         }
         vape_log(L"retransformed %d/%d classes", succeeded, retransform_count);
-        batch_succeeded = succeeded == retransform_count;
+        /* A partial batch is no longer fatal on its own. Every class that failed kept its
+         * original definition -- JVMTI is atomic per call -- so the cost is the hooks in that one
+         * class, and the Java side names it in the transformer log. Only a required target being
+         * unusable is a reason to put the process back the way it was found. */
+        batch_succeeded = required_failed == 0;
+        if (succeeded != retransform_count && batch_succeeded) {
+            vape_log(L"%d optional target(s) were left untransformed; continuing startup",
+                    retransform_count - succeeded);
+        }
 
         if (!batch_succeeded) {
             jint rollback_succeeded = 0;
-            vape_log(L"retransform batch was partial; disabling hook and rolling back %d classes",
+            vape_log(L"a required target could not be transformed; disabling hook and rolling back %d classes",
                     succeeded);
             if (disable_class_file_load_hook()) {
                 for (i = 0; i < retransform_count; ++i) {
