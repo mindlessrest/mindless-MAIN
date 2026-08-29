@@ -132,9 +132,11 @@ public final class NativeBootstrap {
             }
         });
 
+        log("driveModInitOnClientThread: waiting for client thread (30s timeout)");
         try {
             scheduled.get(30L, TimeUnit.SECONDS);
         } catch (TimeoutException timeout) {
+            log("driveModInitOnClientThread: TIMED OUT waiting for client thread");
             if (runPermission.compareAndSet(true, false)) {
                 // Timeout won before the Runnable entered Raven.init. Cancel the
                 // queue entry; even if FutureTask is between dispatch steps, the
@@ -173,22 +175,29 @@ public final class NativeBootstrap {
 
     private static void driveModInit() throws Exception {
         ProgressPipe.report(0.72f, "Starting modules");
+        log("driveModInit: begin on thread " + Thread.currentThread().getName());
         ProgressPipe.report(0.75f, "Loading modules");
         if (Raven.isUnloaded()) {
             log("Re-initializing Mindless via loader re-injection");
             Raven.reinject();
         } else {
+            log("driveModInit: constructing Raven");
             Raven mod = new Raven();
+            log("driveModInit: Raven constructed");
             ProgressPipe.report(0.80f, "Loading modules");
             ProgressPipe.report(0.83f, "Applying patches");
             Method init = Raven.class.getDeclaredMethod(
                     "init", net.minecraftforge.fml.common.event.FMLInitializationEvent.class);
             init.setAccessible(true);
             try {
+                log("driveModInit: invoking Raven.init");
                 ProgressPipe.report(0.88f, "Almost there");
                 init.invoke(mod, (Object) null);
+                log("driveModInit: Raven.init returned");
             } catch (InvocationTargetException wrapper) {
                 Throwable cause = wrapper.getCause();
+                log("driveModInit: Raven.init THREW: " + cause);
+                reportFailure("Raven.init", cause != null ? cause : wrapper);
                 if (cause instanceof Exception) throw (Exception) cause;
                 if (cause instanceof Error) throw (Error) cause;
                 throw wrapper;
@@ -196,7 +205,7 @@ public final class NativeBootstrap {
         }
         ProgressPipe.report(0.92f, "Almost there");
         ProgressPipe.report(0.95f, "Finishing up");
-        log("Raven.init(null) invoked on " + Thread.currentThread().getName());
+        log("Raven.init(null) completed on " + Thread.currentThread().getName());
     }
 
     private static void reportFailure(String phase, Throwable error) {
