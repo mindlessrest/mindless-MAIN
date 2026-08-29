@@ -7,8 +7,7 @@ public class GlowShader extends OutlineESPShader {
             "uniform sampler2D tex;\n" +
             "uniform vec4 tint;\n" +
             "void main() {\n" +
-            "  float a = texture2D(tex, gl_TexCoord[0].xy).a;\n" +
-            "  gl_FragColor = vec4(tint.rgb, a > 0.0 ? tint.a : 0.0);\n" +
+            "  gl_FragColor = tint;\n" +
             "}";
 
     public GlowShader() {
