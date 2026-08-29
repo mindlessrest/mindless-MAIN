@@ -56,8 +56,10 @@ public class KillAura extends Module {
     private ButtonSetting notUsingItem;
     private ButtonSetting requireMouseDown;
     private ButtonSetting weaponOnly;
+    private ButtonSetting autoBlock;
     private ButtonSetting humanize;
     private ButtonSetting killNotification;
+    private boolean blocking;
 
     private String[] rotationModes = new String[]{"Silent", "Lock view", "None"};
     private String[] sortModes = new String[]{"Distance", "Health", "Hurt time", "Yaw"};
@@ -107,6 +109,7 @@ public class KillAura extends Module {
         this.registerSetting(prioritizeEnemies = new ButtonSetting("Prioritize enemies", false));
         this.registerSetting(requireMouseDown = new ButtonSetting("Require mouse down", false));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
+        this.registerSetting(autoBlock = new ButtonSetting("Auto block", false));
         this.registerSetting(humanize = new ButtonSetting("Humanize", false));
         this.registerSetting(killNotification = new ButtonSetting("Kill notification", false));
     }
@@ -133,6 +136,7 @@ public class KillAura extends Module {
         lastAttackedEntityId = -1;
         monsterClassCache.clear();
         nonMonsterClassCache.clear();
+        stopBlocking();
     }
 
     @SubscribeEvent(priority = EventPriority.LOW)
@@ -247,10 +251,9 @@ public class KillAura extends Module {
     public void onPrePlayerInteract(PrePlayerInteractEvent e) {
         if (!Utils.nullCheck() || target == null || targetDistance > swingRange.getInput()
                 || !basicCondition() || !settingCondition()
-                || (notUsingItem.isToggled() && mc.thePlayer.isUsingItem())) {
-            // Do not consume scheduled clicks while Aura is unable to attack.
-            // Starting fresh prevents a pause (or a burst) when combat resumes.
+                || (notUsingItem.isToggled() && !autoBlock.isToggled() && mc.thePlayer.isUsingItem())) {
             nextClickTime = 0L;
+            if (autoBlock.isToggled() && blocking) stopBlocking();
             return;
         }
 
@@ -265,6 +268,10 @@ public class KillAura extends Module {
             nextClickTime += nextDelay();
         }
 
+        if (clicks > 0 && autoBlock.isToggled() && blocking) {
+            stopBlocking();
+        }
+
         for (int i = 0; i < clicks; i++) {
             KeyBinding.onTick(key);
         }
@@ -272,6 +279,10 @@ public class KillAura extends Module {
             lastAttackedEntityId = target.getEntityId();
             lastAttackTimeMs = System.currentTimeMillis();
             lastAttackedHealth = target.getHealth();
+        }
+
+        if (autoBlock.isToggled() && target != null && targetDistance <= swingRange.getInput() && Utils.holdingSword()) {
+            startBlocking();
         }
     }
 
@@ -661,6 +672,18 @@ public class KillAura extends Module {
             this.entity = entity;
             this.distance = distance;
         }
+    }
+
+    private void startBlocking() {
+        if (blocking) return;
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), true);
+        blocking = true;
+    }
+
+    private void stopBlocking() {
+        if (!blocking) return;
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
+        blocking = false;
     }
 
     static class KillAuraTarget {
