@@ -8,6 +8,8 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.utility.font.FontManager;
+import mindless.utility.font.RavenFontRenderer;
 import mindless.module.impl.world.AntiBot;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
@@ -86,6 +88,25 @@ public class SexyESP extends Module {
     private final ButtonSetting outlineTeamColor;
     private final ColorSetting outlineColor;
 
+    private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
+    private final SliderSetting font;
+
+    /**
+     * The face the tags are drawn in.
+     *
+     * <p>Nametag renderers rather than HUD ones: this text is drawn at a fixed size and then
+     * magnified into world space, so how many pixels a glyph covers depends on how far away the
+     * player is standing. The nametag path rasterises with that headroom and divides its metrics
+     * back down, so widths and heights read the same as the Minecraft font's did. Index zero is
+     * the Minecraft font, which comes back as an adapter over the vanilla renderer -- so this is
+     * safe to call unconditionally.
+     */
+    private RavenFontRenderer espFont() {
+        if (font == null) return FontManager.getNametagRenderer(FONT_OPTIONS[0]);
+        int index = (int) Math.max(0, Math.min(FONT_OPTIONS.length - 1, font.getInput()));
+        return FontManager.getNametagRenderer(FONT_OPTIONS[index]);
+    }
+
     public static boolean renderingOutlinePass = false;
     private Framebuffer outlineFramebuffer;
     /** Who the outline pass will actually draw, gathered before any of its buffers are touched. */
@@ -121,6 +142,7 @@ public class SexyESP extends Module {
         GroupSetting tagGroup = new GroupSetting("Tags");
         registerSetting(tagGroup);
         registerSetting(tags = new ButtonSetting(tagGroup, "Names", true));
+        registerSetting(font = new SliderSetting(tagGroup, "Font", 0, FONT_OPTIONS));
         registerSetting(tagBackground = new ButtonSetting(tagGroup, "Background", false));
         registerSetting(itemTags = new ButtonSetting(tagGroup, "Held item", true));
         registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.5, 0.25, 1.0, 0.05));
@@ -332,14 +354,21 @@ public class SexyESP extends Module {
     }
 
     private void drawOutlinedRect(double left, double top, double right, double bottom, int renderColor) {
-        drawFlatRect(left - 1, top - 1, right + 1, top + 1, 0xFF000000);
-        drawFlatRect(left - 1, bottom - 1, right + 1, bottom + 1, 0xFF000000);
-        drawFlatRect(left - 1, top, left + 1, bottom, 0xFF000000);
-        drawFlatRect(right - 1, top, right + 1, bottom, 0xFF000000);
-        drawFlatRect(left, top, right, top + 0.5, renderColor);
-        drawFlatRect(left, bottom - 0.5, right, bottom, renderColor);
-        drawFlatRect(left, top, left + 0.5, bottom, renderColor);
-        drawFlatRect(right - 0.5, top, right, bottom, renderColor);
+        // The black border is drawn as four rects a pixel to either side of each edge. Nothing
+        // stopped the left one from reaching the right one: on a box narrower than two pixels --
+        // a player far enough off that the projection collapses to a sliver -- the two sides meet
+        // and the outline fills in, which is the black slab that appears where a distant player
+        // is. Half the shorter side is as wide as the border can be and still leave a hole.
+        double edge = Math.min(1.0, Math.min(Math.abs(right - left), Math.abs(bottom - top)) / 2.0);
+        double inner = Math.min(0.5, edge);
+        drawFlatRect(left - edge, top - edge, right + edge, top + edge, 0xFF000000);
+        drawFlatRect(left - edge, bottom - edge, right + edge, bottom + edge, 0xFF000000);
+        drawFlatRect(left - edge, top, left + edge, bottom, 0xFF000000);
+        drawFlatRect(right - edge, top, right + edge, bottom, 0xFF000000);
+        drawFlatRect(left, top, right, top + inner, renderColor);
+        drawFlatRect(left, bottom - inner, right, bottom, renderColor);
+        drawFlatRect(left, top, left + inner, bottom, renderColor);
+        drawFlatRect(right - inner, top, right, bottom, renderColor);
     }
 
     private void drawSegment(double x1, double y1, double x2, double y2, int renderColor) {
@@ -378,8 +407,8 @@ public class SexyESP extends Module {
                     ? healthFormat.format(health) + " \u00A7c\u2764"
                     : (int) (healthRatio * 100) + "%";
             double scale = fontScale.getInput();
-            drawScaledString(hpText, b.left - 5 - mc.fontRendererObj.getStringWidth(hpText) * scale,
-                    healthY - mc.fontRendererObj.FONT_HEIGHT * scale / 2.0, scale, false);
+            drawScaledString(hpText, b.left - 5 - espFont().getStringWidth(hpText) * scale,
+                    healthY - espFont().getFontHeight() * scale / 2.0, scale, false);
         }
 
         if (armorItems.isToggled() && b.height() > 32.0) drawArmorItems(living, b);
@@ -388,7 +417,7 @@ public class SexyESP extends Module {
             String name = living.getDisplayName().getFormattedText();
             double tagScale = getTagScale(b);
             drawTag(name, b.left + b.width() / 2.0,
-                    b.top - 2 - mc.fontRendererObj.FONT_HEIGHT * tagScale,
+                    b.top - 2 - espFont().getFontHeight() * tagScale,
                     tagScale);
         }
         if (itemTags.isToggled() && living.getHeldItem() != null) {
@@ -423,7 +452,7 @@ public class SexyESP extends Module {
             double armorWidth = slotCount * itemSize + (slotCount - 1) * itemGap;
             startX = b.left + b.width() / 2.0 - armorWidth / 2.0;
             double tagScale = getTagScale(b);
-            double nameY = b.top - 2 - mc.fontRendererObj.FONT_HEIGHT * tagScale;
+            double nameY = b.top - 2 - espFont().getFontHeight() * tagScale;
             startY = nameY - itemSize - 3;
         } else {
             final double stackHeight = itemSize * 4.0 + itemGap * 3.0;
@@ -461,7 +490,7 @@ public class SexyESP extends Module {
                 double durY = aboveName ? startY : startY + (4 - slot) * (itemSize + itemGap);
                 int durability = stack.getMaxDamage() - stack.getItemDamage();
                 double durabilityScale = Math.min(0.35, fontScale.getInput());
-                double durabilityY = durY + (itemSize - mc.fontRendererObj.FONT_HEIGHT * durabilityScale) / 2.0;
+                double durabilityY = durY + (itemSize - espFont().getFontHeight() * durabilityScale) / 2.0;
                 drawScaledString(String.valueOf(durability), durX + itemSize + 1.0,
                         durabilityY, durabilityScale, false);
                 rendered++;
@@ -492,10 +521,18 @@ public class SexyESP extends Module {
 
     private void drawTag(String text, double centerX, double y, double scale) {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
-        double width = mc.fontRendererObj.getStringWidth(text) * scale;
+        // Resolved once. The border alone is eight draws, and every one of them used to go back
+        // through the font cache and build its key string again.
+        RavenFontRenderer tagFont = espFont();
+        double width = tagFont.getStringWidth(text) * scale;
         if (tagBackground.isToggled()) {
-            drawFlatRect(centerX - width / 2 - 2, y - 2, centerX + width / 2 + 2,
-                    y + mc.fontRendererObj.FONT_HEIGHT * scale + 1, 0x80000000);
+            // Padding scales with the text. Held flat it was two screen pixels either side of
+            // glyphs half that tall at the default font scale, so the plate read as a black slab
+            // with a name somewhere inside it rather than as a backing for the name.
+            double padX = 2.0 * scale;
+            double padY = 1.5 * scale;
+            drawFlatRect(centerX - width / 2 - padX, y - padY, centerX + width / 2 + padX,
+                    y + tagFont.getFontHeight() * scale + padY, 0x80000000);
         }
         rectBatch.flush();
         GlStateManager.enableTexture2D();
@@ -507,33 +544,34 @@ public class SexyESP extends Module {
             // the supposed black border into another colored copy of the text.
             String outlineText = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(text);
             int border = 0xF0000000;
-            mc.fontRendererObj.drawString(outlineText, -1, -1, border, false);
-            mc.fontRendererObj.drawString(outlineText, 0, -1, border, false);
-            mc.fontRendererObj.drawString(outlineText, 1, -1, border, false);
-            mc.fontRendererObj.drawString(outlineText, -1, 0, border, false);
-            mc.fontRendererObj.drawString(outlineText, 1, 0, border, false);
-            mc.fontRendererObj.drawString(outlineText, -1, 1, border, false);
-            mc.fontRendererObj.drawString(outlineText, 0, 1, border, false);
-            mc.fontRendererObj.drawString(outlineText, 1, 1, border, false);
+            tagFont.drawString(outlineText, -1, -1, border, false);
+            tagFont.drawString(outlineText, 0, -1, border, false);
+            tagFont.drawString(outlineText, 1, -1, border, false);
+            tagFont.drawString(outlineText, -1, 0, border, false);
+            tagFont.drawString(outlineText, 1, 0, border, false);
+            tagFont.drawString(outlineText, -1, 1, border, false);
+            tagFont.drawString(outlineText, 0, 1, border, false);
+            tagFont.drawString(outlineText, 1, 1, border, false);
         }
-        mc.fontRendererObj.drawString(text, 0, 0, 0xFFFFFFFF, false);
+        tagFont.drawString(text, 0, 0, 0xFFFFFFFF, false);
         GlStateManager.popMatrix();
         GlStateManager.disableTexture2D();
     }
 
     private void drawScaledString(String text, double x, double y, double scale, boolean centered) {
+        RavenFontRenderer stringFont = espFont();
         rectBatch.flush();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         GlStateManager.enableTexture2D();
         GlStateManager.pushMatrix();
         GlStateManager.translate(x, y, 0);
         GlStateManager.scale(scale, scale, 1);
-        float drawX = centered ? -mc.fontRendererObj.getStringWidth(text) / 2.0F : 0;
-        mc.fontRendererObj.drawString(text, drawX - 0.5F, 0, 0xFF000000, false);
-        mc.fontRendererObj.drawString(text, drawX + 0.5F, 0, 0xFF000000, false);
-        mc.fontRendererObj.drawString(text, drawX, -0.5F, 0xFF000000, false);
-        mc.fontRendererObj.drawString(text, drawX, 0.5F, 0xFF000000, false);
-        mc.fontRendererObj.drawString(text, drawX, 0, 0xFFFFFFFF, false);
+        float drawX = centered ? -stringFont.getStringWidth(text) / 2.0F : 0;
+        stringFont.drawString(text, drawX - 0.5F, 0, 0xFF000000, false);
+        stringFont.drawString(text, drawX + 0.5F, 0, 0xFF000000, false);
+        stringFont.drawString(text, drawX, -0.5F, 0xFF000000, false);
+        stringFont.drawString(text, drawX, 0.5F, 0xFF000000, false);
+        stringFont.drawString(text, drawX, 0, 0xFFFFFFFF, false);
         GlStateManager.popMatrix();
         GlStateManager.disableTexture2D();
     }

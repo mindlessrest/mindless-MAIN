@@ -773,7 +773,7 @@ public final class SpotifyMiniPlayerRenderer {
 
     private static List<WrappedLyric> getWrappedLyrics(RavenFontRenderer font, TimedLyrics timedLyrics,
                                                        float textWidth, float lineAdvance) {
-        String layoutKey = HUD.getSelectedFontName() + ":" + Math.round(HUD.getSelectedFontScale() * 1000.0F)
+        String layoutKey = SpotifyMiniPlayer.widgetFontName() + ":" + Math.round(HUD.getSelectedFontScale() * 1000.0F)
                 + ":" + Math.round(textWidth) + ":" + Math.round(lineAdvance * 100.0F);
         if (timedLyrics == cachedLyricsSource && layoutKey.equals(cachedLyricsLayoutKey)) {
             return cachedWrappedLyrics;
@@ -847,7 +847,7 @@ public final class SpotifyMiniPlayerRenderer {
                                                           float textWidth) {
         String key = lastLyricsTrackKey + ":" + Math.round(textWidth)
                 + ":" + Math.round(requestedScale * 1000.0F)
-                + ":" + HUD.getSelectedFontName() + ":" + Math.round(HUD.getSelectedFontScale() * 1000.0F);
+                + ":" + SpotifyMiniPlayer.widgetFontName() + ":" + Math.round(HUD.getSelectedFontScale() * 1000.0F);
         if (cachedAdaptiveLyricFont != null && key.equals(cachedAdaptiveFontKey)) {
             return cachedAdaptiveLyricFont;
         }
@@ -1405,7 +1405,7 @@ public final class SpotifyMiniPlayerRenderer {
     private static RavenFontRenderer cachedUiFont;
 
     private static RavenFontRenderer getUiFontRenderer(float textScale) {
-        String fontName = HUD.getSelectedFontName();
+        String fontName = SpotifyMiniPlayer.widgetFontName();
         float baseScale = HUD.getSelectedFontScale();
         float effectiveScale = baseScale * Math.max(0.6F, textScale);
         String key = fontName + ":" + Math.round(effectiveScale * 1000.0F);

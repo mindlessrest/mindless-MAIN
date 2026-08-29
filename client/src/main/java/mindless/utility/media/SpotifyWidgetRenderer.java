@@ -226,7 +226,7 @@ public final class SpotifyWidgetRenderer {
         // The bubble carries its own scale on top of the card's, so it can be sized to read from
         // across the room without dragging the player up with it.
         float lyricUiScale = uiScale * bubbleScale();
-        RavenFontRenderer lyricFont = fontOfHeight(LABEL_HEIGHT * lyricUiScale * lyricScale());
+        RavenFontRenderer lyricFont = lyricFontOfHeight(LABEL_HEIGHT * lyricUiScale * lyricScale());
         // Padded top and bottom like the panel, so the strip reads as the same object rather
         // than a caption squeezed under one.
         float lyricStripHeight = lyricLines.isEmpty()
@@ -728,7 +728,12 @@ public final class SpotifyWidgetRenderer {
     }
 
     private static RavenFontRenderer fontOfHeight(float pixelHeight) {
-        return fontOfHeight(HUD.getSelectedFontName(), pixelHeight);
+        return fontOfHeight(SpotifyMiniPlayer.widgetFontName(), pixelHeight);
+    }
+
+    /** The lyric strip carries its own face, which is usually not the one the widget wants. */
+    private static RavenFontRenderer lyricFontOfHeight(float pixelHeight) {
+        return fontOfHeight(SpotifyMiniPlayer.lyricsFontName(), pixelHeight);
     }
 
     private static float approach(float current, float target, float rate) {

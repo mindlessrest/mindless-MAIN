@@ -5,6 +5,8 @@ import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.module.impl.render.HUD;
+import mindless.utility.font.FontManager;
 import mindless.utility.media.SystemMediaClient;
 import mindless.utility.media.MediaPlayerRenderer;
 import mindless.utility.Utils;
@@ -21,6 +23,8 @@ public class SpotifyMiniPlayer extends Module {
     private static final double UNSET_CUSTOM_POSITION = -1.0D;
 
     public static SliderSetting widgetStyle;
+    public static SliderSetting widgetFont;
+    public static SliderSetting lyricsFont;
     public static ButtonSetting showAlbumArt;
     public static ButtonSetting showProgressBar;
     public static SliderSetting progressBarColorMode;
@@ -50,6 +54,7 @@ public class SpotifyMiniPlayer extends Module {
     public SpotifyMiniPlayer() {
         super("Spotify Info", category.render);
         this.registerSetting(widgetStyle = new SliderSetting("Mode", 0, new String[]{"Modern", "Old"}));
+        this.registerSetting(widgetFont = new SliderSetting("Font", 0, FONT_OPTIONS));
         this.registerSetting(showAlbumArt = new ButtonSetting("Show album art", true));
         this.registerSetting(showProgressBar = new ButtonSetting("Show progress bar", true));
         this.registerSetting(progressBarColorMode = new SliderSetting("Progress bar colors", 0, new String[]{"HUD gradient", "Album accent"}));
@@ -62,6 +67,7 @@ public class SpotifyMiniPlayer extends Module {
         this.registerSetting(fullLyricsView = new ButtonSetting("Full lyrics view", false));
         this.registerSetting(karaokeLyrics = new ButtonSetting("Karaoke highlight", false));
         this.registerSetting(animateLyrics = new ButtonSetting("Animate lyrics", true));
+        this.registerSetting(lyricsFont = new SliderSetting("Lyrics font", 0, FONT_OPTIONS));
         this.registerSetting(lyricTextScale = new SliderSetting("Lyrics size", "x", 1.0, 0.85, 1.4, 0.05));
         this.registerSetting(lyricAnimationSpeed = new SliderSetting("Lyrics animation", "ms", 260, 80, 600, 20));
         this.registerSetting(lyricSyncOffset = new SliderSetting("Lyrics sync", "ms", 350, -1500, 1500, 50));
@@ -166,6 +172,37 @@ public class SpotifyMiniPlayer extends Module {
         if (lyricAnimationSpeed != null) {
             lyricAnimationSpeed.setVisible(animateVisible, this);
         }
+    }
+
+    /**
+     * The widget and the lyric strip each pick their own face, or follow the HUD's.
+     *
+     * <p>Both used to read the HUD's font directly and had no say of their own. "Default" is index
+     * zero and keeps that behaviour, so a config that never touches these two looks exactly as it
+     * did; anything else applies to that piece alone.
+     */
+    private static final String[] FONT_OPTIONS = buildFontOptions();
+
+    private static String[] buildFontOptions() {
+        String[] families = FontManager.getHudFontOptions();
+        String[] options = new String[families.length + 1];
+        options[0] = "Default";
+        System.arraycopy(families, 0, options, 1, families.length);
+        return options;
+    }
+
+    private static String fontNameOf(SliderSetting setting) {
+        if (setting == null) return HUD.getSelectedFontName();
+        int index = (int) Math.max(0, Math.min(FONT_OPTIONS.length - 1, setting.getInput()));
+        return index == 0 ? HUD.getSelectedFontName() : FONT_OPTIONS[index];
+    }
+
+    public static String widgetFontName() {
+        return fontNameOf(widgetFont);
+    }
+
+    public static String lyricsFontName() {
+        return fontNameOf(lyricsFont);
     }
 
     public static boolean hasCustomPosition() {
