@@ -382,6 +382,68 @@ public class ShaderUtils {
                                             "    }\n" +
                                             "}";
 
+    /**
+     * A rounded rect whose four corners may each carry a different radius.
+     *
+     * <p>The quadrant a fragment falls in picks the radius, and the signed distance box is rebuilt
+     * around that radius, so each corner draws its own arc while the straight edges stay shared. A
+     * radius of zero is a square corner rather than a degenerate one: the arc term simply drops
+     * out and the box edge lands exactly on the rect boundary.
+     *
+     * <p>Antialiased over one pixel, matching {@code roundedRect}. {@code roundedRectGradient}
+     * smooths over two, which is why a gradient rect drawn over a plain one of the same size and
+     * radius spills past it at the corners.
+     */
+    private final String roundedRectCorners = "#version 120\n" +
+                                       "\n" +
+                                       "uniform vec2 location, rectSize;\n" +
+                                       "uniform vec4 color;\n" +
+                                       "uniform vec4 radii;\n" +
+                                       "\n" +
+                                       "float roundSDF(vec2 p, vec2 b, float r) {\n" +
+                                       "    return length(max(abs(p) - b, 0.0)) - r;\n" +
+                                       "}\n" +
+                                       "\n" +
+                                       "void main() {\n" +
+                                       "    vec2 rectHalf = rectSize * .5;\n" +
+                                       "    vec2 p = rectHalf - (gl_TexCoord[0].st * rectSize);\n" +
+                                       "    // p.x > 0 is the left half, p.y > 0 the top half.\n" +
+                                       "    float r = p.x > 0.0 ? (p.y > 0.0 ? radii.x : radii.w)\n" +
+                                       "                        : (p.y > 0.0 ? radii.y : radii.z);\n" +
+                                       "    float a = (1.0 - smoothstep(0.0, 1.0, roundSDF(p, rectHalf - r - 1., r))) * color.a;\n" +
+                                       "    gl_FragColor = vec4(color.rgb, a);\n" +
+                                       "}";
+
+    /** {@link #roundedRectCorners} with the four-corner colour ramp of {@code roundedRectGradient}. */
+    private final String roundedRectGradientCorners = "#version 120\n" +
+                                       "\n" +
+                                       "uniform vec2 location, rectSize;\n" +
+                                       "uniform vec4 color1, color2, color3, color4;\n" +
+                                       "uniform vec4 radii;\n" +
+                                       "\n" +
+                                       "#define NOISE .5/255.0\n" +
+                                       "\n" +
+                                       "float roundSDF(vec2 p, vec2 b, float r) {\n" +
+                                       "    return length(max(abs(p) - b, 0.0)) - r;\n" +
+                                       "}\n" +
+                                       "\n" +
+                                       "vec4 createGradient(vec2 coords, vec4 c1, vec4 c2, vec4 c3, vec4 c4){\n" +
+                                       "    vec4 color = mix(mix(c1, c2, coords.y), mix(c3, c4, coords.y), coords.x);\n" +
+                                       "    color += mix(NOISE, -NOISE, fract(sin(dot(coords.xy, vec2(12.9898, 78.233))) * 43758.5453));\n" +
+                                       "    return color;\n" +
+                                       "}\n" +
+                                       "\n" +
+                                       "void main() {\n" +
+                                       "    vec2 st = gl_TexCoord[0].st;\n" +
+                                       "    vec2 halfSize = rectSize * .5;\n" +
+                                       "    vec2 p = halfSize - (st * rectSize);\n" +
+                                       "    float r = p.x > 0.0 ? (p.y > 0.0 ? radii.x : radii.w)\n" +
+                                       "                        : (p.y > 0.0 ? radii.y : radii.z);\n" +
+                                       "    float smoothedAlpha = 1.0 - smoothstep(0.0, 1.0, roundSDF(p, halfSize - r - 1., r));\n" +
+                                       "    vec4 gradient = createGradient(st, color1, color2, color3, color4);\n" +
+                                       "    gl_FragColor = vec4(gradient.rgb, gradient.a * smoothedAlpha);\n" +
+                                       "}";
+
     public ShaderUtils(String fragmentShaderLoc, String vertexShaderLoc) {
         int program = glCreateProgram();
         try {
@@ -436,6 +498,12 @@ public class ShaderUtils {
                     break;
                 case "roundedRectRise":
                     fragmentShaderID = createShader(new ByteArrayInputStream(roundedRectRise.getBytes()), GL_FRAGMENT_SHADER);
+                    break;
+                case "roundedRectCorners":
+                    fragmentShaderID = createShader(new ByteArrayInputStream(roundedRectCorners.getBytes()), GL_FRAGMENT_SHADER);
+                    break;
+                case "roundedRectGradientCorners":
+                    fragmentShaderID = createShader(new ByteArrayInputStream(roundedRectGradientCorners.getBytes()), GL_FRAGMENT_SHADER);
                     break;
                 default:
                     fragmentShaderID = createShader(mc.getResourceManager().getResource(new ResourceLocation(fragmentShaderLoc)).getInputStream(), GL_FRAGMENT_SHADER);

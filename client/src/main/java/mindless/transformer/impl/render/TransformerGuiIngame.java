@@ -4,6 +4,8 @@ import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import mindless.module.impl.client.Settings;
 import mindless.runtime.GuiIngameState;
+import mindless.runtime.HudTextRenderer;
+import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.HudRenderBounds;
 import mindless.utility.RenderUtils;
 import mindless.utility.TextGlowUtils;
@@ -85,20 +87,26 @@ public abstract class TransformerGuiIngame {
         }
 
         FontRenderer font = getFontRenderer();
+        // The scoreboard's own Font setting, which until now was read only by the mixin copy of
+        // this screen -- the copy Forge loads and this client does not.
+        RavenFontRenderer customFont = mindless.module.impl.render.ScoreboardModule.getCustomFont();
+        // Minecraft's font is drawn at nine pixels and shrunk to fit; a chosen face is rasterised
+        // at the size it will occupy, so scaling it down again would only blur it.
+        float fontScale = customFont != null ? 1.0f : GuiIngameState.SCOREBOARD_SCALE;
         String displayTitle = objective.getDisplayName();
-        int contentWidth = font.getStringWidth(displayTitle);
+        int contentWidth = HudTextRenderer.width(customFont, font, displayTitle);
         for (Score score : GuiIngameState.visibleScores) {
             ScorePlayerTeam team = scoreboard.getPlayersTeam(score.getPlayerName());
             String line = ScorePlayerTeam.formatPlayerName(team, score.getPlayerName());
 
             GuiIngameState.visibleLines.add(line);
-            contentWidth = Math.max(contentWidth, font.getStringWidth(line));
+            contentWidth = Math.max(contentWidth, HudTextRenderer.width(customFont, font, line));
         }
 
-        int lineHeight = font.FONT_HEIGHT;
-        float scaledLineHeight = lineHeight * GuiIngameState.SCOREBOARD_SCALE;
+        int lineHeight = HudTextRenderer.lineHeight(customFont, font);
+        float scaledLineHeight = lineHeight * fontScale;
         float rowsHeight = GuiIngameState.visibleScores.size() * scaledLineHeight;
-        float panelWidth = contentWidth * GuiIngameState.SCOREBOARD_SCALE
+        float panelWidth = contentWidth * fontScale
                 + GuiIngameState.HORIZONTAL_PADDING * 2.0f;
         float panelHeight = (GuiIngameState.visibleScores.size() + 1) * scaledLineHeight
                 + GuiIngameState.VERTICAL_PADDING * 2.0f + 2.0f;
@@ -133,27 +141,22 @@ public abstract class TransformerGuiIngame {
         GlStateManager.shadeModel(GL11.GL_FLAT);
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
 
-        GlStateManager.pushMatrix();
-        GlStateManager.scale(GuiIngameState.SCOREBOARD_SCALE, GuiIngameState.SCOREBOARD_SCALE, 1.0f);
+        boolean glow = Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled();
 
-        float titleVisualWidth = font.getStringWidth(displayTitle) * GuiIngameState.SCOREBOARD_SCALE;
-        int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / GuiIngameState.SCOREBOARD_SCALE);
-        int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / GuiIngameState.SCOREBOARD_SCALE);
-        if (Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled()) {
-            TextGlowUtils.drawGlow(font, displayTitle, titleX, titleY, 0xFFFFFFFF);
-        }
-        font.drawString(displayTitle, titleX, titleY, 0xFFFFFFFF);
+        GlStateManager.pushMatrix();
+        GlStateManager.scale(fontScale, fontScale, 1.0f);
+
+        float titleVisualWidth = HudTextRenderer.width(customFont, font, displayTitle) * fontScale;
+        int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / fontScale);
+        int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / fontScale);
+        HudTextRenderer.draw(customFont, font, displayTitle, titleX, titleY, 0xFFFFFFFF, false, glow);
 
         for (int i = 0; i < GuiIngameState.visibleScores.size(); i++) {
             String playerText = GuiIngameState.visibleLines.get(i);
             int y = Math.round((bottom - GuiIngameState.VERTICAL_PADDING
-                    - (i + 1) * scaledLineHeight) / GuiIngameState.SCOREBOARD_SCALE);
-            int lineX = Math.round((left + GuiIngameState.HORIZONTAL_PADDING)
-                    / GuiIngameState.SCOREBOARD_SCALE);
-            if (Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled()) {
-                TextGlowUtils.drawGlow(font, playerText, lineX, y, 0xFFFFFFFF);
-            }
-            font.drawString(playerText, lineX, y, 0xFFFFFFFF);
+                    - (i + 1) * scaledLineHeight) / fontScale);
+            int lineX = Math.round((left + GuiIngameState.HORIZONTAL_PADDING) / fontScale);
+            HudTextRenderer.draw(customFont, font, playerText, lineX, y, 0xFFFFFFFF, false, glow);
         }
 
         GlStateManager.popMatrix();

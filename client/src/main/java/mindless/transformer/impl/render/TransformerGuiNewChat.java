@@ -1,7 +1,10 @@
 package mindless.transformer.impl.render;
 
 import mindless.module.impl.client.Settings;
+import mindless.module.impl.render.ChatModule;
 import mindless.runtime.GuiNewChatState;
+import mindless.runtime.HudTextRenderer;
+import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.ScaledResolutionCache;
 import net.lenni0451.classtransform.InjectionCallback;
@@ -76,17 +79,29 @@ public abstract class TransformerGuiNewChat {
         double newestEase = GuiNewChatState.easeOutCubic(newestProgress);
         double animatedRows = Math.max(0.0, visibleLines - 1.0 + newestEase);
 
+        // Chat's own Font and spacing settings, which this path had never read -- it drew every
+        // line with mc.fontRendererObj regardless of what the module said.
+        RavenFontRenderer chatFont = ChatModule.getCustomFont();
+        float rowHeight = (chatFont != null ? chatFont.getLineHeight() : 9.0f) + ChatModule.lineSpacing();
+        if (rowHeight < 1.0f) rowHeight = 1.0f;
+        float headSize = ChatModule.playerHeads() ? ChatModule.headSize() : 0.0f;
+        float textIndent = headSize > 0.0f ? headSize + 2.0f : 0.0f;
+
+        // The panel and the line positions have to agree on a row's height, or a taller face or
+        // extra spacing pushes the oldest messages outside their own background.
         float bgX = 3.0f;
-        float bgW = chatWidth * scale + 10.0f;
-        float bgH = (float) (animatedRows * 9.0f * scale + 10.0f);
+        float bgW = chatWidth * scale + 10.0f + textIndent * scale;
+        float bgH = (float) (animatedRows * rowHeight * scale + 10.0f);
         float bgBottom = sr.getScaledHeight() - 23.0f;
         float bgY = bgBottom - bgH;
 
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(0.0f, -(sr.getScaledHeight() - 48.0f), 0.0f);
-        GuiNewChatState.drawGlass(bgX, bgY, bgW, bgH, chatOpen,
-                sr.getScaledWidth(), sr.getScaledHeight());
-        GlStateManager.popMatrix();
+        if (ChatModule.drawBackground()) {
+            GlStateManager.pushMatrix();
+            GlStateManager.translate(0.0f, -(sr.getScaledHeight() - 48.0f), 0.0f);
+            GuiNewChatState.drawGlass(bgX, bgY, bgW, bgH, chatOpen,
+                    sr.getScaledWidth(), sr.getScaledHeight());
+            GlStateManager.popMatrix();
+        }
 
         GlStateManager.pushMatrix();
         GlStateManager.translate(8.0f, 20.0f, 0.0f);
@@ -105,25 +120,34 @@ public abstract class TransformerGuiNewChat {
             double progress = GuiNewChatState.getAnimationProgress(chatLine, now);
             double eased = GuiNewChatState.easeOutCubic(progress);
             float x = (float) ((1.0 - eased) * -12.0);
-            float y = -i * 9.0f - 8.0f;
+            float y = -i * rowHeight - 8.0f;
             if (i > 0) y += insertionOffset;
             else y += (float) ((1.0 - eased) * 2.5);
             String text = chatLine.getChatComponent().getFormattedText();
             int alpha = MathHelper.clamp_int((int) Math.round(255.0 * eased), 0, 255);
             int textColor = 0xFFFFFF | (alpha << 24);
-            if (Settings.chatGlow != null && Settings.chatGlow.isToggled()) {
-                TextGlowUtils.drawGlow(mc.fontRendererObj, text, x, y, textColor);
+
+            if (headSize > 0.0f) {
+                String sender = GuiNewChatState.senderOf(chatLine.getChatComponent());
+                // Nudged down so the face sits on the text's optical centre rather than its box.
+                GuiNewChatState.drawPlayerHead(sender, x, y - 1.0f, headSize, alpha);
+                GlStateManager.enableBlend();
+                GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                        GL11.GL_ONE, GL11.GL_ZERO);
             }
-            mc.fontRendererObj.drawStringWithShadow(text, x, y, textColor);
+
+            boolean glow = Settings.chatGlow != null && Settings.chatGlow.isToggled();
+            HudTextRenderer.draw(chatFont, mc.fontRendererObj, text, x + textIndent, y,
+                    textColor, ChatModule.textShadow(), glow);
         }
         GlStateManager.disableBlend();
 
         // Only while the chat has actually been scrolled back, and clear of the text. Kept in
         // step with MixinGuiNewChat, which carries the explanation.
         if (chatOpen && isScrolled && rendered > 0) {
-            int fontHeight = mc.fontRendererObj.FONT_HEIGHT;
-            int totalHeight = totalLines * fontHeight + totalLines;
-            int visibleHeight = rendered * fontHeight + rendered;
+            float fontHeight = rowHeight;
+            int totalHeight = (int) (totalLines * fontHeight) + totalLines;
+            int visibleHeight = (int) (rendered * fontHeight) + rendered;
             if (totalHeight > visibleHeight) {
                 int scrollbarY = scrollPos * visibleHeight / totalHeight;
                 int scrollbarHeight = Math.max(4, visibleHeight * visibleHeight / totalHeight);

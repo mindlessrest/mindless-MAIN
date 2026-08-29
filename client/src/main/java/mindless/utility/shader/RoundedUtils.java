@@ -20,7 +20,73 @@ public class RoundedUtils {
     private static final ShaderUtils roundedTexturedShader = new ShaderUtils("roundRectTexture");
     private static final ShaderUtils roundedGradientShader = new ShaderUtils("roundedRectGradient");
     private static final ShaderUtils roundedRectRiseShader = new ShaderUtils("roundedRectRise");
+    private static final ShaderUtils roundedCornersShader = new ShaderUtils("roundedRectCorners");
+    private static final ShaderUtils roundedGradientCornersShader = new ShaderUtils("roundedRectGradientCorners");
 
+
+    /**
+     * A rounded rect with an independent radius per corner, in the order top-left, top-right,
+     * bottom-right, bottom-left. Zero is a square corner.
+     *
+     * <p>What this exists for is a shape attached to an edge: an accent bar against the side of a
+     * row, or a swatch that fills the top of a card. Drawing those with a uniform radius either
+     * rounds the attached side -- which reads as a floating capsule rather than something anchored
+     * -- or forces a second rect to be painted over the corners that should have been square, and
+     * that patch never quite matches the antialiased edge it is covering.
+     */
+    public static void drawRoundCorners(float x, float y, float width, float height,
+                                        float topLeft, float topRight,
+                                        float bottomRight, float bottomLeft, int color) {
+        RenderUtils.resetColor();
+        glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_BLEND);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_ALPHA_TEST);
+        glDepthMask(false);
+        GL14.glBlendEquation(GL14.GL_FUNC_ADD);
+        GL14.glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+        roundedCornersShader.init();
+        setupRoundedRectUniforms(x, y, width, height, 0f, roundedCornersShader);
+        setupCornerRadii(roundedCornersShader, topLeft, topRight, bottomRight, bottomLeft);
+        roundedCornersShader.setUniformf("color", getRed(color), getGreen(color), getBlue(color), getAlpha(color));
+
+        ShaderUtils.drawQuads(x - 1, y - 1, width + 2, height + 2);
+        roundedCornersShader.unload();
+        glDepthMask(true);
+        glPopAttrib();
+    }
+
+    /** {@link #drawRoundCorners} carrying the same four-corner colour ramp as {@link #drawGradientRound}. */
+    public static void drawGradientRoundCorners(float x, float y, float width, float height,
+                                                float topLeft, float topRight,
+                                                float bottomRight, float bottomLeft,
+                                                int blColor, int tlColor, int brColor, int trColor) {
+        RenderUtils.setAlphaLimit(0);
+        RenderUtils.resetColor();
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        roundedGradientCornersShader.init();
+        setupRoundedRectUniforms(x, y, width, height, 0f, roundedGradientCornersShader);
+        setupCornerRadii(roundedGradientCornersShader, topLeft, topRight, bottomRight, bottomLeft);
+        roundedGradientCornersShader.setUniformf("color1", getRed(tlColor), getGreen(tlColor), getBlue(tlColor), getAlpha(tlColor));
+        roundedGradientCornersShader.setUniformf("color2", getRed(blColor), getGreen(blColor), getBlue(blColor), getAlpha(blColor));
+        roundedGradientCornersShader.setUniformf("color3", getRed(trColor), getGreen(trColor), getBlue(trColor), getAlpha(trColor));
+        roundedGradientCornersShader.setUniformf("color4", getRed(brColor), getGreen(brColor), getBlue(brColor), getAlpha(brColor));
+
+        ShaderUtils.drawQuads(x - 1, y - 1, width + 2, height + 2);
+        roundedGradientCornersShader.unload();
+        GlStateManager.disableBlend();
+    }
+
+    /** Corner radii travel in physical pixels, the same space {@link #setupRoundedRectUniforms} uses. */
+    private static void setupCornerRadii(ShaderUtils shader, float topLeft, float topRight,
+                                         float bottomRight, float bottomLeft) {
+        float scale = ScaledResolutionCache.get().getScaleFactor();
+        shader.setUniformf("radii", topLeft * scale, topRight * scale,
+                bottomRight * scale, bottomLeft * scale);
+    }
 
     public static void drawRound(float x, float y, float width, float height, float radius, Color color) {
         drawRound(x, y, width, height, radius, false, color);

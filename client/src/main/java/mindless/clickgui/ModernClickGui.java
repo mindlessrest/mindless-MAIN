@@ -30,7 +30,10 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
+import java.awt.AlphaComposite;
 import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -54,8 +57,24 @@ public final class ModernClickGui extends ClickGui {
     private static final String LOGO_RESOURCE = "/assets/mindless/textures/gui/logo.png";
     private static final String FALLBACK_FONT_REGULAR = "Sf-Regular";
     private static final String FALLBACK_FONT_BOLD = "Sf-Bold";
-    private static final int LOGO_TEXTURE_WIDTH = 1536;
-    private static final int LOGO_TEXTURE_HEIGHT = 1024;
+    private static final float LOGO_DRAW_W = 30f;
+    private static final float LOGO_DRAW_H = 20f;
+    /**
+     * The logo ships at 1536x1024 and is drawn into thirty pixels by twenty.
+     *
+     * <p>Left at full size that is a fifty-fold reduction performed by the texture sampler every
+     * frame, and a bilinear tap reads a two-by-two neighbourhood however large the footprint it
+     * stands for -- so all but a handful of the source pixels were never consulted, and which
+     * handful it landed on shifted as the panel moved. That is the shimmer. Rasterising once at
+     * load, by halving repeatedly so every pixel contributes, is the same reasoning already
+     * applied to the fonts on this screen.
+     *
+     * <p>Four times the drawn size leaves headroom for the largest GUI scale without going back to
+     * a reduction the sampler cannot do well. It also returns about six megabytes of texture
+     * memory that were being held for a thirty-pixel logo.
+     */
+    private static final int LOGO_RASTER_W = (int) LOGO_DRAW_W * 4;
+    private static final int LOGO_RASTER_H = (int) LOGO_DRAW_H * 4;
     /** Cloud is hidden from the sidebar; flip to re-expose it. */
     private static final boolean SHOW_CLOUD_TAB = false;
     private static final float CATEGORY_ROW_HEIGHT = 21f;
@@ -434,8 +453,8 @@ public final class ModernClickGui extends ClickGui {
         float headerH = 48f;
         ensureUiTextures();
         if (logoTexture != null) {
-            drawTextureRegion(logoTexture, baseX + 13, baseY + 12, 30, 20, 0, 0,
-                    LOGO_TEXTURE_WIDTH, LOGO_TEXTURE_HEIGHT, LOGO_TEXTURE_WIDTH, LOGO_TEXTURE_HEIGHT,
+            drawTextureRegion(logoTexture, baseX + 13, baseY + 12, LOGO_DRAW_W, LOGO_DRAW_H,
+                    0, 0, 1, 1, 1, 1,
                     ((ACCENT >> 16) & 255) / 255f, ((ACCENT >> 8) & 255) / 255f,
                     (ACCENT & 255) / 255f, 1f);
             drawTextVCentered("Mindless", baseX + 48, baseY + 8, baseY + 39, ACCENT, .96f, true);
@@ -474,11 +493,13 @@ public final class ModernClickGui extends ClickGui {
         float surface = Math.max(hp * .55f, sp);
         if (surface > .01f) rounded(baseX + 7, y, baseX + sideW - 7, y + h, 5f,
                 withAlpha(ACCENT, (int) (surface * 44)));
-        // Left accent bar
+        // Left accent bar. Square where it meets the row's edge and rounded on the free end: a
+        // capsule rounded at both ends reads as floating rather than anchored to the side.
         if (sp > .01f) {
             float barTop = y + 3 + (1f - sp) * 4f;
             float barBot = y + h - 3 - (1f - sp) * 4f;
-            rounded(baseX + 7, barTop, baseX + 9.5f, barBot, 1.25f, withAlpha(ACCENT, (int) (255 * sp)));
+            roundedCorners(baseX + 7, barTop, baseX + 9.5f, barBot,
+                    0f, 1.25f, 1.25f, 0f, withAlpha(ACCENT, (int) (255 * sp)));
         }
         int foreground = mixColor(MUTED, ACCENT, sp * .85f + hp * .25f);
         drawCategoryIcon(category, baseX + 21, y + h / 2f, foreground);
@@ -606,8 +627,13 @@ public final class ModernClickGui extends ClickGui {
         }
         rounded(x1, y, x2, y2, THEME_CARD_RADIUS, cardColor);
 
-        // Corner radius of the swatch, clamped against the swatch's own height.
-        float r = radius(THEME_CARD_RADIUS, w, THEME_SWATCH_H);
+        // The swatch's top corners have to be the card's corners, not their own: the card is 78
+        // tall and the swatch 47, so a radius derived from the swatch's height came out smaller
+        // whenever the theme's rounding was turned up, and the difference showed as two beads of
+        // gradient sitting outside the card's corner arc at the top left and top right. Taking the
+        // card's radius makes the two arcs the same arc. It always fits, because radius() caps at
+        // half the shorter side -- 39 at the very most, well inside the swatch's height.
+        float r = radius(THEME_CARD_RADIUS, w, THEME_CARD_H);
 
         // Drawn by the rounded-rect shader, which evaluates the corner as a signed distance
         // field and interpolates the colour per fragment.
@@ -617,17 +643,15 @@ public final class ModernClickGui extends ClickGui {
         // its first vertex, so the colour is interpolated across triangles rather than across
         // the shape -- that is the diagonal streak across each swatch, and it got worse as the
         // radius grew because the fan got wider. A fragment shader has no triangulation to show.
-        RoundedUtils.drawGradientRound(x1, y, x2 - x1, splitY - y, r, to, from, to, from);
+        //
+        // The bottom edge is interior, against the label area, so those two corners are square.
+        // They used to be squared off afterwards by painting a rect over them, which had to
+        // re-derive the gradient colour at the seam to keep the join continuous and still left a
+        // hard edge down the sides where the shader's own was antialiased. Asking for the corners
+        // we want costs one draw and no arithmetic.
+        gradientRoundedCorners(x1, y, x2, splitY, r, r, 0f, 0f, to, from, to, from);
 
-        // The helper rounds all four corners; this edge is interior, against the label area, so
-        // the lower two are squared off. The seam colour is sampled at exactly the same point on
-        // the ramp, so the join is continuous rather than a step.
-        if (r > .5f) {
-            float h = Math.max(1f, splitY - y);
-            RenderUtils.drawVerticalGradientRect(x1, splitY - r, x2, splitY,
-                    mixColor(from, to, (h - r) / h), to);
-        }
-        // drawGradientRound leaves the alpha limit and blend state it set up, so reset before
+        // The gradient helper leaves the alpha limit and blend state it set up, so reset before
         // any text goes down.
         resetTextRenderState();
 
@@ -694,7 +718,9 @@ public final class ModernClickGui extends ClickGui {
         if (sp > .01f) {
             float barTop = y + 5 + (1f - sp) * 4f;
             float barBot = y + MODULE_ROW_HEIGHT - 5 - (1f - sp) * 4f;
-            rounded(x1, barTop, x1 + 2.5f, barBot, 1.25f, withAlpha(ACCENT, (int) (255 * sp)));
+            // Squared against the row edge for the same reason as the sidebar's.
+            roundedCorners(x1, barTop, x1 + 2.5f, barBot,
+                    0f, 1.25f, 1.25f, 0f, withAlpha(ACCENT, (int) (255 * sp)));
         }
         float toggleX = x2 - 88;
         float availableTextWidth = Math.max(42f, toggleX - x1 - 18f);
@@ -2217,6 +2243,40 @@ public final class ModernClickGui extends ClickGui {
     private void rounded(float x1, float y1, float x2, float y2, float radius, int color) {
         RoundedUtils.drawRound(x1, y1, x2 - x1, y2 - y1, radius(radius, x2 - x1, y2 - y1), color);
     }
+
+    /**
+     * A rect whose corners are rounded individually, clockwise from the top left.
+     *
+     * <p>Zero means square, and unlike {@link #radius} that is honoured rather than nudged up to
+     * half a pixel: the per-corner shader drops the arc term entirely at zero instead of
+     * degenerating there, so there is nothing to guard against.
+     */
+    private void roundedCorners(float x1, float y1, float x2, float y2,
+                                float topLeft, float topRight, float bottomRight, float bottomLeft,
+                                int color) {
+        float w = x2 - x1, h = y2 - y1;
+        RoundedUtils.drawRoundCorners(x1, y1, w, h,
+                corner(topLeft, w, h), corner(topRight, w, h),
+                corner(bottomRight, w, h), corner(bottomLeft, w, h), color);
+    }
+
+    /** {@link #roundedCorners} with the four-corner colour ramp of the gradient shader. */
+    private void gradientRoundedCorners(float x1, float y1, float x2, float y2,
+                                        float topLeft, float topRight,
+                                        float bottomRight, float bottomLeft,
+                                        int blColor, int tlColor, int brColor, int trColor) {
+        float w = x2 - x1, h = y2 - y1;
+        RoundedUtils.drawGradientRoundCorners(x1, y1, w, h,
+                corner(topLeft, w, h), corner(topRight, w, h),
+                corner(bottomRight, w, h), corner(bottomLeft, w, h),
+                blColor, tlColor, brColor, trColor);
+    }
+
+    /** {@link #radius} for a single corner: same theme scaling and cap, but zero stays zero. */
+    private static float corner(float radius, float w, float h) {
+        if (radius <= 0f) return 0f;
+        return radius(radius, w, h);
+    }
     private void line(float x1, float y1, float x2, float y2, int color) {
         // Exactly one physical pixel, sitting on the physical pixel grid.
         //
@@ -2473,7 +2533,8 @@ public final class ModernClickGui extends ClickGui {
     private void ensureUiTextures() {
         if (uiTextureLoadAttempted) return;
         uiTextureLoadAttempted = true;
-        logoTexture = loadBundledTexture("mindless_modern_logo", LOGO_RESOURCE, true);
+        logoTexture = loadBundledTexture("mindless_modern_logo", LOGO_RESOURCE, true,
+                LOGO_RASTER_W, LOGO_RASTER_H);
         mascotTexture = loadBundledTexture("mindless_mascot_0", "/assets/mindless/textures/gui/mascot_0.png", true);
         for (Module.category cat : Module.category.values()) {
             String iconName = categoryIconName(cat);
@@ -2491,16 +2552,69 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private ResourceLocation loadBundledTexture(String name, String path, boolean smooth) {
+        return loadBundledTexture(name, path, smooth, 0, 0);
+    }
+
+    /**
+     * @param rasterW largest width to keep, or zero to upload the image at its own size
+     * @param rasterH largest height to keep, or zero to upload the image at its own size
+     */
+    private ResourceLocation loadBundledTexture(String name, String path, boolean smooth,
+                                                int rasterW, int rasterH) {
         try (InputStream stream = ModernClickGui.class.getResourceAsStream(path)) {
             if (stream == null) return null;
             BufferedImage image = ImageIO.read(stream);
             if (image == null) return null;
+            if (rasterW > 0 && rasterH > 0) image = rasterize(image, rasterW, rasterH);
             DynamicTexture texture = new DynamicTexture(image);
             texture.setBlurMipmap(smooth, false);
             return mc.getTextureManager().getDynamicTextureLocation(name, texture);
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    /**
+     * Reduces an image to a target size once, at load, rather than leaving it to the sampler.
+     *
+     * <p>Halved repeatedly first, because one bilinear step averages a two-by-two neighbourhood no
+     * matter how far it is reducing; going straight from a large source to a small target throws
+     * away nearly all of it and keeps whichever pixels happened to fall under the taps. Each
+     * halving keeps every pixel contributing to the one that replaces it.
+     */
+    private static BufferedImage rasterize(BufferedImage source, int targetW, int targetH) {
+        int w = source.getWidth(), h = source.getHeight();
+        if (w <= targetW && h <= targetH) return source;
+        BufferedImage image = source;
+        while (w / 2 > targetW && h / 2 > targetH) {
+            w /= 2;
+            h /= 2;
+            image = scaleTo(image, w, h);
+        }
+        return w == targetW && h == targetH ? image : scaleTo(image, targetW, targetH);
+    }
+
+    /**
+     * Scales in premultiplied alpha so the transparent surround cannot bleed into the edge.
+     *
+     * <p>Averaging straight ARGB mixes in the colour of pixels that are not there -- in a PNG that
+     * is usually transparent black -- and leaves a dark rim around everything. Premultiplied
+     * samples carry no colour where they carry no alpha. DynamicTexture reads through getRGB,
+     * which converts back, so nothing downstream has to know.
+     */
+    private static BufferedImage scaleTo(BufferedImage source, int w, int h) {
+        BufferedImage scaled = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB_PRE);
+        Graphics2D graphics = scaled.createGraphics();
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        graphics.setRenderingHint(RenderingHints.KEY_RENDERING,
+                RenderingHints.VALUE_RENDER_QUALITY);
+        graphics.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION,
+                RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+        graphics.setComposite(AlphaComposite.Src);
+        graphics.drawImage(source, 0, 0, w, h, null);
+        graphics.dispose();
+        return scaled;
     }
 
     private void drawTextureRegion(ResourceLocation texture, float x, float y, float w, float h,
