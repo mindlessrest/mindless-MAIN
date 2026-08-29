@@ -164,7 +164,7 @@ public class SexyESP extends Module {
         registerSetting(teamCheck = new ButtonSetting("Team check", false));
         registerSetting(colorMode = new SliderSetting("Color mode", 0, new String[]{"Custom", "Rainbow", "Team"}));
         registerSetting(color = new ColorSetting("Color", 255, 255, 255));
-        registerSetting(maxDistance = new SliderSetting("Max distance", 128.0, 16.0, 256.0, 8.0));
+        registerSetting(maxDistance = new SliderSetting("Max distance", 128.0, 16.0, 512.0, 8.0));
     }
 
     /** Avoids drawing a second full nametag/armor overlay for the same players. */

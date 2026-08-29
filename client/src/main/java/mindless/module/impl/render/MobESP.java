@@ -102,7 +102,7 @@ public class MobESP extends Module {
         this.registerSetting(healthBar = new ButtonSetting(espTypes, "Health bar", false));
         this.registerSetting(redOnDamage = new ButtonSetting("Red on damage", true));
         this.registerSetting(showInvis = new ButtonSetting("Show invis", true));
-        this.registerSetting(maxDistance = new SliderSetting("Max distance", 128.0, 32.0, 256.0, 8.0));
+        this.registerSetting(maxDistance = new SliderSetting("Max distance", 128.0, 32.0, 512.0, 8.0));
 
         registerMobGroups();
     }
