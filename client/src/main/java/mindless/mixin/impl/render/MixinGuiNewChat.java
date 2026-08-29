@@ -1,6 +1,8 @@
 package mindless.mixin.impl.render;
 
 import mindless.module.impl.client.Settings;
+import mindless.module.impl.render.ChatModule;
+import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
@@ -88,19 +90,30 @@ public abstract class MixinGuiNewChat {
         double newestEase = raven$easeOutCubic(newestProgress);
         double animatedRows = Math.max(0.0, visibleLines - 1.0 + newestEase);
 
+        // One row's height, which the panel and the message positions both have to agree on. A
+        // taller face or extra spacing pushes the lines apart and the panel has to grow with them,
+        // or the oldest messages end up outside their own background.
+        RavenFontRenderer chatFont = ChatModule.getCustomFont();
+        float rowHeight = (chatFont != null ? chatFont.getLineHeight() : 9.0f) + ChatModule.lineSpacing();
+        if (rowHeight < 1.0f) rowHeight = 1.0f;
+        float headSize = ChatModule.playerHeads() ? ChatModule.headSize() : 0.0f;
+        float textIndent = headSize > 0.0f ? headSize + 2.0f : 0.0f;
+
         // Match the scoreboard panel: 5px content padding, the same blur,
         // translucent fill, rounded shadow and inset-from-edge placement.
         float bgX = 3.0f;
-        float bgW = chatWidth * scale + 10.0f;
-        float bgH = (float) (animatedRows * 9.0f * scale + 10.0f);
+        float bgW = chatWidth * scale + 10.0f + textIndent * scale;
+        float bgH = (float) (animatedRows * rowHeight * scale + 10.0f);
         float bgBottom = sr.getScaledHeight() - 23.0f;
         float bgY = bgBottom - bgH;
 
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(0.0f, -(sr.getScaledHeight() - 48.0f), 0.0f);
-        GuiNewChatState.drawGlass(bgX, bgY, bgW, bgH, false,
-                sr.getScaledWidth(), sr.getScaledHeight());
-        GlStateManager.popMatrix();
+        if (ChatModule.drawBackground()) {
+            GlStateManager.pushMatrix();
+            GlStateManager.translate(0.0f, -(sr.getScaledHeight() - 48.0f), 0.0f);
+            GuiNewChatState.drawGlass(bgX, bgY, bgW, bgH, false,
+                    sr.getScaledWidth(), sr.getScaledHeight());
+            GlStateManager.popMatrix();
+        }
 
         GlStateManager.pushMatrix();
         GlStateManager.translate(8.0f, 20.0f, 0.0f);
@@ -119,16 +132,41 @@ public abstract class MixinGuiNewChat {
             double progress = raven$getAnimationProgress(chatLine, now);
             double eased = raven$easeOutCubic(progress);
             float x = (float) ((1.0 - eased) * -12.0);
-            float y = -i * 9.0f - 8.0f;
+            float y = -i * rowHeight - 8.0f;
             if (i > 0) y += insertionOffset;
             else y += (float) ((1.0 - eased) * 2.5);
             String text = chatLine.getChatComponent().getFormattedText();
             int alpha = MathHelper.clamp_int((int) Math.round(255.0 * eased), 0, 255);
             int textColor = 0xFFFFFF | (alpha << 24);
-            if (Settings.chatGlow != null && Settings.chatGlow.isToggled()) {
-                TextGlowUtils.drawGlow(mc.fontRendererObj, text, x, y, textColor);
+
+            if (headSize > 0.0f) {
+                String sender = GuiNewChatState.senderOf(chatLine.getChatComponent());
+                // Nudged down so the face sits on the text's optical centre rather than its box.
+                GuiNewChatState.drawPlayerHead(sender, x, y - 1.0f, headSize, alpha);
+                GlStateManager.enableBlend();
+                GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                        GL11.GL_ONE, GL11.GL_ZERO);
             }
-            mc.fontRendererObj.drawStringWithShadow(text, x, y, textColor);
+
+            float textX = x + textIndent;
+            if (Settings.chatGlow != null && Settings.chatGlow.isToggled()) {
+                if (chatFont != null) {
+                    TextGlowUtils.drawGlow(chatFont, text, textX, y, textColor);
+                }
+                else {
+                    TextGlowUtils.drawGlow(mc.fontRendererObj, text, textX, y, textColor);
+                }
+            }
+            if (chatFont != null) {
+                chatFont.drawString(text, textX, y, textColor, ChatModule.textShadow());
+            }
+            else if (ChatModule.textShadow()) {
+                mc.fontRendererObj.drawStringWithShadow(text, textX, y, textColor);
+            }
+            else {
+                // The float overload, since the animation slides lines in on fractional offsets.
+                mc.fontRendererObj.drawString(text, textX, y, textColor, false);
+            }
         }
         GlStateManager.disableBlend();
 
@@ -141,7 +179,7 @@ public abstract class MixinGuiNewChat {
         // it whenever the backlog overflowed meant it appeared the moment chat was opened, with
         // nothing to scroll, and in vanilla red-and-blue that matched nothing else on screen.
         if (chatOpen && isScrolled && rendered > 0) {
-            int fontHeight = mc.fontRendererObj.FONT_HEIGHT;
+            int fontHeight = Math.max(1, Math.round(rowHeight));
             int totalHeight = totalLines * fontHeight + totalLines;
             int visibleHeight = rendered * fontHeight + rendered;
             if (totalHeight > visibleHeight) {

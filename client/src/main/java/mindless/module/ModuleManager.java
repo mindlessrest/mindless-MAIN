@@ -255,6 +255,7 @@ public class ModuleManager {
         this.addModule(radar = new Radar());
         this.addModule(statsHUD = new StatsHUD());
         this.addModule(new ScoreboardModule());
+        this.addModule(new mindless.module.impl.render.ChatModule());
         this.addModule(new Saturation());
         this.addModule(targetHUD = new TargetHUD());
         this.addModule(new Trajectories());

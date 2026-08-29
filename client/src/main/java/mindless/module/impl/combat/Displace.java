@@ -26,6 +26,9 @@ import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.entity.RenderManager;
+import net.minecraft.enchantment.Enchantment;
+import net.minecraft.init.Items;
+import net.minecraft.item.ItemStack;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
@@ -88,6 +91,10 @@ public class Displace extends Module {
     private final ButtonSetting renderArrow;
     private final ButtonSetting onlyKnockbackItems;
     private final ButtonSetting weaponOnly;
+    private final ButtonSetting autoSwap;
+
+    /** The slot held before a swap took the hand, or -1 when nothing has been taken. */
+    private int swapPreviousSlot = -1;
 
     private boolean displaceThisTick = false;
     private boolean active = false;
@@ -166,6 +173,7 @@ public class Displace extends Module {
         this.registerSetting(overrideAttack = new ButtonSetting("Override attack", false));
         this.registerSetting(renderArrow = new ButtonSetting("Render arrow", true));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
+        this.registerSetting(autoSwap = new ButtonSetting("Auto swap", false));
     }
 
     @Override
@@ -201,6 +209,7 @@ public class Displace extends Module {
 
     @Override
     public void onDisable() {
+        restoreSwappedItem();
         active = false;
         compensateNextTick = false;
         wasDisplacingLastTick = false;
@@ -236,6 +245,72 @@ public class Displace extends Module {
 
     private boolean isVoidMode() {
         return mode.getInput() == 1.0D;
+    }
+
+    /**
+     * Puts a knockback item in hand for the moment a target can be pushed into a void, and gives
+     * the hand back afterwards.
+     *
+     * <p>A sword kills; a knockback stick moves people. Fighting over a ledge those are two
+     * different jobs seconds apart, and doing the swap by hand means either missing the window or
+     * spending the fight on the wrong item. The swap is deliberately tied to a void opportunity
+     * actually existing rather than to being near a ledge -- the module has already worked out
+     * whether there is a direction that would send this target off, and that is a far better
+     * answer than a distance check.
+     *
+     * <p>A stick is preferred over anything else with the same enchantment level, because that is
+     * what the item is for: it does nothing on hit but move them.
+     */
+    private void equipKnockbackItem() {
+        if (!autoSwap.isToggled() || !Utils.nullCheck() || mc.currentScreen != null) {
+            return;
+        }
+        if (EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0) {
+            return;
+        }
+
+        int bestSlot = -1;
+        int bestScore = 0;
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = mc.thePlayer.inventory.mainInventory[slot];
+            if (stack == null) {
+                continue;
+            }
+
+            int knockback = EnchantmentHelper.getEnchantmentLevel(Enchantment.knockback.effectId, stack);
+            if (knockback <= 0) {
+                continue;
+            }
+
+            // Level dominates; a stick breaks the tie.
+            int score = knockback * 2 + (stack.getItem() == Items.stick ? 1 : 0);
+            if (score > bestScore) {
+                bestScore = score;
+                bestSlot = slot;
+            }
+        }
+
+        if (bestSlot < 0 || bestSlot == mc.thePlayer.inventory.currentItem) {
+            return;
+        }
+
+        if (swapPreviousSlot < 0) {
+            swapPreviousSlot = mc.thePlayer.inventory.currentItem;
+        }
+        mc.thePlayer.inventory.currentItem = bestSlot;
+    }
+
+    /** Returns the hand to whatever it was on before the swap. */
+    private void restoreSwappedItem() {
+        int slot = swapPreviousSlot;
+        swapPreviousSlot = -1;
+
+        if (slot < 0 || slot > 8 || !Utils.nullCheck()) {
+            return;
+        }
+        if (mc.thePlayer.inventory.currentItem != slot) {
+            mc.thePlayer.inventory.currentItem = slot;
+        }
     }
 
     private boolean tryFindVoidDirection(EntityPlayer target) {
@@ -1826,12 +1901,13 @@ public class Displace extends Module {
         boolean passesItemCondition = (!onlyKnockbackItems.isToggled()
                 || EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0)
                 && (!weaponOnly.isToggled() || Utils.holdingWeapon());
-        if (!passesItemCondition) {
+        if (!passesItemCondition && !autoSwap.isToggled()) {
             active = false;
             displaceThisTick = false;
             compensateNextTick = false;
             wasDisplacingLastTick = false;
             hideArrow();
+            restoreSwappedItem();
             return;
         }
 
@@ -1852,11 +1928,13 @@ public class Displace extends Module {
             compensateNextTick = false;
             wasDisplacingLastTick = false;
             hideArrow();
+            restoreSwappedItem();
             return;
         }
 
         float playerYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
         float displaceYaw;
+        boolean voidOpportunity;
         if (isVoidMode()) {
             Float bestVoidYaw = findBestVoidYaw(target, playerYaw);
             if (bestVoidYaw == null) {
@@ -1865,17 +1943,38 @@ public class Displace extends Module {
                 compensateNextTick = false;
                 wasDisplacingLastTick = false;
                 hideArrow();
+                restoreSwappedItem();
                 return;
             }
             displaceYaw = bestVoidYaw;
             updateDisplaceSide(playerYaw, displaceYaw);
+            voidOpportunity = true;
         } else {
-            if (!findVoid.isToggled() || !tryFindVoidDirection(target)) {
+            voidOpportunity = findVoid.isToggled() && tryFindVoidDirection(target);
+            if (!voidOpportunity) {
                 displaceLeft = direction.getInput() == 0;
             }
 
             float offset = (float) yawOffset.getInput();
             displaceYaw = displaceLeft ? playerYaw - offset : playerYaw + offset;
+        }
+
+        // Swapped only now, with a target in range and somewhere to send it.
+        if (voidOpportunity) {
+            equipKnockbackItem();
+        }
+        else {
+            restoreSwappedItem();
+        }
+
+        hasKBEnchant = EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0;
+        if (!hasKBEnchant && onlyKnockbackItems.isToggled()) {
+            active = false;
+            displaceThisTick = false;
+            compensateNextTick = false;
+            wasDisplacingLastTick = false;
+            hideArrow();
+            return;
         }
 
         hasKB = hasKBEnchant;
