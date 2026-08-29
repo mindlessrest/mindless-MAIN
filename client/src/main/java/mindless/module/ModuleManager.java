@@ -136,6 +136,7 @@ public class ModuleManager {
         this.addModule(hitSelect = new HitSelect());
         this.addModule(hitBox = new HitBox());
         this.addModule(new JumpReset());
+        this.addModule(new Criticals());
         this.addModule(killAura = new KillAura());
         this.addModule(knockbackDelay = new KnockbackDelay());
         this.addModule(piercing = new Piercing());
