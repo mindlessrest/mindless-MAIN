@@ -11,6 +11,7 @@ import java.util.List;
 
 public class BlockListSetting extends Setting {
     private final List<String> blocks = new ArrayList<>();
+    private final List<String> capturedDefault = new ArrayList<>();
     private final String[] legacyProfileKeys;
     public GroupSetting group;
 
@@ -56,6 +57,27 @@ public class BlockListSetting extends Setting {
     @Override
     public String getProfileKey() {
         return group == null ? getName() : group.getName() + "." + getName();
+    }
+
+    @Override
+    public String[] getProfileKeys() {
+        String[] keys = new String[2 + legacyProfileKeys.length];
+        keys[0] = getProfileKey();
+        keys[1] = getName();
+        System.arraycopy(legacyProfileKeys, 0, keys, 2, legacyProfileKeys.length);
+        return keys;
+    }
+
+    @Override
+    protected void captureDefault() {
+        capturedDefault.clear();
+        capturedDefault.addAll(blocks);
+    }
+
+    @Override
+    public void resetToDefault() {
+        blocks.clear();
+        blocks.addAll(capturedDefault);
     }
 
     private static String extractRegistryId(String storageId) {

@@ -56,6 +56,8 @@ public class Animations extends Module {
     public void onDisable() { enabled = false; }
     @Override
     public void guiUpdate() { if (enabled) syncConfig(); }
+    @Override
+    public void onProfileLoad() { if (enabled) syncConfig(); }
 
     private void syncConfig() {
         modeIndex = (int) modeSetting.getInput();

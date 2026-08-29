@@ -10,6 +10,7 @@ import org.lwjgl.input.Mouse;
 public class KeySetting extends Setting {
     private int key;
     public GroupSetting group;
+    private int capturedDefault;
 
     public KeySetting(String name, int key) {
         super(name);
@@ -37,6 +38,16 @@ public class KeySetting extends Setting {
 
     public void setKey(int key) {
         this.key = key;
+    }
+
+    @Override
+    protected void captureDefault() {
+        capturedDefault = key;
+    }
+
+    @Override
+    public void resetToDefault() {
+        this.key = capturedDefault;
     }
 
     public boolean isPressed() {

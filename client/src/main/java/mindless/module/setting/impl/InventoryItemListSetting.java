@@ -28,6 +28,7 @@ public class InventoryItemListSetting extends ItemListSetting {
     private static final String DUPLICATABLE_REGISTRY = "minecraft:wool";
 
     private final List<Integer> assignedSlots = new ArrayList<Integer>();
+    private final List<Integer> capturedSlots = new ArrayList<Integer>();
 
     public InventoryItemListSetting(String name) {
         super(name);
@@ -173,6 +174,21 @@ public class InventoryItemListSetting extends ItemListSetting {
         while (assignedSlots.size() < size) {
             assignedSlots.add(DEFAULT_ASSIGNED_SLOT);
         }
+    }
+
+    @Override
+    protected void captureDefault() {
+        super.captureDefault();
+        capturedSlots.clear();
+        capturedSlots.addAll(assignedSlots);
+    }
+
+    @Override
+    public void resetToDefault() {
+        super.resetToDefault();
+        assignedSlots.clear();
+        assignedSlots.addAll(capturedSlots);
+        syncSlots();
     }
 
     @Override

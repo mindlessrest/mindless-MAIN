@@ -30,9 +30,13 @@ import mindless.utility.Utils;
 import net.minecraftforge.common.MinecraftForge;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 
 public class ProfileManager implements IMinecraftInstance {
@@ -61,8 +65,19 @@ public class ProfileManager implements IMinecraftInstance {
         }
     }
 
+    /**
+     * How long a change sits unwritten before it is saved on its own.
+     *
+     * <p>Long enough that dragging a slider writes once rather than once a frame, short enough
+     * that a crash costs a few seconds of fiddling rather than an evening of it.
+     */
+    private static final long AUTO_SAVE_DELAY_MS = 4000L;
+
     public File directory;
     public List<Profile> profiles = new ArrayList<>();
+
+    /** When the current profile first went unsaved, or 0 when it is clean. */
+    private long dirtySince;
 
     public ProfileManager() {
         directory = new File(mc.mcDataDir + File.separator + "mindless", "profiles");
@@ -79,33 +94,190 @@ public class ProfileManager implements IMinecraftInstance {
     }
 
     public void saveProfile(Profile profile) {
-        JsonObject jsonObject = new JsonObject();
-        jsonObject.addProperty("keybind", profile.getModule().getKeycode());
-        JsonArray jsonArray = new JsonArray();
-        for (Module module : Raven.moduleManager.getModules()) {
-            if (module.ignoreOnSave && !shouldSaveModuleStateOnly(module)) {
-                continue;
-            }
-            JsonObject moduleInformation = module.ignoreOnSave ? getModuleStateObject(module) : getJsonObject(module);
-            jsonArray.add(moduleInformation);
+        if (profile == null) {
+            return;
         }
-        if (Raven.scriptManager != null && Raven.scriptManager.scripts != null) {
-            for (Module module : Raven.scriptManager.scripts.values()) {
-                if (module.ignoreOnSave) {
+        String serialized = serializeProfile(profile);
+        if (serialized == null || !writeProfileFile(profile.getName(), serialized)) {
+            failedMessage("save", profile.getName());
+            return;
+        }
+        profile.getModule().saved = true;
+        dirtySince = 0L;
+    }
+
+    /**
+     * Saves without holding up the frame.
+     *
+     * <p>The reading of module state still happens here, on the game thread, so what gets written
+     * is one coherent snapshot; only the write itself is handed off. A profile is around fifty
+     * kilobytes and the write is followed by a flush to the disk, which is not something to do in
+     * the middle of a frame every time a slider moves.
+     */
+    private void saveProfileInBackground(Profile profile) {
+        if (profile == null) {
+            return;
+        }
+        final String serialized = serializeProfile(profile);
+        if (serialized == null) {
+            return;
+        }
+        final String name = profile.getName();
+        try {
+            Raven.getCachedExecutor().execute(new Runnable() {
+                public void run() {
+                    writeProfileFile(name, serialized);
+                }
+            });
+        }
+        catch (Exception e) {
+            writeProfileFile(name, serialized);
+        }
+    }
+
+    private String serializeProfile(Profile profile) {
+        try {
+            JsonObject jsonObject = new JsonObject();
+            jsonObject.addProperty("keybind", profile.getModule().getKeycode());
+            JsonArray jsonArray = new JsonArray();
+            for (Module module : Raven.moduleManager.getModules()) {
+                if (module.ignoreOnSave && !shouldSaveModuleStateOnly(module)) {
                     continue;
                 }
-                JsonObject moduleInformation = getJsonObject(module);
+                JsonObject moduleInformation = module.ignoreOnSave ? getModuleStateObject(module) : getJsonObject(module);
                 jsonArray.add(moduleInformation);
             }
-        }
-        jsonObject.add("modules", jsonArray);
-        try (FileWriter fileWriter = new FileWriter(new File(directory, profile.getName() + ".json"))) {
+            if (Raven.scriptManager != null && Raven.scriptManager.scripts != null) {
+                for (Module module : Raven.scriptManager.scripts.values()) {
+                    if (module.ignoreOnSave) {
+                        continue;
+                    }
+                    JsonObject moduleInformation = getJsonObject(module);
+                    jsonArray.add(moduleInformation);
+                }
+            }
+            jsonObject.add("modules", jsonArray);
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            gson.toJson(jsonObject, fileWriter);
-        } catch (Exception e) {
-            failedMessage("save", profile.getName());
-            e.printStackTrace();
+            return gson.toJson(jsonObject);
         }
+        catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Writes a profile whole, or not at all.
+     *
+     * <p>Opening the profile itself for writing empties it first, so anything that interrupted the
+     * write -- the game being closed, a crash, the machine going down -- left behind half a
+     * profile or none of one, and the next launch reported it as unloadable. The new contents go
+     * to a temporary file, are flushed to the disk rather than left in the operating system's
+     * cache, and only then replace the profile in a single move. The copy being replaced is kept
+     * alongside as {@code .bak}, which is what a load falls back to if a profile is ever damaged
+     * from outside this method.
+     *
+     * @return whether the profile on disk now holds the given contents
+     */
+    private boolean writeProfileFile(String profileName, String serialized) {
+        File target = new File(directory, profileName + ".json");
+        File temp = new File(directory, profileName + ".json.tmp");
+        File backup = new File(directory, profileName + ".json.bak");
+        try {
+            if (!directory.exists() && !directory.mkdirs()) {
+                return false;
+            }
+
+            FileOutputStream out = new FileOutputStream(temp);
+            try {
+                out.write(serialized.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                out.getFD().sync();
+            }
+            finally {
+                out.close();
+            }
+
+            if (target.isFile() && target.length() > 0L) {
+                try {
+                    Files.copy(target.toPath(), backup.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                }
+                catch (Exception ignored) {
+                    // A missing backup is worth less than the save itself; carry on.
+                }
+            }
+
+            try {
+                Files.move(temp.toPath(), target.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            }
+            catch (AtomicMoveNotSupportedException e) {
+                Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+            return true;
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+        finally {
+            if (temp.exists()) {
+                temp.delete();
+            }
+        }
+    }
+
+    /**
+     * Writes the current profile if it has unsaved changes, on this thread.
+     *
+     * <p>For the two moments where there is no later: switching to another profile, which
+     * overwrites every module with the incoming one's state, and the game closing.
+     */
+    public void flushCurrentProfile() {
+        Profile profile = Raven.currentProfile;
+        if (profile == null || !isAutoSaveEnabled() || profile.getModule().saved) {
+            return;
+        }
+        saveProfile(profile);
+    }
+
+    /**
+     * Saves the current profile a few seconds after it was last changed.
+     *
+     * <p>Profiles used to be written only when "Update profile" was pressed, and nothing in the
+     * menu said whether that was still owed. Toggling a module, closing the game and coming back
+     * to find it off again reads as the profile being broken rather than as never having been
+     * saved, and switching profiles threw the same changes away without a word.
+     */
+    public void autoSaveTick() {
+        Profile profile = Raven.currentProfile;
+        if (profile == null || !isAutoSaveEnabled()) {
+            dirtySince = 0L;
+            return;
+        }
+
+        ProfileModule module = profile.getModule();
+        if (module.saved) {
+            dirtySince = 0L;
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (dirtySince == 0L) {
+            dirtySince = now;
+            return;
+        }
+        if (now - dirtySince < AUTO_SAVE_DELAY_MS) {
+            return;
+        }
+
+        dirtySince = 0L;
+        module.saved = true;
+        saveProfileInBackground(profile);
+    }
+
+    private static boolean isAutoSaveEnabled() {
+        return Settings.autoSaveProfiles == null || Settings.autoSaveProfiles.isToggled();
     }
 
     public Profile createProfile(String requestedName, int bind) {
@@ -233,295 +405,466 @@ public class ProfileManager implements IMinecraftInstance {
         return module instanceof Relationships;
     }
 
+    /**
+     * Applies a saved profile to every module.
+     *
+     * <p>Read first, apply second. The file is turned into a plan -- which modules should be on,
+     * what each one's settings and position should be -- before anything is touched, so a
+     * malformed entry is skipped rather than abandoning the load partway through with half the
+     * client on the old profile and half on the new one, still labelled as whichever came last.
+     * That half-applied state was then what "Update profile" wrote back to disk.
+     */
     public void loadProfile(String name) {
         Profile existingProfile = getProfile(name);
         String profileName = existingProfile != null ? existingProfile.getName() : normalizeProfileName(name);
-        boolean foundProfile = false;
-        for (File file : getProfileFiles()) {
-            if (!file.exists()) {
-                failedMessage("load", profileName);
-                System.out.println("Failed to load " + profileName);
-                return;
-            }
-            if (!file.getName().equals(profileName + ".json")) {
+
+        // Anything unsaved belongs to the profile being left, and the load below overwrites every
+        // module with the incoming one. Written out here or gone without a word.
+        Profile outgoing = Raven.currentProfile;
+        if (outgoing != null && !outgoing.getName().equalsIgnoreCase(profileName)) {
+            flushCurrentProfile();
+        }
+
+        File file = findProfileFile(profileName);
+        if (file == null) {
+            failedMessage("load", profileName);
+            System.out.println("Failed to load " + profileName);
+            return;
+        }
+
+        JsonObject profileJson = readProfileJson(file, profileName);
+        JsonArray modules = profileJson == null ? null : profileJson.getAsJsonArray("modules");
+        if (modules == null) {
+            failedMessage("load", profileName);
+            return;
+        }
+
+        List<Module> loadableModules = getLoadableModules();
+        captureSettingDefaults(loadableModules);
+
+        Map<Module, RequestedModuleState> requestedModuleStates = createDefaultRequestedModuleStates(loadableModules);
+        Map<Module, JsonObject> loadedModuleData = new LinkedHashMap<Module, JsonObject>();
+        Map<String, SavedCategoryState> savedGuiCategoryState = new HashMap<String, SavedCategoryState>();
+        boolean loadedRelationshipsState = false;
+
+        for (JsonElement moduleJson : modules) {
+            if (moduleJson == null || !moduleJson.isJsonObject()) {
                 continue;
             }
-            foundProfile = true;
-            try (FileReader fileReader = new FileReader(file)) {
-                JsonParser jsonParser = new JsonParser();
-                JsonObject profileJson = jsonParser.parse(fileReader).getAsJsonObject();
-                if (profileJson == null) {
-                    failedMessage("load", profileName);
-                    return;
-                }
-                JsonArray modules = profileJson.getAsJsonArray("modules");
-                if (modules == null) {
-                    failedMessage("load", profileName);
-                    return;
-                }
-                List<Module> loadableModules = getLoadableModules();
-                Map<Module, RequestedModuleState> requestedModuleStates = createDefaultRequestedModuleStates(loadableModules);
-                Map<Module, JsonObject> loadedModuleData = new LinkedHashMap<Module, JsonObject>();
-                boolean loadedRelationshipsState = false;
-                Map<String, SavedCategoryState> savedGuiCategoryState = new HashMap<>();
-                for (JsonElement moduleJson : modules) {
-                    JsonObject moduleInformation = moduleJson.getAsJsonObject();
-                    String moduleName = moduleInformation.get("name").getAsString();
-
-                    if (moduleName == null || moduleName.isEmpty()) {
-                        continue;
-                    }
-
-                    Module module = Raven.moduleManager.getModule(moduleName);
-                    if (module == null && moduleName.startsWith("sc-") && Raven.scriptManager != null) {
-                        for (Module module1 : Raven.scriptManager.scripts.values()) {
-                            if (module1.getName().equals(moduleName.substring(3))) {
-                                module = module1;
-                            }
-                        }
-                    }
-
-                    if (module == null) {
-                        continue;
-                    }
-
-                    loadedModuleData.put(module, moduleInformation);
-
-                    if (module instanceof Relationships) {
-                        loadedRelationshipsState = true;
-                    }
-
-                    if (module.canBeEnabled()) {
-                        RequestedModuleState requestedState = requestedModuleStates.get(module);
-                        if (requestedState == null) {
-                            requestedState = new RequestedModuleState(false, 0);
-                            requestedModuleStates.put(module, requestedState);
-                        }
-                        if (moduleInformation.has("enabled")) {
-                            requestedState.enabled = moduleInformation.get("enabled").getAsBoolean();
-                        }
-                        if (moduleInformation.has("hidden")) {
-                            requestedState.hidden = moduleInformation.get("hidden").getAsBoolean();
-                        }
-                        if (moduleInformation.has("keybind")) {
-                            requestedState.keybind = moduleInformation.get("keybind").getAsInt();
-                        }
-                    }
-                }
-                if (!loadedRelationshipsState && ModuleManager.relationships != null && Raven.playerRelationsManager != null) {
-                    RequestedModuleState relationshipsState = requestedModuleStates.get(ModuleManager.relationships);
-                    if (relationshipsState != null) {
-                        relationshipsState.enabled = Raven.playerRelationsManager.isActive();
-                    }
-                }
-                for (Module module : loadableModules) {
-                    RequestedModuleState requestedState = requestedModuleStates.get(module);
-                    if (requestedState == null) {
-                        continue;
-                    }
-
-                    if (!requestedState.enabled && module.isEnabled()) {
-                        module.disable();
-                    }
-                }
-
-                for (Module module : loadableModules) {
-                    RequestedModuleState requestedState = requestedModuleStates.get(module);
-                    if (requestedState == null) {
-                        continue;
-                    }
-
-                    module.setBind(requestedState.keybind);
-                    if (requestedState.hidden != null) {
-                        module.setHidden(requestedState.hidden);
-                    }
-                }
-
-                for (Map.Entry<Module, JsonObject> entry : loadedModuleData.entrySet()) {
-                    Module module = entry.getKey();
-                    JsonObject moduleInformation = entry.getValue();
-
-                    if (module == ModuleManager.hud) {
-                        if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
-                            HUD.setRelativePosition(
-                                    moduleInformation.get("relPosX").getAsFloat(),
-                                    moduleInformation.get("relPosY").getAsFloat()
-                            );
-                        }
-                        else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
-                            float hudX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : HUD.posX;
-                            float hudY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : HUD.posY;
-                            HUD.setAbsolutePosition(hudX, hudY);
-                        }
-                    }
-                    else if (module.getName().equals("TargetHUD")) {
-                        if (moduleInformation.has("posX")) {
-                            int posX = moduleInformation.get("posX").getAsInt();
-                            ModuleManager.targetHUD.posX = posX;
-                        }
-                        if (moduleInformation.has("posY")) {
-                            int posY = moduleInformation.get("posY").getAsInt();
-                            ModuleManager.targetHUD.posY = posY;
-                        }
-                    }
-                    else if (module.getName().equals("Potion HUD")) {
-                        PotionHUD potionHUD = (PotionHUD) module;
-                        if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
-                            potionHUD.setRelativePosition(
-                                    moduleInformation.get("relPosX").getAsFloat(),
-                                    moduleInformation.get("relPosY").getAsFloat()
-                            );
-                        }
-                        else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
-                            float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : potionHUD.getPosX();
-                            float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : potionHUD.getPosY();
-                            potionHUD.setAbsolutePosition(posX, posY);
-                        }
-                    }
-                    else if (module.getName().equals("Audio Visualizer")) {
-                        mindless.module.impl.render.AudioVisualizer visualizer = (mindless.module.impl.render.AudioVisualizer) module;
-                        if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
-                            visualizer.setRelativePosition(
-                                    moduleInformation.get("relPosX").getAsFloat(),
-                                    moduleInformation.get("relPosY").getAsFloat()
-                            );
-                        }
-                    }
-                    else if (module.getName().equals("Session Info")) {
-                        mindless.module.impl.render.SessionInfo session = (mindless.module.impl.render.SessionInfo) module;
-                        if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
-                            session.setRelativePosition(
-                                    moduleInformation.get("relPosX").getAsFloat(),
-                                    moduleInformation.get("relPosY").getAsFloat()
-                            );
-                        }
-                        else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
-                            float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : session.getPosX();
-                            float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : session.getPosY();
-                            session.setAbsolutePosition(posX, posY);
-                        }
-                    }
-                    else if (module.getName().equals("Hide Window")) {
-                        HideWindow hw = (HideWindow) module;
-                        if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
-                            hw.setRelativePosition(
-                                    moduleInformation.get("relPosX").getAsFloat(),
-                                    moduleInformation.get("relPosY").getAsFloat()
-                            );
-                        }
-                        else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
-                            float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : hw.getPosX();
-                            float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : hw.getPosY();
-                            hw.setAbsolutePosition(posX, posY);
-                        }
-                    }
-                    else if (module.getName().equals("Fast Place")) {
-                        FastPlace fp = (FastPlace) module;
-                        if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
-                            fp.setRelativePosition(
-                                    moduleInformation.get("relPosX").getAsFloat(),
-                                    moduleInformation.get("relPosY").getAsFloat()
-                            );
-                        }
-                        else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
-                            float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : fp.getPosX();
-                            float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : fp.getPosY();
-                            fp.setAbsolutePosition(posX, posY);
-                        }
-                    }
-                    else if (module instanceof BedWars) {
-                        BedWars bedWars = (BedWars) module;
-                        if (moduleInformation.has("closestEnemyRelPosX") && moduleInformation.has("closestEnemyRelPosY")) {
-                            bedWars.setClosestEnemyRelativePosition(
-                                    moduleInformation.get("closestEnemyRelPosX").getAsFloat(),
-                                    moduleInformation.get("closestEnemyRelPosY").getAsFloat()
-                            );
-                        }
-                        else if (moduleInformation.has("closestEnemyPosX") || moduleInformation.has("closestEnemyPosY")) {
-                            float posX = moduleInformation.has("closestEnemyPosX")
-                                    ? moduleInformation.get("closestEnemyPosX").getAsFloat()
-                                    : bedWars.getClosestEnemyPosX();
-                            float posY = moduleInformation.has("closestEnemyPosY")
-                                    ? moduleInformation.get("closestEnemyPosY").getAsFloat()
-                                    : bedWars.getClosestEnemyPosY();
-                            bedWars.setClosestEnemyAbsolutePosition(posX, posY);
-                        }
-
-                        if (moduleInformation.has("magicMilkRelPosX") && moduleInformation.has("magicMilkRelPosY")) {
-                            bedWars.setMagicMilkRelativePosition(
-                                    moduleInformation.get("magicMilkRelPosX").getAsFloat(),
-                                    moduleInformation.get("magicMilkRelPosY").getAsFloat()
-                            );
-                        }
-                        else if (moduleInformation.has("magicMilkPosX") || moduleInformation.has("magicMilkPosY")) {
-                            float posX = moduleInformation.has("magicMilkPosX")
-                                    ? moduleInformation.get("magicMilkPosX").getAsFloat()
-                                    : bedWars.getMagicMilkPosX();
-                            float posY = moduleInformation.has("magicMilkPosY")
-                                    ? moduleInformation.get("magicMilkPosY").getAsFloat()
-                                    : bedWars.getMagicMilkPosY();
-                            bedWars.setMagicMilkAbsolutePosition(posX, posY);
-                        }
-                    }
-                    else if (module.getName().equals("Gui")) {
-                        for (Map.Entry<String, JsonElement> setting : moduleInformation.entrySet()) {
-                            String settingName = setting.getKey();
-                            if (!Module.categoriesString.contains(settingName)) {
-                                continue;
-                            }
-                            String element = setting.getValue().getAsString();
-                            String[] statesStr = element.split(",");
-
-                            float posX = Float.parseFloat(statesStr[0]);
-                            float posY = Float.parseFloat(statesStr[1]);
-                            boolean opened = statesStr.length > 2 && Boolean.parseBoolean(statesStr[2]);
-                            savedGuiCategoryState.put(settingName, new SavedCategoryState(posX, posY, opened));
-                        }
-                    }
-
-                    for (Setting setting : module.getSettings()) {
-                        setting.loadProfile(moduleInformation);
-                    }
-                }
-
-                for (Module module : loadableModules) {
-                    RequestedModuleState requestedState = requestedModuleStates.get(module);
-                    if (requestedState == null) {
-                        continue;
-                    }
-
-                    if (requestedState.enabled && !module.isEnabled()) {
-                        module.enable();
-                    } else if (!requestedState.enabled && module.isEnabled()) {
-                        module.disable();
-                    }
-                }
-
-                Raven.currentProfile = getProfile(profileName);
-                saveLastProfile(profileName);
-
-                boolean loadGuiPositions = Gui.loadGuiPositions.isToggled();
-                Raven.clickGui.refreshAfterProfileLoad();
-                if (loadGuiPositions) {
-                    for (CategoryComponent c : ClickGui.categories) {
-                        SavedCategoryState state = savedGuiCategoryState.get(c.category.name());
-                        if (state != null) {
-                            c.applySavedState(state.x, state.y, state.opened, true);
-                        }
-                    }
-                }
-                Raven.clickGui.enforceHorizontalProfileLayout();
-                MinecraftForge.EVENT_BUS.post(new PostProfileLoadEvent(Raven.currentProfile.getName()));
-                return;
+            JsonObject moduleInformation = moduleJson.getAsJsonObject();
+            JsonElement nameElement = moduleInformation.get("name");
+            if (nameElement == null || !nameElement.isJsonPrimitive()) {
+                continue;
             }
-            catch (Exception e) {
-                failedMessage("load", profileName);
-                e.printStackTrace();
-                return;
+            String moduleName = nameElement.getAsString();
+            if (moduleName == null || moduleName.isEmpty()) {
+                continue;
+            }
+
+            Module module = Raven.moduleManager.getModule(moduleName);
+            if (module == null && moduleName.startsWith("sc-") && Raven.scriptManager != null) {
+                for (Module scriptModule : Raven.scriptManager.scripts.values()) {
+                    if (scriptModule.getName().equals(moduleName.substring(3))) {
+                        module = scriptModule;
+                    }
+                }
+            }
+            if (module == null) {
+                continue;
+            }
+
+            loadedModuleData.put(module, moduleInformation);
+
+            if (module instanceof Relationships) {
+                loadedRelationshipsState = true;
+            }
+
+            if (module.getName().equals("Gui")) {
+                readGuiCategoryState(moduleInformation, savedGuiCategoryState);
+            }
+
+            if (module.canBeEnabled()) {
+                RequestedModuleState requestedState = requestedModuleStates.get(module);
+                if (requestedState == null) {
+                    requestedState = new RequestedModuleState(false, 0);
+                    requestedModuleStates.put(module, requestedState);
+                }
+                readModuleState(moduleInformation, requestedState);
             }
         }
-        if (!foundProfile) {
+
+        if (!loadedRelationshipsState && ModuleManager.relationships != null && Raven.playerRelationsManager != null) {
+            RequestedModuleState relationshipsState = requestedModuleStates.get(ModuleManager.relationships);
+            if (relationshipsState != null) {
+                relationshipsState.enabled = Raven.playerRelationsManager.isActive();
+            }
+        }
+
+        try {
+            // Off first: a module's own disable can write to its settings, which would otherwise
+            // land on top of the values just read for it.
+            for (Module module : loadableModules) {
+                RequestedModuleState requestedState = requestedModuleStates.get(module);
+                if (requestedState != null && !requestedState.enabled && module.isEnabled()) {
+                    module.disable();
+                }
+            }
+
+            for (Module module : loadableModules) {
+                RequestedModuleState requestedState = requestedModuleStates.get(module);
+                if (requestedState == null) {
+                    continue;
+                }
+                module.setBind(requestedState.keybind);
+                if (requestedState.hidden != null) {
+                    module.setHidden(requestedState.hidden);
+                }
+            }
+
+            for (Map.Entry<Module, JsonObject> entry : loadedModuleData.entrySet()) {
+                applyModulePosition(entry.getKey(), entry.getValue());
+            }
+
+            // Over every module, not just the ones the file mentions. A setting the profile has no
+            // opinion about goes back to its default instead of keeping whatever the profile
+            // before it left there, which is what let two profiles disagree about a value only one
+            // of them had ever been asked for.
+            for (Module module : loadableModules) {
+                if (!module.ignoreOnSave) {
+                    applyModuleSettings(module, loadedModuleData.get(module));
+                }
+            }
+
+            for (Module module : loadableModules) {
+                RequestedModuleState requestedState = requestedModuleStates.get(module);
+                if (requestedState == null) {
+                    continue;
+                }
+                if (requestedState.enabled && !module.isEnabled()) {
+                    module.enable();
+                }
+                else if (!requestedState.enabled && module.isEnabled()) {
+                    module.disable();
+                }
+            }
+
+            // Last, so modules that keep their own copy of their settings pick the new ones up
+            // even when they were already on and so were never re-enabled.
+            for (Module module : loadableModules) {
+                try {
+                    module.onProfileLoad();
+                }
+                catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        catch (Exception e) {
             failedMessage("load", profileName);
+            e.printStackTrace();
+        }
+
+        Profile loaded = getProfile(profileName);
+        if (loaded != null) {
+            Raven.currentProfile = loaded;
+            // Freshly read from disk, so nothing is owed until something changes.
+            loaded.getModule().saved = true;
+        }
+        dirtySince = 0L;
+        saveLastProfile(profileName);
+
+        try {
+            boolean loadGuiPositions = Gui.loadGuiPositions.isToggled();
+            Raven.clickGui.refreshAfterProfileLoad();
+            if (loadGuiPositions) {
+                for (CategoryComponent c : ClickGui.categories) {
+                    SavedCategoryState state = savedGuiCategoryState.get(c.category.name());
+                    if (state != null) {
+                        c.applySavedState(state.x, state.y, state.opened, true);
+                    }
+                }
+            }
+            Raven.clickGui.enforceHorizontalProfileLayout();
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        if (Raven.currentProfile != null) {
+            MinecraftForge.EVENT_BUS.post(new PostProfileLoadEvent(Raven.currentProfile.getName()));
+        }
+    }
+
+    private static void readModuleState(JsonObject moduleInformation, RequestedModuleState requestedState) {
+        try {
+            if (moduleInformation.has("enabled")) {
+                requestedState.enabled = moduleInformation.get("enabled").getAsBoolean();
+            }
+            if (moduleInformation.has("hidden")) {
+                requestedState.hidden = moduleInformation.get("hidden").getAsBoolean();
+            }
+            if (moduleInformation.has("keybind")) {
+                requestedState.keybind = moduleInformation.get("keybind").getAsInt();
+            }
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void readGuiCategoryState(JsonObject moduleInformation, Map<String, SavedCategoryState> into) {
+        for (Map.Entry<String, JsonElement> setting : moduleInformation.entrySet()) {
+            String settingName = setting.getKey();
+            if (!Module.categoriesString.contains(settingName)) {
+                continue;
+            }
+            try {
+                String[] parts = setting.getValue().getAsString().split(",");
+                if (parts.length < 2) {
+                    continue;
+                }
+                float posX = Float.parseFloat(parts[0]);
+                float posY = Float.parseFloat(parts[1]);
+                boolean opened = parts.length > 2 && Boolean.parseBoolean(parts[2]);
+                into.put(settingName, new SavedCategoryState(posX, posY, opened));
+            }
+            catch (Exception ignored) {
+            }
+        }
+    }
+
+    /**
+     * Puts one module's settings where the profile says they should be.
+     *
+     * <p>A setting the file names is read from it; a setting it does not name goes back to the
+     * value it was built with. Both halves matter: without the second, profiles leak into each
+     * other, and a profile written before a setting existed silently adopts whatever the last
+     * profile set it to. Settings that have never been asked for their default -- registered after
+     * the first profile load, which scripts can do -- are left alone rather than reset to nothing.
+     */
+    private static void applyModuleSettings(Module module, JsonObject moduleInformation) {
+        for (Setting setting : module.getSettings()) {
+            try {
+                if (moduleInformation != null && hasSavedValue(setting, moduleInformation)) {
+                    setting.loadProfile(moduleInformation);
+                }
+                else if (setting.hasCapturedDefault()) {
+                    setting.resetToDefault();
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static boolean hasSavedValue(Setting setting, JsonObject moduleInformation) {
+        String[] keys = setting.getProfileKeys();
+        if (keys == null) {
+            return false;
+        }
+        for (String key : keys) {
+            if (key != null && moduleInformation.has(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void captureSettingDefaults(List<Module> modules) {
+        for (Module module : modules) {
+            for (Setting setting : module.getSettings()) {
+                setting.captureDefaultOnce();
+            }
+        }
+    }
+
+    /** Restores the on-screen position of the modules that have one. */
+    private static void applyModulePosition(Module module, JsonObject moduleInformation) {
+        try {
+            if (module == ModuleManager.hud) {
+                if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                    HUD.setRelativePosition(
+                            moduleInformation.get("relPosX").getAsFloat(),
+                            moduleInformation.get("relPosY").getAsFloat()
+                    );
+                }
+                else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
+                    float hudX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : HUD.posX;
+                    float hudY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : HUD.posY;
+                    HUD.setAbsolutePosition(hudX, hudY);
+                }
+            }
+            else if (module.getName().equals("TargetHUD")) {
+                if (moduleInformation.has("posX")) {
+                    ModuleManager.targetHUD.posX = moduleInformation.get("posX").getAsInt();
+                }
+                if (moduleInformation.has("posY")) {
+                    ModuleManager.targetHUD.posY = moduleInformation.get("posY").getAsInt();
+                }
+            }
+            else if (module instanceof PotionHUD) {
+                PotionHUD potionHUD = (PotionHUD) module;
+                if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                    potionHUD.setRelativePosition(
+                            moduleInformation.get("relPosX").getAsFloat(),
+                            moduleInformation.get("relPosY").getAsFloat()
+                    );
+                }
+                else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
+                    float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : potionHUD.getPosX();
+                    float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : potionHUD.getPosY();
+                    potionHUD.setAbsolutePosition(posX, posY);
+                }
+            }
+            else if (module instanceof mindless.module.impl.render.AudioVisualizer) {
+                mindless.module.impl.render.AudioVisualizer visualizer = (mindless.module.impl.render.AudioVisualizer) module;
+                if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                    visualizer.setRelativePosition(
+                            moduleInformation.get("relPosX").getAsFloat(),
+                            moduleInformation.get("relPosY").getAsFloat()
+                    );
+                }
+            }
+            else if (module instanceof mindless.module.impl.render.SessionInfo) {
+                mindless.module.impl.render.SessionInfo session = (mindless.module.impl.render.SessionInfo) module;
+                if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                    session.setRelativePosition(
+                            moduleInformation.get("relPosX").getAsFloat(),
+                            moduleInformation.get("relPosY").getAsFloat()
+                    );
+                }
+                else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
+                    float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : session.getPosX();
+                    float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : session.getPosY();
+                    session.setAbsolutePosition(posX, posY);
+                }
+            }
+            else if (module instanceof HideWindow) {
+                HideWindow hw = (HideWindow) module;
+                if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                    hw.setRelativePosition(
+                            moduleInformation.get("relPosX").getAsFloat(),
+                            moduleInformation.get("relPosY").getAsFloat()
+                    );
+                }
+                else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
+                    float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : hw.getPosX();
+                    float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : hw.getPosY();
+                    hw.setAbsolutePosition(posX, posY);
+                }
+            }
+            else if (module instanceof FastPlace) {
+                FastPlace fp = (FastPlace) module;
+                if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                    fp.setRelativePosition(
+                            moduleInformation.get("relPosX").getAsFloat(),
+                            moduleInformation.get("relPosY").getAsFloat()
+                    );
+                }
+                else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
+                    float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : fp.getPosX();
+                    float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : fp.getPosY();
+                    fp.setAbsolutePosition(posX, posY);
+                }
+            }
+            else if (module instanceof BedWars) {
+                BedWars bedWars = (BedWars) module;
+                if (moduleInformation.has("closestEnemyRelPosX") && moduleInformation.has("closestEnemyRelPosY")) {
+                    bedWars.setClosestEnemyRelativePosition(
+                            moduleInformation.get("closestEnemyRelPosX").getAsFloat(),
+                            moduleInformation.get("closestEnemyRelPosY").getAsFloat()
+                    );
+                }
+                else if (moduleInformation.has("closestEnemyPosX") || moduleInformation.has("closestEnemyPosY")) {
+                    float posX = moduleInformation.has("closestEnemyPosX")
+                            ? moduleInformation.get("closestEnemyPosX").getAsFloat()
+                            : bedWars.getClosestEnemyPosX();
+                    float posY = moduleInformation.has("closestEnemyPosY")
+                            ? moduleInformation.get("closestEnemyPosY").getAsFloat()
+                            : bedWars.getClosestEnemyPosY();
+                    bedWars.setClosestEnemyAbsolutePosition(posX, posY);
+                }
+
+                if (moduleInformation.has("magicMilkRelPosX") && moduleInformation.has("magicMilkRelPosY")) {
+                    bedWars.setMagicMilkRelativePosition(
+                            moduleInformation.get("magicMilkRelPosX").getAsFloat(),
+                            moduleInformation.get("magicMilkRelPosY").getAsFloat()
+                    );
+                }
+                else if (moduleInformation.has("magicMilkPosX") || moduleInformation.has("magicMilkPosY")) {
+                    float posX = moduleInformation.has("magicMilkPosX")
+                            ? moduleInformation.get("magicMilkPosX").getAsFloat()
+                            : bedWars.getMagicMilkPosX();
+                    float posY = moduleInformation.has("magicMilkPosY")
+                            ? moduleInformation.get("magicMilkPosY").getAsFloat()
+                            : bedWars.getMagicMilkPosY();
+                    bedWars.setMagicMilkAbsolutePosition(posX, posY);
+                }
+            }
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /** The file for a profile, matching the name exactly first and then ignoring case. */
+    private File findProfileFile(String profileName) {
+        String wanted = profileName + ".json";
+        File exact = new File(directory, wanted);
+        if (exact.isFile()) {
+            return exact;
+        }
+        for (File file : getProfileFiles()) {
+            if (file.getName().equalsIgnoreCase(wanted)) {
+                return file;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Reads a profile, falling back to the copy kept beside it.
+     *
+     * <p>A profile that could not be parsed used to be reported as a failure and left exactly as
+     * it was, so every launch after failed the same way and the profile was effectively gone. The
+     * backup is written before each save, so at worst it is one save behind; restoring it turns a
+     * lost profile into a lost edit.
+     */
+    private JsonObject readProfileJson(File file, String profileName) {
+        JsonObject parsed = parseProfileFile(file);
+        if (parsed != null) {
+            return parsed;
+        }
+
+        File backup = new File(file.getParentFile(), file.getName() + ".bak");
+        JsonObject fromBackup = parseProfileFile(backup);
+        if (fromBackup == null) {
+            return null;
+        }
+
+        try {
+            Files.copy(backup.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+        catch (Exception ignored) {
+        }
+        Utils.sendMessage("&e" + profileName + " &7was damaged; restored the last saved copy.");
+        return fromBackup;
+    }
+
+    private static JsonObject parseProfileFile(File file) {
+        if (file == null || !file.isFile() || file.length() <= 0L) {
+            return null;
+        }
+        try (FileReader fileReader = new FileReader(file)) {
+            JsonElement parsed = new JsonParser().parse(fileReader);
+            if (parsed == null || !parsed.isJsonObject()) {
+                return null;
+            }
+            return parsed.getAsJsonObject();
+        }
+        catch (Exception e) {
+            return null;
         }
     }
 
@@ -594,26 +937,31 @@ public class ProfileManager implements IMinecraftInstance {
         }
 
         for (File file : profileFiles) {
-            try (FileReader fileReader = new FileReader(file)) {
-                JsonParser jsonParser = new JsonParser();
-                JsonObject profileJson = jsonParser.parse(fileReader).getAsJsonObject();
-                String profileName = file.getName().replace(".json", "");
-
+            String fileName = file.getName();
+            String profileName = fileName.substring(0, fileName.length() - ".json".length());
+            try {
+                // One unreadable profile used to abandon every profile after it. Now it costs
+                // only itself, and only after the backup beside it has also been tried.
+                JsonObject profileJson = readProfileJson(file, profileName);
                 if (profileJson == null) {
                     failedMessage("load", profileName);
-                    return;
+                    continue;
                 }
 
                 int keybind = 0;
 
                 if (profileJson.has("keybind")) {
-                    keybind = profileJson.get("keybind").getAsInt();
+                    try {
+                        keybind = profileJson.get("keybind").getAsInt();
+                    }
+                    catch (Exception ignored) {
+                    }
                 }
 
                 Profile profile = new Profile(profileName, keybind);
                 profiles.add(profile);
             } catch (Exception e) {
-                Utils.sendMessage("&cFailed to load profiles.");
+                failedMessage("load", profileName);
                 e.printStackTrace();
             }
         }
@@ -649,6 +997,9 @@ public class ProfileManager implements IMinecraftInstance {
         List<File> profileFiles = new ArrayList<>();
         if (directory.exists()) {
             File[] files = directory.listFiles();
+            if (files == null) {
+                return profileFiles;
+            }
             for (File file : files) {
                 if (!file.isFile() || !file.getName().endsWith(".json")) {
                     continue;

@@ -9,6 +9,7 @@ import mindless.module.Module;
 public abstract class Setting {
     public String name;
     public boolean visible = true;
+    private boolean defaultCaptured;
 
     public Setting(String name) {
         this.name = name;
@@ -50,6 +51,48 @@ public abstract class Setting {
 
     public String getProfileKey() {
         return this.name;
+    }
+
+    /**
+     * Every key this setting will accept from a saved profile, most preferred first.
+     *
+     * <p>Used to tell "the profile chose this value" apart from "the profile has never heard of
+     * this setting". Without that distinction a profile that predates a setting silently inherits
+     * whatever the previously loaded profile left in it, which is how two profiles end up
+     * disagreeing about a value neither of them has ever been asked about. Subclasses that read
+     * extra keys -- a renamed setting's old name, or a bare name where a grouped key is written --
+     * list them here so the two answers stay in step with {@link #loadProfile}.
+     */
+    public String[] getProfileKeys() {
+        return new String[]{ getProfileKey(), getName() };
+    }
+
+    /**
+     * Remembers the value this setting starts life with, once.
+     *
+     * <p>Taken at the point profiles are first read rather than in the constructor: a few settings
+     * are adjusted straight after being registered -- the scoreboard position sliders are built at
+     * zero and immediately moved to their -1 "unset" sentinel -- and it is the adjusted value that
+     * is the real default. Capturing later also costs nothing, because nothing can have changed a
+     * setting before the first profile load.
+     */
+    public final void captureDefaultOnce() {
+        if (!defaultCaptured) {
+            defaultCaptured = true;
+            captureDefault();
+        }
+    }
+
+    public final boolean hasCapturedDefault() {
+        return defaultCaptured;
+    }
+
+    /** Stores the current value as this setting's default. */
+    protected void captureDefault() {
+    }
+
+    /** Puts the value back to the one {@link #captureDefault} recorded. */
+    public void resetToDefault() {
     }
 
     public abstract void loadProfile(JsonObject data);

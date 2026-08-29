@@ -19,6 +19,7 @@ public class SliderSetting extends Setting {
     public GroupSetting groupSetting;
     private String[] legacyProfileKeys;
     private String minString;
+    private double capturedDefault;
 
     public SliderSetting(GroupSetting groupSetting, String settingName, double defaultValue, double min, double max, double intervals) {
         super(settingName);
@@ -123,6 +124,26 @@ public class SliderSetting extends Setting {
     @Override
     public String getProfileKey() {
         return groupSetting == null ? getName() : groupSetting.getName() + "." + getName();
+    }
+
+    @Override
+    public String[] getProfileKeys() {
+        String[] keys = new String[2 + legacyProfileKeys.length];
+        keys[0] = getProfileKey();
+        keys[1] = getName();
+        System.arraycopy(legacyProfileKeys, 0, keys, 2, legacyProfileKeys.length);
+        return keys;
+    }
+
+    @Override
+    protected void captureDefault() {
+        capturedDefault = defaultValue;
+    }
+
+    @Override
+    public void resetToDefault() {
+        // Raw, so a slider parked on a sentinel outside its own range keeps it.
+        this.defaultValue = capturedDefault;
     }
 
     public double getInput() {

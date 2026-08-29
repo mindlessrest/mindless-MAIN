@@ -77,6 +77,9 @@ public class Raven {
 
         Runtime.getRuntime().addShutdownHook(new Thread(scheduledExecutor::shutdown));
         Runtime.getRuntime().addShutdownHook(new Thread(cachedExecutor::shutdown));
+        // Closing the game is the one exit that never goes through anything of ours, so the last
+        // few seconds of changes have to be caught here or they are simply not written.
+        Runtime.getRuntime().addShutdownHook(new Thread(Raven::saveOnShutdown));
 
         registerHandler(this, true);
         registerHandler(new DebugHelper(), false);
@@ -114,6 +117,10 @@ public class Raven {
     @SubscribeEvent
     public void onTick(ClientTickEvent e) {
         if (e.phase == Phase.END) {
+            // Outside the world check, so edits made from the main menu are written too.
+            if (profileManager != null) {
+                profileManager.autoSaveTick();
+            }
             if (Utils.nullCheck()) {
                 if (mc.thePlayer.ticksExisted % 6000 == 0) { // reset cache every 5 minutes
                     Entity.clearCache();
@@ -211,6 +218,24 @@ public class Raven {
 
     public static ModuleManager getModuleManager() {
         return moduleManager;
+    }
+
+    /**
+     * Writes the current profile out as the game goes down.
+     *
+     * <p>Runs on a shutdown hook, off the game thread, but by then nothing is changing module
+     * state any more. Skipped after an uninject, which has already saved and then torn everything
+     * down -- saving again would write a client with every module switched off.
+     */
+    private static void saveOnShutdown() {
+        try {
+            if (unloaded || profileManager == null || currentProfile == null) {
+                return;
+            }
+            profileManager.flushCurrentProfile();
+        }
+        catch (Throwable ignored) {
+        }
     }
 
     public static ScheduledExecutorService getScheduledExecutor() {
@@ -334,6 +359,8 @@ public class Raven {
         // Save before anything is torn down: disabling a module can change its own settings.
         try {
             if (profileManager != null && currentProfile != null) {
+                // Unconditional: an uninject is a deliberate teardown, so this session's changes
+                // are written whether or not auto save is on.
                 profileManager.saveProfile(currentProfile);
             }
         } catch (Throwable ignored) {

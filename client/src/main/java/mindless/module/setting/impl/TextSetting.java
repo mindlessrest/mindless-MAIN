@@ -9,6 +9,7 @@ public class TextSetting extends Setting {
     private final Runnable onSubmit;
     private String text;
     public GroupSetting group;
+    private String capturedDefault = "";
 
     public TextSetting(String name, String text, String placeholder, int maxLength) {
         this(name, text, placeholder, maxLength, null);
@@ -54,6 +55,21 @@ public class TextSetting extends Setting {
     @Override
     public String getProfileKey() {
         return group == null ? getName() : group.getName() + "." + getName();
+    }
+
+    @Override
+    public String[] getProfileKeys() {
+        return new String[]{ getProfileKey() };
+    }
+
+    @Override
+    protected void captureDefault() {
+        capturedDefault = text;
+    }
+
+    @Override
+    public void resetToDefault() {
+        setText(capturedDefault);
     }
 
     public void submit() {

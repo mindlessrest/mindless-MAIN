@@ -26,6 +26,11 @@ public class ColorSetting extends Setting {
     private float pickedHue = Float.NaN;
     private float pickedSaturation = Float.NaN;
 
+    private int capturedRed;
+    private int capturedGreen;
+    private int capturedBlue;
+    private int capturedAlpha = 255;
+
     public ColorSetting(String name, int red, int green, int blue) {
         this(null, name, red, green, blue, 255, false);
     }
@@ -150,6 +155,24 @@ public class ColorSetting extends Setting {
     @Override
     public String getProfileKey() {
         return groupSetting == null ? getName() : groupSetting.getName() + "." + getName();
+    }
+
+    @Override
+    protected void captureDefault() {
+        capturedRed = red;
+        capturedGreen = green;
+        capturedBlue = blue;
+        capturedAlpha = alpha;
+    }
+
+    @Override
+    public void resetToDefault() {
+        this.red = capturedRed;
+        this.green = capturedGreen;
+        this.blue = capturedBlue;
+        this.alpha = capturedAlpha;
+        this.pickedHue = Float.NaN;
+        this.pickedSaturation = Float.NaN;
     }
 
     @Override

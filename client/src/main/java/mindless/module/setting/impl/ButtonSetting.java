@@ -10,6 +10,7 @@ public class ButtonSetting extends Setting {
     private Runnable method;
     public GroupSetting group;
     private final String[] legacyProfileKeys;
+    private boolean capturedDefault;
 
     public ButtonSetting(String name, boolean isEnabled) {
         super(name);
@@ -67,6 +68,28 @@ public class ButtonSetting extends Setting {
     @Override
     public String getProfileKey() {
         return group == null ? getName() : group.getName() + "." + getName();
+    }
+
+    @Override
+    public String[] getProfileKeys() {
+        String[] keys = new String[2 + legacyProfileKeys.length];
+        keys[0] = getProfileKey();
+        keys[1] = getName();
+        System.arraycopy(legacyProfileKeys, 0, keys, 2, legacyProfileKeys.length);
+        return keys;
+    }
+
+    @Override
+    protected void captureDefault() {
+        capturedDefault = isEnabled;
+    }
+
+    @Override
+    public void resetToDefault() {
+        // A button that runs something has no value to restore, and toggling it would run it.
+        if (!isMethodButton) {
+            isEnabled = capturedDefault;
+        }
     }
 
     public boolean isToggled() {

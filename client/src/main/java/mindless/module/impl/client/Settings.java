@@ -33,6 +33,7 @@ public class Settings extends Module {
     public static SliderSetting randomYawFactor;
 
     public static ButtonSetting sendMessage;
+    public static ButtonSetting autoSaveProfiles;
 
     public static SliderSetting customCapes;
 
@@ -85,6 +86,7 @@ public class Settings extends Module {
         this.registerSetting(randomYawFactor = new SliderSetting("Random yaw factor", 0, 0.0, 10.0, 1.0));
         this.registerSetting(new DescriptionSetting("Profiles"));
         this.registerSetting(sendMessage = new ButtonSetting("Send message on enable", true));
+        this.registerSetting(autoSaveProfiles = new ButtonSetting("Auto save profiles", true));
         this.registerSetting(new DescriptionSetting("Theme colors"));
         this.registerSetting(offset = new SliderSetting("Offset", 0.5, -3.0, 3.0, 0.1));
         this.registerSetting(timeMultiplier = new SliderSetting("Time multiplier", 0.5, 0.1, 4.0, 0.1));

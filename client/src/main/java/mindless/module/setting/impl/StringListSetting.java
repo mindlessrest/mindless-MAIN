@@ -13,6 +13,7 @@ public class StringListSetting extends Setting {
     private final String placeholder;
     private final int maxLength;
     private final List<String> entries = new ArrayList<String>();
+    private final List<String> capturedDefault = new ArrayList<String>();
     public GroupSetting group;
 
     public StringListSetting(String name, String placeholder, int maxLength) {
@@ -86,6 +87,23 @@ public class StringListSetting extends Setting {
     @Override
     public String getProfileKey() {
         return group == null ? getName() : group.getName() + "." + getName();
+    }
+
+    @Override
+    public String[] getProfileKeys() {
+        return new String[]{ getProfileKey() };
+    }
+
+    @Override
+    protected void captureDefault() {
+        capturedDefault.clear();
+        capturedDefault.addAll(entries);
+    }
+
+    @Override
+    public void resetToDefault() {
+        entries.clear();
+        entries.addAll(capturedDefault);
     }
 
     @Override

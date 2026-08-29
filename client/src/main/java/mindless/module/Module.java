@@ -238,6 +238,18 @@ public class Module {
 
     public void onUpdate() {}
 
+    /**
+     * Called once per module after a profile has been applied, whether or not the module is on.
+     *
+     * <p>For modules that copy their settings into fields instead of reading them where they are
+     * used. Those copies are normally refreshed in {@link #onEnable}, which a profile load only
+     * reaches for modules it actually switches on -- a module left enabled across a profile change
+     * is never re-enabled, so it kept running on the settings of the profile before it. Sword
+     * Animation is the visible one: on in two profiles with different modes, switching between
+     * them changed nothing until the menu was opened.
+     */
+    public void onProfileLoad() {}
+
     public void guiUpdate() {}
 
     public void guiButtonToggled(ButtonSetting b) {}

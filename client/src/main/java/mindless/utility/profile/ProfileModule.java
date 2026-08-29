@@ -35,16 +35,23 @@ public class ProfileModule extends Module {
 
     @Override
     public void toggle() {
-        if (mc.currentScreen instanceof ClickGui || mc.currentScreen == null) {
-            Raven.profileManager.loadProfile(this.getName());
-
-            Raven.currentProfile = profile;
-
-            if (Settings.sendMessage.isToggled()) {
-                Utils.sendMessage("&7Enabled profile: &b" + this.getName());
-            }
-            saved = true;
+        if (!(mc.currentScreen instanceof ClickGui) && mc.currentScreen != null) {
+            return;
         }
+
+        Raven.profileManager.loadProfile(this.getName());
+
+        // The load sets this itself, and only when it got far enough to mean it. Claiming the
+        // profile regardless is how a failed load ended up presented as the new profile, with the
+        // old one's module state underneath it and "Update profile" ready to write that to disk.
+        if (Raven.currentProfile != profile) {
+            return;
+        }
+
+        if (Settings.sendMessage.isToggled()) {
+            Utils.sendMessage("&7Enabled profile: &b" + this.getName());
+        }
+        saved = true;
     }
 
     @Override

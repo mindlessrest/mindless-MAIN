@@ -709,8 +709,13 @@ public final class ModernClickGui extends ClickGui {
 
         if (module instanceof ProfileModule) {
             boolean active = module.isEnabled();
-            drawCenteredV(active ? "Active" : "Load", toggleX - 4, toggleX + 34, y, y + MODULE_ROW_HEIGHT,
-                    active ? GOLD : MUTED, .62f, active);
+            // The active row says whether the profile on disk still matches what is on screen.
+            // With auto save on this is only ever a flicker; with it off it is the only warning
+            // that closing the game will lose the last few changes.
+            boolean unsaved = active && !((ProfileModule) module).saved;
+            drawCenteredV(active ? (unsaved ? "Unsaved" : "Active") : "Load",
+                    toggleX - 4, toggleX + 34, y, y + MODULE_ROW_HEIGHT,
+                    active ? GOLD : MUTED, unsaved ? .55f : .62f, active);
         } else if (module instanceof Manager) {
             drawCenteredV("Create", toggleX - 4, toggleX + 34, y, y + MODULE_ROW_HEIGHT, MUTED, .6f, false);
         } else {
