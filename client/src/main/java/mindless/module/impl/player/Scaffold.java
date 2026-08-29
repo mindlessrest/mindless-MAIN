@@ -1,5 +1,6 @@
 package mindless.module.impl.player;
 
+import java.awt.Color;
 import mindless.event.ClientRotationEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.event.RightClickDelayTickEvent;
@@ -40,7 +41,7 @@ public class Scaffold extends Module {
     private static final int TIMESTAMP_RING = 512;
 
     private final SliderSetting rotationSpeed;
-    private final ButtonSetting sprint;
+    private final SliderSetting sprint;
     private final ButtonSetting keepY;
     private final ButtonSetting eagle;
     private final SliderSetting eagleSafety;
@@ -59,14 +60,25 @@ public class Scaffold extends Module {
 
     private boolean eagleActive;
 
+    private int wdBlocksPlaced;
+    private float wdOverrideYaw = Float.NaN;
+    private float wdOverrideSpeed = Float.NaN;
+
     private final long[] timestamps = new long[TIMESTAMP_RING];
     private int tsHead, tsCount;
 
-    /** Sixteen for the icon itself, two of padding either side. */
     private static final float BADGE_SIZE = 20.0F;
     private static final float BADGE_GAP = 4.0F;
     private static final float BADGE_RADIUS = 4.0F;
     private static final int BADGE_COLOUR = 0xD218181B;
+    private static final float OVERLAY_PAD_X = 10.0F;
+    private static final float OVERLAY_PAD_Y = 6.0F;
+    private static final float OVERLAY_RADIUS = 7.0F;
+    private static final long POP_DURATION_MS = 200L;
+
+    private float overlayScale = 0f;
+    private long overlayPopStart = -1L;
+    private boolean overlayVisible = false;
 
     private float posX = Float.NaN;
     private float posY = Float.NaN;
@@ -76,7 +88,7 @@ public class Scaffold extends Module {
     public Scaffold() {
         super("Scaffold", category.player);
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));
-        this.registerSetting(sprint = new ButtonSetting("Sprint", false));
+        this.registerSetting(sprint = new SliderSetting("Sprint", 0, new String[]{"Off", "Legit", "Watchdog"}));
         this.registerSetting(keepY = new ButtonSetting("Keep Y", false));
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
@@ -95,6 +107,9 @@ public class Scaffold extends Module {
         placeQueued = false;
         lastRotsValid = false;
         eagleActive = false;
+        wdBlocksPlaced = 0;
+        wdOverrideYaw = Float.NaN;
+        wdOverrideSpeed = Float.NaN;
     }
 
     @Override
@@ -122,6 +137,17 @@ public class Scaffold extends Module {
         if (!Utils.nullCheck()) return;
 
         float baseYaw = getBaseYaw();
+
+        if (!Float.isNaN(wdOverrideYaw) && (int) sprint.getInput() == 2) {
+            baseYaw = wdOverrideYaw;
+            float curYaw = lastRotsValid ? lastYaw : RotationUtils.serverRotations[0];
+            float diff = Math.abs(MathHelper.wrapAngleTo180_float(wdOverrideYaw - curYaw));
+            if (diff < 5f) {
+                wdOverrideYaw = Float.NaN;
+                wdOverrideSpeed = Float.NaN;
+            }
+        }
+
         BlockData best = findBestPlacement();
         boolean willFall = Utils.isEdgeOfBlock() && mc.thePlayer.motionY < 0.3;
 
@@ -217,7 +243,29 @@ public class Scaffold extends Module {
 
         updateEagle(placed);
 
-        if (!placed && sprint.isToggled()) {
+        int sprintMode = (int) sprint.getInput();
+        if (sprintMode == 0) return;
+
+        if (placed && sprintMode == 2) {
+            wdBlocksPlaced++;
+            if (wdBlocksPlaced >= 3) {
+                wdOverrideYaw = mc.thePlayer.rotationYaw;
+                wdOverrideSpeed = 2.2f * 18f;
+                wdBlocksPlaced = 0;
+            }
+        }
+
+        if (sprintMode == 2) {
+            float serverYaw = RotationUtils.serverRotations[0];
+            float diff = Math.abs(MathHelper.wrapAngleTo180_float(mc.thePlayer.rotationYaw)
+                    - MathHelper.wrapAngleTo180_float(serverYaw));
+            if (diff > 90f) {
+                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+                mc.thePlayer.setSprinting(false);
+            } else {
+                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), true);
+            }
+        } else if (!placed) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), true);
         }
     }
@@ -249,7 +297,28 @@ public class Scaffold extends Module {
         if (mc.currentScreen != null) return;
 
         int blocks = getTotalBlocks();
-        if (blocks <= 0) return;
+        boolean shouldShow = blocks > 0;
+
+        if (shouldShow && !overlayVisible) {
+            overlayVisible = true;
+            overlayPopStart = System.currentTimeMillis();
+        } else if (!shouldShow && overlayVisible) {
+            if (overlayPopStart > 0 && overlayScale <= 0.01f) {
+                overlayVisible = false;
+                overlayPopStart = -1L;
+                return;
+            }
+            if (overlayPopStart > 0 && overlayScale > 0.99f) {
+                overlayPopStart = System.currentTimeMillis();
+            }
+        }
+
+        float targetScale = shouldShow ? 1f : 0f;
+        if (overlayPopStart > 0) {
+            float progress = Math.min(1f, (System.currentTimeMillis() - overlayPopStart) / (float) POP_DURATION_MS);
+            overlayScale = shouldShow ? easeOutBack(progress) : 1f - progress;
+        }
+        if (overlayScale <= 0.01f) return;
 
         syncPosition();
         String text = blocks + " blocks";
@@ -261,17 +330,41 @@ public class Scaffold extends Module {
         float bps = computeBps();
         String bpsText = String.format("%.1f BPS", bps);
 
+        ItemStack badgeStack = getDisplayBlock();
+        float tX = textX(badgeStack);
+        float textH = mc.fontRendererObj.FONT_HEIGHT * 2 + 2;
+        float textW = Math.max(mc.fontRendererObj.getStringWidth(text), mc.fontRendererObj.getStringWidth(bpsText));
+        float totalW = (badgeStack != null ? BADGE_SIZE + BADGE_GAP : 0) + textW + OVERLAY_PAD_X * 2;
+        float totalH = textH + OVERLAY_PAD_Y * 2;
+        float bgX = posX - OVERLAY_PAD_X;
+        float bgY = posY - OVERLAY_PAD_Y;
+
+        float cx = bgX + totalW / 2f;
+        float cy = bgY + totalH / 2f;
+
         GL11.glPushMatrix();
         GlStateManager.enableBlend();
         GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        ItemStack badgeStack = getDisplayBlock();
-        float textX = textX(badgeStack);
-        mc.fontRendererObj.drawStringWithShadow(text, textX, posY, color);
-        mc.fontRendererObj.drawStringWithShadow(bpsText, textX, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
-        GlStateManager.disableBlend();
-        GL11.glPopMatrix();
+
+        GlStateManager.translate(cx, cy, 0);
+        GlStateManager.scale(overlayScale, overlayScale, 1f);
+        GlStateManager.translate(-cx, -cy, 0);
+
+        RoundedUtils.drawRound(bgX, bgY, totalW, totalH, OVERLAY_RADIUS, new Color(18, 18, 24, 210));
+
+        mc.fontRendererObj.drawStringWithShadow(text, tX, posY, color);
+        mc.fontRendererObj.drawStringWithShadow(bpsText, tX, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
 
         drawHeldBlockBadge(badgeStack);
+
+        GlStateManager.disableBlend();
+        GL11.glPopMatrix();
+    }
+
+    private static float easeOutBack(float t) {
+        float c1 = 1.70158f;
+        float c3 = c1 + 1f;
+        return 1f + c3 * (float) Math.pow(t - 1, 3) + c1 * (float) Math.pow(t - 1, 2);
     }
 
     /**
@@ -463,7 +556,7 @@ public class Scaffold extends Module {
     }
 
     private float getBaseYaw() {
-        if (sprint.isToggled()) return mc.thePlayer.rotationYaw;
+        if (((int) sprint.getInput()) != 0) return mc.thePlayer.rotationYaw;
 
         int forward = 0, strafe = 0;
         if (mc.gameSettings.keyBindForward.isKeyDown()) forward++;
@@ -602,7 +695,8 @@ public class Scaffold extends Module {
     }
 
     private float[] applySpeedCap(float curYaw, float curPitch, float targetYaw, float targetPitch) {
-        float maxStep = (float) rotationSpeed.getInput();
+        float maxStep = !Float.isNaN(wdOverrideSpeed) && (int) sprint.getInput() == 2
+                ? wdOverrideSpeed : (float) rotationSpeed.getInput();
         if (maxStep <= 1) return new float[]{targetYaw, targetPitch};
         if (maxStep >= 360) return new float[]{targetYaw, targetPitch};
 
