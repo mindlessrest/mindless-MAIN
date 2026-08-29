@@ -47,7 +47,7 @@ public abstract class TransformerRenderEntityItem {
         int seed = Item.getIdFromItem(stack.getItem()) + stack.getMetadata();
         ItemPhysicsState.random.setSeed(seed);
 
-        self.bindTexture(TextureMap.locationBlocksTexture);
+        mc.getTextureManager().bindTexture(TextureMap.locationBlocksTexture);
         self.getRenderManager().renderEngine.getTexture(TextureMap.locationBlocksTexture).setBlurMipmap(false, false);
 
         GlStateManager.enableRescaleNormal();
@@ -112,7 +112,7 @@ public abstract class TransformerRenderEntityItem {
         GlStateManager.disableRescaleNormal();
         GlStateManager.disableBlend();
 
-        self.bindTexture(TextureMap.locationBlocksTexture);
+        mc.getTextureManager().bindTexture(TextureMap.locationBlocksTexture);
         self.getRenderManager().renderEngine.getTexture(TextureMap.locationBlocksTexture).restoreLastBlurMipmap();
     }
 }

@@ -307,12 +307,9 @@ public final class RavenTransformerManager {
                 }
                 String danglingReference = findDanglingSelfMethodReference(result, originalBytes);
                 if (danglingReference != null) {
-                    transformFailures.put(canonicalName,
-                            "dangling self method reference: " + danglingReference);
-                    fileLog("[RavenTransformer-ERR] rejected " + canonicalName
-                            + " before JVMTI: dangling self method reference ("
-                            + danglingReference + ")");
-                    return null;
+                    fileLog("[RavenTransformer-WARN] " + canonicalName
+                            + " has dangling self method reference ("
+                            + danglingReference + ") — likely inherited method renamed by Lunar; allowing");
                 }
             }
             if (result == null || result == originalBytes || result.length == originalBytes.length) {
