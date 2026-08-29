@@ -13,7 +13,6 @@ import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.renderer.GlStateManager;
 import org.lwjgl.input.Keyboard;
 
 import java.io.IOException;
@@ -27,9 +26,10 @@ import java.util.List;
  * ones that have it, and profiles have been saving it all along. There was simply no way to set it,
  * so the flag could only ever be false. This is the missing switch.
  *
- * <p>The picker lists modules in the arraylist's own order, so what you click reads the way it will
- * read on screen. Only enabled ones appear -- hiding something that is off has no visible effect
- * and would bury the handful of entries that matter under a hundred that do not.
+ * <p>With the arraylist on, the picker is the arraylist -- the real one, where it really sits, with
+ * its entries clicked in place. Reading a list somewhere else and mapping it back to what is on
+ * screen is work the screen can do for you. The panel is the fallback for when the arraylist is
+ * off and there is nothing on screen to point at.
  */
 public class HideModules extends Module {
     public HideModules() {
@@ -43,13 +43,18 @@ public class HideModules extends Module {
         }));
     }
 
-    /** The arraylist's own order, filtered to what is actually on screen. */
-    private static List<Module> visibleCandidates() {
+    /** Whether there is an arraylist on screen to click entries in. */
+    private static boolean arrayListVisible() {
+        return ModuleManager.hud != null && ModuleManager.hud.isEnabled();
+    }
+
+    /** The arraylist's own order, filtered to what it would name. Hidden entries stay in. */
+    private static List<Module> candidates() {
         List<Module> candidates = new ArrayList<Module>();
         synchronized (ModuleManager.organizedModules) {
             for (Module module : ModuleManager.organizedModules) {
                 if (module == null || !module.canBeEnabled || !module.isEnabled()) continue;
-                if (module == ModuleManager.commandLine) continue;
+                if (module == ModuleManager.commandLine || module instanceof HUD) continue;
                 candidates.add(module);
             }
         }
@@ -61,16 +66,30 @@ public class HideModules extends Module {
         private static final float PANEL_W = 260f;
         private static final float PADDING = 12f;
 
+        /** Set once on open: which of the two pickers this is. */
+        private boolean inPlace;
+
+        // --- panel fallback only
         private final List<Module> modules = new ArrayList<Module>();
         private float scroll;
         private float panelLeft, panelTop, panelHeight, listTop, listBottom;
 
+        // --- in-place only, refreshed every frame by the draw
+        private List<HUD.PickerRow> rows = new ArrayList<HUD.PickerRow>();
+
         @Override
         public void initGui() {
-            modules.clear();
-            modules.addAll(visibleCandidates());
+            inPlace = arrayListVisible();
+            buttonList.clear();
 
-            // The list grows with the number of enabled modules but never past the window.
+            if (inPlace) {
+                buttonList.add(new MindlessButton(0, width / 2 - 40, height - 34, 80, 20, "Done"));
+                return;
+            }
+
+            modules.clear();
+            modules.addAll(candidates());
+
             float desired = PADDING * 2f + 44f + modules.size() * ROW_HEIGHT;
             panelHeight = Math.min(desired, height - 40f);
             panelLeft = (width - PANEL_W) / 2f;
@@ -78,13 +97,49 @@ public class HideModules extends Module {
             listTop = panelTop + 44f;
             listBottom = panelTop + panelHeight - PADDING;
 
-            buttonList.clear();
             buttonList.add(new MindlessButton(0, (int) (panelLeft + PANEL_W / 2f - 40f),
                     (int) (panelTop + panelHeight + 8f), 80, 20, "Done"));
         }
 
         @Override
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+            if (inPlace) {
+                drawInPlace(mouseX, mouseY);
+            } else {
+                drawPanel(mouseX, mouseY);
+            }
+            super.drawScreen(mouseX, mouseY, partialTicks);
+        }
+
+        /**
+         * The arraylist itself, clickable.
+         *
+         * <p>A light scrim rather than the panel's heavier one: the point is to see the arraylist
+         * against the game exactly as it normally looks, so the backdrop only has to lift it enough
+         * to read as a mode you are in rather than the game you were playing.
+         */
+        private void drawInPlace(int mouseX, int mouseY) {
+            drawRect(0, 0, width, height, 0x66000000);
+            rows = HUD.renderHidePicker(mouseX, mouseY);
+
+            RavenFontRenderer font = FontManager.getHudRenderer(ModuleFont.nameOf(null), 1.0f);
+            String title = "Click an entry to hide it";
+            String subtitle = rows.isEmpty()
+                    ? "Nothing is enabled to hide"
+                    : hiddenCount(rows) + " of " + rows.size() + " hidden  -  struck through means hidden";
+            font.drawString(title, width / 2f - font.getStringWidth(title) / 2f, 14f, 0xFFFFFFFF, true);
+            font.drawString(subtitle, width / 2f - font.getStringWidth(subtitle) / 2f, 27f, 0xFF9AA0A6, true);
+        }
+
+        private static int hiddenCount(List<HUD.PickerRow> rows) {
+            int hidden = 0;
+            for (int i = 0; i < rows.size(); i++) {
+                if (rows.get(i).module.isHidden()) hidden++;
+            }
+            return hidden;
+        }
+
+        private void drawPanel(int mouseX, int mouseY) {
             drawRect(0, 0, width, height, 0x88000000);
 
             BlurUtils.prepareBlur(panelLeft, panelTop, PANEL_W, panelHeight);
@@ -99,27 +154,25 @@ public class HideModules extends Module {
             font.drawString("Hide from arraylist", panelLeft + PADDING, panelTop + PADDING,
                     0xFFFFFFFF, false);
 
-            int hiddenCount = 0;
+            int hidden = 0;
             for (int i = 0; i < modules.size(); i++) {
-                if (modules.get(i).isHidden()) hiddenCount++;
+                if (modules.get(i).isHidden()) hidden++;
             }
             String subtitle = modules.isEmpty()
                     ? "No modules are enabled"
-                    : hiddenCount + " of " + modules.size() + " hidden";
+                    : hidden + " of " + modules.size() + " hidden";
             font.drawString(subtitle, panelLeft + PADDING, panelTop + PADDING + 13f, 0xFF9AA0A6, false);
 
             scissor(panelLeft, listTop, panelLeft + PANEL_W, listBottom);
             for (int i = 0; i < modules.size(); i++) {
                 float rowTop = listTop + scroll + i * ROW_HEIGHT;
                 if (rowTop + ROW_HEIGHT < listTop || rowTop > listBottom) continue;
-                drawRow(font, modules.get(i), rowTop, mouseX, mouseY);
+                drawPanelRow(font, modules.get(i), rowTop, mouseX, mouseY);
             }
             org.lwjgl.opengl.GL11.glDisable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
-
-            super.drawScreen(mouseX, mouseY, partialTicks);
         }
 
-        private void drawRow(RavenFontRenderer font, Module module, float rowTop, int mouseX, int mouseY) {
+        private void drawPanelRow(RavenFontRenderer font, Module module, float rowTop, int mouseX, int mouseY) {
             float rowLeft = panelLeft + PADDING;
             float rowRight = panelLeft + PANEL_W - PADDING;
             boolean hovered = mouseX >= rowLeft && mouseX <= rowRight
@@ -152,15 +205,25 @@ public class HideModules extends Module {
 
         @Override
         protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
-            if (mouseButton == 0 && mouseY >= listTop && mouseY <= listBottom) {
-                float rowLeft = panelLeft + PADDING;
-                float rowRight = panelLeft + PANEL_W - PADDING;
-                if (mouseX >= rowLeft && mouseX <= rowRight) {
-                    int index = (int) Math.floor((mouseY - listTop - scroll) / ROW_HEIGHT);
-                    if (index >= 0 && index < modules.size()) {
-                        Module module = modules.get(index);
-                        module.setHidden(!module.isHidden());
-                        return;
+            if (mouseButton == 0) {
+                if (inPlace) {
+                    for (int i = 0; i < rows.size(); i++) {
+                        HUD.PickerRow row = rows.get(i);
+                        if (row.contains(mouseX, mouseY)) {
+                            row.module.setHidden(!row.module.isHidden());
+                            return;
+                        }
+                    }
+                } else if (mouseY >= listTop && mouseY <= listBottom) {
+                    float rowLeft = panelLeft + PADDING;
+                    float rowRight = panelLeft + PANEL_W - PADDING;
+                    if (mouseX >= rowLeft && mouseX <= rowRight) {
+                        int index = (int) Math.floor((mouseY - listTop - scroll) / ROW_HEIGHT);
+                        if (index >= 0 && index < modules.size()) {
+                            Module module = modules.get(index);
+                            module.setHidden(!module.isHidden());
+                            return;
+                        }
                     }
                 }
             }
@@ -170,6 +233,7 @@ public class HideModules extends Module {
         @Override
         public void handleMouseInput() throws IOException {
             super.handleMouseInput();
+            if (inPlace) return;
             int wheel = org.lwjgl.input.Mouse.getEventDWheel();
             if (wheel == 0) return;
             float content = modules.size() * ROW_HEIGHT;

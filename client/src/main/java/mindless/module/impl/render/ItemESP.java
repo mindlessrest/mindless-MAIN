@@ -28,6 +28,7 @@ import net.minecraft.potion.Potion;
 import net.minecraft.potion.PotionEffect;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
@@ -96,9 +97,18 @@ public class ItemESP extends Module {
     private final ButtonSetting showCount;
     private final ButtonSetting hideInGui;
 
-    /** Reused across frames; cleared and refilled each render rather than reallocated. */
+    /**
+     * What is on the ground, rebuilt on the tick rather than the frame.
+     *
+     * <p>Scanning every loaded entity, grouping it and boxing a map key is tick-rate work: the
+     * world only changes twenty times a second, and doing it per frame repeated all of it up to
+     * ten times for an identical answer, allocating a card and a boxed key each time round. The
+     * frame keeps the part that genuinely changes per frame -- interpolating each anchor and
+     * projecting it -- which is what makes the cards track smoothly instead of stepping.
+     */
+    private final List<Entry> entries = new ArrayList<Entry>();
     private final List<Card> cards = new ArrayList<Card>();
-    private final Map<Long, Card> groups = new HashMap<Long, Card>();
+    private final Map<Long, Entry> groups = new HashMap<Long, Entry>();
     private final double[] projected = new double[3];
     private RenderUtils.ProjectionContext projectionContext;
 
@@ -129,8 +139,19 @@ public class ItemESP extends Module {
 
     @Override
     public void onDisable() {
+        entries.clear();
         cards.clear();
         groups.clear();
+    }
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        if (!Utils.nullCheck() || mc.theWorld == null) {
+            entries.clear();
+            return;
+        }
+        collect();
     }
 
     @SubscribeEvent
@@ -145,7 +166,7 @@ public class ItemESP extends Module {
         }
         if (projectionContext == null) return;
 
-        collect(event.partialTicks);
+        project(event.partialTicks);
         if (cards.isEmpty()) return;
 
         // Far cards first, so the near ones end up on top of them.
@@ -162,9 +183,9 @@ public class ItemESP extends Module {
         }
     };
 
-    /** Gathers every dropped stack worth a card and projects it onto the screen. */
-    private void collect(float partialTicks) {
-        cards.clear();
+    /** Rebuilds the snapshot: which stacks are on the ground, and how they group. */
+    private void collect() {
+        entries.clear();
         groups.clear();
 
         double maxDistSq = maxDistance.getInput() * maxDistance.getInput();
@@ -183,58 +204,76 @@ public class ItemESP extends Module {
             Category matched = categoryOf(itemStack);
             if (matched == null || matched.setting == null || !matched.setting.isToggled()) continue;
 
-            double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks;
-            double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks;
-            double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks;
-
             if (stack) {
                 // Three-block cells. Loose enough that a burst of drops from one broken block lands
                 // in one cell, tight enough that two separate piles stay two cards.
-                long cell = (((long) Math.floor(x / 3.0) & 0x1FFFFF) << 42)
-                        | (((long) Math.floor(y / 3.0) & 0x1FFFFF) << 21)
-                        | ((long) Math.floor(z / 3.0) & 0x1FFFFF);
+                long cell = (((long) Math.floor(entity.posX / 3.0) & 0x1FFFFF) << 42)
+                        | (((long) Math.floor(entity.posY / 3.0) & 0x1FFFFF) << 21)
+                        | ((long) Math.floor(entity.posZ / 3.0) & 0x1FFFFF);
                 long key = cell * 31L + matched.ordinal();
-                Card existing = groups.get(key);
+                Entry existing = groups.get(key);
                 if (existing != null) {
                     existing.count += itemStack.stackSize;
                     continue;
                 }
-                Card card = project(matched, itemStack, x, y, z);
-                if (card != null) groups.put(key, card);
+                Entry entry = new Entry(matched, itemStack, itemStack.stackSize, entity);
+                groups.put(key, entry);
+                entries.add(entry);
                 continue;
             }
 
-            Card card = project(matched, itemStack, x, y, z);
-            if (card != null) cards.add(card);
+            entries.add(new Entry(matched, itemStack, itemStack.stackSize, entity));
         }
-
-        if (stack) cards.addAll(groups.values());
     }
 
     /**
-     * Places a card on the screen, or returns null when the item is not on it.
+     * Puts the snapshot on the screen at this frame's camera.
+     *
+     * <p>Anchors are interpolated here rather than in the snapshot, so a card follows a bouncing
+     * item smoothly instead of stepping twenty times a second.
      *
      * <p>The depth guard is the same one the player ESP uses: a point within about five thousandths
      * of the near plane diverges under perspective division, and anything at or past the far plane
      * is behind the camera.
      */
-    private Card project(Category matched, ItemStack itemStack, double x, double y, double z) {
+    private void project(float partialTicks) {
+        cards.clear();
         net.minecraft.client.renderer.entity.RenderManager renderManager = mc.getRenderManager();
-        double dx = x - renderManager.viewerPosX;
-        double dy = y - renderManager.viewerPosY;
-        double dz = z - renderManager.viewerPosZ;
-        if (!RenderUtils.projectTo2D(projectionContext, dx, dy + 0.35, dz, projected)) return null;
 
-        double depth = projected[2];
-        if (depth <= 0.005 || depth >= 1.0) return null;
+        for (int i = 0; i < entries.size(); i++) {
+            Entry entry = entries.get(i);
+            Entity anchor = entry.anchor;
+            if (anchor == null || anchor.isDead) continue;
 
+            double x = anchor.lastTickPosX + (anchor.posX - anchor.lastTickPosX) * partialTicks;
+            double y = anchor.lastTickPosY + (anchor.posY - anchor.lastTickPosY) * partialTicks;
+            double z = anchor.lastTickPosZ + (anchor.posZ - anchor.lastTickPosZ) * partialTicks;
+
+            double dx = x - renderManager.viewerPosX;
+            double dy = y - renderManager.viewerPosY;
+            double dz = z - renderManager.viewerPosZ;
+            if (!RenderUtils.projectTo2D(projectionContext, dx, dy + 0.35, dz, projected)) continue;
+
+            double depth = projected[2];
+            if (depth <= 0.005 || depth >= 1.0) continue;
+
+            Card card = i < cardPool.size() ? cardPool.get(i) : newPooledCard();
+            card.category = entry.category;
+            card.icon = entry.icon;
+            card.count = entry.count;
+            card.screenX = (float) projected[0];
+            card.screenY = (float) projected[1];
+            card.distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            cards.add(card);
+        }
+    }
+
+    /** Cards are rebuilt every frame, so they are reused rather than reallocated. */
+    private final List<Card> cardPool = new ArrayList<Card>();
+
+    private Card newPooledCard() {
         Card card = new Card();
-        card.category = matched;
-        card.icon = itemStack;
-        card.count = itemStack.stackSize;
-        card.screenX = (float) projected[0];
-        card.screenY = (float) projected[1];
-        card.distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        cardPool.add(card);
         return card;
     }
 
@@ -372,6 +411,21 @@ public class ItemESP extends Module {
             if (id == Potion.jump.id) return Category.JUMP;
         }
         return null;
+    }
+
+    /** One card's worth of the world, as of the last tick. */
+    private static final class Entry {
+        private final Category category;
+        private final ItemStack icon;
+        private final Entity anchor;
+        private int count;
+
+        Entry(Category category, ItemStack icon, int count, Entity anchor) {
+            this.category = category;
+            this.icon = icon;
+            this.count = count;
+            this.anchor = anchor;
+        }
     }
 
     private static final class Card {

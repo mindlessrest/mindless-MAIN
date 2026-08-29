@@ -444,6 +444,82 @@ public class HUD extends Module {
         return new float[] { left, top, left + maxWidth, top + lines.size() * rowHeight };
     }
 
+    /** One arraylist row, and the box the hide picker can click on to reach it. */
+    public static final class PickerRow {
+        public final Module module;
+        public final float left, top, right, bottom;
+
+        PickerRow(Module module, float left, float top, float right, float bottom) {
+            this.module = module;
+            this.left = left;
+            this.top = top;
+            this.right = right;
+            this.bottom = bottom;
+        }
+
+        public boolean contains(float x, float y) {
+            return x >= left && x <= right && y >= top && y <= bottom;
+        }
+    }
+
+    /**
+     * Draws the arraylist where it actually sits so its entries can be clicked in place.
+     *
+     * <p>Two things separate this from the live render. Hidden modules are drawn rather than
+     * skipped -- greyed and struck through, because a hidden entry that disappears is one you can
+     * never click again to bring back. And the row's box is handed back rather than just painted,
+     * since the picker has to know where each line landed to hit-test it; the widths here are per
+     * line, so the clickable area is the text, which is what you are aiming at.
+     *
+     * @return every drawn row, in draw order
+     */
+    public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY) {
+        RavenFontRenderer font = getHudFontRenderer();
+        java.util.List<Module> shown = new java.util.ArrayList<Module>();
+        boolean removeVelocity = ModuleManager.antiKnockback != null && ModuleManager.antiKnockback.isEnabled();
+        for (Module module : ModuleManager.organizedModules) {
+            if (!module.isEnabled() || module instanceof HUD) continue;
+            if (module == ModuleManager.commandLine) continue;
+            if (module instanceof mindless.module.impl.combat.Velocity && removeVelocity) continue;
+            shown.add(module);
+        }
+
+        java.util.List<PickerRow> rows = new java.util.ArrayList<PickerRow>();
+        if (shown.isEmpty()) return rows;
+
+        boolean right = alignRight != null && alignRight.isToggled();
+        float rowHeight = Math.max(10.0F, font.getFontHeight() + 2.0F);
+        float top = posY;
+
+        for (int i = 0; i < shown.size(); i++) {
+            Module module = shown.get(i);
+            String line = getHudRenderText(module);
+            float width = font.getStringWidth(line);
+            float lineX = right ? posX - width : posX;
+            float lineY = top + i * rowHeight;
+            boolean hidden = module.isHidden();
+            boolean hovered = mouseX >= lineX - 2f && mouseX <= lineX + width + 2f
+                    && mouseY >= lineY - 1f && mouseY <= lineY + rowHeight - 1f;
+
+            if (hovered) {
+                RenderUtils.drawRect(lineX - 2f, lineY - 1f, lineX + width + 2f,
+                        lineY + rowHeight - 1f, 0x44FFFFFF);
+            }
+
+            int color = hidden ? 0xFF6E747B : getHudColor(i * 45.0D);
+            if (!hidden) drawDecoration(font, line, lineX, lineY, color);
+            font.drawString(line, lineX, lineY, color, false);
+            if (hidden) {
+                float strike = lineY + font.getFontHeight() / 2f;
+                RenderUtils.drawRect(lineX, strike, lineX + width, strike + 1f, 0xFF6E747B);
+            }
+
+            rows.add(new PickerRow(module, lineX - 2f, lineY - 1f,
+                    lineX + width + 2f, lineY + rowHeight - 1f));
+        }
+        return rows;
+    }
+
     public static void setDesignerTopLeft(float left, float top) {
         RavenFontRenderer font = getHudFontRenderer();
         int width = Math.max(font.getStringWidth("Kill Aura"),
