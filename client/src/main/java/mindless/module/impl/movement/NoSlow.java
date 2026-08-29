@@ -26,7 +26,7 @@ public class NoSlow extends Module {
     public static ButtonSetting swordOnly;
     public static ButtonSetting vanillaSword;
 
-    private final String[] NOSLOW_MODES = new String[] { "Vanilla", "Beta" };
+    private final String[] NOSLOW_MODES = new String[] { "Vanilla", "Watchdog" };
 
     public boolean noSlowing;
     private boolean setJump;
