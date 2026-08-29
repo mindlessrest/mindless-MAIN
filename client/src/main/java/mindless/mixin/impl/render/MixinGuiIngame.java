@@ -5,6 +5,8 @@ import mindless.utility.shader.RoundedUtils;
 import mindless.module.impl.client.Settings;
 import mindless.utility.HudRenderBounds;
 import mindless.utility.TextGlowUtils;
+import mindless.utility.font.RavenFontRenderer;
+import mindless.module.impl.render.ScoreboardModule;
 import mindless.runtime.GuiIngameState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
@@ -45,6 +47,36 @@ public abstract class MixinGuiIngame {
     @Shadow
     public abstract FontRenderer getFontRenderer();
 
+    /**
+     * Measures through whichever face is actually going to draw the line.
+     *
+     * <p>The panel sizes itself from these numbers, so taking them from the Minecraft font while
+     * drawing in another one is how a scoreboard ends up with its longest line hanging over the
+     * edge of its own background.
+     */
+    @Unique
+    private int raven$width(RavenFontRenderer custom, FontRenderer vanilla, String text) {
+        return custom != null ? custom.getStringWidth(text) : vanilla.getStringWidth(text);
+    }
+
+    @Unique
+    private void raven$drawLine(RavenFontRenderer custom, FontRenderer vanilla, String text,
+                                float x, float y, boolean glow) {
+        if (custom != null) {
+            if (glow) {
+                TextGlowUtils.drawGlow(custom, text, x, y, 0xFFFFFFFF);
+            }
+            custom.drawString(text, x, y, 0xFFFFFFFF, false);
+            return;
+        }
+
+        if (glow) {
+            TextGlowUtils.drawGlow(vanilla, text, x, y, 0xFFFFFFFF);
+        }
+        // The float overload with no drop shadow, which is what the int one resolves to anyway.
+        vanilla.drawString(text, x, y, 0xFFFFFFFF, false);
+    }
+
     @Inject(method = "renderGameOverlay", at = @At("HEAD"))
     private void raven$beginHudBlurFrame(float partialTicks, CallbackInfo callbackInfo) {
         BlurUtils.beginFrame();
@@ -79,8 +111,13 @@ public abstract class MixinGuiIngame {
         }
 
         FontRenderer font = getFontRenderer();
+        // A bundled face brings its own size, so the panel's fixed shrink is not applied on top of
+        // it -- the module's own scale setting is the one control over how large it comes out.
+        RavenFontRenderer customFont = ScoreboardModule.getCustomFont();
+        float fontScale = customFont != null ? 1.0f : SCOREBOARD_SCALE;
+
         String displayTitle = objective.getDisplayName();
-        int contentWidth = font.getStringWidth(displayTitle);
+        int contentWidth = raven$width(customFont, font, displayTitle);
         for (Score score : raven$visibleScores) {
             ScorePlayerTeam team = scoreboard.getPlayersTeam(score.getPlayerName());
             String line =
@@ -88,13 +125,13 @@ public abstract class MixinGuiIngame {
             raven$visibleLines.add(line);
             GuiIngameState.visibleScores.add(score);
             GuiIngameState.visibleLines.add(line);
-            contentWidth = Math.max(contentWidth, font.getStringWidth(line));
+            contentWidth = Math.max(contentWidth, raven$width(customFont, font, line));
         }
 
-        int lineHeight = font.FONT_HEIGHT;
-        float scaledLineHeight = lineHeight * SCOREBOARD_SCALE;
+        int lineHeight = customFont != null ? customFont.getLineHeight() : font.FONT_HEIGHT;
+        float scaledLineHeight = lineHeight * fontScale;
         float rowsHeight = raven$visibleScores.size() * scaledLineHeight;
-        float panelWidth = contentWidth * SCOREBOARD_SCALE + GuiIngameState.HORIZONTAL_PADDING * 2.0f;
+        float panelWidth = contentWidth * fontScale + GuiIngameState.HORIZONTAL_PADDING * 2.0f;
         float panelHeight = (raven$visibleScores.size() + 1) * scaledLineHeight
                 + GuiIngameState.VERTICAL_PADDING * 2.0f + 2.0f;
         float defaultBottom = resolution.getScaledHeight() / 2.0f + rowsHeight / 3.0f + 5.0f;
@@ -111,7 +148,10 @@ public abstract class MixinGuiIngame {
         Minecraft.getMinecraft().getFramebuffer().bindFramebuffer(true);
         GL11.glColorMask(true, true, true, true);
 
-        BlurUtils.prepareBlur();
+        // Region form: the mask is one screen-sized buffer shared by every panel, and the
+        // scoreboard only ever writes its own rectangle into it. Wiping all of it here was a
+        // full-screen clear every frame for the sake of a few hundred pixels.
+        BlurUtils.prepareBlur(left, top, right - left, bottom - top);
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
                 GuiIngameState.panelRadius(), 0xFF000000);
         BlurUtils.blurEndRegion(2, 2.4f, GuiIngameState.PANEL_BLUR_OPACITY,
@@ -132,25 +172,20 @@ public abstract class MixinGuiIngame {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
 
         GlStateManager.pushMatrix();
-        GlStateManager.scale(SCOREBOARD_SCALE, SCOREBOARD_SCALE, 1.0f);
+        GlStateManager.scale(fontScale, fontScale, 1.0f);
 
-        float titleVisualWidth = font.getStringWidth(displayTitle) * SCOREBOARD_SCALE;
-        int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / SCOREBOARD_SCALE);
-        int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / SCOREBOARD_SCALE);
-        if (Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled()) {
-            TextGlowUtils.drawGlow(font, displayTitle, titleX, titleY, 0xFFFFFFFF);
-        }
-        font.drawString(displayTitle, titleX, titleY, 0xFFFFFFFF);
+        boolean glow = Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled();
+        float titleVisualWidth = raven$width(customFont, font, displayTitle) * fontScale;
+        int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / fontScale);
+        int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / fontScale);
+        raven$drawLine(customFont, font, displayTitle, titleX, titleY, glow);
 
         for (int i = 0; i < raven$visibleScores.size(); i++) {
             String playerText = raven$visibleLines.get(i);
             int y = Math.round((bottom - GuiIngameState.VERTICAL_PADDING
-                    - (i + 1) * scaledLineHeight) / SCOREBOARD_SCALE);
-            int lineX = Math.round((left + GuiIngameState.HORIZONTAL_PADDING) / SCOREBOARD_SCALE);
-            if (Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled()) {
-                TextGlowUtils.drawGlow(font, playerText, lineX, y, 0xFFFFFFFF);
-            }
-            font.drawString(playerText, lineX, y, 0xFFFFFFFF);
+                    - (i + 1) * scaledLineHeight) / fontScale);
+            int lineX = Math.round((left + GuiIngameState.HORIZONTAL_PADDING) / fontScale);
+            raven$drawLine(customFont, font, playerText, lineX, y, glow);
         }
 
         GlStateManager.popMatrix();

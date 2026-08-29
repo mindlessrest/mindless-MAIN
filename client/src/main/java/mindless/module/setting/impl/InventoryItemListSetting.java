@@ -5,13 +5,29 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
+/**
+ * An item list where every entry also carries the hotbar slot it should end up in.
+ *
+ * <p>Slots are held by position rather than keyed by the item, because one item is allowed to
+ * appear in the list more than once. Wool is the case that needs it: two stacks going to two
+ * chosen slots is one entry per stack, and a map from item to slot has nowhere to put the second.
+ * The list and the slots move together -- adding, removing and reordering all touch both.
+ */
 public class InventoryItemListSetting extends ItemListSetting {
     private static final int DEFAULT_ASSIGNED_SLOT = 1;
-    private final Map<String, Integer> assignedSlots = new HashMap<String, Integer>();
+    /**
+     * The one registry name allowed in the list twice.
+     *
+     * <p>Deliberately not a general rule. Two entries for the same sword are two rows competing
+     * for one item and the second can never be satisfied; two entries for wool are two stacks,
+     * which is an ordinary thing to be carrying and an ordinary thing to want laid out.
+     */
+    private static final String DUPLICATABLE_REGISTRY = "minecraft:wool";
+
+    private final List<Integer> assignedSlots = new ArrayList<Integer>();
 
     public InventoryItemListSetting(String name) {
         super(name);
@@ -29,40 +45,104 @@ public class InventoryItemListSetting extends ItemListSetting {
         super(group, name, legacyProfileKeys);
     }
 
+    /** Whether another copy of this entry may be added. */
+    public static boolean allowsDuplicates(String storageId) {
+        return DUPLICATABLE_REGISTRY.equals(registryOf(storageId));
+    }
+
+    private static String registryOf(String storageId) {
+        if (storageId == null || storageId.isEmpty() || storageId.charAt(0) == '@') {
+            return storageId;
+        }
+        if (storageId.endsWith(":*")) {
+            return storageId.substring(0, storageId.length() - 2);
+        }
+        String[] parts = storageId.split(":");
+        return parts.length >= 3 ? parts[0] + ":" + parts[1] : storageId;
+    }
+
     @Override
     public void addItem(String storageId) {
-        if (storageId == null || storageId.isEmpty() || containsItem(storageId)) {
+        if (storageId == null || storageId.isEmpty()) {
             return;
         }
-        super.addItem(storageId);
-        assignedSlots.put(storageId, DEFAULT_ASSIGNED_SLOT);
+        if (containsItem(storageId) && !allowsDuplicates(storageId)) {
+            return;
+        }
+
+        // Straight onto the list rather than through addBlock, which refuses anything already
+        // present and would silently drop the second wool entry.
+        syncSlots();
+        getItems().add(storageId);
+        assignedSlots.add(DEFAULT_ASSIGNED_SLOT);
     }
 
     @Override
     public void removeItem(String storageId) {
-        super.removeItem(storageId);
-        assignedSlots.remove(storageId);
+        syncSlots();
+        int index = getItems().indexOf(storageId);
+        if (index < 0) {
+            return;
+        }
+        removeItem(index);
     }
 
+    /** Removes one row, which is the only way to remove the right one when an item repeats. */
+    public void removeItem(int index) {
+        syncSlots();
+        List<String> items = getItems();
+        if (index < 0 || index >= items.size()) {
+            return;
+        }
+        items.remove(index);
+        assignedSlots.remove(index);
+    }
+
+    public int getAssignedSlot(int index) {
+        syncSlots();
+        if (index < 0 || index >= assignedSlots.size()) {
+            return DEFAULT_ASSIGNED_SLOT;
+        }
+        Integer slot = assignedSlots.get(index);
+        return slot == null ? DEFAULT_ASSIGNED_SLOT : slot;
+    }
+
+    public void setAssignedSlot(int index, Integer slot) {
+        syncSlots();
+        if (index < 0 || index >= assignedSlots.size()) {
+            return;
+        }
+        assignedSlots.set(index, slot == null || slot < 1 || slot > 9 ? DEFAULT_ASSIGNED_SLOT : slot);
+    }
+
+    /** The first row for this item. Kept for callers that have an id and no row. */
     public Integer getAssignedSlot(String storageId) {
-        if (storageId == null || !getItems().contains(storageId)) {
+        if (storageId == null) {
             return null;
         }
-        Integer slot = assignedSlots.get(storageId);
-        return slot != null ? slot : DEFAULT_ASSIGNED_SLOT;
+        int index = getItems().indexOf(storageId);
+        return index < 0 ? null : getAssignedSlot(index);
     }
 
     public void setAssignedSlot(String storageId, Integer slot) {
-        if (storageId == null || !getItems().contains(storageId)) {
+        if (storageId == null) {
             return;
         }
-        assignedSlots.put(storageId, slot == null || slot < 1 || slot > 9 ? DEFAULT_ASSIGNED_SLOT : slot);
+        int index = getItems().indexOf(storageId);
+        if (index >= 0) {
+            setAssignedSlot(index, slot);
+        }
     }
 
     public void moveItem(String storageId, int toIndex) {
+        moveItem(getItems().indexOf(storageId), toIndex);
+    }
+
+    /** Reorders one row, carrying its slot with it. */
+    public void moveItem(int fromIndex, int toIndex) {
+        syncSlots();
         List<String> items = getItems();
-        int fromIndex = items.indexOf(storageId);
-        if (fromIndex < 0) {
+        if (fromIndex < 0 || fromIndex >= items.size()) {
             return;
         }
 
@@ -71,11 +151,28 @@ public class InventoryItemListSetting extends ItemListSetting {
             return;
         }
 
-        items.remove(fromIndex);
-        if (clampedIndex > items.size()) {
-            clampedIndex = items.size();
-        }
+        String storageId = items.remove(fromIndex);
+        Integer slot = assignedSlots.remove(fromIndex);
         items.add(clampedIndex, storageId);
+        assignedSlots.add(clampedIndex, slot);
+    }
+
+    /**
+     * Brings the slot list back to the same length as the item list.
+     *
+     * <p>The item list is reachable directly through {@code getItems()} and the inherited
+     * add/remove helpers, so it can be changed without this class hearing about it. Rather than
+     * chase every route in, the two are reconciled before any read: extra rows get the default
+     * slot and orphaned slots are dropped.
+     */
+    private void syncSlots() {
+        int size = getItems().size();
+        while (assignedSlots.size() > size) {
+            assignedSlots.remove(assignedSlots.size() - 1);
+        }
+        while (assignedSlots.size() < size) {
+            assignedSlots.add(DEFAULT_ASSIGNED_SLOT);
+        }
     }
 
     @Override
@@ -114,12 +211,7 @@ public class InventoryItemListSetting extends ItemListSetting {
             }
 
             if (entry.isJsonPrimitive()) {
-                String storageId = entry.getAsString();
-                if (storageId == null || storageId.isEmpty() || containsItem(storageId)) {
-                    continue;
-                }
-                super.addItem(storageId);
-                assignedSlots.put(storageId, DEFAULT_ASSIGNED_SLOT);
+                addLoadedRow(entry.getAsString(), DEFAULT_ASSIGNED_SLOT);
                 continue;
             }
 
@@ -132,12 +224,6 @@ public class InventoryItemListSetting extends ItemListSetting {
                 continue;
             }
 
-            String storageId = object.get("id").getAsString();
-            if (storageId == null || storageId.isEmpty() || containsItem(storageId)) {
-                continue;
-            }
-
-            super.addItem(storageId);
             int slot = DEFAULT_ASSIGNED_SLOT;
             if (object.has("slot") && object.get("slot").isJsonPrimitive()) {
                 int configuredSlot = object.get("slot").getAsInt();
@@ -145,17 +231,30 @@ public class InventoryItemListSetting extends ItemListSetting {
                     slot = configuredSlot;
                 }
             }
-            assignedSlots.put(storageId, slot);
+            addLoadedRow(object.get("id").getAsString(), slot);
         }
+    }
+
+    private void addLoadedRow(String storageId, int slot) {
+        if (storageId == null || storageId.isEmpty()) {
+            return;
+        }
+        if (getItems().contains(storageId) && !allowsDuplicates(storageId)) {
+            return;
+        }
+        getItems().add(storageId);
+        assignedSlots.add(slot);
     }
 
     @Override
     public JsonArray toJsonArray() {
+        syncSlots();
         JsonArray array = new JsonArray();
-        for (String storageId : getItems()) {
+        List<String> items = getItems();
+        for (int i = 0; i < items.size(); i++) {
             JsonObject object = new JsonObject();
-            object.addProperty("id", storageId);
-            object.add("slot", new JsonPrimitive(getAssignedSlot(storageId)));
+            object.addProperty("id", items.get(i));
+            object.add("slot", new JsonPrimitive(getAssignedSlot(i)));
             array.add(object);
         }
         return array;

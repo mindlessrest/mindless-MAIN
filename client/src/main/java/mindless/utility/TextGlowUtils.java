@@ -1,5 +1,6 @@
 package mindless.utility;
 
+import mindless.utility.font.GlyphBatch;
 import mindless.utility.font.RavenFontRenderer;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.util.StringUtils;
@@ -38,9 +39,21 @@ public final class TextGlowUtils {
         void draw(String text, float x, float y, int color);
     }
 
+    /**
+     * Twenty-one passes over the same string, so the whole ring is held open as one batch.
+     * Each pass differs only in offset and tint -- both of which travel per vertex -- so there is
+     * nothing between them that would force a draw, and closing the batch once instead of
+     * twenty-one times turns a glowing line of text into a single draw call.
+     */
     public static void drawGlow(RavenFontRenderer font, String text, float x, float y, int color) {
         if (font == null) return;
-        draw((s, px, py, c) -> font.drawString(s, px, py, c, false), text, x, y, color);
+        GlyphBatch.begin();
+        try {
+            draw((s, px, py, c) -> font.drawString(s, px, py, c, false), text, x, y, color);
+        }
+        finally {
+            GlyphBatch.end();
+        }
     }
 
     public static void drawGlow(FontRenderer font, String text, float x, float y, int color) {

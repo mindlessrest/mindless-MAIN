@@ -1233,6 +1233,30 @@ public class RenderUtils implements IMinecraftInstance {
         return framebuffer == null || framebuffer.framebufferWidth != mc.displayWidth || framebuffer.framebufferHeight != mc.displayHeight;
     }
 
+    /**
+     * A framebuffer some fraction of the display in each axis, for passes whose output has no
+     * detail worth keeping at full resolution.
+     *
+     * <p>A wide blur is the obvious case. Its whole purpose is to destroy high frequencies, so the
+     * pixels it writes carry nothing that a half-size buffer cannot hold -- but the cost of
+     * producing them is per output pixel times per tap, and halving each axis removes three
+     * quarters of that. The result is stretched back up by the hardware sampler on the way out,
+     * which is exactly the smooth interpolation a blur wanted anyway.
+     */
+    public static Framebuffer createScaledFrameBuffer(Framebuffer framebuffer, int divisor, boolean depth) {
+        int width = Math.max(1, mc.displayWidth / Math.max(1, divisor));
+        int height = Math.max(1, mc.displayHeight / Math.max(1, divisor));
+
+        if (framebuffer == null || framebuffer.framebufferWidth != width || framebuffer.framebufferHeight != height) {
+            if (framebuffer != null) {
+                framebuffer.deleteFramebuffer();
+            }
+            return new Framebuffer(width, height, depth);
+        }
+
+        return framebuffer;
+    }
+
     public static void drawFramebufferFullscreen(Framebuffer framebuffer) {
         if (framebuffer == null) return;
         ScaledResolution sr = ScaledResolutionCache.get();
@@ -1572,6 +1596,20 @@ public class RenderUtils implements IMinecraftInstance {
     }
 
     /**
+     * glPopAttrib for a caller that pushed a narrow mask, resyncing only what that mask can undo.
+     *
+     * <p>Every reader below is a driver query, and a driver query is the one kind of GL call that
+     * cannot be pipelined -- it has to produce an answer now. Reading nineteen of them back after
+     * a pop that only restored the scissor box and the blend state is eighteen stalls spent
+     * confirming that nothing changed. Pass the same mask the matching {@code glPushAttrib} used
+     * and only the groups that mask actually covers are read.
+     */
+    public static void popAttrib(int mask) {
+        GL11.glPopAttrib();
+        syncGlStateFromDriver(mask);
+    }
+
+    /**
      * Reads the states GlStateManager caches back off the driver and feeds them to it.
      *
      * <p>Each setter forwards to GL exactly when its cache disagrees with the value passed. Passing
@@ -1581,54 +1619,98 @@ public class RenderUtils implements IMinecraftInstance {
      * used for -- the per-element rounded-rect path fences its own state and never needs it.
      */
     public static void syncGlStateFromDriver() {
-        GL_STATE_COLOR.clear();
-        GL11.glGetFloat(GL11.GL_CURRENT_COLOR, GL_STATE_COLOR);
-        GlStateManager.resetColor();
-        GlStateManager.color(GL_STATE_COLOR.get(0), GL_STATE_COLOR.get(1),
-                GL_STATE_COLOR.get(2), GL_STATE_COLOR.get(3));
+        syncGlStateFromDriver(GL11.GL_ALL_ATTRIB_BITS);
+    }
 
-        if (GL11.glIsEnabled(GL11.GL_BLEND)) GlStateManager.enableBlend();
-        else GlStateManager.disableBlend();
-        GlStateManager.tryBlendFuncSeparate(
-                GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB), GL11.glGetInteger(GL14.GL_BLEND_DST_RGB),
-                GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA), GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA));
+    /**
+     * As above, but reading back only the groups the given attribute mask can restore.
+     *
+     * <p>A state is read whenever any bit in the mask could have put it back. GL_ENABLE_BIT covers
+     * every enable flag on its own, so it pulls in each of the toggles below; the buffer bits each
+     * carry their own enables as well as their settings; GL_CURRENT_BIT is the colour and nothing
+     * else. Anything the mask cannot reach was never restored, so the cache still describes it
+     * correctly and asking the driver would only stall.
+     */
+    public static void syncGlStateFromDriver(int mask) {
+        boolean enables = (mask & GL11.GL_ENABLE_BIT) != 0;
+        boolean colorBuffer = (mask & GL11.GL_COLOR_BUFFER_BIT) != 0;
+        boolean depthBuffer = (mask & GL11.GL_DEPTH_BUFFER_BIT) != 0;
+        boolean lighting = (mask & GL11.GL_LIGHTING_BIT) != 0;
+        boolean polygon = (mask & GL11.GL_POLYGON_BIT) != 0;
+        boolean texture = (mask & GL11.GL_TEXTURE_BIT) != 0;
 
-        if (GL11.glIsEnabled(GL11.GL_DEPTH_TEST)) GlStateManager.enableDepth();
-        else GlStateManager.disableDepth();
-        if (GL11.glIsEnabled(GL11.GL_ALPHA_TEST)) GlStateManager.enableAlpha();
-        else GlStateManager.disableAlpha();
-        if (GL11.glIsEnabled(GL11.GL_CULL_FACE)) GlStateManager.enableCull();
-        else GlStateManager.disableCull();
-        if (GL11.glIsEnabled(GL11.GL_LIGHTING)) GlStateManager.enableLighting();
-        else GlStateManager.disableLighting();
+        if ((mask & GL11.GL_CURRENT_BIT) != 0) {
+            GL_STATE_COLOR.clear();
+            GL11.glGetFloat(GL11.GL_CURRENT_COLOR, GL_STATE_COLOR);
+            GlStateManager.resetColor();
+            GlStateManager.color(GL_STATE_COLOR.get(0), GL_STATE_COLOR.get(1),
+                    GL_STATE_COLOR.get(2), GL_STATE_COLOR.get(3));
+        }
 
-        GL_STATE_FLAGS.clear();
-        GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK, GL_STATE_FLAGS);
-        GlStateManager.depthMask(GL_STATE_FLAGS.get(0) != 0);
+        if (enables || colorBuffer) {
+            if (GL11.glIsEnabled(GL11.GL_BLEND)) GlStateManager.enableBlend();
+            else GlStateManager.disableBlend();
+            if (GL11.glIsEnabled(GL11.GL_ALPHA_TEST)) GlStateManager.enableAlpha();
+            else GlStateManager.disableAlpha();
+        }
 
-        GL_STATE_FLAGS.clear();
-        GL11.glGetBoolean(GL11.GL_COLOR_WRITEMASK, GL_STATE_FLAGS);
-        GlStateManager.colorMask(GL_STATE_FLAGS.get(0) != 0, GL_STATE_FLAGS.get(1) != 0,
-                GL_STATE_FLAGS.get(2) != 0, GL_STATE_FLAGS.get(3) != 0);
+        if (colorBuffer) {
+            GlStateManager.tryBlendFuncSeparate(
+                    GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB), GL11.glGetInteger(GL14.GL_BLEND_DST_RGB),
+                    GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA), GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA));
 
-        GL_STATE_COLOR.clear();
-        GL11.glGetFloat(GL11.GL_COLOR_CLEAR_VALUE, GL_STATE_COLOR);
-        GlStateManager.clearColor(GL_STATE_COLOR.get(0), GL_STATE_COLOR.get(1),
-                GL_STATE_COLOR.get(2), GL_STATE_COLOR.get(3));
+            GL_STATE_FLAGS.clear();
+            GL11.glGetBoolean(GL11.GL_COLOR_WRITEMASK, GL_STATE_FLAGS);
+            GlStateManager.colorMask(GL_STATE_FLAGS.get(0) != 0, GL_STATE_FLAGS.get(1) != 0,
+                    GL_STATE_FLAGS.get(2) != 0, GL_STATE_FLAGS.get(3) != 0);
 
-        GlStateManager.alphaFunc(GL11.glGetInteger(GL11.GL_ALPHA_TEST_FUNC),
-                GL11.glGetFloat(GL11.GL_ALPHA_TEST_REF));
-        GlStateManager.shadeModel(GL11.glGetInteger(GL11.GL_SHADE_MODEL));
+            GL_STATE_COLOR.clear();
+            GL11.glGetFloat(GL11.GL_COLOR_CLEAR_VALUE, GL_STATE_COLOR);
+            GlStateManager.clearColor(GL_STATE_COLOR.get(0), GL_STATE_COLOR.get(1),
+                    GL_STATE_COLOR.get(2), GL_STATE_COLOR.get(3));
 
-        // GlStateManager keeps one texture record per unit and picks the record by the active
-        // unit, so that has to agree first or the rest is filed against the wrong texture unit.
-        // Out-of-range units would index past the end of that array, so they are left alone.
-        int activeUnit = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
-        if (activeUnit >= GL13.GL_TEXTURE0 && activeUnit <= GL13.GL_TEXTURE7) {
-            GlStateManager.setActiveTexture(activeUnit);
-            if (GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) GlStateManager.enableTexture2D();
-            else GlStateManager.disableTexture2D();
-            GlStateManager.bindTexture(GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D));
+            GlStateManager.alphaFunc(GL11.glGetInteger(GL11.GL_ALPHA_TEST_FUNC),
+                    GL11.glGetFloat(GL11.GL_ALPHA_TEST_REF));
+        }
+
+        if (enables || depthBuffer) {
+            if (GL11.glIsEnabled(GL11.GL_DEPTH_TEST)) GlStateManager.enableDepth();
+            else GlStateManager.disableDepth();
+        }
+
+        if (depthBuffer) {
+            GL_STATE_FLAGS.clear();
+            GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK, GL_STATE_FLAGS);
+            GlStateManager.depthMask(GL_STATE_FLAGS.get(0) != 0);
+        }
+
+        if (enables || polygon) {
+            if (GL11.glIsEnabled(GL11.GL_CULL_FACE)) GlStateManager.enableCull();
+            else GlStateManager.disableCull();
+        }
+
+        if (enables || lighting) {
+            if (GL11.glIsEnabled(GL11.GL_LIGHTING)) GlStateManager.enableLighting();
+            else GlStateManager.disableLighting();
+        }
+
+        if (lighting) {
+            GlStateManager.shadeModel(GL11.glGetInteger(GL11.GL_SHADE_MODEL));
+        }
+
+        if (enables || texture) {
+            // GlStateManager keeps one texture record per unit and picks the record by the active
+            // unit, so that has to agree first or the rest is filed against the wrong texture unit.
+            // Out-of-range units would index past the end of that array, so they are left alone.
+            int activeUnit = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+            if (activeUnit >= GL13.GL_TEXTURE0 && activeUnit <= GL13.GL_TEXTURE7) {
+                GlStateManager.setActiveTexture(activeUnit);
+                if (GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) GlStateManager.enableTexture2D();
+                else GlStateManager.disableTexture2D();
+                if (texture) {
+                    GlStateManager.bindTexture(GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D));
+                }
+            }
         }
     }
 

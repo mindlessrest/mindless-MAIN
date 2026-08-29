@@ -5,6 +5,10 @@ import mindless.module.impl.render.HUD;
 import mindless.utility.RenderUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.WorldRenderer;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 
 import java.awt.Color;
@@ -27,6 +31,8 @@ public final class VisualizerRenderer {
     private static long lastFrameNanos;
     /** Eases the whole thing in and out instead of popping when audio starts or stops. */
     private static float presence;
+    /** Reused across frames; the bars are redrawn every frame and never outlive one. */
+    private static final QuadBatch QUAD_BATCH = new QuadBatch();
 
     private VisualizerRenderer() {
     }
@@ -202,6 +208,15 @@ public final class VisualizerRenderer {
         boolean gradient = module.gradientEnabled();
         boolean verticalGradient = module.gradientVertical();
 
+        // Every bar that comes out a plain quad goes into one batch. Drawn one at a time, each was
+        // its own tessellator pass wrapped in a dozen state calls, and at fifty-five bars that is
+        // fifty-five draws and the better part of a thousand calls to put up a shape the hardware
+        // finishes in microseconds. Every bar in a given style takes the same path -- barWidth does
+        // not vary between them -- so the batch either takes all of them or none, and nothing can
+        // land out of order with the rounded styles below.
+        QuadBatch batch = QUAD_BATCH;
+        batch.begin(gradient && verticalGradient);
+
         for (int i = 0; i < count; i++) {
             // Mirroring folds the spectrum so bass sits at the centre and treble runs out to both
             // edges -- the same data, read from the middle outwards.
@@ -226,12 +241,13 @@ public final class VisualizerRenderer {
             switch (style) {
                 case AudioVisualizer.STYLE_SQUARE:
                     if (gradient && verticalGradient) {
-                        drawVertical(left, top, barWidth, barHeight, baseColor,
-                                module.barColor(1.0F), topAlpha);
+                        batch.add(left, top, left + barWidth, top + barHeight,
+                                withAlpha(module.barColor(1.0F), topAlpha),
+                                withAlpha(baseColor, topAlpha));
                     }
                     else {
-                        RenderUtils.drawRect(left, top, left + barWidth, bottom,
-                                withAlpha(baseColor, topAlpha));
+                        int flat = withAlpha(baseColor, topAlpha);
+                        batch.add(left, top, left + barWidth, bottom, flat, flat);
                     }
                     break;
 
@@ -261,12 +277,13 @@ public final class VisualizerRenderer {
                     // case where the bar count is high enough for the cost to matter.
                     if (barWidth < 3.0F) {
                         if (gradient && verticalGradient) {
-                            drawVertical(left, top, barWidth, barHeight, baseColor,
-                                    module.barColor(1.0F), topAlpha);
+                            batch.add(left, top, left + barWidth, top + barHeight,
+                                    withAlpha(module.barColor(1.0F), topAlpha),
+                                    withAlpha(baseColor, topAlpha));
                         }
                         else {
-                            RenderUtils.drawRect(left, top, left + barWidth, bottom,
-                                    withAlpha(baseColor, topAlpha));
+                            int flat = withAlpha(baseColor, topAlpha);
+                            batch.add(left, top, left + barWidth, bottom, flat, flat);
                         }
                         break;
                     }
@@ -284,12 +301,104 @@ public final class VisualizerRenderer {
                 }
             }
         }
+
+        batch.end();
     }
 
-    private static void drawVertical(float left, float top, float barWidth, float barHeight,
-                                     int bottomColor, int topColor, int alpha) {
-        RenderUtils.drawVerticalGradientRect(left, top, left + barWidth, top + barHeight,
-                withAlpha(topColor, alpha), withAlpha(bottomColor, alpha));
+    /**
+     * Flat quads for a whole spectrum, submitted once.
+     *
+     * <p>Colour is per vertex so a gradient bar and a solid one live in the same batch; a solid
+     * one simply carries the same colour at both ends, which smooth shading interpolates to
+     * exactly itself.
+     */
+    private static final class QuadBatch {
+        private static final int MAX_QUADS = 512;
+
+        private final float[] bounds = new float[MAX_QUADS * 4];
+        private final int[] colors = new int[MAX_QUADS * 2];
+        private int count;
+        private boolean alphaTestOff;
+
+        private void begin(boolean disableAlphaTest) {
+            count = 0;
+            alphaTestOff = disableAlphaTest;
+        }
+
+        private void add(float left, float top, float right, float bottom, int topColor, int bottomColor) {
+            if (right <= left || bottom <= top) {
+                return;
+            }
+            if (count >= MAX_QUADS) {
+                flush();
+            }
+
+            int b = count * 4;
+            bounds[b] = left;
+            bounds[b + 1] = top;
+            bounds[b + 2] = right;
+            bounds[b + 3] = bottom;
+            colors[count * 2] = topColor;
+            colors[count * 2 + 1] = bottomColor;
+            count++;
+        }
+
+        private void end() {
+            flush();
+        }
+
+        private void flush() {
+            if (count == 0) {
+                return;
+            }
+
+            GlStateManager.disableTexture2D();
+            GlStateManager.enableBlend();
+            if (alphaTestOff) {
+                GlStateManager.disableAlpha();
+            }
+            GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
+            GlStateManager.shadeModel(GL11.GL_SMOOTH);
+
+            Tessellator tessellator = Tessellator.getInstance();
+            WorldRenderer worldRenderer = tessellator.getWorldRenderer();
+            worldRenderer.begin(7, DefaultVertexFormats.POSITION_COLOR);
+
+            for (int i = 0; i < count; i++) {
+                int b = i * 4;
+                float left = bounds[b];
+                float top = bounds[b + 1];
+                float right = bounds[b + 2];
+                float bottom = bounds[b + 3];
+
+                int topColor = colors[i * 2];
+                int bottomColor = colors[i * 2 + 1];
+                float ta = (topColor >> 24 & 0xFF) / 255.0F;
+                float tr = (topColor >> 16 & 0xFF) / 255.0F;
+                float tg = (topColor >> 8 & 0xFF) / 255.0F;
+                float tb = (topColor & 0xFF) / 255.0F;
+                float ba = (bottomColor >> 24 & 0xFF) / 255.0F;
+                float br = (bottomColor >> 16 & 0xFF) / 255.0F;
+                float bg = (bottomColor >> 8 & 0xFF) / 255.0F;
+                float bb = (bottomColor & 0xFF) / 255.0F;
+
+                worldRenderer.pos(right, top, 0).color(tr, tg, tb, ta).endVertex();
+                worldRenderer.pos(left, top, 0).color(tr, tg, tb, ta).endVertex();
+                worldRenderer.pos(left, bottom, 0).color(br, bg, bb, ba).endVertex();
+                worldRenderer.pos(right, bottom, 0).color(br, bg, bb, ba).endVertex();
+            }
+
+            tessellator.draw();
+
+            GlStateManager.shadeModel(GL11.GL_FLAT);
+            GlStateManager.disableBlend();
+            if (alphaTestOff) {
+                GlStateManager.enableAlpha();
+            }
+            GlStateManager.enableTexture2D();
+            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+            count = 0;
+        }
     }
 
     private static Color colorOf(int rgb, int alpha) {

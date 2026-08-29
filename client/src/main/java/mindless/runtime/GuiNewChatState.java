@@ -52,7 +52,22 @@ public final class GuiNewChatState {
                                    int screenWidth, int screenHeight) {
         if (w <= 0.0f || h <= 0.0f) return;
 
-        BlurUtils.prepareBlur();
+        // Only the part of the shared mask this panel writes into needs wiping, so the clear is a
+        // rectangle rather than the whole screen. It has to cover the input box as well as the
+        // chat body -- both are drawn into the mask below, and the input box reaches further
+        // across than the chat does.
+        float maskLeft = x - 2.0f;
+        float maskTop = y - 2.0f;
+        float maskRight = x + w + 2.0f;
+        float maskBottom = y + h + 2.0f;
+        if (includeInput) {
+            maskLeft = Math.min(maskLeft, 1.0f);
+            maskTop = Math.min(maskTop, screenHeight - 17.0f);
+            maskRight = Math.max(maskRight, screenWidth - 1.0f);
+            maskBottom = Math.max(maskBottom, screenHeight);
+        }
+        BlurUtils.prepareBlur(maskLeft, maskTop, maskRight - maskLeft, maskBottom - maskTop);
+
         RoundedUtils.drawRound(x, y, w, h, panelRadius(), 0xFF000000);
         if (includeInput) {
             RoundedUtils.drawRound(3.0f, screenHeight - 15.0f,

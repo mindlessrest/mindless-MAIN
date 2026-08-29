@@ -14,6 +14,7 @@ import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.HudGlowHelper;
 import mindless.utility.shader.RoundedUtils;
 import mindless.utility.TextGlowUtils;
+import mindless.utility.font.GlyphBatch;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Theme;
 import mindless.utility.Utils;
@@ -41,6 +42,7 @@ public class HUD extends Module {
     private static final long HUD_RAINBOW_PERIOD_MS = 7500L;
     private static final double HUD_WAVE_ANGLE_SCALE = 0.12;
 
+    public static ButtonSetting useTheme;
     public static SliderSetting colorMode;
     public static ColorSetting hudColor;
     public static ColorSetting hudColor2;
@@ -111,6 +113,19 @@ public class HUD extends Module {
         // behind a name nobody would think to open. Old profiles still resolve through the
         // legacy alias in ModuleManager.
         super("Array List", Module.category.render);
+        // The theme owns the list's colours by default, which is what keeps the client looking
+        // like one thing. Everything below the toggle is the list's own scheme, for when it should
+        // not: the settings and the wave machinery were always here, they just had nothing
+        // registered to drive them once the theme took over.
+        this.registerSetting(useTheme = new ButtonSetting("Use theme", true));
+        this.registerSetting(colorMode = new SliderSetting("Color mode", 0, COLOR_MODES));
+        this.registerSetting(hudColor = new ColorSetting("Color", 255, 255, 255));
+        this.registerSetting(hudColor2 = new ColorSetting("Color 2", 120, 170, 255));
+        this.registerSetting(waveAxis = new SliderSetting("Wave axis", 0, WAVE_AXES));
+        this.registerSetting(verticalWaveDirection = new SliderSetting("Wave direction", 0, VERTICAL_WAVE_DIRECTIONS));
+        this.registerSetting(horizontalWaveDirection = new SliderSetting("Wave direction ", 0, HORIZONTAL_WAVE_DIRECTIONS));
+        this.registerSetting(waveSpeed = new SliderSetting("Wave speed", 1.0, 0.1, 4.0, 0.1));
+        this.registerSetting(waveLength = new SliderSetting("Wave length", 1.0, 0.5, 4.0, 0.1));
         this.registerSetting(font = new SliderSetting("Font", 0, HUD_FONT_OPTIONS));
         this.registerSetting(fontSize = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.1));
         this.registerSetting(outline = new SliderSetting("Outline", 0, OUTLINE_MODES));
@@ -139,6 +154,36 @@ public class HUD extends Module {
 
     @Override
     public void guiUpdate() {
+        boolean ownColors = useTheme != null && !useTheme.isToggled();
+        int mode = colorMode == null ? 0 : (int) colorMode.getInput();
+        if (colorMode != null) {
+            colorMode.setVisible(ownColors, this);
+        }
+        if (hudColor != null) {
+            hudColor.setVisible(ownColors && mode != 2, this);
+        }
+        if (hudColor2 != null) {
+            hudColor2.setVisible(ownColors && mode == 1, this);
+        }
+        // The wave shapes the gradient phase whichever palette is in use, so it stays available
+        // for a themed list too -- it just has nothing to shape when the colour is flat.
+        boolean waving = mode != 0 || useTheme == null || useTheme.isToggled();
+        if (waveAxis != null) {
+            waveAxis.setVisible(waving, this);
+        }
+        if (verticalWaveDirection != null) {
+            verticalWaveDirection.setVisible(waving && hudWaveIsVertical(), this);
+        }
+        if (horizontalWaveDirection != null) {
+            horizontalWaveDirection.setVisible(waving && !hudWaveIsVertical(), this);
+        }
+        if (waveSpeed != null) {
+            waveSpeed.setVisible(waving, this);
+        }
+        if (waveLength != null) {
+            waveLength.setVisible(waving, this);
+        }
+
         boolean background = drawBackground != null && drawBackground.isToggled();
         if (backgroundMode != null) {
             backgroundMode.setVisible(background, this);
@@ -846,7 +891,13 @@ public class HUD extends Module {
         return rowCenterX * (HUD_WAVE_HORIZONTAL_X_SCALE / getWaveLengthMultiplier()) * getHorizontalWaveDirectionSign();
     }
 
-    /** Draws one row as a name and a value, each in its own colour. */
+    /**
+     * Draws one row as a name and a value, each in its own colour.
+     *
+     * <p>Held open as one batch. A row is a shadow in several passes and then two coloured
+     * segments, all in the same font and all from the same glyph atlas, with nothing drawn between
+     * them -- so what would otherwise be five draws is one.
+     */
     private static void drawHudRow(RavenFontRenderer hudFont, Module module, float xPos, float textY, int color) {
         String name = getHudText(module);
         String info = getHudInfoText(module);
@@ -854,15 +905,28 @@ public class HUD extends Module {
             drawHudText(hudFont, name, xPos, textY, color);
             return;
         }
-        drawDecoration(hudFont, name + info, xPos, textY, color);
-        drawTextSegment(hudFont, name, xPos, textY, color, false);
-        drawTextSegment(hudFont, info, xPos + hudFont.getStringWidth(name), textY,
-                getHudInfoColor(color), false);
+
+        GlyphBatch.begin();
+        try {
+            drawDecoration(hudFont, name + info, xPos, textY, color);
+            drawTextSegment(hudFont, name, xPos, textY, color, false);
+            drawTextSegment(hudFont, info, xPos + hudFont.getStringWidth(name), textY,
+                    getHudInfoColor(color), false);
+        }
+        finally {
+            GlyphBatch.end();
+        }
     }
 
     private static void drawHudText(RavenFontRenderer hudFont, String moduleName, float xPos, float textY, int fallbackColor) {
-        drawDecoration(hudFont, moduleName, xPos, textY, fallbackColor);
-        drawTextSegment(hudFont, moduleName, xPos, textY, fallbackColor, false);
+        GlyphBatch.begin();
+        try {
+            drawDecoration(hudFont, moduleName, xPos, textY, fallbackColor);
+            drawTextSegment(hudFont, moduleName, xPos, textY, fallbackColor, false);
+        }
+        finally {
+            GlyphBatch.end();
+        }
     }
 
     /**
@@ -925,29 +989,38 @@ public class HUD extends Module {
                                                  int rowHeight, int horizontalTextPadding,
                                                  int textTopOffset, int textTopPadding) {
         HudGlowHelper.beginMask();
-        float yPos = posY;
-        double verticalWaveAccum = 0.0;
-        for (Module module : ModuleManager.organizedModules) {
-            if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
-                continue;
+        // Nothing but text goes into the mask, so the whole list is one batch. The finally is not
+        // decoration: an unbalanced begin leaves the batch permanently open and no text anywhere in
+        // the client would ever be flushed again.
+        GlyphBatch.begin();
+        try {
+            float yPos = posY;
+            double verticalWaveAccum = 0.0;
+            for (Module module : ModuleManager.organizedModules) {
+                if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
+                    continue;
+                }
+                String moduleName = getHudRenderText(module);
+                int moduleWidth = hudFont.getStringWidth(moduleName);
+                float xPos = posX;
+                float textY = getHudTextY(yPos, textTopOffset, textTopPadding);
+                if (alignRight.isToggled()) {
+                    xPos -= moduleWidth;
+                }
+                double backgroundLeft = xPos - horizontalTextPadding;
+                double backgroundRight = xPos + moduleWidth + horizontalTextPadding;
+                double rowCenterX = (backgroundLeft + backgroundRight) * 0.5;
+                double wavePhase = hudWavePhase(verticalWaveAccum, rowCenterX);
+                int color = getHudColor(wavePhase);
+                hudFont.drawString(moduleName, xPos, textY, color, false);
+                if (hudWaveIsVertical()) {
+                    verticalWaveAccum += getVerticalWaveStep();
+                }
+                yPos += rowHeight;
             }
-            String moduleName = getHudRenderText(module);
-            int moduleWidth = hudFont.getStringWidth(moduleName);
-            float xPos = posX;
-            float textY = getHudTextY(yPos, textTopOffset, textTopPadding);
-            if (alignRight.isToggled()) {
-                xPos -= moduleWidth;
-            }
-            double backgroundLeft = xPos - horizontalTextPadding;
-            double backgroundRight = xPos + moduleWidth + horizontalTextPadding;
-            double rowCenterX = (backgroundLeft + backgroundRight) * 0.5;
-            double wavePhase = hudWavePhase(verticalWaveAccum, rowCenterX);
-            int color = getHudColor(wavePhase);
-            hudFont.drawString(moduleName, xPos, textY, color, false);
-            if (hudWaveIsVertical()) {
-                verticalWaveAccum += getVerticalWaveStep();
-            }
-            yPos += rowHeight;
+        }
+        finally {
+            GlyphBatch.end();
         }
         int baseColor = getHudColor(0.0);
         int r = (baseColor >> 16) & 0xFF;
@@ -996,7 +1069,23 @@ public class HUD extends Module {
      * Accent color for HUD rows/outlines. Other modules can match HUD when enabled.
      */
     public static int getHudColor(double gradientOffset) {
-        return mindless.module.impl.theme.ThemeManager.getArrayListColor(gradientOffset);
+        if (useTheme == null || useTheme.isToggled()) {
+            return mindless.module.impl.theme.ThemeManager.getArrayListColor(gradientOffset);
+        }
+
+        switch (colorMode == null ? 0 : (int) colorMode.getInput()) {
+            case 1:
+                return getGradientWaveColor(colorOf(hudColor, Color.WHITE),
+                        colorOf(hudColor2, Color.WHITE), gradientOffset);
+            case 2:
+                return getRainbowWaveColor(gradientOffset);
+            default:
+                return hudColor == null ? 0xFFFFFFFF : (hudColor.getRGB() | 0xFF000000);
+        }
+    }
+
+    private static Color colorOf(ColorSetting setting, Color fallback) {
+        return setting == null ? fallback : new Color(setting.getRed(), setting.getGreen(), setting.getBlue());
     }
 
     private static int getGradientWaveColor(java.awt.Color c1, java.awt.Color c2, double gradientOffset) {

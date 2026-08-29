@@ -23,7 +23,9 @@ public final class AtmospherePostProcessor {
 
         try {
             scene = RenderUtils.createFrameBuffer(scene, false);
-            scene.framebufferClear();
+            // No clear: the quad below covers the whole buffer with blending off, so every pixel
+            // is written regardless of what was there. Clearing first was a second full-screen
+            // write every frame for a buffer that is completely overwritten a line later.
             scene.bindFramebuffer(false);
             mc.entityRenderer.setupOverlayRendering();
             GlStateManager.disableDepth();

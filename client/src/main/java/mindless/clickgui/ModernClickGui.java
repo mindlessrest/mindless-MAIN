@@ -14,6 +14,7 @@ import mindless.utility.ItemSearchIndex;
 import mindless.utility.PlayerRelationsManager;
 import mindless.utility.PotionSearchIndex;
 import mindless.utility.RenderUtils;
+import mindless.utility.ScaledResolutionCache;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.profile.Manager;
@@ -344,10 +345,29 @@ public final class ModernClickGui extends ClickGui {
         // center panel always occupies remaining space; detail + gap only counted when visible
         float usedByDetail = detailW > 1f ? detailW + gap : 0f;
         centerW = totalW - sideW - gap - usedByDetail;
-        baseX = Math.round(Math.max(5f, (width - totalW) / 2f + guiDragOffsetX));
-        baseY = Math.round(Math.max(6f, (height - panelH) / 2f + guiDragOffsetY));
-        centerX = baseX + sideW + gap;
-        detailX = centerX + centerW + gap;
+        // Snapped to whole physical pixels. Everything in here is positioned relative to these
+        // three, and the menu is drawn through two scales -- the configured menu scale and
+        // Minecraft's own -- whose product is not a whole number. A drag step is one unit in menu
+        // space, so without snapping each step moves the text a fractional pixel and every glyph
+        // gets resampled at a new sub-pixel offset: the letters crawl and shimmer while the window
+        // is being moved. Rounding the origins to the pixel grid keeps that offset fixed, so the
+        // window moves and the text inside it stays still.
+        baseX = snapToPixel(Math.max(5f, (width - totalW) / 2f + guiDragOffsetX));
+        baseY = snapToPixel(Math.max(6f, (height - panelH) / 2f + guiDragOffsetY));
+        centerX = snapToPixel(baseX + sideW + gap);
+        detailX = snapToPixel(centerX + centerW + gap);
+    }
+
+    /** The number of physical pixels one unit of menu space covers. */
+    private float pixelScale() {
+        float scale = (float) getActiveRenderScale()
+                * Math.max(1, ScaledResolutionCache.get().getScaleFactor());
+        return scale > 0.01f ? scale : 1f;
+    }
+
+    private float snapToPixel(float value) {
+        float scale = pixelScale();
+        return Math.round(value * scale) / scale;
     }
 
     private void drawPanels() {
@@ -1371,11 +1391,16 @@ public final class ModernClickGui extends ClickGui {
             drawTextVCentered("+", x2 - 19, ey, ey + 19, fa(GOLD, alpha), .7f, true);
             ey += 21;
         }
-        for (String entry : listEntries(setting)) {
+        // Rows are addressed by position, not by the text in them. An item may legitimately
+        // appear twice -- two stacks of wool bound to two slots -- and looking the row up by its
+        // name would give both rows the first one's slot and let either button edit it.
+        List<String> entries = listEntries(setting);
+        for (int row = 0; row < entries.size(); row++) {
+            String entry = entries.get(row);
             rounded(x1 + 8, ey, x2 - 8, ey + 20, 4f, fa(ROW, alpha));
             drawTextVCentered(trim(entry, x2 - x1 - 70, .65f, false), x1 + 14, ey, ey + 20, fa(MUTED, alpha), .65f, false);
             if (setting instanceof InventoryItemListSetting) {
-                Integer slot = ((InventoryItemListSetting) setting).getAssignedSlot(entry);
+                int slot = ((InventoryItemListSetting) setting).getAssignedSlot(row);
                 drawTextVCentered("<", x2 - 91, ey, ey + 20, fa(MUTED, alpha), .62f, true);
                 drawTextVCentered(">", x2 - 79, ey, ey + 20, fa(MUTED, alpha), .62f, true);
                 drawTextVCentered("Slot " + slot, x2 - 53, ey, ey + 20, fa(GOLD, alpha), .62f, false);
@@ -1654,22 +1679,27 @@ public final class ModernClickGui extends ClickGui {
                 }
                 ey += 21;
             }
-            for (String entry : new ArrayList<String>(listEntries(setting))) {
-                if (inside(mx, my, x2 - 28, ey, x2 - 8, ey + 20)) { removeListEntry(setting, entry); return; }
-                if (setting instanceof InventoryItemListSetting && inside(mx, my, x2 - 66, ey, x2 - 29, ey + 20)) {
-                    InventoryItemListSetting inventory = (InventoryItemListSetting) setting;
-                    int slot = inventory.getAssignedSlot(entry);
-                    inventory.setAssignedSlot(entry, slot >= 9 ? 1 : slot + 1);
+            List<String> rows = new ArrayList<String>(listEntries(setting));
+            for (int row = 0; row < rows.size(); row++) {
+                String entry = rows.get(row);
+                boolean inventoryList = setting instanceof InventoryItemListSetting;
+                if (inside(mx, my, x2 - 28, ey, x2 - 8, ey + 20)) {
+                    if (inventoryList) ((InventoryItemListSetting) setting).removeItem(row);
+                    else removeListEntry(setting, entry);
                     return;
                 }
-                if (setting instanceof InventoryItemListSetting && inside(mx, my, x2 - 98, ey, x2 - 84, ey + 20)) {
+                if (inventoryList && inside(mx, my, x2 - 66, ey, x2 - 29, ey + 20)) {
                     InventoryItemListSetting inventory = (InventoryItemListSetting) setting;
-                    inventory.moveItem(entry, Math.max(0, inventory.getItems().indexOf(entry) - 1));
+                    int slot = inventory.getAssignedSlot(row);
+                    inventory.setAssignedSlot(row, slot >= 9 ? 1 : slot + 1);
                     return;
                 }
-                if (setting instanceof InventoryItemListSetting && inside(mx, my, x2 - 84, ey, x2 - 68, ey + 20)) {
-                    InventoryItemListSetting inventory = (InventoryItemListSetting) setting;
-                    inventory.moveItem(entry, Math.min(inventory.getItems().size() - 1, inventory.getItems().indexOf(entry) + 1));
+                if (inventoryList && inside(mx, my, x2 - 98, ey, x2 - 84, ey + 20)) {
+                    ((InventoryItemListSetting) setting).moveItem(row, row - 1);
+                    return;
+                }
+                if (inventoryList && inside(mx, my, x2 - 84, ey, x2 - 68, ey + 20)) {
+                    ((InventoryItemListSetting) setting).moveItem(row, row + 1);
                     return;
                 }
                 ey += 23;
@@ -2183,9 +2213,15 @@ public final class ModernClickGui extends ClickGui {
         RoundedUtils.drawRound(x1, y1, x2 - x1, y2 - y1, radius(radius, x2 - x1, y2 - y1), color);
     }
     private void line(float x1, float y1, float x2, float y2, int color) {
-        // Fractional geometry stays visually one physical pixel after the GUI
-        // scale is applied; Gui.drawRect rounded every divider up too heavily.
-        RenderUtils.drawRect(x1, y1, x2, Math.max(y1 + 1f, y2), color);
+        // Exactly one physical pixel, sitting on the physical pixel grid.
+        //
+        // A half-unit-tall rect at an arbitrary fractional y covers no pixel centre at all when it
+        // falls between two rows, and then nothing is drawn. That is why the divider under the
+        // category list came and went: its y is the running total of however many category rows
+        // are above it, so whether it landed on a sample point was luck.
+        float scale = pixelScale();
+        float top = Math.round(Math.min(y1, y2) * scale) / scale;
+        RenderUtils.drawRect(x1, top, x2, top + 1f / scale, color);
     }
 
     private void drawToggle(float x, float y, boolean on, Object animationKey) {

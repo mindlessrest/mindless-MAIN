@@ -8,6 +8,7 @@ import mindless.module.impl.combat.KillAura;
 import mindless.module.impl.network.Backtrack;
 import mindless.module.impl.theme.ThemeManager;
 import mindless.module.setting.impl.ButtonSetting;
+import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
@@ -40,6 +41,29 @@ public class TargetHUD extends Module {
     private ButtonSetting showDifference;
     private ButtonSetting showStatus;
     private ButtonSetting healthColor;
+    private SliderSetting ringColorMode;
+    private SliderSetting headStyle;
+    private final ColorSetting[] ringColors = new ColorSetting[RING_COUNT];
+
+    /** The leading ring plus its trail. Index 0 is the ring on the beat; the rest lag behind it. */
+    private static final int RING_COUNT = 6;
+    private static final String[] RING_COLOR_MODES = new String[] { "Theme", "Array list", "Custom" };
+    private static final String[] HEAD_STYLES = new String[] { "3D", "Flat" };
+    private static final int HEAD_STYLE_3D = 0;
+    private static final int RING_MODE_THEME = 0;
+    private static final int RING_MODE_ARRAY_LIST = 1;
+    private static final int RING_MODE_CUSTOM = 2;
+    /**
+     * How far apart the trail rings sit in the array list gradient.
+     *
+     * <p>Large enough that six rings span a visible part of the sweep rather than all landing on
+     * effectively the same colour, and not so large that the trail stops looking like one object.
+     */
+    private static final double RING_GRADIENT_SPREAD = 26.0;
+    /** Defaults form a cool sweep, so Custom starts as something rather than six identical rings. */
+    private static final int[] DEFAULT_RING_COLORS = {
+        0xFFFFFF, 0xC8E4FF, 0x9CC9FF, 0x74A8FF, 0x5A86F0, 0x4666D8
+    };
 
     private static final long POP_IN_MS = 250L;
     private static final long POP_OUT_MS = 200L;
@@ -73,11 +97,52 @@ public class TargetHUD extends Module {
         this.registerSetting(showDifference = new ButtonSetting("Show difference", true));
         this.registerSetting(showStatus = new ButtonSetting("Show win or loss", true));
         this.registerSetting(healthColor = new ButtonSetting("Traditional health color", false));
+        this.registerSetting(headStyle = new SliderSetting("Head style", HEAD_STYLE_3D, HEAD_STYLES));
+        this.registerSetting(ringColorMode = new SliderSetting("Ring colors", RING_MODE_THEME, RING_COLOR_MODES));
+        for (int i = 0; i < RING_COUNT; i++) {
+            int rgb = DEFAULT_RING_COLORS[i];
+            ringColors[i] = new ColorSetting("Ring " + (i + 1) + " color",
+                    (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+            this.registerSetting(ringColors[i]);
+        }
     }
 
     @Override
     public void guiUpdate() {
         glowSize.setVisible(mode.getInput() == 0, this);
+
+        boolean esp = renderEsp != null && renderEsp.isToggled();
+        if (ringColorMode != null) {
+            ringColorMode.setVisible(esp, this);
+        }
+        boolean custom = esp && ringColorMode != null && (int) ringColorMode.getInput() == RING_MODE_CUSTOM;
+        for (ColorSetting ringColor : ringColors) {
+            if (ringColor != null) {
+                ringColor.setVisible(custom, this);
+            }
+        }
+    }
+
+    /**
+     * The colour of one ring, counting outward from the leading one.
+     *
+     * <p>Array list mode reads the same gradient the module list is drawn in, one step further
+     * along it per ring, so the trail shows the sweep travelling rather than six copies of
+     * whatever the gradient happened to be on this frame.
+     */
+    private int ringColor(int ringIndex) {
+        int colorMode = ringColorMode == null ? RING_MODE_THEME : (int) ringColorMode.getInput();
+
+        if (colorMode == RING_MODE_ARRAY_LIST) {
+            return HUD.getHudColor(ringIndex * RING_GRADIENT_SPREAD);
+        }
+
+        if (colorMode == RING_MODE_CUSTOM) {
+            ColorSetting setting = ringIndex >= 0 && ringIndex < ringColors.length ? ringColors[ringIndex] : null;
+            return setting == null ? 0xFFFFFFFF : (setting.getRGB() | 0xFF000000);
+        }
+
+        return Theme.getGradient((int) theme.getInput(), 0);
     }
 
     public void onDisable() {
@@ -153,10 +218,6 @@ public class TargetHUD extends Module {
         float ringY = bounce * entityHeight;
 
         float radius = entity.width * 0.7f;
-        int color = Theme.getGradient((int) theme.getInput(), 0);
-        float r = ((color >> 16) & 0xFF) / 255.0f;
-        float g = ((color >> 8) & 0xFF) / 255.0f;
-        float b = (color & 0xFF) / 255.0f;
 
         GlStateManager.pushMatrix();
         GlStateManager.translate((float) x, (float) y, (float) z);
@@ -168,13 +229,18 @@ public class TargetHUD extends Module {
         GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
         GlStateManager.depthMask(false);
 
-        int trailCount = 5;
+        int trailCount = RING_COUNT - 1;
         for (int trail = trailCount; trail >= 0; trail--) {
             float trailOffset = trail * 0.06f;
             float trailBounce = (float) (Math.sin((time - trailOffset) * Math.PI * 2.0) * 0.5 + 0.5);
             float trailY = trailBounce * entityHeight;
             float alpha = trail == 0 ? 1.0f : (1.0f - (float) trail / trailCount) * 0.35f;
             float lineWidth = trail == 0 ? 5.0f : 3.0f;
+
+            int color = ringColor(trail);
+            float r = ((color >> 16) & 0xFF) / 255.0f;
+            float g = ((color >> 8) & 0xFF) / 255.0f;
+            float b = (color & 0xFF) / 255.0f;
 
             GL11.glLineWidth(lineWidth);
             GL11.glBegin(GL11.GL_LINE_LOOP);
@@ -395,15 +461,122 @@ public class TargetHUD extends Module {
                 GlStateManager.disableCull();
                 mc.getTextureManager().bindTexture(skin);
                 GlStateManager.color(1.0f, 1.0f, 1.0f, (float) alpha / 255.0f);
-                float cornerRadius = Math.max(2.0f, (float) Math.min(width, height) * 0.14f);
-                drawRoundedSkinLayer(x, y, width, height, cornerRadius, 8.0f, 8.0f, alpha);
-                drawRoundedSkinLayer(x, y, width, height, cornerRadius, 40.0f, 8.0f, alpha);
+                if (headStyle == null || (int) headStyle.getInput() == HEAD_STYLE_3D) {
+                    drawHeadCube(x, y, width, height, alpha);
+                }
+                else {
+                    float cornerRadius = Math.max(2.0f, (float) Math.min(width, height) * 0.14f);
+                    drawRoundedSkinLayer(x, y, width, height, cornerRadius, 8.0f, 8.0f, alpha);
+                    drawRoundedSkinLayer(x, y, width, height, cornerRadius, 40.0f, 8.0f, alpha);
+                }
             } finally {
                 RenderUtils.restoreGuiRenderState(depthEnabled, blendEnabled, depthMask);
                 if (cullEnabled) GlStateManager.enableCull();
                 else GlStateManager.disableCull();
             }
         } catch (Exception ignored) {}
+    }
+
+
+    // ------------------------------------------------------------------------------- 3D head
+
+    /**
+     * The head as a cube rather than a square of the skin.
+     *
+     * <p>Projected here rather than handed to OpenGL as a rotation. The HUD is drawn under an
+     * orthographic projection with the Y axis pointing down, which flips the handedness and with
+     * it the winding of every face -- so backface culling, the usual way to get a solid to draw
+     * correctly without a depth buffer, comes out inside-out. Rotating the eight corners in Java
+     * gives the face normals directly: a face is drawn when its normal still points at the viewer,
+     * which is the same result culling would give and does not care which way the projection
+     * happens to be wound.
+     *
+     * <p>The hat is a second, slightly larger cube drawn over the first. It is a separate pass
+     * because it is transparent almost everywhere, and with no depth buffer involved the later
+     * draw simply lands on top -- which is exactly the layering wanted.
+     */
+    private void drawHeadCube(float x, float y, float width, float height, int alpha) {
+        float centerX = x + width * 0.5f;
+        float centerY = y + height * 0.5f;
+        // Small enough that the corners of a turned cube still sit inside the square the flat head
+        // occupied, hat layer included.
+        float size = Math.min(width, height) * 0.66f;
+
+        // A slow sway rather than a fixed pose. Static three-quarter views read as a picture of a
+        // head; a little movement reads as a model of one.
+        double seconds = (System.currentTimeMillis() % 6000L) / 6000.0;
+        float yaw = (float) Math.toRadians(-26.0 + Math.sin(seconds * Math.PI * 2.0) * 8.0);
+        float pitch = (float) Math.toRadians(14.0);
+
+        drawSkinCube(centerX, centerY, size, yaw, pitch, alpha, 0.0f);
+        drawSkinCube(centerX, centerY, size * 1.09f, yaw, pitch, alpha, 32.0f);
+    }
+
+    /** Face corners in model space, counter-clockwise from the top-left of the face texture. */
+    private static final float[][][] HEAD_FACES = {
+        // +Z front
+        {{-.5f, .5f, .5f}, {.5f, .5f, .5f}, {.5f, -.5f, .5f}, {-.5f, -.5f, .5f}},
+        // -Z back
+        {{.5f, .5f, -.5f}, {-.5f, .5f, -.5f}, {-.5f, -.5f, -.5f}, {.5f, -.5f, -.5f}},
+        // -X, the side that faces the viewer's left when the face is toward them
+        {{-.5f, .5f, -.5f}, {-.5f, .5f, .5f}, {-.5f, -.5f, .5f}, {-.5f, -.5f, -.5f}},
+        // +X
+        {{.5f, .5f, .5f}, {.5f, .5f, -.5f}, {.5f, -.5f, -.5f}, {.5f, -.5f, .5f}},
+        // +Y top
+        {{-.5f, .5f, -.5f}, {.5f, .5f, -.5f}, {.5f, .5f, .5f}, {-.5f, .5f, .5f}},
+        // -Y bottom
+        {{-.5f, -.5f, .5f}, {.5f, -.5f, .5f}, {.5f, -.5f, -.5f}, {-.5f, -.5f, -.5f}}
+    };
+
+    /** Outward normal per face, in the same order. */
+    private static final float[][] HEAD_NORMALS = {
+        {0f, 0f, 1f}, {0f, 0f, -1f}, {-1f, 0f, 0f}, {1f, 0f, 0f}, {0f, 1f, 0f}, {0f, -1f, 0f}
+    };
+
+    /** Texture rectangle per face, in skin pixels: u, v, width, height. */
+    private static final float[][] HEAD_UVS = {
+        {8f, 8f, 8f, 8f}, {24f, 8f, 8f, 8f}, {0f, 8f, 8f, 8f},
+        {16f, 8f, 8f, 8f}, {8f, 0f, 8f, 8f}, {16f, 0f, 8f, 8f}
+    };
+
+    private static final float SKIN_TEXTURE_SIZE = 64.0f;
+
+    private void drawSkinCube(float centerX, float centerY, float size, float yaw, float pitch,
+                              int alpha, float textureUOffset) {
+        float cosYaw = (float) Math.cos(yaw);
+        float sinYaw = (float) Math.sin(yaw);
+        float cosPitch = (float) Math.cos(pitch);
+        float sinPitch = (float) Math.sin(pitch);
+
+        GlStateManager.color(1.0f, 1.0f, 1.0f, alpha / 255.0f);
+        GL11.glBegin(GL11.GL_QUADS);
+        for (int face = 0; face < HEAD_FACES.length; face++) {
+            float[] normal = rotate(HEAD_NORMALS[face], cosYaw, sinYaw, cosPitch, sinPitch);
+            // Facing away: whatever is behind the cube cannot be seen through it.
+            if (normal[2] <= 0.0f) {
+                continue;
+            }
+
+            float[] uv = HEAD_UVS[face];
+            float[][] corners = HEAD_FACES[face];
+            for (int corner = 0; corner < corners.length; corner++) {
+                float[] rotated = rotate(corners[corner], cosYaw, sinYaw, cosPitch, sinPitch);
+                float u = uv[0] + textureUOffset + (corner == 1 || corner == 2 ? uv[2] : 0.0f);
+                float v = uv[1] + (corner == 2 || corner == 3 ? uv[3] : 0.0f);
+                GL11.glTexCoord2f(u / SKIN_TEXTURE_SIZE, v / SKIN_TEXTURE_SIZE);
+                // Y is negated because the HUD grows downward and the model does not.
+                GL11.glVertex2f(centerX + rotated[0] * size, centerY - rotated[1] * size);
+            }
+        }
+        GL11.glEnd();
+    }
+
+    private static float[] rotate(float[] point, float cosYaw, float sinYaw, float cosPitch, float sinPitch) {
+        float x = point[0] * cosYaw + point[2] * sinYaw;
+        float z = point[2] * cosYaw - point[0] * sinYaw;
+        float y = point[1] * cosPitch - z * sinPitch;
+        z = z * cosPitch + point[1] * sinPitch;
+        return new float[]{x, y, z};
     }
 
     private void drawRoundedSkinLayer(float x, float y, float width, float height, float radius, float textureU, float textureV, int alpha) {

@@ -37,12 +37,18 @@ import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.DamageSource;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
+import net.minecraft.network.play.server.S32PacketConfirmTransaction;
+import mindless.event.ReceivePacketEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.List;
 
 public class InvManager extends Module {
+    /** How long a click may go unconfirmed before the module stops waiting for it. */
+    private static final long CONFIRMATION_TIMEOUT_MS = 1500L;
     private static final int HOTBAR_SIZE = InventoryPlayer.getHotbarSize();
     private static final int AUTO_SORT_DISABLED = -1;
     private static final int AUTO_SORT_NORMAL = 0;
@@ -115,6 +121,9 @@ public class InvManager extends Module {
     private double windowClickBudget;
     private boolean sessionOpen;
     private boolean sendingInventoryClick;
+    /** Window clicks sent whose confirmation has not come back yet. */
+    private int pendingClickCount;
+    private long pendingClickSentAt;
     private SessionState sessionState = SessionState.ACTIVE;
     private long ticks = 0L;
     private long nextDelay = 0L;
@@ -539,6 +548,12 @@ public class InvManager extends Module {
                 }
                 sessionState = SessionState.EXECUTING;
             }
+        }
+
+        // One click in flight at a time. The plan is a sequence of steps each of which assumes the
+        // one before it landed, and the only proof of that is the server saying so.
+        if (awaitingServerConfirmation()) {
+            return true;
         }
 
         int clickBudget = consumeWindowClickBudget();
@@ -1151,6 +1166,7 @@ public class InvManager extends Module {
         cursorRecoveryInventoryIndex = -1;
         windowClickBudget = 0.0;
         sessionState = SessionState.ACTIVE;
+        pendingClickCount = 0;
     }
 
     private boolean ownsCarriedStack() {
@@ -2098,37 +2114,51 @@ public class InvManager extends Module {
         return -1;
     }
 
+    /**
+     * Which item each hotbar slot should end up holding.
+     *
+     * <p>The same item may be listed more than once -- two stacks of wool bound to two slots --
+     * and each of those rows needs a stack of its own. So the rule is not "is there any of this?"
+     * but "is there one left?": the stacks matching a given entry are counted once, and the rows
+     * asking for it are satisfied in list order until they run out. That ordering is what makes a
+     * short supply fill the first slot rather than an arbitrary one.
+     */
     private SlotAssignment[] resolveAssignments(InventorySnapshot snapshot) {
         SlotAssignment[] assignments = new SlotAssignment[HOTBAR_SIZE];
         List<String> orderedItems = items.getItems();
+        Map<String, Integer> remainingStacks = new HashMap<String, Integer>();
 
         for (int priorityIndex = 0; priorityIndex < orderedItems.size(); priorityIndex++) {
             String storageId = orderedItems.get(priorityIndex);
-            Integer assignedSlot = items.getAssignedSlot(storageId);
-            if (assignedSlot == null) {
-                continue;
-            }
-
-            int hotbarSlot = assignedSlot - 1;
+            int hotbarSlot = items.getAssignedSlot(priorityIndex) - 1;
             if (hotbarSlot < 0 || hotbarSlot >= HOTBAR_SIZE || assignments[hotbarSlot] != null) {
                 continue;
             }
 
-            if (hasMatchingStack(snapshot, storageId)) {
-                assignments[hotbarSlot] = new SlotAssignment(hotbarSlot, storageId, priorityIndex);
+            Integer remaining = remainingStacks.get(storageId);
+            if (remaining == null) {
+                remaining = countMatchingStacks(snapshot, storageId);
             }
+            if (remaining <= 0) {
+                remainingStacks.put(storageId, 0);
+                continue;
+            }
+
+            remainingStacks.put(storageId, remaining - 1);
+            assignments[hotbarSlot] = new SlotAssignment(hotbarSlot, storageId, priorityIndex);
         }
 
         return assignments;
     }
 
-    private boolean hasMatchingStack(InventorySnapshot snapshot, String storageId) {
+    private int countMatchingStacks(InventorySnapshot snapshot, String storageId) {
+        int count = 0;
         for (int inventoryIndex = 0; inventoryIndex < InventorySnapshot.INVENTORY_SIZE; inventoryIndex++) {
             if (ItemSearchIndex.matches(storageId, snapshot.getSlot(inventoryIndex))) {
-                return true;
+                count++;
             }
         }
-        return false;
+        return count;
     }
 
     private boolean isCorrectHotbarSlot(SnapshotContext context, int hotbarSlot) {
@@ -2202,8 +2232,53 @@ public class InvManager extends Module {
         sendingInventoryClick = true;
         try {
             mc.playerController.windowClick(mc.thePlayer.openContainer.windowId, slotId, button, mode, mc.thePlayer);
+            pendingClickCount++;
+            pendingClickSentAt = System.currentTimeMillis();
         } finally {
             sendingInventoryClick = false;
+        }
+    }
+
+    /**
+     * Whether a click is still waiting to be confirmed.
+     *
+     * <p>A window click is applied locally the moment it is sent and only afterwards checked by
+     * the server, which replies accepting or rejecting it. Sending the next click before that
+     * reply arrives means planning against an inventory the server may be about to disagree with,
+     * and a rejected click is answered with a full resync -- so the clicks that were already in
+     * flight land on a state neither side predicted. What is left over is a stack the client can
+     * see and the server has never heard of, which is the ghost.
+     *
+     * <p>The timeout is a release valve, not a schedule. A confirmation that never arrives -- a
+     * dropped packet, a server that does not send them -- would otherwise stop the module for
+     * good.
+     */
+    private boolean awaitingServerConfirmation() {
+        if (pendingClickCount <= 0) {
+            return false;
+        }
+        if (System.currentTimeMillis() - pendingClickSentAt > CONFIRMATION_TIMEOUT_MS) {
+            pendingClickCount = 0;
+            return false;
+        }
+        return true;
+    }
+
+    @SubscribeEvent
+    public void onInventoryConfirmation(ReceivePacketEvent event) {
+        if (!(event.getPacket() instanceof S32PacketConfirmTransaction)) {
+            return;
+        }
+
+        S32PacketConfirmTransaction packet = (S32PacketConfirmTransaction) event.getPacket();
+        pendingClickCount = Math.max(0, pendingClickCount - 1);
+
+        // A rejection means the server has just replaced our whole view of the inventory. Anything
+        // planned against the old one describes slots that no longer hold what it thought, so the
+        // plan is dropped and rebuilt from whatever the server says is actually there.
+        if (!packet.func_148888_e()) {
+            pendingClickCount = 0;
+            closeSession();
         }
     }
 

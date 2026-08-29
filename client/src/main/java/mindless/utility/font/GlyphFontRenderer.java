@@ -1,11 +1,6 @@
 package mindless.utility.font;
 
 import mindless.utility.ScaledResolutionCache;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.ScaledResolution;
-import net.minecraft.client.renderer.GlStateManager;
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
 import java.awt.Font;
@@ -16,12 +11,12 @@ import java.awt.font.FontRenderContext;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
-import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class GlyphFontRenderer implements RavenFontRenderer {
-    private static final int GL_CLAMP_TO_EDGE = 0x812F;
     private static final int FIRST_GLYPH = 0;
     private static final int LAST_GLYPH = 255;
     private static final int CHANNEL_MASK = 0xFF;
@@ -32,10 +27,12 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
     private static final float MAX_RASTERISED_GLYPH_SIZE = 64.0f;
     private static final String ALPHABET = "ABCDEFGHOKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private static final String COLOR_CODES = "0123456789abcdefklmnor";
+    private static final GlyphData EMPTY_GLYPH = new GlyphData(null, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0);
 
     private final Font renderFont;
     private final boolean antiAlias;
     private final FontRenderContext fontRenderContext;
+    private final GlyphAtlas atlas;
     private final GlyphData[] defaultGlyphs = new GlyphData[LAST_GLYPH + 1];
     private final Map<Character, GlyphData> extendedGlyphs = new ConcurrentHashMap<Character, GlyphData>();
     private final float drawScale;
@@ -67,9 +64,26 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
         this.antiAlias = antiAlias;
         this.fontRenderContext = new FontRenderContext(new AffineTransform(), antiAlias, true);
 
+        // Rasterise the whole set before anything is packed: the atlas has to know the total area
+        // up front to pick a page size that holds every glyph in one texture.
+        Raster[] rasters = new Raster[LAST_GLYPH + 1];
+        List<int[]> sizes = new ArrayList<int[]>(LAST_GLYPH + 1);
+
         for (int codePoint = FIRST_GLYPH; codePoint <= LAST_GLYPH; codePoint++) {
-            defaultGlyphs[codePoint] = createGlyph((char) codePoint);
+            Raster raster = rasterise((char) codePoint);
+            rasters[codePoint] = raster;
+            if (raster != null && raster.visibleBottom > raster.visibleTop) {
+                sizes.add(new int[]{raster.image.getWidth(), raster.image.getHeight()});
+            }
         }
+
+        this.atlas = new GlyphAtlas(GlyphAtlas.chooseSize(sizes));
+
+        for (int codePoint = FIRST_GLYPH; codePoint <= LAST_GLYPH; codePoint++) {
+            defaultGlyphs[codePoint] = commit(rasters[codePoint]);
+        }
+
+        atlas.finish();
 
         this.rawTextTop = computeRawTextTop();
         this.rawTextBottom = computeRawTextBottom();
@@ -83,12 +97,18 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
             return 0;
         }
 
-        int width = 0;
-        if (shadow) {
-            width = drawInternal(text, x + 1.0f, y + 1.0f, color, true);
-        }
+        GlyphBatch.begin();
+        try {
+            int width = 0;
+            if (shadow) {
+                width = drawInternal(text, x + 1.0f, y + 1.0f, color, true);
+            }
 
-        return Math.max(width, drawInternal(text, x, y, color, false));
+            return Math.max(width, drawInternal(text, x, y, color, false));
+        }
+        finally {
+            GlyphBatch.end();
+        }
     }
 
     @Override
@@ -97,12 +117,18 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
             return 0;
         }
 
-        int width = 0;
-        if (shadow) {
-            width = drawGlyphInternal(text, x + 1.0f, y + 1.0f, colorProvider, true);
-        }
+        GlyphBatch.begin();
+        try {
+            int width = 0;
+            if (shadow) {
+                width = drawGlyphInternal(text, x + 1.0f, y + 1.0f, colorProvider, true);
+            }
 
-        return Math.max(width, drawGlyphInternal(text, x, y, colorProvider, false));
+            return Math.max(width, drawGlyphInternal(text, x, y, colorProvider, false));
+        }
+        finally {
+            GlyphBatch.end();
+        }
     }
 
     @Override
@@ -160,11 +186,8 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
         }
 
         destroyed = true;
-        deleteGlyphTextures(defaultGlyphs);
-        for (GlyphData glyph : extendedGlyphs.values()) {
-            deleteGlyphTexture(glyph);
-        }
         extendedGlyphs.clear();
+        atlas.delete();
     }
 
     private int drawInternal(String text, float x, float y, int color, boolean shadowPass) {
@@ -178,57 +201,39 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
         float drawX = startX;
         float drawY = (y * rawScale) - rawTextTop;
 
-        GL11.glPushMatrix();
-        try {
-            GlStateManager.enableAlpha();
-            GlStateManager.enableBlend();
-            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
-            GlStateManager.enableTexture2D();
-            GL11.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
-            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-            GlStateManager.scale(drawScale, drawScale, 1.0f);
-
-            for (int i = 0; i < text.length(); i++) {
-                char character = text.charAt(i);
-                if (isMalformedSectionPrefix(text, i)) {
-                    continue;
-                }
-
-                if (character == '\u00a7' && i + 1 < text.length()) {
-                    char formatCode = Character.toLowerCase(text.charAt(++i));
-                    int colorIndex = COLOR_CODES.indexOf(formatCode);
-
-                    if (colorIndex >= 0) {
-                        if (colorIndex < 16) {
-                            activeColor = getMinecraftColor(colorIndex, alpha, shadowPass);
-                        }
-                        else if (formatCode == 'r') {
-                            activeColor = shadowPass ? applyShadowColor(color) : withAlpha(color, alpha);
-                        }
-                    }
-
-                    continue;
-                }
-
-                if (character == '\n') {
-                    drawX = startX;
-                    drawY += lineHeight * rawScale;
-                    continue;
-                }
-
-                GlyphData glyph = getGlyph(character);
-                if (glyph.textureId != 0 && glyph.textureWidth > 0.0f && glyph.textureHeight > 0.0f) {
-                    renderGlyph(glyph, drawX - GLYPH_MARGIN, drawY, activeColor);
-                }
-                drawX += glyph.rawAdvance;
+        for (int i = 0; i < text.length(); i++) {
+            char character = text.charAt(i);
+            if (isMalformedSectionPrefix(text, i)) {
+                continue;
             }
+
+            if (character == '\u00a7' && i + 1 < text.length()) {
+                char formatCode = Character.toLowerCase(text.charAt(++i));
+                int colorIndex = COLOR_CODES.indexOf(formatCode);
+
+                if (colorIndex >= 0) {
+                    if (colorIndex < 16) {
+                        activeColor = getMinecraftColor(colorIndex, alpha, shadowPass);
+                    }
+                    else if (formatCode == 'r') {
+                        activeColor = shadowPass ? applyShadowColor(color) : withAlpha(color, alpha);
+                    }
+                }
+
+                continue;
+            }
+
+            if (character == '\n') {
+                drawX = startX;
+                drawY += lineHeight * rawScale;
+                continue;
+            }
+
+            GlyphData glyph = getGlyph(character);
+            renderGlyph(glyph, drawX - GLYPH_MARGIN, drawY, activeColor);
+            drawX += glyph.rawAdvance;
         }
-        finally {
-            GlStateManager.bindTexture(0);
-            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-            GL11.glPopMatrix();
-            GlStateManager.matrixMode(GL11.GL_MODELVIEW);
-        }
+
         return Math.round((drawX - startX) * drawScale);
     }
 
@@ -238,87 +243,72 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
         float drawY = (y * rawScale) - rawTextTop;
         Integer formattingColor = null;
 
-        GL11.glPushMatrix();
-        try {
-            GlStateManager.enableAlpha();
-            GlStateManager.enableBlend();
-            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
-            GlStateManager.enableTexture2D();
-            GL11.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
-            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-            GlStateManager.scale(drawScale, drawScale, 1.0f);
-
-            for (int i = 0; i < text.length(); i++) {
-                char character = text.charAt(i);
-                if (isMalformedSectionPrefix(text, i)) {
-                    continue;
-                }
-
-                if (character == '\u00a7' && i + 1 < text.length()) {
-                    char formatCode = Character.toLowerCase(text.charAt(++i));
-                    int colorIndex = COLOR_CODES.indexOf(formatCode);
-
-                    if (colorIndex >= 0 && colorIndex < 16) {
-                        formattingColor = getMinecraftColor(colorIndex, 0xFF, false);
-                    }
-                    else if (formatCode == 'r') {
-                        formattingColor = null;
-                    }
-
-                    continue;
-                }
-
-                if (character == '\n') {
-                    drawX = startX;
-                    drawY += lineHeight * rawScale;
-                    continue;
-                }
-
-                GlyphData glyph = getGlyph(character);
-                int glyphColor = colorProvider.colorForGlyph(character, (drawX - startX) * drawScale, glyph.advance, formattingColor);
-                int alpha = (glyphColor >>> 24) & 0xFF;
-                if (alpha == 0) {
-                    alpha = 0xFF;
-                }
-                glyphColor = withAlpha(glyphColor, alpha);
-                if (shadowPass) {
-                    glyphColor = applyShadowColor(glyphColor);
-                }
-
-                if (glyph.textureId != 0 && glyph.textureWidth > 0.0f && glyph.textureHeight > 0.0f) {
-                    renderGlyph(glyph, drawX - GLYPH_MARGIN, drawY, glyphColor);
-                }
-                drawX += glyph.rawAdvance;
+        for (int i = 0; i < text.length(); i++) {
+            char character = text.charAt(i);
+            if (isMalformedSectionPrefix(text, i)) {
+                continue;
             }
+
+            if (character == '\u00a7' && i + 1 < text.length()) {
+                char formatCode = Character.toLowerCase(text.charAt(++i));
+                int colorIndex = COLOR_CODES.indexOf(formatCode);
+
+                if (colorIndex >= 0 && colorIndex < 16) {
+                    formattingColor = getMinecraftColor(colorIndex, 0xFF, false);
+                }
+                else if (formatCode == 'r') {
+                    formattingColor = null;
+                }
+
+                continue;
+            }
+
+            if (character == '\n') {
+                drawX = startX;
+                drawY += lineHeight * rawScale;
+                continue;
+            }
+
+            GlyphData glyph = getGlyph(character);
+            int glyphColor = colorProvider.colorForGlyph(character, (drawX - startX) * drawScale, glyph.advance, formattingColor);
+            int alpha = (glyphColor >>> 24) & 0xFF;
+            if (alpha == 0) {
+                alpha = 0xFF;
+            }
+            glyphColor = withAlpha(glyphColor, alpha);
+            if (shadowPass) {
+                glyphColor = applyShadowColor(glyphColor);
+            }
+
+            renderGlyph(glyph, drawX - GLYPH_MARGIN, drawY, glyphColor);
+            drawX += glyph.rawAdvance;
         }
-        finally {
-            GlStateManager.bindTexture(0);
-            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-            GL11.glPopMatrix();
-            GlStateManager.matrixMode(GL11.GL_MODELVIEW);
-        }
+
         return Math.round((drawX - startX) * drawScale);
     }
 
-    private void renderGlyph(GlyphData glyph, float x, float y, int color) {
-        GlStateManager.bindTexture(glyph.textureId);
+    /**
+     * Positions arrive already divided down by the atlas scale rather than being left to a scaled
+     * modelview. A matrix push has to be paired with a pop around every string, and a batch cannot
+     * outlive the matrix its vertices were measured in -- flattening the scale here is what lets
+     * quads from separate drawString calls share a single draw.
+     */
+    private void renderGlyph(GlyphData glyph, float rawX, float rawY, int color) {
+        GlyphAtlas.Region region = glyph.region;
+        if (region == null) {
+            return;
+        }
 
-        float alpha = ((color >>> 24) & 0xFF) / 255.0f;
-        float red = ((color >>> 16) & 0xFF) / 255.0f;
-        float green = ((color >>> 8) & 0xFF) / 255.0f;
-        float blue = (color & 0xFF) / 255.0f;
-        GlStateManager.color(red, green, blue, alpha);
+        float alpha = ((color >>> 24) & CHANNEL_MASK) / 255.0f;
+        float red = ((color >>> 16) & CHANNEL_MASK) / 255.0f;
+        float green = ((color >>> 8) & CHANNEL_MASK) / 255.0f;
+        float blue = (color & CHANNEL_MASK) / 255.0f;
 
-        GL11.glBegin(GL11.GL_QUADS);
-        GL11.glTexCoord2f(0.0f, 0.0f);
-        GL11.glVertex2f(x, y);
-        GL11.glTexCoord2f(0.0f, 1.0f);
-        GL11.glVertex2f(x, y + glyph.textureHeight);
-        GL11.glTexCoord2f(1.0f, 1.0f);
-        GL11.glVertex2f(x + glyph.textureWidth, y + glyph.textureHeight);
-        GL11.glTexCoord2f(1.0f, 0.0f);
-        GL11.glVertex2f(x + glyph.textureWidth, y);
-        GL11.glEnd();
+        GlyphBatch.quad(region.textureId,
+                rawX * drawScale, rawY * drawScale,
+                glyph.width * drawScale, glyph.height * drawScale,
+                region.u0, region.v0, region.u1, region.v1,
+                red, green, blue, alpha);
     }
 
     private GlyphData getGlyph(char character) {
@@ -329,16 +319,40 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
             }
         }
 
-        return extendedGlyphs.computeIfAbsent(character, this::createGlyph);
+        return extendedGlyphs.computeIfAbsent(character, this::createExtendedGlyph);
     }
 
-    private GlyphData createGlyph(char character) {
+    private GlyphData createExtendedGlyph(char character) {
         if (destroyed) {
-            return new GlyphData(0, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0);
+            return EMPTY_GLYPH;
+        }
+
+        return commit(rasterise(character));
+    }
+
+    /** Gives a rasterised glyph a home in the atlas. Glyphs with nothing visible are not packed. */
+    private GlyphData commit(Raster raster) {
+        if (raster == null) {
+            return EMPTY_GLYPH;
+        }
+
+        if (raster.visibleBottom <= raster.visibleTop) {
+            return new GlyphData(null, 0.0f, 0.0f, raster.rawAdvance, raster.rawAdvance * drawScale,
+                    raster.visibleTop, raster.visibleBottom);
+        }
+
+        GlyphAtlas.Region region = atlas.add(raster.image);
+        return new GlyphData(region, raster.image.getWidth(), raster.image.getHeight(),
+                raster.rawAdvance, raster.rawAdvance * drawScale, raster.visibleTop, raster.visibleBottom);
+    }
+
+    private Raster rasterise(char character) {
+        if (destroyed) {
+            return null;
         }
 
         if (Character.isISOControl(character) && character != '\n') {
-            return new GlyphData(0, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0);
+            return null;
         }
 
         String glyphText = String.valueOf(character);
@@ -346,6 +360,7 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
         if (!renderFont.canDisplay(character)) {
             glyphFont = new Font(Font.SANS_SERIF, renderFont.getStyle(), renderFont.getSize());
         }
+
         BufferedImage metricsImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D metricsGraphics = metricsImage.createGraphics();
         try {
@@ -354,15 +369,15 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
             FontMetrics metrics = metricsGraphics.getFontMetrics();
             Rectangle2D bounds = metrics.getStringBounds(glyphText, metricsGraphics);
             float rawAdvance = Math.max(1.0f, (float) bounds.getWidth());
-            int textureWidth = Math.max(1, (int) Math.ceil(rawAdvance) + GLYPH_MARGIN * 2);
-            int textureHeight = Math.max(1, metrics.getHeight());
-            BufferedImage glyphImage = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_ARGB);
+            int imageWidth = Math.max(1, (int) Math.ceil(rawAdvance) + GLYPH_MARGIN * 2);
+            int imageHeight = Math.max(1, metrics.getHeight());
+            BufferedImage glyphImage = new BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_ARGB);
 
             Graphics2D glyphGraphics = glyphImage.createGraphics();
             try {
                 glyphGraphics.setFont(glyphFont);
                 glyphGraphics.setBackground(new Color(255, 255, 255, 0));
-                glyphGraphics.clearRect(0, 0, textureWidth, textureHeight);
+                glyphGraphics.clearRect(0, 0, imageWidth, imageHeight);
                 glyphGraphics.setColor(Color.WHITE);
                 applyRenderHints(glyphGraphics);
                 glyphGraphics.drawString(glyphText, GLYPH_MARGIN, metrics.getAscent());
@@ -371,41 +386,12 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
                 glyphGraphics.dispose();
             }
 
-            int textureId = uploadTexture(glyphImage);
             int[] visibleBounds = findVisibleRowBounds(glyphImage);
-            return new GlyphData(textureId, textureWidth, textureHeight, rawAdvance, rawAdvance * drawScale, visibleBounds[0], visibleBounds[1]);
+            return new Raster(glyphImage, rawAdvance, visibleBounds[0], visibleBounds[1]);
         }
         finally {
             metricsGraphics.dispose();
         }
-    }
-
-    private int uploadTexture(BufferedImage image) {
-        int width = image.getWidth();
-        int height = image.getHeight();
-        int[] pixels = image.getRGB(0, 0, width, height, new int[width * height], 0, width);
-        ByteBuffer byteBuffer = BufferUtils.createByteBuffer(width * height * 4);
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int pixel = pixels[x + y * width];
-                byteBuffer.put((byte) ((pixel >> 16) & CHANNEL_MASK));
-                byteBuffer.put((byte) ((pixel >> 8) & CHANNEL_MASK));
-                byteBuffer.put((byte) (pixel & CHANNEL_MASK));
-                byteBuffer.put((byte) ((pixel >> 24) & CHANNEL_MASK));
-            }
-        }
-
-        byteBuffer.flip();
-        int textureId = GL11.glGenTextures();
-        GlStateManager.bindTexture(textureId);
-        // Clamp transparent glyph edges so linear filtering cannot repeat them as blocks.
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, byteBuffer);
-        return textureId;
     }
 
     private float computeRawTextTop() {
@@ -447,12 +433,14 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
     private static int[] findVisibleRowBounds(BufferedImage image) {
         int width = image.getWidth();
         int height = image.getHeight();
+        int[] pixels = image.getRGB(0, 0, width, height, new int[width * height], 0, width);
         int top = -1;
         int bottom = -1;
 
         for (int y = 0; y < height; y++) {
+            int rowStart = y * width;
             for (int x = 0; x < width; x++) {
-                if (((image.getRGB(x, y) >>> 24) & CHANNEL_MASK) != 0) {
+                if (((pixels[rowStart + x] >>> 24) & CHANNEL_MASK) != 0) {
                     if (top == -1) {
                         top = y;
                     }
@@ -472,10 +460,10 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
     /**
      * The boosted scale, with a ceiling on how big a glyph is actually rasterised.
      *
-     * <p>Every glyph gets its own texture, so the cost of a boost is the square of it across the
-     * whole 256-glyph set. Past around sixty pixels there is nothing more to be had for text that
-     * is only ever magnified two or three times, so the boost is taken up to that point and no
-     * further -- and never below what the UI scale asked for on its own.
+     * <p>The whole glyph set shares one atlas page, so a boost costs its square in page area. Past
+     * around sixty pixels there is nothing more to be had for text that is only ever magnified two
+     * or three times, so the boost is taken up to that point and no further -- and never below what
+     * the UI scale asked for on its own.
      */
     private static float boostedRenderScale(Font sourceFont, float qualityBoost) {
         float base = resolveRenderScale();
@@ -485,7 +473,6 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
     }
 
     private static float resolveRenderScale() {
-        Minecraft mc = Minecraft.getMinecraft();
         int uiScale = 1;
 
         try {
@@ -505,18 +492,6 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
         graphics.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
-    }
-
-    private static void deleteGlyphTextures(GlyphData[] glyphs) {
-        for (int i = 0; i < glyphs.length; i++) {
-            deleteGlyphTexture(glyphs[i]);
-        }
-    }
-
-    private static void deleteGlyphTexture(GlyphData glyph) {
-        if (glyph != null && glyph.textureId != 0) {
-            GL11.glDeleteTextures(glyph.textureId);
-        }
     }
 
     private static int getMinecraftColor(int colorIndex, int alpha, boolean shadow) {
@@ -576,19 +551,34 @@ public final class GlyphFontRenderer implements RavenFontRenderer {
         return character == '\u00c2' || character == '\u00c3' || character == '\u0082' || character == '\u201a';
     }
 
+    /** A glyph as the font produced it, before it has been given a home in the atlas. */
+    private static final class Raster {
+        private final BufferedImage image;
+        private final float rawAdvance;
+        private final int visibleTop;
+        private final int visibleBottom;
+
+        private Raster(BufferedImage image, float rawAdvance, int visibleTop, int visibleBottom) {
+            this.image = image;
+            this.rawAdvance = rawAdvance;
+            this.visibleTop = visibleTop;
+            this.visibleBottom = visibleBottom;
+        }
+    }
+
     private static final class GlyphData {
-        private final int textureId;
-        private final float textureWidth;
-        private final float textureHeight;
+        private final GlyphAtlas.Region region;
+        private final float width;
+        private final float height;
         private final float rawAdvance;
         private final float advance;
         private final int visibleTop;
         private final int visibleBottom;
 
-        private GlyphData(int textureId, float textureWidth, float textureHeight, float rawAdvance, float advance, int visibleTop, int visibleBottom) {
-            this.textureId = textureId;
-            this.textureWidth = textureWidth;
-            this.textureHeight = textureHeight;
+        private GlyphData(GlyphAtlas.Region region, float width, float height, float rawAdvance, float advance, int visibleTop, int visibleBottom) {
+            this.region = region;
+            this.width = width;
+            this.height = height;
             this.rawAdvance = rawAdvance;
             this.advance = advance;
             this.visibleTop = visibleTop;

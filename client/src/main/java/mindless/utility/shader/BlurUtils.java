@@ -137,7 +137,7 @@ public class BlurUtils {
         GlStateManager.clearColor(buffer.framebufferColor[0], buffer.framebufferColor[1],
                 buffer.framebufferColor[2], buffer.framebufferColor[3]);
         GlStateManager.clear(GL11.GL_COLOR_BUFFER_BIT);
-        RenderUtils.popAttrib();
+        RenderUtils.popAttrib(GL11.GL_SCISSOR_BIT | GL11.GL_COLOR_BUFFER_BIT);
     }
 
     /** Scissored version of {@code framebufferClear}, matching its clear colour exactly. */
@@ -165,7 +165,7 @@ public class BlurUtils {
         GlStateManager.clearColor(buffer.framebufferColor[0], buffer.framebufferColor[1],
                 buffer.framebufferColor[2], buffer.framebufferColor[3]);
         GlStateManager.clear(GL11.GL_COLOR_BUFFER_BIT);
-        RenderUtils.popAttrib();
+        RenderUtils.popAttrib(GL11.GL_SCISSOR_BIT | GL11.GL_COLOR_BUFFER_BIT);
     }
     public static void prepareBloom() {
         stencilFrameBufferBloom = RenderUtils.createFrameBuffer(stencilFrameBufferBloom);

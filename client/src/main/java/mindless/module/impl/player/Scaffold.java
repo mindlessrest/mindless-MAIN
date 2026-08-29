@@ -11,6 +11,12 @@ import mindless.utility.RenderUtils;
 import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
 import mindless.utility.shader.RoundedUtils;
+import mindless.module.impl.render.HUD;
+import mindless.utility.font.FontManager;
+import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.shader.BlurUtils;
+import org.lwjgl.opengl.GL20;
+import java.awt.Color;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
@@ -46,6 +52,7 @@ public class Scaffold extends Module {
     private final ButtonSetting eagle;
     private final SliderSetting eagleSafety;
     private final ButtonSetting showBlockCount;
+    private final ButtonSetting switchBack;
     private final ButtonSetting editPosition;
 
     private BlockPos previewPos;
@@ -67,14 +74,25 @@ public class Scaffold extends Module {
     private final long[] timestamps = new long[TIMESTAMP_RING];
     private int tsHead, tsCount;
 
-    private static final float BADGE_SIZE = 20.0F;
-    private static final float BADGE_GAP = 4.0F;
-    private static final float BADGE_RADIUS = 4.0F;
-    private static final int BADGE_COLOUR = 0xD218181B;
-    private static final float OVERLAY_PAD_X = 10.0F;
-    private static final float OVERLAY_PAD_Y = 6.0F;
-    private static final float OVERLAY_RADIUS = 7.0F;
+    /** Sixteen for the icon itself, three of padding either side. */
+    private static final float BADGE_SIZE = 22.0F;
+    private static final float BADGE_GAP = 7.0F;
+    private static final float BADGE_RADIUS = 6.0F;
+    private static final int BADGE_COLOUR = 0x66000000;
+    private static final float PANEL_PAD_X = 7.0F;
+    private static final float PANEL_PAD_Y = 6.0F;
+    private static final float BAR_HEIGHT = 2.5F;
+    private static final float BAR_GAP = 3.5F;
+    private static final float MIN_CONTENT_WIDTH = 78.0F;
     private static final long POP_DURATION_MS = 200L;
+    /**
+     * Where the capacity bar reads full.
+     *
+     * <p>Two stacks rather than one. A bridge is not in trouble at sixty-four blocks and a bar that
+     * is already pinned at the top says nothing; anchoring it here leaves the top half of its
+     * travel to describe a comfortable supply and the bottom half to describe running out.
+     */
+    private static final int BAR_FULL_BLOCKS = 128;
 
     private float overlayScale = 0f;
     private long overlayPopStart = -1L;
@@ -85,6 +103,20 @@ public class Scaffold extends Module {
     private float relativePosX = Float.NaN;
     private float relativePosY = Float.NaN;
 
+    /**
+     * Counters shown on the overlay, eased toward the real ones.
+     *
+     * <p>Blocks come off the stack in ones and BPS is a windowed average that steps whenever a
+     * placement leaves the window, so both jump. Read as numbers that is fine; drawn as a bar and
+     * a decimal it is a twitch, and a twitching HUD element reads as broken rather than live.
+     */
+    private float displayedBlocks = Float.NaN;
+    private float displayedBps;
+    private long lastOverlayNanos;
+
+    /** The hotbar slot held when the module was switched on, so it can be given back. */
+    private int previousSlot = -1;
+
     public Scaffold() {
         super("Scaffold", category.player);
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));
@@ -93,12 +125,17 @@ public class Scaffold extends Module {
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
         this.registerSetting(showBlockCount = new ButtonSetting("Show block count", false));
+        this.registerSetting(switchBack = new ButtonSetting("Switch back", true));
         this.registerSetting(editPosition = new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));
     }
 
     @Override
     public void onEnable() {
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+        // Remembered before the first placement moves the hand off it. Bridging is something you
+        // drop into for a second in the middle of a fight, and coming out of it holding a stack of
+        // wool instead of the sword you went in with is a death.
+        previousSlot = Utils.nullCheck() ? mc.thePlayer.inventory.currentItem : -1;
         previewPos = null;
         previewFace = null;
         queuedPos = null;
@@ -125,6 +162,28 @@ public class Scaffold extends Module {
             setShiftOverride(false);
             eagleActive = false;
         }
+        restorePreviousSlot();
+    }
+
+    /**
+     * Puts the hand back on whatever it was holding before the module took it.
+     *
+     * <p>Only when the slot actually moved. Someone who picked their blocks by hand and then
+     * switched the module on is already holding what they want; snapping them back to a slot they
+     * left on purpose would be the same bug in the other direction.
+     */
+    private void restorePreviousSlot() {
+        int slot = previousSlot;
+        previousSlot = -1;
+
+        if (!switchBack.isToggled() || slot < 0 || slot > 8 || !Utils.nullCheck()) {
+            return;
+        }
+        if (mc.thePlayer.inventory.currentItem == slot) {
+            return;
+        }
+
+        mc.thePlayer.inventory.currentItem = slot;
     }
 
     @Override
@@ -321,46 +380,12 @@ public class Scaffold extends Module {
         if (overlayScale <= 0.01f) return;
 
         syncPosition();
-        String text = blocks + " blocks";
-        int color = 0xFFFFFF;
-        if (blocks <= 16) color = 0xFF5555;
-        else if (blocks <= 32) color = 0xFFAA00;
-        else if (blocks <= 64) color = 0xFFFF55;
-
-        float bps = computeBps();
-        String bpsText = String.format("%.1f BPS", bps);
-
-        ItemStack badgeStack = getDisplayBlock();
-        float tX = textX(badgeStack);
-        float textH = mc.fontRendererObj.FONT_HEIGHT * 2 + 2;
-        float textW = Math.max(mc.fontRendererObj.getStringWidth(text), mc.fontRendererObj.getStringWidth(bpsText));
-        float totalW = (badgeStack != null ? BADGE_SIZE + BADGE_GAP : 0) + textW + OVERLAY_PAD_X * 2;
-        float totalH = textH + OVERLAY_PAD_Y * 2;
-        float bgX = posX - OVERLAY_PAD_X;
-        float bgY = posY - OVERLAY_PAD_Y;
-
-        float cx = bgX + totalW / 2f;
-        float cy = bgY + totalH / 2f;
-
-        GL11.glPushMatrix();
-        GlStateManager.enableBlend();
-        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-
-        GlStateManager.translate(cx, cy, 0);
-        GlStateManager.scale(overlayScale, overlayScale, 1f);
-        GlStateManager.translate(-cx, -cy, 0);
-
-        RoundedUtils.drawRound(bgX, bgY, totalW, totalH, OVERLAY_RADIUS, new Color(18, 18, 24, 210));
-
-        mc.fontRendererObj.drawStringWithShadow(text, tX, posY, color);
-        mc.fontRendererObj.drawStringWithShadow(bpsText, tX, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
-
-        drawHeldBlockBadge(badgeStack);
-
-        GlStateManager.disableBlend();
-        GL11.glPopMatrix();
+        drawOverlay(getDisplayBlock(), blocks, computeBps(), posX, posY, overlayScale);
     }
 
+    /**
+     * The pop curve: overshoots a little past full size before settling.
+     */
     private static float easeOutBack(float t) {
         float c1 = 1.70158f;
         float c3 = c1 + 1f;
@@ -368,14 +393,178 @@ public class Scaffold extends Module {
     }
 
     /**
-     * Where the text starts.
+     * The block-count overlay.
      *
-     * <p>The badge sits at the anchor and the text moves over for it, so dragging the widget still
-     * places its left edge where you put it. With no block to show there is no badge, and the text
-     * closes the gap rather than leaving one.
+     * <p>Two lines of dropshadowed vanilla text next to an icon is what a debug readout looks
+     * like, not what the rest of this client looks like. Everything else on the HUD -- the
+     * scoreboard, the session card, the alerts -- is a blurred panel with a hairline rim, in the
+     * client font, and this now matches: the count is the thing you glance at so it gets a large
+     * face of its own, the rate sits beside it as a secondary reading, and the bar underneath says
+     * how much is left without having to be read at all.
      */
-    private float textX(ItemStack badgeStack) {
-        return badgeStack == null ? posX : posX + BADGE_SIZE + BADGE_GAP;
+    private void drawOverlay(ItemStack badgeStack, int blocks, float bps, float left, float top, float popScale) {
+        advanceOverlayCounters(blocks, bps);
+
+        // The pop is applied to the geometry rather than to the modelview.
+        //
+        // Every rounded shape here is drawn by a shader that is told where the rectangle is in
+        // screen pixels and works out its own corners and coverage from that. A matrix scale moves
+        // the quad those uniforms are painted onto but leaves the uniforms where they were, so the
+        // panel would be sliced by a rounded mask sitting somewhere else for the length of the
+        // animation. Scaling the coordinates instead keeps the shape and the quad describing the
+        // same rectangle.
+        float scale = Math.max(0.0F, popScale);
+
+        RavenFontRenderer countFont = countFont();
+        RavenFontRenderer labelFont = HUD.getHudFontRenderer();
+
+        int shownBlocks = Math.round(displayedBlocks);
+        String countText = Integer.toString(shownBlocks);
+        String rateText = String.format("%.1f", displayedBps);
+        String rateSuffix = " BPS";
+
+        float countW = countFont.getStringWidth(countText);
+        float rateW = labelFont.getStringWidth(rateText) + labelFont.getStringWidth(rateSuffix);
+        float labelW = labelFont.getStringWidth("BLOCKS");
+        float contentW = Math.max(MIN_CONTENT_WIDTH, Math.max(countW + 12.0F + rateW, labelW + 12.0F + rateW));
+
+        float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
+        float layoutWidth = PANEL_PAD_X * 2.0F + badgeSpan + contentW;
+        float layoutHeight = overlayHeight(countFont, labelFont);
+
+        // Grown from the centre, so the panel expands in place instead of sliding out of its
+        // anchor on the way in.
+        float centerX = left + layoutWidth * 0.5F;
+        float centerY = top + layoutHeight * 0.5F;
+        float width = layoutWidth * scale;
+        float height = layoutHeight * scale;
+        float panelLeft = centerX - width * 0.5F;
+        float panelTop = centerY - height * 0.5F;
+        float radius = 8.0F * mindless.module.impl.theme.ThemeManager.roundingScale() * scale;
+
+        // Shadow first: everything from prepareBlur on is stencilled to the panel and would paint
+        // straight over it.
+        RoundedUtils.drawRoundShadow(panelLeft, panelTop, width, height, radius, 5.0F * scale, 0x82000000);
+        BlurUtils.prepareBlur(panelLeft, panelTop, width, height);
+        RoundedUtils.drawRound(panelLeft, panelTop, width, height, radius, 0xFF000000);
+        BlurUtils.blurEndRegion(2, 2.4F, 0.85F, panelLeft - 2.0F, panelTop - 2.0F, width + 4.0F, height + 4.0F);
+        RoundedUtils.drawRound(panelLeft, panelTop, width, height, radius, 0x82000000);
+        RoundedUtils.drawGradientVertical(panelLeft, panelTop, width, height, radius,
+                new Color(255, 255, 255, 20), new Color(255, 255, 255, 4));
+        RoundedUtils.drawRoundOutline(panelLeft, panelTop, width, height, radius, 1.0F,
+                new Color(0, 0, 0, 0), new Color(255, 255, 255, 30));
+
+        // The rounded-rect and blur shaders leave a program bound; glyphs drawn through it come
+        // out garbled.
+        GL20.glUseProgram(0);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+
+        // The contents are laid out at full size and scaled by the matrix. Unlike the panel they
+        // are ordinary quads, so the matrix carries them correctly and there is no reason to work
+        // the pop into every coordinate below.
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(centerX, centerY, 0.0F);
+        GlStateManager.scale(scale, scale, 1.0F);
+        GlStateManager.translate(-centerX, -centerY, 0.0F);
+        try {
+
+        float contentX = left + PANEL_PAD_X + badgeSpan;
+        float contentRight = left + layoutWidth - PANEL_PAD_X;
+        int countColor = countColour(shownBlocks);
+
+        float countY = top + PANEL_PAD_Y;
+        countFont.drawString(countText, contentX, countY, 0xFF000000 | countColor, false);
+
+        // Right-aligned on the same line as the count, so the two readings share a baseline
+        // instead of stacking into a column of numbers.
+        float rateBaseline = countY + (countFont.getFontHeight() - labelFont.getFontHeight()) * 0.6F;
+        float suffixW = labelFont.getStringWidth(rateSuffix);
+        float rateX = contentRight - rateW;
+        labelFont.drawString(rateText, rateX, rateBaseline, 0xFFE8E8E8, false);
+        labelFont.drawString(rateSuffix, contentRight - suffixW, rateBaseline, 0x8AFFFFFF, false);
+
+        float labelY = countY + countFont.getFontHeight() + 1.0F;
+        labelFont.drawString("BLOCKS", contentX, labelY, 0x7AFFFFFF, false);
+
+        float barY = labelY + labelFont.getFontHeight() + BAR_GAP;
+        drawCapacityBar(contentX, barY, contentRight - contentX, countColor);
+
+        drawHeldBlockBadge(badgeStack, left + PANEL_PAD_X, top + (layoutHeight - BADGE_SIZE) * 0.5F);
+        }
+        finally {
+            GlStateManager.popMatrix();
+        }
+    }
+
+    /** Height is driven by the fonts, so a larger HUD scale grows the panel with the text. */
+    private float overlayHeight(RavenFontRenderer countFont, RavenFontRenderer labelFont) {
+        float content = countFont.getFontHeight() + 1.0F + labelFont.getFontHeight() + BAR_GAP + BAR_HEIGHT;
+        return Math.max(BADGE_SIZE, content) + PANEL_PAD_Y * 2.0F;
+    }
+
+    /** The overlay's footprint, for the drag handle and the editor. */
+    private float[] overlaySize(ItemStack badgeStack) {
+        RavenFontRenderer countFont = countFont();
+        RavenFontRenderer labelFont = HUD.getHudFontRenderer();
+        float rateW = labelFont.getStringWidth("0.0") + labelFont.getStringWidth(" BPS");
+        float countW = countFont.getStringWidth(Integer.toString(Math.max(0, getTotalBlocks())));
+        float labelW = labelFont.getStringWidth("BLOCKS");
+        float contentW = Math.max(MIN_CONTENT_WIDTH, Math.max(countW + 12.0F + rateW, labelW + 12.0F + rateW));
+        float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
+        return new float[]{PANEL_PAD_X * 2.0F + badgeSpan + contentW, overlayHeight(countFont, labelFont)};
+    }
+
+    /** A real larger face for the count, rather than scaling the small one up and blurring it. */
+    private static RavenFontRenderer countFont() {
+        return FontManager.getHudRenderer(HUD.getSelectedFontName(),
+                Math.min(2.0F, HUD.getSelectedFontScale() * 1.55F));
+    }
+
+    private static int countColour(int blocks) {
+        if (blocks <= 16) return 0xFF5555;
+        if (blocks <= 32) return 0xFFAA00;
+        if (blocks <= 64) return 0xFFFF55;
+        return 0xFFFFFF;
+    }
+
+    /** How much of the supply is left, as a bar rather than a number to be read. */
+    private void drawCapacityBar(float x, float y, float width, int fillColour) {
+        if (width <= 1.0F) return;
+
+        float fraction = Math.max(0.0F, Math.min(1.0F, displayedBlocks / (float) BAR_FULL_BLOCKS));
+        float radius = BAR_HEIGHT * 0.5F;
+        RoundedUtils.drawRound(x, y, width, BAR_HEIGHT, radius, 0x33FFFFFF);
+        float filled = width * fraction;
+        if (filled > BAR_HEIGHT) {
+            RoundedUtils.drawRound(x, y, filled, BAR_HEIGHT, radius, 0xD8000000 | fillColour);
+        }
+        GL20.glUseProgram(0);
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
+    /**
+     * Eases the shown counters toward the real ones, per frame rather than per step.
+     *
+     * <p>Time-based, so the animation takes the same wall-clock time however fast the game is
+     * drawing. The block count snaps rather than easing when it jumps a long way -- a fresh stack
+     * from the inventory is a new supply, not the old one growing.
+     */
+    private void advanceOverlayCounters(int blocks, float bps) {
+        long now = System.nanoTime();
+        float delta = lastOverlayNanos == 0L ? 1.0F / 60.0F
+                : Math.max(0.0F, Math.min(0.25F, (now - lastOverlayNanos) / 1_000_000_000.0F));
+        lastOverlayNanos = now;
+
+        if (Float.isNaN(displayedBlocks) || Math.abs(blocks - displayedBlocks) > 48.0F) {
+            displayedBlocks = blocks;
+        }
+        else {
+            displayedBlocks += (blocks - displayedBlocks) * (1.0F - (float) Math.exp(-delta * 12.0F));
+        }
+        displayedBps += (bps - displayedBps) * (1.0F - (float) Math.exp(-delta * 9.0F));
     }
 
     /**
@@ -395,18 +584,15 @@ public class Scaffold extends Module {
     }
 
     /** A rounded slot to the left of the count holding whatever is about to be bridged with. */
-    private void drawHeldBlockBadge(ItemStack stack) {
+    private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY) {
         if (stack == null) {
             return;
         }
 
-        float badgeX = posX;
-        // Centred over both lines, so it reads as part of one widget rather than a tag stuck on
-        // the side of the first.
-        float textHeight = mc.fontRendererObj.FONT_HEIGHT * 2 + 2;
-        float badgeY = posY + (textHeight - BADGE_SIZE) * 0.5F;
-
         RoundedUtils.drawRound(badgeX, badgeY, BADGE_SIZE, BADGE_SIZE, BADGE_RADIUS, BADGE_COLOUR);
+        RoundedUtils.drawRoundOutline(badgeX, badgeY, BADGE_SIZE, BADGE_SIZE, BADGE_RADIUS, 1.0F,
+                new Color(0, 0, 0, 0), new Color(255, 255, 255, 22));
+        GL20.glUseProgram(0);
 
         int iconX = Math.round(badgeX + (BADGE_SIZE - 16.0F) * 0.5F);
         int iconY = Math.round(badgeY + (BADGE_SIZE - 16.0F) * 0.5F);
@@ -912,14 +1098,11 @@ public class Scaffold extends Module {
             drawRect(0, 0, width, height, 0xB2000000);
 
             posX = ax; posY = ay;
-            int blocks = getTotalBlocks();
-            String text = blocks + " blocks";
+            // Previewed with a stack in hand even when the inventory is empty, so the panel being
+            // positioned is the same size as the one that will be shown in a game.
             ItemStack badgeStack = getDisplayBlock();
-            float tx = textX(badgeStack);
-            mc.fontRendererObj.drawStringWithShadow(text, tx, posY, 0xFFFFFF);
-            String bps = String.format("%.1f BPS", computeBps());
-            mc.fontRendererObj.drawStringWithShadow(bps, tx, posY + mc.fontRendererObj.FONT_HEIGHT + 2, 0xAAAAAA);
-            drawHeldBlockBadge(badgeStack);
+            int blocks = Math.max(1, getTotalBlocks());
+            drawOverlay(badgeStack, blocks, computeBps(), posX, posY, 1.0F);
 
             try { handleInput(); } catch (IOException ignored) {}
             super.drawScreen(mx, my, pt);
@@ -933,8 +1116,9 @@ public class Scaffold extends Module {
                 ax = lax + (mx - lmx);
                 ay = lay + (my - lmy);
             } else {
-                int tw = mc.fontRendererObj.getStringWidth(getTotalBlocks() + " blocks");
-                int th = mc.fontRendererObj.FONT_HEIGHT * 2 + 2;
+                float[] size = overlaySize(getDisplayBlock());
+                float tw = size[0];
+                float th = size[1];
                 if (mx >= posX - 2 && mx <= posX + tw + 2 && my >= posY - 2 && my <= posY + th + 2) {
                     dragging = true;
                     lmx = mx; lmy = my; lax = ax; lay = ay;

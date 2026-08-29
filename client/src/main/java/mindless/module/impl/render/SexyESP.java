@@ -88,6 +88,8 @@ public class SexyESP extends Module {
 
     public static boolean renderingOutlinePass = false;
     private Framebuffer outlineFramebuffer;
+    /** Who the outline pass will actually draw, gathered before any of its buffers are touched. */
+    private final java.util.List<EntityPlayer> outlineCandidates = new java.util.ArrayList<EntityPlayer>();
     private final SeparableOutlineShader separableOutlineShader = new SeparableOutlineShader();
     private final GlowBloomShader glowBloomShader = new GlowBloomShader();
     private final GlowShader glowShader = new GlowShader();
@@ -603,8 +605,19 @@ public class SexyESP extends Module {
         if (!glowShader.isValid()) return;
         if (!glowBloomShader.isValid() && !separableOutlineShader.isValid()) return;
 
+        // Work out whether there is anything to glow before spending anything on the machinery
+        // that would glow it. Everything below this point is priced per screen pixel rather than
+        // per player -- two full-screen buffer clears, a camera transform, and a separable blur
+        // that fetches tens of millions of texels -- and all of it used to run in an empty lobby
+        // and composite a completely transparent result over the scene.
+        collectOutlineCandidates();
+        if (outlineCandidates.isEmpty()) return;
+
         outlineFramebuffer = createOutlineFramebuffer(outlineFramebuffer);
-        if (outlineFramebuffer == null) return;
+        if (outlineFramebuffer == null) {
+            outlineCandidates.clear();
+            return;
+        }
 
         mc.getFramebuffer().bindFramebuffer(true);
         // Both matrices are saved, not just the modelview. setupCameraTransform below replaces the
@@ -633,11 +646,8 @@ public class SexyESP extends Module {
         int oB = outCol & 0xFF;
         boolean useTeamColorOutline = outlineTeamColor.isToggled();
 
-        double maxDistSq = maxDistance.getInput() * maxDistance.getInput();
-        for (EntityPlayer player : mc.theWorld.playerEntities) {
-            if (!isValidEntity(player)) continue;
-            if (!RenderUtils.isInViewFrustum(player)) continue;
-            if (!RenderUtils.isWithinDistanceSqToRenderView(player, maxDistSq)) continue;
+        for (int i = 0; i < outlineCandidates.size(); i++) {
+            EntityPlayer player = outlineCandidates.get(i);
             int pR = oR, pG = oG, pB = oB;
             if (useTeamColorOutline) {
                 int teamCol = Utils.getColorFromEntity(player);
@@ -664,6 +674,7 @@ public class SexyESP extends Module {
         }
         mindless.utility.Diagnostics.gl("esp: silhouette pass");
         renderingOutlinePass = false;
+        outlineCandidates.clear();
 
         mc.gameSettings.entityShadows = shadows;
         mc.entityRenderer.disableLightmap();
@@ -711,6 +722,18 @@ public class SexyESP extends Module {
         // skipped as redundant -- which is what drew the ESP nametags flat and black afterwards.
         RenderUtils.syncGlState();
         mindless.utility.Diagnostics.gl("esp: outline pass complete");
+    }
+
+    private void collectOutlineCandidates() {
+        outlineCandidates.clear();
+        double maxDistSq = maxDistance.getInput() * maxDistance.getInput();
+
+        for (EntityPlayer player : mc.theWorld.playerEntities) {
+            if (!isValidEntity(player)) continue;
+            if (!RenderUtils.isInViewFrustum(player)) continue;
+            if (!RenderUtils.isWithinDistanceSqToRenderView(player, maxDistSq)) continue;
+            outlineCandidates.add(player);
+        }
     }
 
     private Framebuffer createOutlineFramebuffer(Framebuffer framebuffer) {

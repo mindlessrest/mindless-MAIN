@@ -190,7 +190,8 @@ public class KawaseBlur {
         ShaderUtils.drawQuads();
         GlStateManager.bindTexture(0);
         GL11.glDepthMask(true);
-        RenderUtils.popAttrib();
+        RenderUtils.popAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT
+                | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_TEXTURE_BIT);
         RenderUtils.resetColor();
     }
 
@@ -248,7 +249,7 @@ public class KawaseBlur {
             previousTextures.restore();
         }
         GL11.glDepthMask(true);
-        RenderUtils.popAttrib();
+        RenderUtils.popAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
         RenderUtils.resetColor();
     }
 

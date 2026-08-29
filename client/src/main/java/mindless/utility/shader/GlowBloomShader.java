@@ -17,22 +17,34 @@ import org.lwjgl.opengl.GL20;
  * the silhouette's coverage smeared over a wide radius so that it is bright where it meets the
  * body and fades to nothing further out, which is what a Gaussian blur gives.
  *
- * The blur is separable: a horizontal pass into a scratch buffer, then a vertical pass composited
- * straight over the scene. Doing it as two one-dimensional passes costs seventeen samples each
- * instead of the two hundred and eighty-nine a square kernel of the same width would need.
+ * The blur is separable: a horizontal pass, then a vertical one. Doing it as two one-dimensional
+ * passes costs thirty-three samples each instead of the one thousand and eighty-nine a square
+ * kernel of the same width would need.
+ *
+ * Both blur passes run at half resolution in each axis. Thirty-three taps per pixel is a lot of
+ * texture traffic to spend on an image whose entire purpose is to have no detail in it: at 1080p
+ * two full-resolution passes fetch about a hundred and forty million texels every frame, and three
+ * quarters of that buys nothing a wide Gaussian can express. The composite that follows is the one
+ * pass that stays full resolution -- it multiplies by the silhouette's own coverage to keep the
+ * glow outside the body, and that edge is the one place in the effect where a soft boundary would
+ * actually be visible.
  *
  * Only coverage is blurred, never colour. The silhouette is drawn in a flat tint and its alpha is
  * the only channel that carries shape, so the passes accumulate alpha and re-apply the tint at the
  * end. That keeps the glow a single clean hue rather than letting the body's colours bleed out.
- *
- * The final pass multiplies by the inverse of the original coverage, so the glow lives outside the
- * silhouette and the player underneath stays clean instead of being washed flat.
  */
 public class GlowBloomShader {
     private static final Minecraft mc = Minecraft.getMinecraft();
 
+    /** How far each axis of the blur buffers is scaled down. Two is four times less fill. */
+    private static final int BLUR_DIVISOR = 2;
+
+    private static final int MODE_BLUR = 0;
+    private static final int MODE_COMPOSITE = 1;
+
     private final BlurPass pass = new BlurPass();
-    private Framebuffer scratch;
+    private Framebuffer horizontal;
+    private Framebuffer vertical;
 
     public boolean isValid() {
         return pass.isValid();
@@ -40,43 +52,64 @@ public class GlowBloomShader {
 
     /**
      * @param silhouette buffer holding the tinted shapes, coverage in alpha
-     * @param radius     blur reach in texels of the silhouette buffer
+     * @param radius     blur reach in pixels of the display
      * @param intensity  brightness multiplier applied to the accumulated coverage
      */
     public void render(Framebuffer silhouette, float radius, float intensity, int r, int g, int b) {
         if (!pass.isValid() || silhouette == null || radius <= 0.0f) return;
 
         Diagnostics.gl("glow: entering (errors from earlier passes)");
-        scratch = RenderUtils.createFrameBuffer(scratch, false);
-        if (scratch == null) return;
-        scratch.setFramebufferFilter(GL11.GL_LINEAR);
-        Diagnostics.gl("glow: scratch buffer ready");
+        horizontal = RenderUtils.createScaledFrameBuffer(horizontal, BLUR_DIVISOR, false);
+        vertical = RenderUtils.createScaledFrameBuffer(vertical, BLUR_DIVISOR, false);
+        if (horizontal == null || vertical == null) return;
+        // Linear, because the composite reads these back stretched to full size.
+        horizontal.setFramebufferFilter(GL11.GL_LINEAR);
+        vertical.setFramebufferFilter(GL11.GL_LINEAR);
+        Diagnostics.gl("glow: blur buffers ready");
 
-        // Horizontal half, written opaquely into the scratch buffer: blending here would mix the
-        // partial result with whatever the buffer already held.
-        scratch.framebufferClear();
-        scratch.bindFramebuffer(false);
+        // Both blur halves are written opaquely: blending here would mix a partial result with
+        // whatever the buffer already held.
         GlStateManager.disableBlend();
         RenderUtils.setAlphaLimit(0.0f);
+
+        // Horizontal, reading the full-resolution silhouette into the half-size buffer. The step
+        // between taps is a fraction of the texture rather than a count of texels, so reading a
+        // smaller target does not change how far across the screen the blur reaches.
+        horizontal.framebufferClear();
+        horizontal.bindFramebuffer(true);
         pass.use();
         pass.setTint(r, g, b);
         pass.setShape(radius, intensity);
-        pass.setDirection(1.0f, 0.0f, false);
+        pass.setDirection(1.0f, 0.0f, MODE_BLUR);
         Diagnostics.gl("glow: horizontal uniforms set");
         RenderUtils.drawFramebufferFullscreen(silhouette);
         Diagnostics.gl("glow: horizontal draw");
         pass.stop();
 
-        // Vertical half, composited over the scene. Additive rather than alpha-over, because a
-        // glow is light being added to what is behind it rather than a film laid on top: it should
-        // brighten dark ground and leave bright ground much as it was.
-        mc.getFramebuffer().bindFramebuffer(false);
+        // Vertical, half size to half size.
+        vertical.framebufferClear();
+        vertical.bindFramebuffer(true);
+        pass.use();
+        pass.setTint(r, g, b);
+        pass.setShape(radius, intensity);
+        pass.setDirection(0.0f, 1.0f, MODE_BLUR);
+        RenderUtils.drawFramebufferFullscreen(horizontal);
+        Diagnostics.gl("glow: vertical draw");
+        pass.stop();
+
+        // Composite over the scene, at full resolution and two texture reads deep. Additive rather
+        // than alpha-over, because a glow is light being added to what is behind it rather than a
+        // film laid on top: it should brighten dark ground and leave bright ground much as it was.
+        //
+        // Binding with the viewport reset, not without: the two passes above left the viewport at
+        // half size, and a composite drawn into that would land in the bottom-left quarter.
+        mc.getFramebuffer().bindFramebuffer(true);
         GlStateManager.enableBlend();
         GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
         pass.use();
         pass.setTint(r, g, b);
         pass.setShape(radius, intensity);
-        pass.setDirection(0.0f, 1.0f, true);
+        pass.setDirection(0.0f, 0.0f, MODE_COMPOSITE);
         // Unit 2, not 16. OpenGL only guarantees sixteen fragment texture units, numbered
         // zero to fifteen, and GL_MAX_TEXTURE_IMAGE_UNITS is commonly exactly sixteen, so a
         // sampler pointed at unit 16 is out of range: the draw raises GL_INVALID_OPERATION
@@ -84,9 +117,9 @@ public class GlowBloomShader {
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE2);
         RenderUtils.bindTexture(silhouette.framebufferTexture);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
-        Diagnostics.gl("glow: vertical uniforms and textures bound");
-        RenderUtils.drawFramebufferFullscreen(scratch);
-        Diagnostics.gl("glow: vertical draw");
+        Diagnostics.gl("glow: composite uniforms and textures bound");
+        RenderUtils.drawFramebufferFullscreen(vertical);
+        Diagnostics.gl("glow: composite draw");
         pass.stop();
 
         GlStateManager.bindTexture(0);
@@ -98,9 +131,13 @@ public class GlowBloomShader {
     }
 
     public void delete() {
-        if (scratch != null) {
-            scratch.deleteFramebuffer();
-            scratch = null;
+        if (horizontal != null) {
+            horizontal.deleteFramebuffer();
+            horizontal = null;
+        }
+        if (vertical != null) {
+            vertical.deleteFramebuffer();
+            vertical = null;
         }
     }
 
@@ -113,9 +150,17 @@ public class GlowBloomShader {
                 "uniform float radius;\n" +
                 "uniform float intensity;\n" +
                 "uniform vec3 tint;\n" +
-                "uniform int finalPass;\n" +
+                "uniform int mode;\n" +
                 "void main() {\n" +
                 "  vec2 uv = gl_TexCoord[0].xy;\n" +
+                "  if (mode == 1) {\n" +
+                "    float glow = texture2D(tex, uv).a;\n" +
+                "    float mask = 1.0 - texture2D(original, uv).a;\n" +
+                "    glow *= mask;\n" +
+                "    glow = pow(clamp(glow * intensity, 0.0, 1.0), 1.4) * 0.7;\n" +
+                "    gl_FragColor = vec4(tint, glow);\n" +
+                "    return;\n" +
+                "  }\n" +
                 "  vec2 sampleStep = direction * texelSize * (radius / 16.0);\n" +
                 "  float acc = 0.0;\n" +
                 "  float weightSum = 0.0;\n" +
@@ -125,15 +170,7 @@ public class GlowBloomShader {
                 "    acc += texture2D(tex, uv + sampleStep * fi).a * w;\n" +
                 "    weightSum += w;\n" +
                 "  }\n" +
-                "  float glow = acc / weightSum;\n" +
-                "  if (finalPass == 0) {\n" +
-                "    gl_FragColor = vec4(tint, glow);\n" +
-                "    return;\n" +
-                "  }\n" +
-                "  float mask = 1.0 - texture2D(original, uv).a;\n" +
-                "  glow *= mask;\n" +
-                "  glow = pow(clamp(glow * intensity, 0.0, 1.0), 1.4) * 0.7;\n" +
-                "  gl_FragColor = vec4(tint, glow);\n" +
+                "  gl_FragColor = vec4(tint, acc / weightSum);\n" +
                 "}";
 
         private BlurPass() {
@@ -149,7 +186,7 @@ public class GlowBloomShader {
             cacheUniform("radius");
             cacheUniform("intensity");
             cacheUniform("tint");
-            cacheUniform("finalPass");
+            cacheUniform("mode");
         }
 
         @Override
@@ -159,6 +196,9 @@ public class GlowBloomShader {
             if (location >= 0) GL20.glUniform1i(location, 0);
             location = uniform("original");
             if (location >= 0) GL20.glUniform1i(location, 2);
+            // Display texel size, whatever resolution the pass is actually writing. Texture
+            // coordinates are normalised, so a step expressed as a fraction of the display covers
+            // the same distance on screen no matter how large the buffer being sampled is.
             location = uniform("texelSize");
             if (location >= 0) GL20.glUniform2f(location, 1.0f / mc.displayWidth, 1.0f / mc.displayHeight);
         }
@@ -175,11 +215,11 @@ public class GlowBloomShader {
             if (location >= 0) GL20.glUniform1f(location, intensity);
         }
 
-        private void setDirection(float x, float y, boolean finalPass) {
+        private void setDirection(float x, float y, int mode) {
             int location = uniform("direction");
             if (location >= 0) GL20.glUniform2f(location, x, y);
-            location = uniform("finalPass");
-            if (location >= 0) GL20.glUniform1i(location, finalPass ? 1 : 0);
+            location = uniform("mode");
+            if (location >= 0) GL20.glUniform1i(location, mode);
         }
     }
 }

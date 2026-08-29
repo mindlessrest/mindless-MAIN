@@ -646,26 +646,29 @@ public final class SpotifyWidgetRenderer {
         }
 
         String ellipsis = "...";
-        float room = budget - font.getStringWidth(ellipsis);
-        if (room <= 0.0F) {
+        if (font.getStringWidth(ellipsis) >= budget) {
             return "";
         }
 
-        StringBuilder out = new StringBuilder(text.length());
-        float used = 0.0F;
-        for (int i = 0; i < text.length(); i++) {
-            float advance = font.getStringWidth(String.valueOf(text.charAt(i)));
-            if (used + advance > room) {
-                break;
+        // Binary search on how much of the line survives. Adding the string up a character at a
+        // time and then walking back is the same answer reached the long way round: it measures
+        // every character, allocates a one-character string for each, and then re-measures the
+        // whole prefix once per step it has to give back. Since the width of a prefix only ever
+        // grows with the prefix, the longest one that fits can be found in a handful of measures
+        // however long the line is.
+        int low = 0;
+        int high = text.length() - 1;
+        while (low < high) {
+            int mid = (low + high + 1) >>> 1;
+            if (font.getStringWidth(text.substring(0, mid) + ellipsis) <= budget) {
+                low = mid;
             }
-            used += advance;
-            out.append(text.charAt(i));
+            else {
+                high = mid - 1;
+            }
         }
 
-        while (out.length() > 0 && font.getStringWidth(out.toString() + ellipsis) > budget) {
-            out.setLength(out.length() - 1);
-        }
-        return out.length() == 0 ? "" : out.append(ellipsis).toString();
+        return low == 0 ? "" : text.substring(0, low) + ellipsis;
     }
 
     private static String formatTime(long millis) {
