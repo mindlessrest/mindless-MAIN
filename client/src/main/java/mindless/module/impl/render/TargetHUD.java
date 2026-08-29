@@ -3,6 +3,7 @@ package mindless.module.impl.render;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.HudEditor;
+import mindless.module.impl.combat.AimAssist;
 import mindless.module.impl.combat.KillAura;
 import mindless.module.impl.network.Backtrack;
 import mindless.module.impl.theme.ThemeManager;
@@ -63,7 +64,7 @@ public class TargetHUD extends Module {
     public TargetHUD() {
         super("TargetHUD", category.render);
         this.liteModule = true;
-        this.registerSetting(new DescriptionSetting("Only works with KillAura."));
+        this.registerSetting(new DescriptionSetting("Works with KillAura and AimAssist."));
         this.registerSetting(mode = new SliderSetting("Mode", true, 1, modes));
         this.registerSetting(theme = new SliderSetting("Theme", 0, Theme.THEMES_SETTING));
         this.registerSetting(glowSize = new SliderSetting("Glow size", 9.0, 2.0, 20.0, 0.5));
@@ -94,8 +95,9 @@ public class TargetHUD extends Module {
                 reset();
                 return;
             }
-            if (KillAura.target != null) {
-                target = KillAura.target;
+            EntityLivingBase activeTarget = getActiveTarget();
+            if (activeTarget != null) {
+                target = activeTarget;
                 lastAliveMS = System.currentTimeMillis();
                 fadeTimer = null;
                 if (popInStart < 0) popInStart = System.currentTimeMillis();
@@ -126,7 +128,7 @@ public class TargetHUD extends Module {
         if (!renderEsp.isToggled() || !Utils.nullCheck()) {
             return;
         }
-        EntityLivingBase auraTarget = KillAura.target;
+        EntityLivingBase auraTarget = getActiveTarget();
 
         if (auraTarget == null) {
             return;
@@ -434,6 +436,21 @@ public class TargetHUD extends Module {
         GL11.glVertex2f(vertexX, vertexY);
     }
 
+    private EntityLivingBase getActiveTarget() {
+        if (KillAura.target != null) return KillAura.target;
+        if (KillAura.attackingEntity != null) return KillAura.attackingEntity;
+        if (mindless.Raven.getModuleManager() != null) {
+            for (mindless.module.Module mod : mindless.Raven.getModuleManager().getModules()) {
+                if (mod instanceof AimAssist && mod.isEnabled()) {
+                    net.minecraft.entity.Entity aimTarget = ((AimAssist) mod).getAimAssistTarget();
+                    if (aimTarget instanceof EntityLivingBase) return (EntityLivingBase) aimTarget;
+                    break;
+                }
+            }
+        }
+        return null;
+    }
+
     private void reset() {
         fadeTimer = null;
         target = null;
@@ -451,7 +468,7 @@ public class TargetHUD extends Module {
     }
 
     public boolean isEspActiveFor(EntityLivingBase entity) {
-        return this.isEnabled() && this.renderEsp.isToggled() && entity != null && KillAura.target == entity;
+        return this.isEnabled() && this.renderEsp.isToggled() && entity != null && entity == getActiveTarget();
     }
 
     public Color getCurrentEspColor(int alpha) {
