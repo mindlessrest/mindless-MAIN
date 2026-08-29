@@ -222,11 +222,11 @@ public class RotationHelper {
         this.serverYaw = fixed[0];
         this.serverPitch = fixed[1];
 
-        if (this.serverYaw != mc.thePlayer.rotationYaw && (event.yaw == null || !event.yaw.isNaN())) {
+        if (event.yaw != null && !event.yaw.isNaN() && this.serverYaw != mc.thePlayer.rotationYaw) {
             this.setRotations = true;
         }
 
-        if (this.serverPitch != mc.thePlayer.rotationPitch && (event.pitch == null || !event.pitch.isNaN())) {
+        if (event.pitch != null && !event.pitch.isNaN() && this.serverPitch != mc.thePlayer.rotationPitch) {
             this.setRotations = true;
         }
     }
