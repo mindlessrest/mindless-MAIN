@@ -276,8 +276,19 @@ public class ProfileManager implements IMinecraftInstance {
         saveProfileInBackground(profile);
     }
 
+    /**
+     * Whether profiles are written without being asked.
+     *
+     * <p>Off unless turned on, so a profile only changes on disk when "Update profile" is pressed.
+     * The active row in the menu reads "Unsaved" while a write is owed, which is the part that was
+     * missing before -- the old behaviour was this one without the indicator, so changes were lost
+     * on quit with nothing having said they were pending.
+     *
+     * <p>Before the setting exists there is no session to save yet, so the answer is the same as
+     * the default rather than the opposite of it.
+     */
     private static boolean isAutoSaveEnabled() {
-        return Settings.autoSaveProfiles == null || Settings.autoSaveProfiles.isToggled();
+        return Settings.autoSaveProfiles != null && Settings.autoSaveProfiles.isToggled();
     }
 
     public Profile createProfile(String requestedName, int bind) {

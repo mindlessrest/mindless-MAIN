@@ -357,11 +357,11 @@ public class Raven {
         }
 
         // Save before anything is torn down: disabling a module can change its own settings.
+        // Still subject to the auto save setting -- with it off, nothing writes a profile except
+        // "Update profile", and an uninject is no exception.
         try {
             if (profileManager != null && currentProfile != null) {
-                // Unconditional: an uninject is a deliberate teardown, so this session's changes
-                // are written whether or not auto save is on.
-                profileManager.saveProfile(currentProfile);
+                profileManager.flushCurrentProfile();
             }
         } catch (Throwable ignored) {
         }
