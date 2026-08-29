@@ -6,7 +6,7 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.module.impl.render.HUD;
-import mindless.utility.font.FontManager;
+import mindless.utility.font.ModuleFont;
 import mindless.utility.media.SystemMediaClient;
 import mindless.utility.media.MediaPlayerRenderer;
 import mindless.utility.Utils;
@@ -181,28 +181,14 @@ public class SpotifyMiniPlayer extends Module {
      * zero and keeps that behaviour, so a config that never touches these two looks exactly as it
      * did; anything else applies to that piece alone.
      */
-    private static final String[] FONT_OPTIONS = buildFontOptions();
-
-    private static String[] buildFontOptions() {
-        String[] families = FontManager.getHudFontOptions();
-        String[] options = new String[families.length + 1];
-        options[0] = "Default";
-        System.arraycopy(families, 0, options, 1, families.length);
-        return options;
-    }
-
-    private static String fontNameOf(SliderSetting setting) {
-        if (setting == null) return HUD.getSelectedFontName();
-        int index = (int) Math.max(0, Math.min(FONT_OPTIONS.length - 1, setting.getInput()));
-        return index == 0 ? HUD.getSelectedFontName() : FONT_OPTIONS[index];
-    }
+    private static final String[] FONT_OPTIONS = ModuleFont.options();
 
     public static String widgetFontName() {
-        return fontNameOf(widgetFont);
+        return ModuleFont.nameOf(widgetFont);
     }
 
     public static String lyricsFontName() {
-        return fontNameOf(lyricsFont);
+        return ModuleFont.nameOf(lyricsFont);
     }
 
     public static boolean hasCustomPosition() {

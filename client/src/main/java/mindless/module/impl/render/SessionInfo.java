@@ -6,6 +6,7 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
+import mindless.utility.font.ModuleFont;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
@@ -96,9 +97,12 @@ public class SessionInfo extends Module {
     private int wins;
     private int losses;
 
+    private static SliderSetting font;
+
     public SessionInfo() {
         super("Session Info", category.render);
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
+        this.registerSetting(font = new SliderSetting("Font", 0, ModuleFont.options()));
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.6, 1.6, 0.05));
         this.registerSetting(showKills = new ButtonSetting("Show kills", true));
         this.registerSetting(showDeaths = new ButtonSetting("Show deaths", true));
@@ -405,7 +409,7 @@ public class SessionInfo extends Module {
 
     /** A real larger face for the numbers, rather than scaling the small one up and blurring it. */
     private static RavenFontRenderer valueFont() {
-        return FontManager.getHudRenderer(HUD.getSelectedFontName(),
+        return FontManager.getHudRenderer(ModuleFont.nameOf(font),
                 Math.min(2.0f, HUD.getSelectedFontScale() * 1.6f));
     }
 

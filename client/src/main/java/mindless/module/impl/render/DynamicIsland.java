@@ -47,9 +47,12 @@ public class DynamicIsland extends Module {
     public float textPosX = DEFAULT_TEXT_X;
     public float textPosY = DEFAULT_TEXT_Y;
 
+    private SliderSetting font;
+
     public DynamicIsland() {
         super("Watermark", category.render);
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
+        this.registerSetting(font = new SliderSetting("Font", 0, mindless.utility.font.ModuleFont.options()));
     }
 
     public void resetPosition() {
@@ -73,7 +76,8 @@ public class DynamicIsland extends Module {
 
     private mindless.utility.font.RavenFontRenderer getWatermarkFont() {
         return mindless.utility.font.FontManager.getHudRenderer(
-                HUD.getSelectedFontName(), HUD.getSelectedFontScale() * WATERMARK_SCALE);
+                mindless.utility.font.ModuleFont.nameOf(font),
+                HUD.getSelectedFontScale() * WATERMARK_SCALE);
     }
 
     private void renderTextWatermark() {

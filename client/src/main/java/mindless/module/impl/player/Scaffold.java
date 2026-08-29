@@ -13,6 +13,7 @@ import mindless.utility.Utils;
 import mindless.utility.shader.RoundedUtils;
 import mindless.module.impl.render.HUD;
 import mindless.utility.font.FontManager;
+import mindless.utility.font.ModuleFont;
 import mindless.utility.font.RavenFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import org.lwjgl.opengl.GL20;
@@ -46,6 +47,8 @@ public class Scaffold extends Module {
     private static final int BPS_WINDOW_MS = 3000;
     private static final int TIMESTAMP_RING = 512;
 
+    /** Static because countFont() is, and it is called from the static overlay path. */
+    private static SliderSetting counterFont;
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
     private final ButtonSetting keepY;
@@ -119,6 +122,7 @@ public class Scaffold extends Module {
 
     public Scaffold() {
         super("Scaffold", category.player);
+        this.registerSetting(counterFont = new SliderSetting("Counter font", 0, ModuleFont.options()));
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));
         this.registerSetting(sprint = new SliderSetting("Sprint", 0, new String[]{"Off", "Legit", "Watchdog"}));
         this.registerSetting(keepY = new ButtonSetting("Keep Y", false));
@@ -518,7 +522,7 @@ public class Scaffold extends Module {
 
     /** A real larger face for the count, rather than scaling the small one up and blurring it. */
     private static RavenFontRenderer countFont() {
-        return FontManager.getHudRenderer(HUD.getSelectedFontName(),
+        return FontManager.getHudRenderer(ModuleFont.nameOf(counterFont),
                 Math.min(2.0F, HUD.getSelectedFontScale() * 1.55F));
     }
 
