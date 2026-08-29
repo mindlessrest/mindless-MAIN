@@ -79,12 +79,17 @@ public final class NativeBootstrap {
         try {
             ProgressPipe.report(0.68f, "Starting modules");
             ProgressPipe.report(0.70f, "Starting modules");
-            if (!driveModInitOnClientThread()) {
-                // The client-thread task claimed permission to run before the
-                // timeout. It owns the terminal COMPLETE/FAILED transition and
-                // startup remains accepted so native does not tear down hooks
-                // beneath a partially executing Raven.init.
-                return;
+            final Minecraft minecraft = Minecraft.getMinecraft();
+            if (minecraft != null && minecraft.isCallingFromMinecraftThread()) {
+                driveModInit();
+            } else if (minecraft != null) {
+                // Try scheduling on client thread first, fall back to direct if it times out
+                log("Attempting client-thread init (5s timeout, then direct)");
+                if (!driveModInitOnClientThreadWithFallback(minecraft)) {
+                    return;
+                }
+            } else {
+                driveModInit();
             }
         } catch (Throwable initFailure) {
             bootstrapFailure = initFailure;
@@ -97,6 +102,44 @@ public final class NativeBootstrap {
         ProgressPipe.report(1.0f, "Ready");
         ProgressPipe.close();
         log("Raven bootstrap complete");
+    }
+
+    private static boolean driveModInitOnClientThreadWithFallback(Minecraft minecraft) throws Exception {
+        final AtomicReference<Throwable> initFailure = new AtomicReference<>();
+        final AtomicBoolean runPermission = new AtomicBoolean(true);
+        ListenableFuture<?> scheduled = minecraft.addScheduledTask(new Runnable() {
+            @Override
+            public void run() {
+                if (!runPermission.compareAndSet(true, false)) return;
+                try {
+                    driveModInit();
+                    STATE.set(BootstrapState.COMPLETE);
+                } catch (Throwable failure) {
+                    initFailure.set(failure);
+                    bootstrapFailure = failure;
+                    STATE.set(BootstrapState.FAILED);
+                    reportFailure("Raven init (client thread)", failure);
+                }
+            }
+        });
+        try {
+            scheduled.get(5L, TimeUnit.SECONDS);
+        } catch (TimeoutException timeout) {
+            if (runPermission.compareAndSet(true, false)) {
+                scheduled.cancel(false);
+                log("Client thread not processing tasks — initializing directly");
+                driveModInit();
+            } else {
+                // Task started running, wait for it
+                log("Task started on client thread, waiting...");
+                scheduled.get(30L, TimeUnit.SECONDS);
+            }
+        }
+        Throwable failure = initFailure.get();
+        if (failure instanceof Exception) throw (Exception) failure;
+        if (failure instanceof Error) throw (Error) failure;
+        if (failure != null) throw new RuntimeException(failure);
+        return true;
     }
 
     private static boolean driveModInitOnClientThread() throws Exception {
