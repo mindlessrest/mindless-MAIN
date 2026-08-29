@@ -5,7 +5,6 @@ import mindless.event.PrePlayerInputEvent;
 import mindless.event.PrePlayerInteractEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
-import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ReflectionUtils;
@@ -13,7 +12,6 @@ import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.projectile.EntityFireball;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.MovingObjectPosition;
@@ -21,10 +19,7 @@ import net.minecraft.util.Vec3;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
@@ -33,6 +28,7 @@ public class AntiFireball extends Module {
     private final SliderSetting range;
     private final SliderSetting targetCPS;
     private final SliderSetting rotationSpeed;
+    private final ButtonSetting onlyIncoming;
     private final ButtonSetting onlyOnGround;
     private final ButtonSetting sneakWhileActive;
 
@@ -45,10 +41,11 @@ public class AntiFireball extends Module {
 
     public AntiFireball() {
         super("Anti Fireball", category.player);
-        this.registerSetting(targetCPS = new SliderSetting("Target CPS", 12.0, 1.0, 20.0, 0.5));
+        this.registerSetting(targetCPS = new SliderSetting("Target CPS", 16.0, 1.0, 20.0, 0.5));
         this.registerSetting(fov = new SliderSetting("FOV", 360.0, 30.0, 360.0, 4.0));
         this.registerSetting(range = new SliderSetting("Range", 8.0, 3.0, 15.0, 0.5));
-        this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 15, 1, 30, 1));
+        this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 25, 1, 30, 1));
+        this.registerSetting(onlyIncoming = new ButtonSetting("Only incoming", true));
         this.registerSetting(onlyOnGround = new ButtonSetting("Only on ground", false));
         this.registerSetting(sneakWhileActive = new ButtonSetting("Sneak while active", false));
     }
@@ -127,37 +124,23 @@ public class AntiFireball extends Module {
     }
 
     private float[] computeAimRotations(float baseYaw, float basePitch) {
+        double predX = fireball.posX + fireball.motionX;
+        double predY = fireball.posY + fireball.motionY;
+        double predZ = fireball.posZ + fireball.motionZ;
+
+        float border = fireball.getCollisionBorderSize();
+        AxisAlignedBB box = fireball.getEntityBoundingBox().expand(border, border, border);
         Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
-        float borderSize = fireball.getCollisionBorderSize();
-        AxisAlignedBB fireballBox = fireball.getEntityBoundingBox().expand(borderSize, borderSize, borderSize);
-        double reach = mc.playerController.getBlockReachDistance();
 
-        List<EntityPlayer> players = new ArrayList<>();
-        for (EntityPlayer player : mc.theWorld.playerEntities) {
-            if (player == mc.thePlayer || player.deathTime != 0) continue;
-            if (TargetFilter.shouldFilter(player)) continue;
-            players.add(player);
-        }
-        players.sort(Comparator.comparingDouble(p -> mc.thePlayer.getDistanceSqToEntity(p)));
-
-        for (EntityPlayer player : players) {
-            float[] rot = RotationUtils.getRotationsToPoint(player.posX, player.posY, player.posZ, baseYaw, basePitch);
-            if (hitsFireballBox(eye, rot[0], rot[1], fireballBox, reach)) {
-                return rot;
-            }
-        }
-
-        double topY = fireballBox.maxY;
-        double centerX = (fireballBox.minX + fireballBox.maxX) / 2.0;
-        double centerZ = (fireballBox.minZ + fireballBox.maxZ) / 2.0;
-        return RotationUtils.getRotationsToPoint(centerX, topY, centerZ, baseYaw, basePitch);
+        Vec3 closest = getNearestPointOnBox(eye, box.offset(fireball.motionX, fireball.motionY, fireball.motionZ));
+        return RotationUtils.getRotationsToPoint(closest.xCoord, closest.yCoord, closest.zCoord, baseYaw, basePitch);
     }
 
-    private boolean hitsFireballBox(Vec3 eye, float yaw, float pitch, AxisAlignedBB box, double range) {
-        Vec3 look = Utils.getLookVec(yaw, pitch);
-        Vec3 end = eye.addVector(look.xCoord * range, look.yCoord * range, look.zCoord * range);
-        MovingObjectPosition intercept = box.calculateIntercept(eye, end);
-        return intercept != null;
+    private Vec3 getNearestPointOnBox(Vec3 point, AxisAlignedBB box) {
+        double x = Math.max(box.minX, Math.min(point.xCoord, box.maxX));
+        double y = Math.max(box.minY, Math.min(point.yCoord, box.maxY));
+        double z = Math.max(box.minZ, Math.min(point.zCoord, box.maxZ));
+        return new Vec3(x, y, z);
     }
 
     @SubscribeEvent
@@ -223,6 +206,15 @@ public class AntiFireball extends Module {
         scheduledFireball = null;
     }
 
+    private boolean isIncoming(EntityFireball fb) {
+        double currentDist = mc.thePlayer.getDistanceSqToEntity(fb);
+        double nextX = fb.posX + fb.motionX;
+        double nextY = fb.posY + fb.motionY;
+        double nextZ = fb.posZ + fb.motionZ;
+        double nextDist = mc.thePlayer.getDistanceSq(nextX, nextY, nextZ);
+        return nextDist < currentDist;
+    }
+
     private EntityFireball getFireball() {
         double rangeSq = range.getInput() * range.getInput();
         float fovVal = (float) fov.getInput();
@@ -235,6 +227,7 @@ public class AntiFireball extends Module {
             if (!isFireballValid((EntityFireball) entity)) continue;
             if (mc.thePlayer.getDistanceSqToEntity(entity) > rangeSq) continue;
             if (fovVal != 360.0f && !Utils.inFov(fovVal, entity)) continue;
+            if (onlyIncoming.isToggled() && !isIncoming((EntityFireball) entity)) continue;
             return (EntityFireball) entity;
         }
         return null;
