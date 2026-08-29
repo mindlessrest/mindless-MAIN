@@ -76,7 +76,6 @@ public class ModuleManager {
     public static NoFall noFall;
     public static SexyESP sexyESP;
     public static MobESP mobESP;
-    public static Reduce reduce;
     public static SafeWalk safeWalk;
     public static KeepSprint keepSprint;
     public static Piercing piercing;
@@ -143,7 +142,6 @@ public class ModuleManager {
         this.addModule(ghostHand = new GhostHand());
         this.addModule(new RawInput());
         this.addModule(reach = new Reach());
-        this.addModule(reduce = new Reduce());
         this.addModule(new RodAimbot());
         this.addModule(new TPAura());
         this.addModule(velocity = new Velocity());

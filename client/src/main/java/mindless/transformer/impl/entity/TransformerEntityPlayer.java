@@ -2,7 +2,6 @@ package mindless.transformer.impl.entity;
 
 import mindless.event.AttackEvent;
 import mindless.module.ModuleManager;
-import mindless.module.impl.combat.Reduce;
 import mindless.module.impl.movement.KeepSprint;
 import mindless.utility.BlockAnimationUtils;
 import net.lenni0451.classtransform.InjectionCallback;
@@ -96,10 +95,7 @@ public abstract class TransformerEntityPlayer {
                     if (flag2) {
                         if (i > 0) {
                             targetEntity.addVelocity((double) (-MathHelper.sin(self.rotationYaw * 3.1415927F / 180.0F) * (float) i * 0.5F), 0.1, (double) (MathHelper.cos(self.rotationYaw * 3.1415927F / 180.0F) * (float) i * 0.5F));
-                            if (ModuleManager.reduce != null && ModuleManager.reduce.isEnabled()) {
-                                Reduce.reduce(targetEntity);
-                            }
-                            else if (ModuleManager.keepSprint != null && ModuleManager.keepSprint.isEnabled()) {
+                            if (ModuleManager.keepSprint != null && ModuleManager.keepSprint.isEnabled()) {
                                 KeepSprint.keepSprint(targetEntity);
                             }
                             else {

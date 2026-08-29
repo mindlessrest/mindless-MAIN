@@ -1,7 +1,6 @@
 package mindless.mixin.impl.entity;
 
 import mindless.module.ModuleManager;
-import mindless.module.impl.combat.Reduce;
 import mindless.module.impl.movement.KeepSprint;
 import mindless.utility.BlockAnimationUtils;
 import net.minecraft.enchantment.EnchantmentHelper;
@@ -99,10 +98,7 @@ public abstract class MixinEntityPlayer extends EntityLivingBase {
                     if (flag2) {
                         if (i > 0) {
                             targetEntity.addVelocity((double) (-MathHelper.sin(this.rotationYaw * 3.1415927F / 180.0F) * (float) i * 0.5F), 0.1, (double) (MathHelper.cos(this.rotationYaw * 3.1415927F / 180.0F) * (float) i * 0.5F));
-                            if (ModuleManager.reduce != null && ModuleManager.reduce.isEnabled()) {
-                                Reduce.reduce(targetEntity);
-                            }
-                            else if (ModuleManager.keepSprint != null && ModuleManager.keepSprint.isEnabled()) {
+                            if (ModuleManager.keepSprint != null && ModuleManager.keepSprint.isEnabled()) {
                                 KeepSprint.keepSprint(targetEntity);
                             }
                             else {
