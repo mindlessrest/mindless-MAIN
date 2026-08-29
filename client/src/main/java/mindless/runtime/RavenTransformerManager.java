@@ -78,6 +78,19 @@ public final class RavenTransformerManager {
         System.out.println(message);
     }
 
+    private static void dumpClassBytes(String canonicalName, byte[] bytes) {
+        try {
+            File dir = new File(System.getProperty("java.io.tmpdir"), "RavenNative/classdump");
+            dir.mkdirs();
+            String fileName = canonicalName.replace('.', '/') + ".class";
+            File out = new File(dir, fileName);
+            out.getParentFile().mkdirs();
+            try (FileOutputStream fos = new FileOutputStream(out)) {
+                fos.write(bytes);
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private RavenTransformerManager() {
         this(new LaunchClassProvider(RavenTransformerManager.class.getClassLoader()));
     }
@@ -287,6 +300,7 @@ public final class RavenTransformerManager {
             return null;
         }
         try {
+            dumpClassBytes(canonicalName, originalBytes);
             byte[] result;
             synchronized (delegateTransformLock) {
                 // ClassTransform keeps mutable handler state while applying a
