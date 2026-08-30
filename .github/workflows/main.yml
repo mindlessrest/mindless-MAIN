@@ -1,4 +1,4 @@
-name: Build Pipeline
+name: Mindless Build Pipeline
 
 on:
   push:
@@ -30,9 +30,10 @@ jobs:
       with:
         gradle-version: '8.8'
 
-    - name: Install LLVM, Ninja, CMake, vcpkg
+    - name: Set up Native Tools & Install FreeType
       run: |
-        choco install llvm ninja cmake vcpkg -y
+        echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+        C:\vcpkg\vcpkg.exe install freetype:x64-windows-static
 
     - name: Run Build Script
       run: |
