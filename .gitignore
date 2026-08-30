@@ -49,6 +49,7 @@ loader/build_log*.txt
 
 # Archives / fat outputs
 *.jar
+!client/gradle/wrapper/gradle-wrapper.jar
 *.war
 *.nar
 *.ear
