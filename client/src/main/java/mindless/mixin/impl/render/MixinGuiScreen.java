@@ -1,6 +1,6 @@
 package mindless.mixin.impl.render;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.event.KeyPressEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
@@ -25,7 +25,7 @@ public abstract class MixinGuiScreen {
 
     @Inject(method = "sendChatMessage(Ljava/lang/String;Z)V", at = @At("HEAD"), cancellable = true)
     private void messageSend(String msg, boolean addToChat, CallbackInfo callbackInfo) {
-        if (addToChat && Raven.commandManager != null && Raven.commandManager.handleChatMessage(msg)) {
+        if (addToChat && Mindless.commandManager != null && Mindless.commandManager.handleChatMessage(msg)) {
             this.mc.ingameGUI.getChatGUI().addToSentMessages(msg);
             callbackInfo.cancel();
         }

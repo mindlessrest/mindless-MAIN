@@ -1,6 +1,6 @@
 package mindless.module.impl.combat;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.event.GameTickEvent;
 import mindless.event.ReceivePacketEvent;
 import mindless.lag.api.EnumLagDirection;
@@ -115,7 +115,7 @@ public class KnockbackDelay extends Module {
         }
 
         inboundLagRequest = new LagRequest(EnumLagDirection.ONLY_INBOUND, new ModuleBackedTimeout(this));
-        Raven.lagHandler.requestLag(inboundLagRequest);
+        Mindless.lagHandler.requestLag(inboundLagRequest);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -138,7 +138,7 @@ public class KnockbackDelay extends Module {
             return;
         }
 
-        Raven.lagHandler.releaseExpiredPackets(EnumLagDirection.INBOUND, (long) maximumDelay.getInput());
+        Mindless.lagHandler.releaseExpiredPackets(EnumLagDirection.INBOUND, (long) maximumDelay.getInput());
     }
 
     private boolean isInboundSessionActive() {

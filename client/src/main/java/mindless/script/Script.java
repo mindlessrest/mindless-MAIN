@@ -1,6 +1,6 @@
 package mindless.script;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.utility.Utils;
 
 import javax.tools.StandardJavaFileManager;
@@ -54,23 +54,23 @@ public class Script {
             if (this.scriptName == null || this.codeStr == null) {
                 return false;
             }
-            final File file = new File(Raven.scriptManager.COMPILED_DIR);
+            final File file = new File(Mindless.scriptManager.COMPILED_DIR);
             if (!file.exists() || !file.isDirectory()) {
                 file.mkdir();
             }
-            if (Raven.scriptManager.compiler == null) {
+            if (Mindless.scriptManager.compiler == null) {
                 System.err.println("[Scripts] Cannot compile " + this.name + ": no compiler available!");
                 return false;
             }
-            System.out.println("[Scripts] Compiling script: " + this.name + " (using " + Raven.scriptManager.compiler.getClass().getSimpleName() + ")");
+            System.out.println("[Scripts] Compiling script: " + this.name + " (using " + Mindless.scriptManager.compiler.getClass().getSimpleName() + ")");
             final ScriptDiagnosticListener bp = new ScriptDiagnosticListener();
-            final boolean isEcj = Raven.scriptManager.compiler instanceof org.eclipse.jdt.internal.compiler.tool.EclipseCompiler;
-            final StandardJavaFileManager stdFileManager = Raven.scriptManager.compiler.getStandardFileManager(bp, null, null);
+            final boolean isEcj = Mindless.scriptManager.compiler instanceof org.eclipse.jdt.internal.compiler.tool.EclipseCompiler;
+            final StandardJavaFileManager stdFileManager = Mindless.scriptManager.compiler.getStandardFileManager(bp, null, null);
             // Wrap with classloader-backed file manager so ECJ can resolve MC classes from memory
             final javax.tools.JavaFileManager fileManager = isEcj ? new ScriptClasspathFileManager(stdFileManager) : stdFileManager;
             final ArrayList<String> compilationOptions = new ArrayList<>();
             compilationOptions.add("-d");
-            compilationOptions.add(Raven.scriptManager.COMPILED_DIR);
+            compilationOptions.add(Mindless.scriptManager.COMPILED_DIR);
             if (!isEcj) {
                 compilationOptions.add("-XDuseUnsharedTable");
             }
@@ -93,7 +93,7 @@ public class Script {
             }
             else if (!ScriptManager.isDeobfuscatedEnvironment()) {
                 compilationOptions.add("-classpath");
-                String s = Raven.scriptManager.jarPath;
+                String s = Mindless.scriptManager.jarPath;
                 try {
                     s = URLDecoder.decode(s, "UTF-8");
                 }
@@ -105,14 +105,14 @@ public class Script {
             File tempSourceFile = null;
             Iterable<? extends javax.tools.JavaFileObject> compilationUnits;
             if (isEcj) {
-                tempSourceFile = new File(Raven.scriptManager.COMPILED_DIR, this.scriptName + ".java");
+                tempSourceFile = new File(Mindless.scriptManager.COMPILED_DIR, this.scriptName + ".java");
                 java.nio.file.Files.write(tempSourceFile.toPath(), this.codeStr.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 compilationUnits = stdFileManager.getJavaFileObjects(tempSourceFile);
             } else {
                 compilationUnits = Arrays.asList(new JavaSourceFromString(this.scriptName, this.codeStr, this.STARTING_LINE));
             }
 
-            boolean success = Raven.scriptManager.compiler.getTask(null, fileManager, bp, compilationOptions, null, compilationUnits).call();
+            boolean success = Mindless.scriptManager.compiler.getTask(null, fileManager, bp, compilationOptions, null, compilationUnits).call();
 
             // Clean up temp source
             if (tempSourceFile != null && tempSourceFile.exists()) {
@@ -180,7 +180,7 @@ public class Script {
                     }
                 } else {
                     // Not a file — embedded. Dump the jar to temp.
-                    File tempJar = new File(Raven.scriptManager.COMPILED_DIR, "_raven_classes.jar");
+                    File tempJar = new File(Mindless.scriptManager.COMPILED_DIR, "_mindless_classes.jar");
                     try (java.io.InputStream is = jarUrl.openStream();
                          java.io.FileOutputStream fos = new java.io.FileOutputStream(tempJar)) {
                         byte[] buf = new byte[8192];
@@ -199,7 +199,7 @@ public class Script {
 
         // If CodeSource didn't work, try to find the jar via the classloader's loaded class bytes.
         // Fallback: locate the jar by scanning known paths where the native injector places it.
-        if (entries.stream().noneMatch(e -> e.contains("raven") || e.contains("Raven") || e.contains("mindless") || e.contains("Mindless"))) {
+        if (entries.stream().noneMatch(e -> e.contains("mindless") || e.contains("Mindless") || e.contains("mindless") || e.contains("Mindless"))) {
             // Try getting class file location directly
             try {
                 URL classUrl = ScriptManager.class.getResource("ScriptManager.class");
@@ -281,16 +281,16 @@ public class Script {
             }
         }
 
-        if (Raven.scriptManager.jarPath != null && !Raven.scriptManager.jarPath.isEmpty()) {
-            File jp = new File(Raven.scriptManager.jarPath);
+        if (Mindless.scriptManager.jarPath != null && !Mindless.scriptManager.jarPath.isEmpty()) {
+            File jp = new File(Mindless.scriptManager.jarPath);
             if (jp.exists()) {
                 entries.add(jp.getAbsolutePath());
             }
         }
 
         // Add dumped MC classes jar (Lunar: MC classes only exist in memory)
-        if (Raven.scriptManager.mcClassesJar != null && Raven.scriptManager.mcClassesJar.exists()) {
-            entries.add(Raven.scriptManager.mcClassesJar.getAbsolutePath());
+        if (Mindless.scriptManager.mcClassesJar != null && Mindless.scriptManager.mcClassesJar.exists()) {
+            entries.add(Mindless.scriptManager.mcClassesJar.getAbsolutePath());
         }
 
         System.out.println("[Scripts] Classpath has " + entries.size() + " entries");
@@ -438,7 +438,7 @@ public class Script {
     public void delete() {
         this.clazz = null;
         this.instance = null;
-        final File file = new File(Raven.scriptManager.COMPILED_DIR + File.separator + this.scriptName + ".class");
+        final File file = new File(Mindless.scriptManager.COMPILED_DIR + File.separator + this.scriptName + ".class");
         if (file.exists()) {
             file.delete();
         }
@@ -447,7 +447,7 @@ public class Script {
     public void setCode(String code) {
         STARTING_LINE = 0;
         StringBuilder fileCodeContents = new StringBuilder();
-        Iterator<String> iterator = Raven.scriptManager.imports.iterator();
+        Iterator<String> iterator = Mindless.scriptManager.imports.iterator();
         while (iterator.hasNext()) {
             STARTING_LINE++;
             fileCodeContents.append("import ").append(iterator.next()).append(";\n");

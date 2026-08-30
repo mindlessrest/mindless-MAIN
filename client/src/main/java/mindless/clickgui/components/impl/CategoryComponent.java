@@ -1,13 +1,13 @@
 package mindless.clickgui.components.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.animation.ScrollOffsetAnimation;
 import mindless.clickgui.components.Component;
 import mindless.module.Module;
 import mindless.module.impl.client.Gui;
 import mindless.utility.RenderUtils;
 import mindless.utility.Timer;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.profile.Manager;
 import mindless.utility.profile.Profile;
 import net.minecraft.client.Minecraft;
@@ -104,7 +104,7 @@ public class CategoryComponent {
         this.lastHeight = this.y + this.titleHeight + 4;
         this.animationStartHeight = this.lastHeight;
 
-        for (Module mod : Raven.getModuleManager().inCategory(this.category)) {
+        for (Module mod : Mindless.getModuleManager().inCategory(this.category)) {
             if (!Gui.shouldShowModule(mod)) {
                 continue;
             }
@@ -124,7 +124,7 @@ public class CategoryComponent {
         this.titleHeight = 13;
         float moduleRenderY = this.titleHeight + 3;
 
-        for (Module mod : Raven.getModuleManager().inCategory(this.category)) {
+        for (Module mod : Mindless.getModuleManager().inCategory(this.category)) {
             if (!Gui.shouldShowModule(mod)) {
                 continue;
             }
@@ -148,12 +148,12 @@ public class CategoryComponent {
             manager.restoreOpenState(Boolean.TRUE.equals(openStates.get(manager.mod.getName())));
             this.modules.add(manager);
 
-            if ((Raven.profileManager == null && isProfile) || (Raven.scriptManager == null && !isProfile)) {
+            if ((Mindless.profileManager == null && isProfile) || (Mindless.scriptManager == null && !isProfile)) {
                 return;
             }
 
             if (isProfile) {
-                for (Profile profile : Raven.profileManager.profiles) {
+                for (Profile profile : Mindless.profileManager.profiles) {
                     moduleRenderY += 16;
                     ModuleComponent b = new ModuleComponent(profile.getModule(), this, moduleRenderY);
                     b.restoreOpenState(Boolean.TRUE.equals(openStates.get(profile.getModule().getName())));
@@ -161,7 +161,7 @@ public class CategoryComponent {
                 }
             }
             else {
-                Collection<Module> modulesCollection = Raven.scriptManager.scripts.values();
+                Collection<Module> modulesCollection = Mindless.scriptManager.scripts.values();
                 List<Module> sortedModules = modulesCollection.stream().sorted(Comparator.comparing(Module::getName, String.CASE_INSENSITIVE_ORDER)).collect(Collectors.toList());
                 for (Module module : sortedModules) {
                     moduleRenderY += 16;
@@ -312,7 +312,7 @@ public class CategoryComponent {
     }
 
     public void render(FontRenderer renderer) {
-        RavenFontRenderer titleRenderer = Gui.getClickGuiHeaderFontRenderer();
+        MindlessFontRenderer titleRenderer = Gui.getClickGuiHeaderFontRenderer();
         String displayName = getDisplayName();
 
         if (smoothTimer != null && System.currentTimeMillis() - smoothTimer.last >= 280) {

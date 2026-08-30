@@ -31,7 +31,7 @@ import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.util.glu.GLU;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.utility.StairsUtils;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.util.ResourceLocation;
@@ -1116,11 +1116,11 @@ public class RenderUtils implements IMinecraftInstance {
         GL11.glDisable(2848);
     }
 
-    public static void glColor(final int n) { // credit to the creator of raven b4
+    public static void glColor(final int n) { // credit to the creator of mindless b4
         GlStateManager.color((float) (n >> 16 & 0xFF) / 255.0f, (float) (n >> 8 & 0xFF) / 255.0f, (float) (n & 0xFF) / 255.0f, (float) (n >> 24 & 0xFF) / 255.0f);
     }
 
-    public static void drawRoundedGradientOutlinedRectangle(float x, float y, float x2, float y2, final float radius, final int n6, final int n7, final int n8) { // credit to the creator of raven b4
+    public static void drawRoundedGradientOutlinedRectangle(float x, float y, float x2, float y2, final float radius, final int n6, final int n7, final int n8) { // credit to the creator of mindless b4
         x *= 2.0f;
         y *= 2.0f;
         x2 *= 2.0f;
@@ -1988,7 +1988,7 @@ public class RenderUtils implements IMinecraftInstance {
     }
 
     public static ResourceLocation buildWhiteMaskedTexture(String resourcePath, String registryName, ResourceLocation fallback) {
-        try (InputStream stream = Raven.class.getResourceAsStream(resourcePath)) {
+        try (InputStream stream = Mindless.class.getResourceAsStream(resourcePath)) {
             if (stream == null) return fallback;
             BufferedImage src = ImageIO.read(stream);
             int w = src.getWidth(), h = src.getHeight();
@@ -2017,7 +2017,7 @@ public class RenderUtils implements IMinecraftInstance {
         if (cached != null) {
             return cached;
         }
-        String registryName = "raven_icon_" + resourcePath.hashCode();
+        String registryName = "mindless_icon_" + resourcePath.hashCode();
         ResourceLocation icon = buildWhiteMaskedTexture(resourcePath, registryName, null);
         if (icon != null) {
             iconCache.put(resourcePath, icon);

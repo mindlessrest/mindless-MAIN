@@ -7,7 +7,7 @@ import mindless.module.impl.theme.ThemeManager;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.HudGlowHelper;
 import mindless.utility.shader.RoundedUtils;
@@ -74,14 +74,14 @@ public class DynamicIsland extends Module {
 
     private static final float WATERMARK_SCALE = 3.0f;
 
-    private mindless.utility.font.RavenFontRenderer getWatermarkFont() {
+    private mindless.utility.font.MindlessFontRenderer getWatermarkFont() {
         return mindless.utility.font.FontManager.getHudRenderer(
                 mindless.utility.font.ModuleFont.nameOf(font),
                 HUD.getSelectedFontScale() * WATERMARK_SCALE);
     }
 
     private void renderTextWatermark() {
-        mindless.utility.font.RavenFontRenderer font = getWatermarkFont();
+        mindless.utility.font.MindlessFontRenderer font = getWatermarkFont();
         if (font == null) return;
 
         String text = "Mindless";
@@ -107,7 +107,7 @@ public class DynamicIsland extends Module {
     }
 
     public float[] getTextBounds() {
-        mindless.utility.font.RavenFontRenderer font = getWatermarkFont();
+        mindless.utility.font.MindlessFontRenderer font = getWatermarkFont();
         if (font == null) return null;
         String text = "Mindless";
         float w = font.getStringWidth(text);
@@ -116,7 +116,7 @@ public class DynamicIsland extends Module {
     }
 
     private void renderIsland() {
-        RavenFontRenderer font = HUD.getHudFontRenderer();
+        MindlessFontRenderer font = HUD.getHudFontRenderer();
         if (font == null) return;
         ensureTexture();
 

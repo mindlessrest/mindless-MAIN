@@ -1,4 +1,4 @@
-#include "raven_native.h"
+#include "mindless_native.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,13 +6,13 @@
 #include <wchar.h>
 
 /*
- * RavenNative.dll — direct injection bootstrap for the Raven b4/bS mod on
+ * MindlessNative.dll — direct injection bootstrap for the Mindless b4/bS mod on
  * Minecraft 1.8.9 Forge and Forge-enabled Lunar. Loaded into javaw.exe via
- * CreateRemoteThread + LoadLibraryW by RavenInjector.exe. Waits for the client
+ * CreateRemoteThread + LoadLibraryW by MindlessInjector.exe. Waits for the client
  * JVM, selects the SRG or MCP payload, appends it to the Minecraft class
  * loader, and invokes mindless.runtime.NativeBootstrap.start().
  *
- * Raven uses ClassTransform plus JVMTI: already-loaded targets are
+ * Mindless uses ClassTransform plus JVMTI: already-loaded targets are
  * retransformed immediately and targets loaded later pass through the same
  * ClassFileLoadHook.
  */
@@ -38,14 +38,14 @@ static void send_progress(float progress, const char *status) {
     }
 }
 
-#define RAVEN_FORGE_PAYLOAD_RESOURCE_ID 421
-#define RAVEN_LUNAR_PAYLOAD_RESOURCE_ID 422
+#define MINDLESS_FORGE_PAYLOAD_RESOURCE_ID 421
+#define MINDLESS_LUNAR_PAYLOAD_RESOURCE_ID 422
 
-typedef enum raven_runtime_namespace {
-    RAVEN_NAMESPACE_UNKNOWN = 0,
-    RAVEN_NAMESPACE_MCP,
-    RAVEN_NAMESPACE_SRG
-} raven_runtime_namespace;
+typedef enum mindless_runtime_namespace {
+    MINDLESS_NAMESPACE_UNKNOWN = 0,
+    MINDLESS_NAMESPACE_MCP,
+    MINDLESS_NAMESPACE_SRG
+} mindless_runtime_namespace;
 
 /* ClassFileLoadHook plumbing */
 static jclass    g_hooks_class = NULL;      /* mindless.runtime.TransformerHooks */
@@ -91,7 +91,7 @@ void vape_log(const wchar_t *format, ...) {
 
     if (!module_directory(directory, sizeof(directory) / sizeof(directory[0]))) return;
     _snwprintf_s(log_path, sizeof(log_path) / sizeof(log_path[0]), _TRUNCATE,
-            L"%ls\\raven-native.log", directory);
+            L"%ls\\mindless-native.log", directory);
     if (_wfopen_s(&file, log_path, L"a, ccs=UTF-8") == 0 && file != NULL) {
         fputws(line, file);
         fclose(file);
@@ -210,10 +210,10 @@ void vape_log_pending_exception(JNIEnv *env, const wchar_t *context) {
         ++depth;
     }
     if (current != NULL && depth > 0) (*env)->DeleteLocalRef(env, current);
-    vape_log(L"  (java-side trace also written to %%TEMP%%\\RavenNative\\raven-native-java.log)");
+    vape_log(L"  (java-side trace also written to %%TEMP%%\\MindlessNative\\mindless-native-java.log)");
 }
 
-jint raven_initialize_jvmti(JavaVM *vm) {
+jint mindless_initialize_jvmti(JavaVM *vm) {
     jint get_env_result;
     if (vm == NULL) return JNI_ERR;
     g_vm = vm;
@@ -269,7 +269,7 @@ static int materialize_embedded_payload(int resource_id,
     }
     if (_snwprintf_s(temp_directory,
             sizeof(temp_directory) / sizeof(temp_directory[0]),
-            _TRUNCATE, L"%lsRavenNative", temp_root) < 0) {
+            _TRUNCATE, L"%lsMindlessNative", temp_root) < 0) {
         vape_log(L"temporary directory path too long");
         return 0;
     }
@@ -278,7 +278,7 @@ static int materialize_embedded_payload(int resource_id,
         return 0;
     }
     if (_snwprintf_s(jar_path, jar_capacity, _TRUNCATE,
-            L"%ls\\raven-%ls-payload-%lu.jar", temp_directory,
+            L"%ls\\mindless-%ls-payload-%lu.jar", temp_directory,
             profile_name, GetCurrentProcessId()) < 0) {
         vape_log(L"temporary payload path too long");
         return 0;
@@ -431,14 +431,14 @@ static jobject find_minecraft_class_loader(JNIEnv *env) {
     return result;
 }
 
-static raven_runtime_namespace detect_runtime_namespace(JNIEnv *env,
+static mindless_runtime_namespace detect_runtime_namespace(JNIEnv *env,
         jobject loader) {
     jclass loader_class = NULL;
     jmethodID load_class = NULL;
     jclass minecraft = NULL;
     jmethodID mcp_click = NULL;
     jmethodID srg_click = NULL;
-    raven_runtime_namespace result = RAVEN_NAMESPACE_UNKNOWN;
+    mindless_runtime_namespace result = MINDLESS_NAMESPACE_UNKNOWN;
 
     loader_class = (*env)->FindClass(env, "java/lang/ClassLoader");
     load_class = loader_class == NULL ? NULL : (*env)->GetMethodID(env,
@@ -460,10 +460,10 @@ static raven_runtime_namespace detect_runtime_namespace(JNIEnv *env,
     if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
     if (mcp_click != NULL && srg_click == NULL) {
-        result = RAVEN_NAMESPACE_MCP;
+        result = MINDLESS_NAMESPACE_MCP;
         vape_log(L"runtime namespace: MCP/named (Lunar/deobfuscated)");
     } else if (srg_click != NULL && mcp_click == NULL) {
-        result = RAVEN_NAMESPACE_SRG;
+        result = MINDLESS_NAMESPACE_SRG;
         vape_log(L"runtime namespace: SRG (Forge)");
     } else {
         vape_log(L"runtime namespace is ambiguous (clickMouse=%d, func_147116_af=%d)",
@@ -574,14 +574,14 @@ cleanup:
 }
 
 static int set_runtime_properties(JNIEnv *env,
-        raven_runtime_namespace runtime_namespace, int embedded_forge) {
-    const char *namespace_name = runtime_namespace == RAVEN_NAMESPACE_MCP
+        mindless_runtime_namespace runtime_namespace, int embedded_forge) {
+    const char *namespace_name = runtime_namespace == MINDLESS_NAMESPACE_MCP
             ? "mcp" : "srg";
-    const char *profile_name = runtime_namespace == RAVEN_NAMESPACE_MCP
+    const char *profile_name = runtime_namespace == MINDLESS_NAMESPACE_MCP
             ? "lunar" : "forge";
-    return set_system_property(env, "raven.runtimeNamespace", namespace_name)
-            && set_system_property(env, "raven.runtimeProfile", profile_name)
-            && set_system_property(env, "raven.embeddedForge",
+    return set_system_property(env, "mindless.runtimeNamespace", namespace_name)
+            && set_system_property(env, "mindless.runtimeProfile", profile_name)
+            && set_system_property(env, "mindless.embeddedForge",
                     embedded_forge ? "true" : "false");
 }
 
@@ -684,7 +684,7 @@ static jclass load_bootstrap_class(JNIEnv *env, jobject loader) {
     return result;
 }
 
-/* Parent-first class loading can otherwise reuse an older Raven JAR that was
+/* Parent-first class loading can otherwise reuse an older Mindless JAR that was
  * already present in the process. Require NativeBootstrap to come from the
  * payload materialized by this exact injection attempt. */
 static int verify_bootstrap_code_source(JNIEnv *env, jobject expected_loader,
@@ -1205,28 +1205,28 @@ static int collect_loaded_registered_targets(JNIEnv *env, jobject class_loader,
     }
 
     manager_class = load_class_via_loader(env, class_loader, load_class,
-            "mindless.runtime.RavenTransformerManager");
+            "mindless.runtime.MindlessTransformerManager");
     if (manager_class == NULL) {
-        vape_log(L"RavenTransformerManager not visible via LaunchClassLoader");
+        vape_log(L"MindlessTransformerManager not visible via LaunchClassLoader");
         goto cleanup;
     }
     get_instance = (*env)->GetStaticMethodID(env, manager_class,
-            "get", "()Lmindless/runtime/RavenTransformerManager;");
+            "get", "()Lmindless/runtime/MindlessTransformerManager;");
     target_names = (*env)->GetMethodID(env, manager_class,
             "targetInternalNames", "()Ljava/util/Set;");
     if (get_instance == NULL || target_names == NULL) {
-        vape_log_pending_exception(env, L"resolve RavenTransformerManager methods");
+        vape_log_pending_exception(env, L"resolve MindlessTransformerManager methods");
         goto cleanup;
     }
 
     manager = (*env)->CallStaticObjectMethod(env, manager_class, get_instance);
     if (manager == NULL || (*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"RavenTransformerManager.get");
+        vape_log_pending_exception(env, L"MindlessTransformerManager.get");
         goto cleanup;
     }
     set = (*env)->CallObjectMethod(env, manager, target_names);
     if (set == NULL || (*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"RavenTransformerManager.targetInternalNames");
+        vape_log_pending_exception(env, L"MindlessTransformerManager.targetInternalNames");
         goto cleanup;
     }
     set_class = (*env)->FindClass(env, "java/util/Set");
@@ -1449,7 +1449,7 @@ static int retransform_registered_targets(JNIEnv *env, jobject class_loader) {
     }
 }
 
-/* With Raven's hook disabled, a JVMTI retransformation starts from the VM's
+/* With Mindless's hook disabled, a JVMTI retransformation starts from the VM's
  * baseline class bytes and therefore removes bytecode supplied by our hook. */
 static int restore_loaded_registered_targets(JNIEnv *env, jobject class_loader) {
     jclass *classes_to_restore = NULL;
@@ -1493,11 +1493,11 @@ static int restore_loaded_registered_targets(JNIEnv *env, jobject class_loader) 
     return restored == restore_count;
 }
 
-/* Force the RavenTransformerManager singleton to be built now, WITH the hook
+/* Force the MindlessTransformerManager singleton to be built now, WITH the hook
  * still disabled. Building it calls addTransformer(...) for every Transformer*
  * class, each of which triggers class loading via the LaunchClassLoader; if
  * the ClassFileLoadHook were already live those loads would recurse into
- * TransformerHooks.transform -> RavenTransformerManager.get() before the
+ * TransformerHooks.transform -> MindlessTransformerManager.get() before the
  * singleton finished initialising. */
 static int prime_transformer_manager(JNIEnv *env, jobject class_loader,
         jmethodID load_class) {
@@ -1505,23 +1505,23 @@ static int prime_transformer_manager(JNIEnv *env, jobject class_loader,
     jmethodID get_instance;
     jobject manager;
     manager_class = load_class_via_loader(env, class_loader, load_class,
-            "mindless.runtime.RavenTransformerManager");
+            "mindless.runtime.MindlessTransformerManager");
     if (manager_class == NULL) {
-        vape_log(L"prime: RavenTransformerManager not visible via loader");
+        vape_log(L"prime: MindlessTransformerManager not visible via loader");
         return 0;
     }
     get_instance = (*env)->GetStaticMethodID(env, manager_class,
-            "get", "()Lmindless/runtime/RavenTransformerManager;");
+            "get", "()Lmindless/runtime/MindlessTransformerManager;");
     if (get_instance == NULL) {
-        vape_log_pending_exception(env, L"prime: resolve RavenTransformerManager.get");
+        vape_log_pending_exception(env, L"prime: resolve MindlessTransformerManager.get");
         return 0;
     }
     manager = (*env)->CallStaticObjectMethod(env, manager_class, get_instance);
     if (manager == NULL || (*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"prime: RavenTransformerManager.get()");
+        vape_log_pending_exception(env, L"prime: MindlessTransformerManager.get()");
         return 0;
     }
-    vape_log(L"prime: RavenTransformerManager constructed");
+    vape_log(L"prime: MindlessTransformerManager constructed");
     (*env)->DeleteLocalRef(env, manager);
     (*env)->DeleteLocalRef(env, manager_class);
     return 1;
@@ -1575,7 +1575,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     jobject loader = NULL;
     jclass bootstrap_class = NULL;
     wchar_t jar_path[MAX_PATH];
-    raven_runtime_namespace runtime_namespace = RAVEN_NAMESPACE_UNKNOWN;
+    mindless_runtime_namespace runtime_namespace = MINDLESS_NAMESPACE_UNKNOWN;
     int payload_resource_id = 0;
     const wchar_t *payload_profile = NULL;
     int embedded_forge = 0;
@@ -1633,7 +1633,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     }
     attached = 1;
     send_progress(0.45f, "Attached to Java VM");
-    if (raven_initialize_jvmti(vm) != JNI_OK) {
+    if (mindless_initialize_jvmti(vm) != JNI_OK) {
         exit_code = 6;
         goto cleanup;
     }
@@ -1660,7 +1660,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     }
     send_progress(0.53f, "Minecraft class loader found");
     runtime_namespace = detect_runtime_namespace(env, loader);
-    if (runtime_namespace == RAVEN_NAMESPACE_UNKNOWN) {
+    if (runtime_namespace == MINDLESS_NAMESPACE_UNKNOWN) {
         exit_code = 15;
         goto cleanup;
     }
@@ -1668,7 +1668,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     /* Plain Lunar + OptiFine has named Minecraft classes but no Forge API.
      * The MCP payload embeds the required API and a loader-independent event
      * bus. Record whether that compatibility layer must emit lifecycle events. */
-    embedded_forge = runtime_namespace == RAVEN_NAMESPACE_MCP
+    embedded_forge = runtime_namespace == MINDLESS_NAMESPACE_MCP
             && !(loader_has_class(env, loader,
                     "net.minecraftforge.common.MinecraftForge")
                  && loader_has_class(env, loader,
@@ -1678,11 +1678,11 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         goto cleanup;
     }
     send_progress(0.57f, "Runtime properties configured");
-    if (runtime_namespace == RAVEN_NAMESPACE_MCP) {
-        payload_resource_id = RAVEN_LUNAR_PAYLOAD_RESOURCE_ID;
+    if (runtime_namespace == MINDLESS_NAMESPACE_MCP) {
+        payload_resource_id = MINDLESS_LUNAR_PAYLOAD_RESOURCE_ID;
         payload_profile = L"lunar-mcp";
     } else {
-        payload_resource_id = RAVEN_FORGE_PAYLOAD_RESOURCE_ID;
+        payload_resource_id = MINDLESS_FORGE_PAYLOAD_RESOURCE_ID;
         payload_profile = L"forge-srg";
     }
     send_progress(0.59f, "Selecting payload profile");
@@ -1732,7 +1732,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     send_progress(0.73f, "Native module pinned");
     vape_log(L"NativeBootstrap linked from %ls", jar_path);
     if (!apply_transformers(env, loader)) {
-        vape_log(L"apply_transformers failed; Raven will not start with missing hooks");
+        vape_log(L"apply_transformers failed; Mindless will not start with missing hooks");
         exit_code = 14;
         goto cleanup;
     }
@@ -1742,7 +1742,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         goto cleanup;
     }
     send_progress(1.0f, "Ready");
-    vape_log(L"NativeBootstrap.start completed; Raven is active");
+    vape_log(L"NativeBootstrap.start completed; Mindless is active");
     /* Try to delete payload from disk. URLClassLoader holds the jar open via a
      * ZipFile handle, so DeleteFile will fail — but the FILE_DISPOSITION_INFO
      * trick marks it for deletion when the last handle closes (process exit). */
@@ -1834,7 +1834,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
         DisableThreadLibraryCalls(instance);
         thread = CreateThread(NULL, 0, bootstrap_thread, instance, 0, NULL);
         if (thread == NULL) {
-            OutputDebugStringW(L"RavenNative: CreateThread for bootstrap failed\r\n");
+            OutputDebugStringW(L"MindlessNative: CreateThread for bootstrap failed\r\n");
             g_module = NULL;
             return FALSE;
         }

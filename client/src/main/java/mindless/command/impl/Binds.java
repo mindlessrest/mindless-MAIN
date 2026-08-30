@@ -1,6 +1,6 @@
 package mindless.command.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.command.Command;
 import mindless.command.CommandInput;
 import mindless.module.Module;
@@ -58,10 +58,10 @@ public class Binds extends Command {
         for (Module module : ModuleManager.modules) {
             addModuleIfMatches(binds, module, keycode);
         }
-        for (Profile profile : Raven.profileManager.profiles) {
+        for (Profile profile : Mindless.profileManager.profiles) {
             addModuleIfMatches(binds, profile.getModule(), keycode);
         }
-        for (Module scriptModule : Raven.scriptManager.scripts.values()) {
+        for (Module scriptModule : Mindless.scriptManager.scripts.values()) {
             addModuleIfMatches(binds, scriptModule, keycode);
         }
         return binds;

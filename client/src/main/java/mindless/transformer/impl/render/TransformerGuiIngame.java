@@ -5,7 +5,7 @@ import mindless.utility.shader.RoundedUtils;
 import mindless.module.impl.client.Settings;
 import mindless.runtime.GuiIngameState;
 import mindless.runtime.HudTextRenderer;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.HudRenderBounds;
 import mindless.utility.RenderUtils;
 import mindless.utility.TextGlowUtils;
@@ -48,7 +48,7 @@ public abstract class TransformerGuiIngame {
      */
     @CInline
     @CInject(method = "renderGameOverlay", target = @CTarget("HEAD"))
-    private void raven$beginHudBlurFrame(float partialTicks, InjectionCallback callbackInfo) {
+    private void mindless$beginHudBlurFrame(float partialTicks, InjectionCallback callbackInfo) {
         // Once a frame, before anything draws over the world: put GlStateManager's cache back in
         // agreement with the driver. The world pass is full of raw GL, ours and everyone else's,
         // and the cache is what decides whether a reset is worth forwarding -- so a colour or a
@@ -61,7 +61,7 @@ public abstract class TransformerGuiIngame {
 
     @CInline
     @CInject(method = "renderScoreboard", target = @CTarget("HEAD"), cancellable = true)
-    private void raven$renderUnifiedScoreboard(ScoreObjective objective, ScaledResolution resolution,
+    private void mindless$renderUnifiedScoreboard(ScoreObjective objective, ScaledResolution resolution,
                                                InjectionCallback callbackInfo) {
         if (!mindless.module.impl.render.ScoreboardModule.isCustomScoreboardEnabled()) {
             return;
@@ -89,7 +89,7 @@ public abstract class TransformerGuiIngame {
         FontRenderer font = getFontRenderer();
         // The scoreboard's own Font setting, which until now was read only by the mixin copy of
         // this screen -- the copy Forge loads and this client does not.
-        RavenFontRenderer customFont = mindless.module.impl.render.ScoreboardModule.getCustomFont();
+        MindlessFontRenderer customFont = mindless.module.impl.render.ScoreboardModule.getCustomFont();
         // Minecraft's font is drawn at nine pixels and shrunk to fit; a chosen face is rasterised
         // at the size it will occupy, so scaling it down again would only blur it.
         float fontScale = customFont != null ? 1.0f : GuiIngameState.SCOREBOARD_SCALE;

@@ -1,6 +1,6 @@
 package mindless.transformer.impl.render;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.ModuleManager;
 import net.lenni0451.classtransform.InjectionCallback;
 import net.lenni0451.classtransform.annotations.CInline;
@@ -26,7 +26,7 @@ public abstract class TransformerGuiChat {
     @CInject(method = "keyTyped(CI)V", target = @CTarget("RETURN"))
     private void updateLength(InjectionCallback ci) {
         if (inputField.getText().startsWith(".") && ModuleManager.canExecuteChatCommand()) {
-            Raven.commandManager.autoComplete(inputField.getText());
+            Mindless.commandManager.autoComplete(inputField.getText());
         } else {
             inputField.setMaxStringLength(100);
         }
@@ -35,9 +35,9 @@ public abstract class TransformerGuiChat {
     @CInline
     @CInject(method = "sendAutocompleteRequest", target = @CTarget("HEAD"), cancellable = true)
     private void handleClientCommandCompletion(String full, String ignored, InjectionCallback ci) {
-        if (Raven.commandManager.autoComplete(full) && ModuleManager.canExecuteChatCommand()) {
+        if (Mindless.commandManager.autoComplete(full) && ModuleManager.canExecuteChatCommand()) {
             waitingOnAutocomplete = true;
-            String[] latestAutoComplete = Raven.commandManager.latestAutoComplete;
+            String[] latestAutoComplete = Mindless.commandManager.latestAutoComplete;
             if (full.toLowerCase().endsWith(
                     latestAutoComplete[latestAutoComplete.length - 1].toLowerCase())) {
                 return;

@@ -1,6 +1,6 @@
 package mindless.script;
 
-import mindless.Raven;
+import mindless.Mindless;
 
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -48,7 +48,7 @@ public class SecureClassLoader extends URLClassLoader {
 
         boolean hasAllowedSuffix = name.endsWith("Exception") || name.endsWith("Throwable");
 
-        boolean isAllowedImport = Raven.scriptManager.imports.stream().anyMatch(prefix -> name.toLowerCase().startsWith(prefix));
+        boolean isAllowedImport = Mindless.scriptManager.imports.stream().anyMatch(prefix -> name.toLowerCase().startsWith(prefix));
         boolean isScriptClass = name.startsWith("sc_") && !name.contains(".");
 
         boolean isWhitelistedPackage = WHITELISTED_PACKAGES.stream().anyMatch(name::startsWith);

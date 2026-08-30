@@ -1,6 +1,6 @@
 package mindless.command;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.utility.IMinecraftInstance;
 import mindless.utility.Utils;
 
@@ -91,10 +91,10 @@ public abstract class Command implements IMinecraftInstance {
     }
 
     private String formatOutput(String message) {
-        return Raven.commandManager != null ? Raven.commandManager.formatOutput(message) : message;
+        return Mindless.commandManager != null ? Mindless.commandManager.formatOutput(message) : message;
     }
 
     private String getPrefix() {
-        return Raven.commandManager != null ? Raven.commandManager.getPrefix() : ".";
+        return Mindless.commandManager != null ? Mindless.commandManager.getPrefix() : ".";
     }
 }

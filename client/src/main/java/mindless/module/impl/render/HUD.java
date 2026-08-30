@@ -19,7 +19,7 @@ import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Theme;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
@@ -277,7 +277,7 @@ public class HUD extends Module {
         }
         Module.sort = false;
 
-        RavenFontRenderer hudFont = getHudFontRenderer();
+        MindlessFontRenderer hudFont = getHudFontRenderer();
         int textTopOffset = hudFont.getTextTopOffset();
         int textBottomOffset = hudFont.getTextBottomOffset();
         int horizontalTextPadding = getHudHorizontalTextPadding();
@@ -402,7 +402,7 @@ public class HUD extends Module {
     }
 
     public static int getLongestModule() {
-        RavenFontRenderer hudFont = getHudFontRenderer();
+        MindlessFontRenderer hudFont = getHudFontRenderer();
         int length = 0;
 
         for (Module module : ModuleManager.organizedModules) {
@@ -415,7 +415,7 @@ public class HUD extends Module {
     }
 
     public static float[] renderDesignerPreview() {
-        RavenFontRenderer font = getHudFontRenderer();
+        MindlessFontRenderer font = getHudFontRenderer();
         java.util.List<String> lines = new java.util.ArrayList<>();
         boolean removeVelocity = ModuleManager.antiKnockback != null && ModuleManager.antiKnockback.isEnabled();
         for (Module module : ModuleManager.organizedModules) {
@@ -474,7 +474,7 @@ public class HUD extends Module {
      * @return every drawn row, in draw order
      */
     public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY) {
-        RavenFontRenderer font = getHudFontRenderer();
+        MindlessFontRenderer font = getHudFontRenderer();
         java.util.List<Module> shown = new java.util.ArrayList<Module>();
         boolean removeVelocity = ModuleManager.antiKnockback != null && ModuleManager.antiKnockback.isEnabled();
         for (Module module : ModuleManager.organizedModules) {
@@ -521,7 +521,7 @@ public class HUD extends Module {
     }
 
     public static void setDesignerTopLeft(float left, float top) {
-        RavenFontRenderer font = getHudFontRenderer();
+        MindlessFontRenderer font = getHudFontRenderer();
         int width = Math.max(font.getStringWidth("Kill Aura"),
                 Math.max(font.getStringWidth("Player ESP"), font.getStringWidth("Music Player")));
         setAbsolutePosition(alignRight != null && alignRight.isToggled() ? left + width : left, top);
@@ -557,7 +557,7 @@ public class HUD extends Module {
     }
 
 
-    public static RavenFontRenderer getHudFontRenderer() {
+    public static MindlessFontRenderer getHudFontRenderer() {
         return FontManager.getHudRenderer(getSelectedFontName(), getSelectedFontScale());
     }
 
@@ -709,7 +709,7 @@ public class HUD extends Module {
     }
 
     /** Widths of every row the list will draw, in the order it will draw them. */
-    private static int[] collectRowWidths(RavenFontRenderer hudFont, boolean removeVelocity) {
+    private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean removeVelocity) {
         java.util.List<Integer> widths = new java.util.ArrayList<Integer>();
         for (Module module : ModuleManager.organizedModules) {
             if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
@@ -974,7 +974,7 @@ public class HUD extends Module {
      * segments, all in the same font and all from the same glyph atlas, with nothing drawn between
      * them -- so what would otherwise be five draws is one.
      */
-    private static void drawHudRow(RavenFontRenderer hudFont, Module module, float xPos, float textY, int color) {
+    private static void drawHudRow(MindlessFontRenderer hudFont, Module module, float xPos, float textY, int color) {
         String name = getHudText(module);
         String info = getHudInfoText(module);
         if (info.isEmpty()) {
@@ -994,7 +994,7 @@ public class HUD extends Module {
         }
     }
 
-    private static void drawHudText(RavenFontRenderer hudFont, String moduleName, float xPos, float textY, int fallbackColor) {
+    private static void drawHudText(MindlessFontRenderer hudFont, String moduleName, float xPos, float textY, int fallbackColor) {
         GlyphBatch.begin();
         try {
             drawDecoration(hudFont, moduleName, xPos, textY, fallbackColor);
@@ -1014,7 +1014,7 @@ public class HUD extends Module {
      * drawn here rather than leaning on the renderer's built-in shadow, so Shadow opacity means
      * something for all of them.
      */
-    private static void drawDecoration(RavenFontRenderer hudFont, String text, float xPos, float textY, int color) {
+    private static void drawDecoration(MindlessFontRenderer hudFont, String text, float xPos, float textY, int color) {
         if (Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled() && !HudGlowHelper.isAvailable()) {
             TextGlowUtils.drawGlow(hudFont, text, xPos, textY, color);
         }
@@ -1061,7 +1061,7 @@ public class HUD extends Module {
      * Pre-pass: renders all ArrayList text into the glow mask, blurs it, composites as glow.
      * Glow follows actual glyphs rather than producing rectangular artifacts.
      */
-    private static void renderArrayListGlowPass(RavenFontRenderer hudFont, boolean removeVelocity,
+    private static void renderArrayListGlowPass(MindlessFontRenderer hudFont, boolean removeVelocity,
                                                  int rowHeight, int horizontalTextPadding,
                                                  int textTopOffset, int textTopPadding) {
         HudGlowHelper.beginMask();
@@ -1105,7 +1105,7 @@ public class HUD extends Module {
         HudGlowHelper.endAndComposite(6.0f, 1.0f, r, g, b);
     }
 
-    private static void drawTextSegment(RavenFontRenderer hudFont, String text, float xPos, float textY,
+    private static void drawTextSegment(MindlessFontRenderer hudFont, String text, float xPos, float textY,
                                         int color, boolean shadow) {
         if (!shouldUseHorizontalWaveText()) {
             hudFont.drawString(text, xPos, textY, color, shadow);

@@ -1,6 +1,6 @@
 package mindless.utility;
 
-import mindless.Raven;
+import mindless.Mindless;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.C07PacketPlayerDigging;
 import net.minecraft.util.BlockPos;
@@ -40,12 +40,12 @@ public class PacketUtils implements IMinecraftInstance {
             return;
         }
         skipSendEvent.add(packet);
-        Raven.mc.thePlayer.sendQueue.addToSendQueue(packet);
+        Mindless.mc.thePlayer.sendQueue.addToSendQueue(packet);
     }
 
     public static void receivePacketNoEvent(Packet packet) {
         try {
-            packet.processPacket(Raven.mc.getNetHandler());
+            packet.processPacket(Mindless.mc.getNetHandler());
         }
         catch (Exception e) {
             e.printStackTrace();

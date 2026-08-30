@@ -12,7 +12,7 @@ import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
@@ -429,7 +429,7 @@ public class Indicators extends Module {
             else if (arrowInput == 1) {
                 GlStateManager.rotate(-90.0f, 0.0f, 0.0f, 1.0f);
                 GlStateManager.scale(1.5, 1.5, 1.5);
-                RavenFontRenderer fr = getIndicatorFontRenderer();
+                MindlessFontRenderer fr = getIndicatorFontRenderer();
                 fr.drawString(">", -2.0f, -4.0f, color, false);
             }
             else if (arrowInput == 2) {
@@ -447,7 +447,7 @@ public class Indicators extends Module {
 
             if (renderDistance.isToggled()) {
                 String text = (int) mc.thePlayer.getDistanceToEntity(en) + "m";
-                RavenFontRenderer fr = getIndicatorFontRenderer();
+                MindlessFontRenderer fr = getIndicatorFontRenderer();
                 fr.drawString(text, (float) (-fr.getStringWidth(text) / 2), -4.0f, -1, true);
             }
 
@@ -1122,7 +1122,7 @@ public class Indicators extends Module {
         return font.getOptions()[index];
     }
 
-    private RavenFontRenderer getIndicatorFontRenderer() {
+    private MindlessFontRenderer getIndicatorFontRenderer() {
         return FontManager.getNametagRenderer(getSelectedFontName());
     }
 }

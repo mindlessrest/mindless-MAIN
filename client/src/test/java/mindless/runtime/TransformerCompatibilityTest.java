@@ -51,7 +51,7 @@ import java.util.stream.Stream;
 public class TransformerCompatibilityTest {
     private static final String LOOM_VERSION_DIR = "1.8.9";
     private static final String FORGE_VERSION = System.getProperty(
-            "raven.testForgeVersion", "1.8.9-11.15.1.1764");
+            "mindless.testForgeVersion", "1.8.9-11.15.1.1764");
     private static final String EXPECTED_CACHE_FRAGMENT =
             "mcp_stable.1_8_9.22-1.8.9-forge-" + FORGE_VERSION;
     private static final List<String> REQUIRED_SRG_TARGETS = Collections.unmodifiableList(
@@ -74,7 +74,6 @@ public class TransformerCompatibilityTest {
                     "net/minecraft/client/network/NetHandlerPlayClient",
                     "net/minecraft/network/NetworkManager",
                     "net/minecraft/client/renderer/EntityRenderer",
-                    "net/minecraft/client/entity/AbstractClientPlayer",
                     "net/minecraft/client/gui/FontRenderer",
                     "net/minecraft/client/gui/GuiChat",
                     "net/minecraft/client/gui/GuiNewChat",
@@ -85,7 +84,6 @@ public class TransformerCompatibilityTest {
                     "net/minecraft/client/renderer/ItemRenderer",
                     "net/minecraft/client/renderer/entity/layers/LayerArmorBase",
                     "net/minecraft/client/renderer/entity/layers/LayerHeldItem",
-                    "net/minecraft/client/renderer/entity/layers/LayerCape",
                     "net/minecraft/client/renderer/RenderGlobal",
                     "net/minecraft/client/renderer/entity/RenderEntityItem",
                     "net/minecraft/client/renderer/entity/RenderManager",
@@ -105,7 +103,7 @@ public class TransformerCompatibilityTest {
              JarFile forge = new JarFile(forgeSrg.toFile())) {
             IClassProvider provider = new SrgFirstClassProvider(
                     TransformerCompatibilityTest.class.getClassLoader(), minecraft, forge);
-            RavenTransformerManager manager = new RavenTransformerManager(provider);
+            MindlessTransformerManager manager = new MindlessTransformerManager(provider);
             Set<String> targets = manager.targetInternalNames();
 
             List<String> missingTargets = new ArrayList<>(REQUIRED_SRG_TARGETS);
@@ -140,7 +138,7 @@ public class TransformerCompatibilityTest {
                     continue;
                 }
 
-                String schemaChange = RavenTransformerManager.findRetransformSchemaChange(
+                String schemaChange = MindlessTransformerManager.findRetransformSchemaChange(
                         original, transformed);
                 if (schemaChange != null) {
                     failures.add(target + ": illegal retransformation schema change: " + schemaChange);
@@ -182,12 +180,12 @@ public class TransformerCompatibilityTest {
              JarFile forge = new JarFile(forgeMcp.toFile())) {
             IClassProvider provider = new SrgFirstClassProvider(
                     TransformerCompatibilityTest.class.getClassLoader(), minecraft, forge);
-            RavenTransformerManager manager = new RavenTransformerManager(provider);
+            MindlessTransformerManager manager = new MindlessTransformerManager(provider);
             Assert.assertEquals("MCP bytecode was not detected as the named namespace",
-                    RavenTransformerManager.RuntimeNamespace.MCP,
+                    MindlessTransformerManager.RuntimeNamespace.MCP,
                     manager.runtimeNamespace());
             Assert.assertEquals("Generic MCP bytecode was incorrectly classified as Lunar",
-                    RavenTransformerManager.RuntimeProfile.GENERIC,
+                    MindlessTransformerManager.RuntimeProfile.GENERIC,
                     manager.runtimeProfile());
 
             Set<String> targets = manager.targetInternalNames();
@@ -213,7 +211,7 @@ public class TransformerCompatibilityTest {
                     failures.add(target + ": transform returned unchanged bytecode");
                     continue;
                 }
-                String schemaChange = RavenTransformerManager.findRetransformSchemaChange(
+                String schemaChange = MindlessTransformerManager.findRetransformSchemaChange(
                         original, transformed);
                 if (schemaChange != null) {
                     failures.add(target + ": illegal retransformation schema change: "
@@ -244,7 +242,7 @@ public class TransformerCompatibilityTest {
              JarFile forge = new JarFile(forgeSrg.toFile())) {
             IClassProvider provider = new SrgFirstClassProvider(
                     TransformerCompatibilityTest.class.getClassLoader(), minecraft, forge);
-            RavenTransformerManager manager = new RavenTransformerManager(provider);
+            MindlessTransformerManager manager = new MindlessTransformerManager(provider);
             byte[] original = readClass("net/minecraft/entity/EntityLivingBase",
                     minecraft, forge);
             Assert.assertNotNull("SRG EntityLivingBase is missing", original);
@@ -253,7 +251,7 @@ public class TransformerCompatibilityTest {
                     "net/minecraft/entity/EntityLivingBase", original);
             Assert.assertNotNull("EntityLivingBase transformer returned null", transformed);
             Assert.assertNull("EntityLivingBase changed retransformation schema",
-                    RavenTransformerManager.findRetransformSchemaChange(original, transformed));
+                    MindlessTransformerManager.findRetransformSchemaChange(original, transformed));
             Assert.assertNull("EntityLivingBase contains a dangling self method reference",
                     manager.findDanglingSelfMethodReference(transformed));
 
@@ -392,7 +390,7 @@ public class TransformerCompatibilityTest {
              JarFile forge = new JarFile(forgeSrg.toFile())) {
             IClassProvider provider = new SrgFirstClassProvider(
                     TransformerCompatibilityTest.class.getClassLoader(), minecraft, forge);
-            RavenTransformerManager manager = new RavenTransformerManager(provider);
+            MindlessTransformerManager manager = new MindlessTransformerManager(provider);
             byte[] original = readClass("net/minecraft/entity/player/EntityPlayer",
                     minecraft, forge);
             Assert.assertNotNull("SRG EntityPlayer is missing", original);
@@ -401,7 +399,7 @@ public class TransformerCompatibilityTest {
                     "net/minecraft/entity/player/EntityPlayer", original);
             Assert.assertNotNull("EntityPlayer transformer returned null", transformed);
             Assert.assertNull("EntityPlayer changed retransformation schema",
-                    RavenTransformerManager.findRetransformSchemaChange(original, transformed));
+                    MindlessTransformerManager.findRetransformSchemaChange(original, transformed));
             Assert.assertNull("EntityPlayer contains a dangling self method reference",
                     manager.findDanglingSelfMethodReference(transformed));
 
@@ -458,13 +456,13 @@ public class TransformerCompatibilityTest {
             IClassProvider provider = new SrgFirstClassProvider(
                     TransformerCompatibilityTest.class.getClassLoader(),
                     minecraft, forge, optiFine);
-            RavenTransformerManager manager = new RavenTransformerManager(provider);
+            MindlessTransformerManager manager = new MindlessTransformerManager(provider);
             byte[] transformed = manager.transform(
                     "net/minecraft/client/renderer/RenderGlobal", optiFineShape);
 
             Assert.assertNotNull("OptiFine RenderGlobal redirect returned null", transformed);
             Assert.assertNull("OptiFine RenderGlobal changed retransformation schema",
-                    RavenTransformerManager.findRetransformSchemaChange(
+                    MindlessTransformerManager.findRetransformSchemaChange(
                             optiFineShape, transformed));
             Assert.assertNull("OptiFine RenderGlobal contains a dangling self method reference",
                     manager.findDanglingSelfMethodReference(transformed));
@@ -478,7 +476,7 @@ public class TransformerCompatibilityTest {
         Path forgeSrg = findEssentialLoomJar("forge-srg.jar");
         try (JarFile minecraft = new JarFile(minecraftSrg.toFile());
              JarFile forge = new JarFile(forgeSrg.toFile())) {
-            RavenTransformerManager manager = new RavenTransformerManager(
+            MindlessTransformerManager manager = new MindlessTransformerManager(
                     new SrgFirstClassProvider(
                             TransformerCompatibilityTest.class.getClassLoader(),
                             minecraft, forge));
@@ -497,7 +495,7 @@ public class TransformerCompatibilityTest {
         Path forgeMcp = findEssentialLoomJar("forge-mapped.jar");
         try (JarFile minecraft = new JarFile(minecraftMcp.toFile());
              JarFile forge = new JarFile(forgeMcp.toFile())) {
-            RavenTransformerManager manager = new RavenTransformerManager(
+            MindlessTransformerManager manager = new MindlessTransformerManager(
                     new SrgFirstClassProvider(
                             TransformerCompatibilityTest.class.getClassLoader(),
                             minecraft, forge));
@@ -521,7 +519,7 @@ public class TransformerCompatibilityTest {
         Path forgeSrg = findEssentialLoomJar("forge-srg.jar");
         try (JarFile minecraft = new JarFile(minecraftSrg.toFile());
              JarFile forge = new JarFile(forgeSrg.toFile())) {
-            RavenTransformerManager manager = new RavenTransformerManager(
+            MindlessTransformerManager manager = new MindlessTransformerManager(
                     new SrgFirstClassProvider(
                             TransformerCompatibilityTest.class.getClassLoader(),
                             minecraft, forge));
@@ -537,7 +535,7 @@ public class TransformerCompatibilityTest {
         Path forgeMcp = findEssentialLoomJar("forge-mapped.jar");
         try (JarFile minecraft = new JarFile(minecraftMcp.toFile());
              JarFile forge = new JarFile(forgeMcp.toFile())) {
-            RavenTransformerManager manager = new RavenTransformerManager(
+            MindlessTransformerManager manager = new MindlessTransformerManager(
                     new SrgFirstClassProvider(
                             TransformerCompatibilityTest.class.getClassLoader(),
                             minecraft, forge));
@@ -636,7 +634,7 @@ public class TransformerCompatibilityTest {
              JarFile forge = new JarFile(forgeSrg.toFile())) {
             IClassProvider provider = new SrgFirstClassProvider(
                     TransformerCompatibilityTest.class.getClassLoader(), minecraft, forge);
-            RavenTransformerManager manager = new RavenTransformerManager(provider);
+            MindlessTransformerManager manager = new MindlessTransformerManager(provider);
             byte[] original = readClass("net/minecraft/client/renderer/ItemRenderer",
                     minecraft, forge);
             Assert.assertNotNull(original);
@@ -656,14 +654,14 @@ public class TransformerCompatibilityTest {
             InsnList invalidCall = new InsnList();
             invalidCall.add(new VarInsnNode(Opcodes.ALOAD, 0));
             invalidCall.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, node.name,
-                    "raven$missingHelper", "()V", false));
+                    "mindless$missingHelper", "()V", false));
             renderHand.instructions.insert(invalidCall);
             ClassWriter writer = new ClassWriter(0);
             node.accept(writer);
 
             String failure = manager.findDanglingSelfMethodReference(writer.toByteArray());
             Assert.assertNotNull("Dangling helper invocation was not detected", failure);
-            Assert.assertTrue(failure, failure.contains("raven$missingHelper()V"));
+            Assert.assertTrue(failure, failure.contains("mindless$missingHelper()V"));
         }
     }
 

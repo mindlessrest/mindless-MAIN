@@ -1,6 +1,6 @@
 package mindless.command.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.command.Command;
 import mindless.command.CommandInput;
 import mindless.utility.PlayerRelationsManager;
@@ -16,7 +16,7 @@ public class Friend extends Command {
     @Override
     public void execute(CommandInput input) {
         if (input.argumentCount() == 0) {
-            List<PlayerRelationsManager.PlayerEntry> entries = Raven.playerRelationsManager.getEntries(PlayerRelationsManager.RelationType.FRIEND);
+            List<PlayerRelationsManager.PlayerEntry> entries = Mindless.playerRelationsManager.getEntries(PlayerRelationsManager.RelationType.FRIEND);
             replyWithHeader("&b" + entries.size() + " &7friend" + (entries.size() == 1 ? "" : "s") + ".");
             for (PlayerRelationsManager.PlayerEntry entry : entries) {
                 replyWithHeader(" &b" + entry.getDisplayName());
@@ -31,8 +31,8 @@ public class Friend extends Command {
 
         String name = input.getArgument(0);
         if ("clear".equalsIgnoreCase(name)) {
-            int cleared = Raven.playerRelationsManager.getCount(PlayerRelationsManager.RelationType.FRIEND);
-            Raven.playerRelationsManager.clearFriends();
+            int cleared = Mindless.playerRelationsManager.getCount(PlayerRelationsManager.RelationType.FRIEND);
+            Mindless.playerRelationsManager.clearFriends();
             replyWithHeader("&b" + cleared + " &7friend" + (cleared == 1 ? "" : "s") + " cleared.");
             return;
         }

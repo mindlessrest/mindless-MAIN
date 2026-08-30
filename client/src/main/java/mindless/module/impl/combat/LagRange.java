@@ -1,6 +1,6 @@
 package mindless.module.impl.combat;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.event.AttackEvent;
 import mindless.event.GameTickEvent;
 import mindless.event.PrePlayerInteractEvent;
@@ -99,7 +99,7 @@ public class LagRange extends Module {
         if (!isLagging) {
             return null;
         }
-        return mindless.Raven.lagHandler.getLastReleasedServerPosition();
+        return mindless.Mindless.lagHandler.getLastReleasedServerPosition();
     }
 
     public net.minecraft.entity.player.EntityPlayer getLagRangeTarget() {
@@ -175,7 +175,7 @@ public class LagRange extends Module {
                 }
                 lastSelfHurtTime = hurtTime;
 
-                Raven.lagHandler.releaseExpiredPackets(EnumLagDirection.OUTBOUND, (long) maximumDelay.getInput());
+                Mindless.lagHandler.releaseExpiredPackets(EnumLagDirection.OUTBOUND, (long) maximumDelay.getInput());
 
                 if (holdingWeapon.isToggled() && !Utils.holdingWeapon()) {
                     flushLag();
@@ -287,7 +287,7 @@ public class LagRange extends Module {
         if (!realPositionIndicator.isToggled()) return;
         if (mc.gameSettings.thirdPersonView == 0 && !showInFirstPerson.isToggled()) return;
 
-        Vec3 delayedPos = Raven.lagHandler.getLastReleasedServerPosition();
+        Vec3 delayedPos = Mindless.lagHandler.getLastReleasedServerPosition();
         if (delayedPos == null) {
             clearIndicatorInterp();
             return;
@@ -352,7 +352,7 @@ public class LagRange extends Module {
 
     private void startLag() {
         outboundLag = new LagRequest(EnumLagDirection.ONLY_OUTBOUND, new ModuleBackedTimeout(this));
-        Raven.lagHandler.requestLag(outboundLag);
+        Mindless.lagHandler.requestLag(outboundLag);
         isLagging = true;
     }
 

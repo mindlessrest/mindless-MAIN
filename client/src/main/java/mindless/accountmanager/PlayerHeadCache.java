@@ -51,7 +51,7 @@ public final class PlayerHeadCache {
                 mc.addScheduledTask(() -> {
                     try {
                         ResourceLocation registered = mc.getTextureManager()
-                                .getDynamicTextureLocation("raven_head_" + username.toLowerCase(),
+                                .getDynamicTextureLocation("mindless_head_" + username.toLowerCase(),
                                         new DynamicTexture(img));
                         CACHE.put(username, registered);
                     } catch (Exception ignored) {
@@ -62,6 +62,6 @@ public final class PlayerHeadCache {
             } catch (Exception ignored) {
                 PENDING.remove(username);
             }
-        }, "raven-head-" + username).start();
+        }, "mindless-head-" + username).start();
     }
 }

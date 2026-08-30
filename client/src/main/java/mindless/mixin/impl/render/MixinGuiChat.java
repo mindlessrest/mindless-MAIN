@@ -1,6 +1,6 @@
 package mindless.mixin.impl.render;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.animation.ScrollOffsetAnimation;
 import net.minecraft.client.gui.GuiChat;
 import net.minecraft.client.gui.GuiTextField;
@@ -27,16 +27,16 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
     private static final long PREVIEW_SCROLL_DURATION_MS = 200L;
 
     @Unique
-    private String[] raven$commandCompletions = new String[0];
+    private String[] mindless$commandCompletions = new String[0];
 
     @Unique
-    private int raven$commandCompletionIndex = -1;
+    private int mindless$commandCompletionIndex = -1;
 
     @Unique
-    private final ScrollOffsetAnimation raven$previewScrollAnim = new ScrollOffsetAnimation(PREVIEW_SCROLL_DURATION_MS);
+    private final ScrollOffsetAnimation mindless$previewScrollAnim = new ScrollOffsetAnimation(PREVIEW_SCROLL_DURATION_MS);
 
     @Unique
-    private String raven$previewScrollInput = "";
+    private String mindless$previewScrollInput = "";
 
     @Shadow
     protected GuiTextField inputField;
@@ -48,7 +48,7 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
     public abstract void onAutocompleteResponse(String[] suggestions);
 
     @Inject(method = "drawScreen", at = @At("HEAD"))
-    private void raven$beforeDrawScreen(int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
+    private void mindless$beforeDrawScreen(int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
         // GuiTextField can have its rectangular background re-enabled by other
         // UI/coremods. Keep it off so it cannot cover our rounded panel.
         inputField.setEnableBackgroundDrawing(false);
@@ -66,13 +66,13 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
 
     @Redirect(method = "drawScreen", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/gui/Gui;drawRect(IIIII)V"))
-    private void raven$removeVanillaInputBackground(int left, int top, int right, int bottom, int color) {
+    private void mindless$removeVanillaInputBackground(int left, int top, int right, int bottom, int color) {
         // Replaced by the matching rounded glass input panel above.
     }
 
     @Inject(method = "keyTyped", at = @At("RETURN"))
     private void updateLength(CallbackInfo callbackInfo) {
-        if (Raven.commandManager != null && Raven.commandManager.isCommand(inputField.getText())) {
+        if (Mindless.commandManager != null && Mindless.commandManager.isCommand(inputField.getText())) {
             inputField.setMaxStringLength(256);
         }
         else {
@@ -83,13 +83,13 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
     @Inject(method = "keyTyped", at = @At("HEAD"))
     private void clearCommandCompletionState(char typedChar, int keyCode, CallbackInfo callbackInfo) {
         if (keyCode != Keyboard.KEY_TAB) {
-            raven$resetCommandCompletions();
+            mindless$resetCommandCompletions();
         }
     }
 
     @Inject(method = "handleMouseInput", at = @At("HEAD"), cancellable = true)
     private void handleSuggestionScroll(CallbackInfo callbackInfo) {
-        if (Raven.commandManager == null) {
+        if (Mindless.commandManager == null) {
             return;
         }
 
@@ -99,32 +99,32 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
         }
 
         String input = inputField.getText();
-        if (!Raven.commandManager.isCommand(input)) {
-            raven$resetPreviewScroll();
+        if (!Mindless.commandManager.isCommand(input)) {
+            mindless$resetPreviewScroll();
             return;
         }
 
-        String[] suggestions = Raven.commandManager.getPreviewSuggestions(input);
+        String[] suggestions = Mindless.commandManager.getPreviewSuggestions(input);
         int visibleRows = Math.min(MAX_PREVIEW_ROWS, suggestions.length);
         if (visibleRows == 0 || suggestions.length <= visibleRows) {
-            raven$syncPreviewScrollState(input, suggestions.length, visibleRows);
+            mindless$syncPreviewScrollState(input, suggestions.length, visibleRows);
             return;
         }
 
         int mouseX = Mouse.getEventX() * this.width / mc.displayWidth;
         int mouseY = this.height - Mouse.getEventY() * this.height / mc.displayHeight - 1;
-        if (!raven$isMouseOverPreviewPanel(mouseX, mouseY, suggestions, visibleRows)) {
+        if (!mindless$isMouseOverPreviewPanel(mouseX, mouseY, suggestions, visibleRows)) {
             return;
         }
 
-        raven$syncPreviewScrollState(input, suggestions.length, visibleRows);
+        mindless$syncPreviewScrollState(input, suggestions.length, visibleRows);
         float scrollSpeed = mindless.module.impl.client.Gui.scrollSpeed != null
             ? (float) mindless.module.impl.client.Gui.scrollSpeed.getInput()
             : 20f;
         float delta = scrollSpeed * (wheelInput / 120f);
         if (delta != 0f) {
-            raven$previewScrollAnim.extend(-delta);
-            raven$clampPreviewScroll(suggestions.length, visibleRows);
+            mindless$previewScrollAnim.extend(-delta);
+            mindless$clampPreviewScroll(suggestions.length, visibleRows);
         }
 
         callbackInfo.cancel();
@@ -132,25 +132,25 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
 
     @Inject(method = "drawScreen", at = @At("RETURN"))
     private void drawLiveCommandSuggestions(int mouseX, int mouseY, float partialTicks, CallbackInfo callbackInfo) {
-        if (Raven.commandManager == null) {
-            raven$resetPreviewScroll();
+        if (Mindless.commandManager == null) {
+            mindless$resetPreviewScroll();
             return;
         }
 
         String input = inputField.getText();
-        if (!Raven.commandManager.isCommand(input)) {
-            raven$resetPreviewScroll();
+        if (!Mindless.commandManager.isCommand(input)) {
+            mindless$resetPreviewScroll();
             return;
         }
 
-        String[] suggestions = Raven.commandManager.getPreviewSuggestions(input);
+        String[] suggestions = Mindless.commandManager.getPreviewSuggestions(input);
         if (suggestions.length == 0) {
-            raven$resetPreviewScroll();
+            mindless$resetPreviewScroll();
             return;
         }
 
         int rows = Math.min(MAX_PREVIEW_ROWS, suggestions.length);
-        raven$syncPreviewScrollState(input, suggestions.length, rows);
+        mindless$syncPreviewScrollState(input, suggestions.length, rows);
         int fontHeight = mc.fontRendererObj.FONT_HEIGHT;
         int rowHeight = fontHeight + 2;
         int widest = mc.fontRendererObj.getStringWidth("Suggestions");
@@ -166,15 +166,15 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
         int contentTop = panelTop + 5 + fontHeight;
         int contentHeight = rows * rowHeight;
 
-        raven$drawDarkPanel(panelLeft, panelTop, panelRight, panelBottom, 0xC0000000);
+        mindless$drawDarkPanel(panelLeft, panelTop, panelRight, panelBottom, 0xC0000000);
         RenderUtils.drawRoundedRectangle(panelLeft + 4, panelTop + 1, panelRight - 4, panelTop + 2,
                 0.5f, 0x30FFFFFF);
 
         mc.fontRendererObj.drawStringWithShadow("Suggestions", panelLeft + 4, panelTop + 3, 0xFFE8D8FF);
 
         RenderUtils.scissorPushGui(panelLeft, contentTop, panelRight - panelLeft, contentHeight);
-        float scrollOffset = raven$previewScrollAnim.getValue();
-        int activeIndex = raven$getActiveSuggestionIndex(input, suggestions);
+        float scrollOffset = mindless$previewScrollAnim.getValue();
+        int activeIndex = mindless$getActiveSuggestionIndex(input, suggestions);
         for (int i = 0; i < suggestions.length; i++) {
             int textY = Math.round(contentTop - scrollOffset + i * rowHeight);
             if (textY + fontHeight < contentTop || textY > contentTop + contentHeight) {
@@ -189,11 +189,11 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
 
     @Inject(method = "sendAutocompleteRequest", at = @At("HEAD"), cancellable = true)
     private void handleClientCommandCompletion(String full, String ignored, CallbackInfo callbackInfo) {
-        if (Raven.commandManager == null || !Raven.commandManager.isCommand(full)) {
+        if (Mindless.commandManager == null || !Mindless.commandManager.isCommand(full)) {
             return;
         }
 
-        String[] suggestions = Raven.commandManager.getAutoComplete(full);
+        String[] suggestions = Mindless.commandManager.getAutoComplete(full);
         if (suggestions.length == 0) {
             return;
         }
@@ -209,45 +209,45 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
 
     @Inject(method = "autocompletePlayerNames", at = @At("HEAD"), cancellable = true)
     private void handleCommandAutocomplete(CallbackInfo callbackInfo) {
-        if (Raven.commandManager == null) {
+        if (Mindless.commandManager == null) {
             return;
         }
 
         String input = inputField.getText();
-        if (!Raven.commandManager.isCommand(input)) {
-            raven$resetCommandCompletions();
+        if (!Mindless.commandManager.isCommand(input)) {
+            mindless$resetCommandCompletions();
             return;
         }
 
         String[] suggestions;
-        if (raven$canCycleCurrentCompletion(input)) {
-            suggestions = raven$commandCompletions;
-            raven$commandCompletionIndex = (raven$commandCompletionIndex + 1) % suggestions.length;
+        if (mindless$canCycleCurrentCompletion(input)) {
+            suggestions = mindless$commandCompletions;
+            mindless$commandCompletionIndex = (mindless$commandCompletionIndex + 1) % suggestions.length;
         }
         else {
-            suggestions = Raven.commandManager.getAutoComplete(input);
+            suggestions = Mindless.commandManager.getAutoComplete(input);
             if (suggestions.length == 0) {
-                raven$resetCommandCompletions();
+                mindless$resetCommandCompletions();
                 callbackInfo.cancel();
                 return;
             }
 
-            raven$commandCompletions = suggestions;
-            raven$commandCompletionIndex = 0;
+            mindless$commandCompletions = suggestions;
+            mindless$commandCompletionIndex = 0;
         }
 
-        inputField.setText(suggestions[raven$commandCompletionIndex]);
+        inputField.setText(suggestions[mindless$commandCompletionIndex]);
         inputField.setCursorPositionEnd();
         callbackInfo.cancel();
     }
 
     @Unique
-    private boolean raven$canCycleCurrentCompletion(String input) {
-        if (raven$commandCompletions.length == 0 || raven$commandCompletionIndex < 0) {
+    private boolean mindless$canCycleCurrentCompletion(String input) {
+        if (mindless$commandCompletions.length == 0 || mindless$commandCompletionIndex < 0) {
             return false;
         }
 
-        for (String suggestion : raven$commandCompletions) {
+        for (String suggestion : mindless$commandCompletions) {
             if (suggestion.equals(input)) {
                 return true;
             }
@@ -257,29 +257,29 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
     }
 
     @Unique
-    private void raven$resetCommandCompletions() {
-        raven$commandCompletions = new String[0];
-        raven$commandCompletionIndex = -1;
+    private void mindless$resetCommandCompletions() {
+        mindless$commandCompletions = new String[0];
+        mindless$commandCompletionIndex = -1;
     }
 
     @Unique
-    private void raven$syncPreviewScrollState(String input, int suggestionCount, int visibleRows) {
-        if (!input.equals(raven$previewScrollInput)) {
-            raven$previewScrollInput = input;
-            raven$previewScrollAnim.reset(0f);
+    private void mindless$syncPreviewScrollState(String input, int suggestionCount, int visibleRows) {
+        if (!input.equals(mindless$previewScrollInput)) {
+            mindless$previewScrollInput = input;
+            mindless$previewScrollAnim.reset(0f);
         }
-        raven$clampPreviewScroll(suggestionCount, visibleRows);
+        mindless$clampPreviewScroll(suggestionCount, visibleRows);
     }
 
     @Unique
-    private void raven$clampPreviewScroll(int suggestionCount, int visibleRows) {
+    private void mindless$clampPreviewScroll(int suggestionCount, int visibleRows) {
         int rowHeight = mc.fontRendererObj.FONT_HEIGHT + 2;
         float maxScroll = Math.max(0f, (suggestionCount - visibleRows) * rowHeight);
-        raven$previewScrollAnim.clampTarget(0f, maxScroll);
+        mindless$previewScrollAnim.clampTarget(0f, maxScroll);
     }
 
     @Unique
-    private boolean raven$isMouseOverPreviewPanel(int mouseX, int mouseY, String[] suggestions, int visibleRows) {
+    private boolean mindless$isMouseOverPreviewPanel(int mouseX, int mouseY, String[] suggestions, int visibleRows) {
         int fontHeight = mc.fontRendererObj.FONT_HEIGHT;
         int widest = mc.fontRendererObj.getStringWidth("Suggestions");
         for (String suggestion : suggestions) {
@@ -294,7 +294,7 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
     }
 
     @Unique
-    private int raven$getActiveSuggestionIndex(String input, String[] suggestions) {
+    private int mindless$getActiveSuggestionIndex(String input, String[] suggestions) {
         String loweredInput = input == null ? "" : input.toLowerCase();
         for (int i = 0; i < suggestions.length; i++) {
             if (loweredInput.endsWith(suggestions[i].toLowerCase())) {
@@ -305,13 +305,13 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
     }
 
     @Unique
-    private void raven$resetPreviewScroll() {
-        raven$previewScrollInput = "";
-        raven$previewScrollAnim.reset(0f);
+    private void mindless$resetPreviewScroll() {
+        mindless$previewScrollInput = "";
+        mindless$previewScrollAnim.reset(0f);
     }
 
     @Unique
-    private static void raven$drawDarkPanel(int left, int top, int right, int bottom, int originalColor) {
+    private static void mindless$drawDarkPanel(int left, int top, int right, int bottom, int originalColor) {
         int alpha = 64;
 
         BlurUtils.prepareBlur();

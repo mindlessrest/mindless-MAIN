@@ -14,7 +14,7 @@ import net.minecraftforge.fml.common.eventhandler.Event;
  */
 @Cancelable
 public class PreAttackEvent extends Event {
-    private boolean ravenCanceled;
+    private boolean mindlessCanceled;
 
     /** The current mouse-over from this tick's getMouseOver; may be null or a block/entity hit. */
     public final MovingObjectPosition objectMouseOver;
@@ -39,11 +39,11 @@ public class PreAttackEvent extends Event {
 
     @Override
     public boolean isCanceled() {
-        return ravenCanceled;
+        return mindlessCanceled;
     }
 
     @Override
     public void setCanceled(boolean cancel) {
-        ravenCanceled = cancel;
+        mindlessCanceled = cancel;
     }
 }

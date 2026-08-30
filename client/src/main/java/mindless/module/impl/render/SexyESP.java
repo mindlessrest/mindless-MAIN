@@ -9,7 +9,7 @@ import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.module.impl.world.AntiBot;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
@@ -101,7 +101,7 @@ public class SexyESP extends Module {
      * the Minecraft font, which comes back as an adapter over the vanilla renderer -- so this is
      * safe to call unconditionally.
      */
-    private RavenFontRenderer espFont() {
+    private MindlessFontRenderer espFont() {
         if (font == null) return FontManager.getNametagRenderer(FONT_OPTIONS[0]);
         int index = (int) Math.max(0, Math.min(FONT_OPTIONS.length - 1, font.getInput()));
         return FontManager.getNametagRenderer(FONT_OPTIONS[index]);
@@ -523,7 +523,7 @@ public class SexyESP extends Module {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         // Resolved once. The border alone is eight draws, and every one of them used to go back
         // through the font cache and build its key string again.
-        RavenFontRenderer tagFont = espFont();
+        MindlessFontRenderer tagFont = espFont();
         double width = tagFont.getStringWidth(text) * scale;
         if (tagBackground.isToggled()) {
             // Padding scales with the text. Held flat it was two screen pixels either side of
@@ -559,7 +559,7 @@ public class SexyESP extends Module {
     }
 
     private void drawScaledString(String text, double x, double y, double scale, boolean centered) {
-        RavenFontRenderer stringFont = espFont();
+        MindlessFontRenderer stringFont = espFont();
         rectBatch.flush();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         GlStateManager.enableTexture2D();

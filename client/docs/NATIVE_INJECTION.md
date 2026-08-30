@@ -3,7 +3,7 @@
 ## Root cause of the inactive build
 
 Mindless previously produced only a normal Forge coremod/Mixin JAR. Its
-manifest names Sponge's `MixinTweaker`, and `mixins.raven.json` is installed
+manifest names Sponge's `MixinTweaker`, and `mixins.mindless.json` is installed
 during Forge's early launch phase. That JAR is valid in a Forge mods folder,
 but it cannot be appended to an already-running Minecraft JVM and initialized
 like Pigeon.
@@ -12,7 +12,7 @@ Pigeon's executable is a different startup path. It injects a native DLL,
 adds an embedded payload to the game ClassLoader, installs a JVMTI
 `ClassFileLoadHook`, retransforms Minecraft classes that are already loaded,
 and finally invokes the mod initializer. Mindless had none of that native
-bootstrap or runtime transformer wiring. Consequently `Raven.init` was never
+bootstrap or runtime transformer wiring. Consequently `Mindless.init` was never
 called, so configuration loading, ClickGUI construction, event registration,
 and every module all remained inactive.
 
@@ -23,12 +23,12 @@ Pigeon payload at native build time, not the current Mindless JAR.
 
 Mindless now supports two explicit launch modes:
 
-1. **Normal Forge mode** — `build/libs/raven-bS-16.jar`
+1. **Normal Forge mode** — `build/libs/mindless.jar`
    - Put this JAR in the Forge 1.8.9 mods directory.
-   - Forge loads the full `mixins.raven.json` set during startup.
+   - Forge loads the full `mixins.mindless.json` set during startup.
    - Do not run the native injector for the same client.
 2. **Pigeon-style native mode** — `build/injection/`
-   - Keep `RavenInjector.exe` and `RavenNative.dll` together.
+   - Keep `MindlessInjector.exe` and `MindlessNative.dll` together.
    - Start Forge 1.8.9 or Lunar 1.8.9, preferably stop at the title screen,
      and then run the injector.
    - The DLL chooses its embedded Forge/SRG or Lunar/MCP payload, validates
@@ -103,11 +103,11 @@ and the active JDK headers on this machine.
 
 Useful output/log locations:
 
-- Forge JAR: `build/libs/raven-bS-16.jar`
+- Forge JAR: `build/libs/mindless.jar`
 - Native bundle: `build/injection/`
-- Native progress: `build/injection/raven-native.log`
-- Java bootstrap failures: `%TEMP%/RavenNative/raven-native-java.log`
-- Transformer diagnostics: `%TEMP%/RavenNative/raven-transformer.log`
+- Native progress: `build/injection/mindless-native.log`
+- Java bootstrap failures: `%TEMP%/MindlessNative/mindless-native-java.log`
+- Transformer diagnostics: `%TEMP%/MindlessNative/mindless-transformer.log`
 
 After replacing either build, fully close and restart Minecraft before testing.
 An injected JVM cannot safely unload and replace previously defined Mindless

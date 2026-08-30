@@ -1,6 +1,6 @@
 package mindless.module.impl.player;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.event.PreUpdateEvent;
 import mindless.lag.api.EnumLagDirection;
 import mindless.lag.api.LagRequest;
@@ -56,7 +56,7 @@ public class Blink extends Module {
         pos = new Vec3(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ);
         blinkTicks = 0;
         enableTime = System.currentTimeMillis();
-        Raven.lagHandler.requestLag(new LagRequest(lagDirectionsForMode(), new ModuleBackedTimeout(this)));
+        Mindless.lagHandler.requestLag(new LagRequest(lagDirectionsForMode(), new ModuleBackedTimeout(this)));
     }
 
     private Set<EnumLagDirection> lagDirectionsForMode() {
@@ -84,8 +84,8 @@ public class Blink extends Module {
         int releaseInterval = (int) releasePacketEvery.getInput();
         if (releaseInterval <= 0 || blinkTicks % releaseInterval != 0) return;
         Set<EnumLagDirection> directions = lagDirectionsForMode();
-        if (directions.contains(EnumLagDirection.INBOUND)) Raven.lagHandler.releaseNextPacket(EnumLagDirection.INBOUND);
-        if (directions.contains(EnumLagDirection.OUTBOUND)) Raven.lagHandler.releaseNextPacket(EnumLagDirection.OUTBOUND);
+        if (directions.contains(EnumLagDirection.INBOUND)) Mindless.lagHandler.releaseNextPacket(EnumLagDirection.INBOUND);
+        if (directions.contains(EnumLagDirection.OUTBOUND)) Mindless.lagHandler.releaseNextPacket(EnumLagDirection.OUTBOUND);
     }
 
     @SubscribeEvent

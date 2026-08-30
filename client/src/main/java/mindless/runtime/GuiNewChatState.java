@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class GuiNewChatState {
-    public static final long RAVEN_MESSAGE_ANIMATION_MS = 320L;
+    public static final long MINDLESS_MESSAGE_ANIMATION_MS = 320L;
     private static final float BASE_PANEL_RADIUS = 8.0f;
 
     public static float panelRadius() {
@@ -125,7 +125,7 @@ public final class GuiNewChatState {
     public static double getAnimationProgress(ChatLine line, long now) {
         Long birth = messageBirths.get(line);
         if (birth == null) return 1.0;
-        return MathHelper.clamp_double((now - birth) / (double) RAVEN_MESSAGE_ANIMATION_MS, 0.0, 1.0);
+        return MathHelper.clamp_double((now - birth) / (double) MINDLESS_MESSAGE_ANIMATION_MS, 0.0, 1.0);
     }
 
     public static double easeOutCubic(double progress) {

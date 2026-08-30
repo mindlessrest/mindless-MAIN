@@ -9,7 +9,7 @@ import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.potion.Potion;
 import net.minecraft.potion.PotionEffect;
@@ -148,7 +148,7 @@ public class PotionHUD extends Module {
     }
 
     private RenderState buildRenderState(boolean includePlaceholder) {
-        RavenFontRenderer renderer = getFontRenderer();
+        MindlessFontRenderer renderer = getFontRenderer();
         LayoutMetrics metrics = LayoutMetrics.from(renderer, getSelectedScale());
         ArrayList<PotionEntry> entries = new ArrayList<PotionEntry>();
         Collection<PotionEffect> activeEffects = mc.thePlayer.getActivePotionEffects();
@@ -176,7 +176,7 @@ public class PotionHUD extends Module {
         return new RenderState(renderer, metrics, entries, maxWidth);
     }
 
-    private PotionEntry buildEntry(PotionEffect effect, RavenFontRenderer renderer) {
+    private PotionEntry buildEntry(PotionEffect effect, MindlessFontRenderer renderer) {
         if (effect == null) {
             return null;
         }
@@ -313,7 +313,7 @@ public class PotionHUD extends Module {
         relativePosY = absoluteY / scaledHeight;
     }
 
-    private RavenFontRenderer getFontRenderer() {
+    private MindlessFontRenderer getFontRenderer() {
         return FontManager.getHudRenderer(getSelectedFontName(), getSelectedScale());
     }
 
@@ -371,7 +371,7 @@ public class PotionHUD extends Module {
             this.color = color;
         }
 
-        private static PotionEntry placeholder(RavenFontRenderer renderer) {
+        private static PotionEntry placeholder(MindlessFontRenderer renderer) {
             String text = PLACEHOLDER_TEXT;
             return new PotionEntry(text, "", renderer.getStringWidth(text), 0, 0, 0, 0xFFFFFFFF);
         }
@@ -390,7 +390,7 @@ public class PotionHUD extends Module {
             this.rowHeight = rowHeight;
         }
 
-        private static LayoutMetrics from(RavenFontRenderer renderer, float fontScale) {
+        private static LayoutMetrics from(MindlessFontRenderer renderer, float fontScale) {
             int textTopOffset = renderer.getTextTopOffset();
             int textBottomOffset = renderer.getTextBottomOffset();
             int textTopPadding = getScaledHudPixels(2.0f, fontScale);
@@ -403,12 +403,12 @@ public class PotionHUD extends Module {
     }
 
     private static final class RenderState {
-        private final RavenFontRenderer renderer;
+        private final MindlessFontRenderer renderer;
         private final LayoutMetrics metrics;
         private final List<PotionEntry> entries;
         private final int maxWidth;
 
-        private RenderState(RavenFontRenderer renderer, LayoutMetrics metrics, List<PotionEntry> entries, int maxWidth) {
+        private RenderState(MindlessFontRenderer renderer, LayoutMetrics metrics, List<PotionEntry> entries, int maxWidth) {
             this.renderer = renderer;
             this.metrics = metrics;
             this.entries = entries;

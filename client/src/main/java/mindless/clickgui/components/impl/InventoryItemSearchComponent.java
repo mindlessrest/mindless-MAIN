@@ -4,7 +4,7 @@ import mindless.module.impl.client.Gui;
 import mindless.module.setting.impl.InventoryItemListSetting;
 import mindless.utility.ItemSearchIndex;
 import mindless.utility.RenderUtils;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.input.Keyboard;
 
@@ -207,7 +207,7 @@ public class InventoryItemSearchComponent extends AbstractItemSearchComponent<In
         RenderUtils.drawRect(left + 1f, top + 1f, right - 1f, bottom - 1f, fill);
 
         String label = getSlotPillLabel(row.storageId);
-        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
         float textWidth = renderer.getStringWidth(label) * TEXT_SCALE;
         float textX = left + ((right - left) - textWidth) / 2f;
         float textY = centeredScaledTextY(top, bottom - top) + SLOT_PILL_TEXT_Y_OFFSET;
@@ -290,7 +290,7 @@ public class InventoryItemSearchComponent extends AbstractItemSearchComponent<In
 
     private float getSlotPillWidth(String storageId) {
         String label = getSlotPillLabel(storageId);
-        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
         float textWidth = renderer.getStringWidth(label) * TEXT_SCALE;
         return Math.max(SLOT_PILL_MIN_WIDTH, textWidth + SLOT_PILL_HORIZONTAL_PAD * 2f);
     }

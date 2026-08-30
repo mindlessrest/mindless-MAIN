@@ -1,6 +1,6 @@
 package mindless.helper;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.world.AntiBot;
@@ -61,7 +61,7 @@ public class MouseHelper {
         }
         if (e.button == 0) {
             aL();
-            if (Raven.DEBUG && mc.objectMouseOver != null) {
+            if (Mindless.DEBUG && mc.objectMouseOver != null) {
                 Entity en = mc.objectMouseOver.entityHit;
                 if (en == null || !(en instanceof EntityLivingBase)) {
                     return;

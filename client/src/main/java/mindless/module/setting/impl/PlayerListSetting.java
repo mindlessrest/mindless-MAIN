@@ -1,7 +1,7 @@
 package mindless.module.setting.impl;
 
 import com.google.gson.JsonObject;
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.setting.Setting;
 import mindless.utility.PlayerRelationsManager;
 
@@ -35,24 +35,24 @@ public class PlayerListSetting extends Setting {
     }
 
     public boolean addPlayer(String name) {
-        return Raven.playerRelationsManager != null && Raven.playerRelationsManager.addRelation(relationType, name);
+        return Mindless.playerRelationsManager != null && Mindless.playerRelationsManager.addRelation(relationType, name);
     }
 
     public boolean removePlayer(String name) {
-        return Raven.playerRelationsManager != null && Raven.playerRelationsManager.removeRelation(relationType, name);
+        return Mindless.playerRelationsManager != null && Mindless.playerRelationsManager.removeRelation(relationType, name);
     }
 
     public void clearPlayers() {
-        if (Raven.playerRelationsManager != null) {
-            Raven.playerRelationsManager.clearRelation(relationType);
+        if (Mindless.playerRelationsManager != null) {
+            Mindless.playerRelationsManager.clearRelation(relationType);
         }
     }
 
     public List<PlayerRelationsManager.PlayerEntry> getEntries() {
-        if (Raven.playerRelationsManager == null) {
+        if (Mindless.playerRelationsManager == null) {
             return Collections.emptyList();
         }
-        return Raven.playerRelationsManager.getEntries(relationType);
+        return Mindless.playerRelationsManager.getEntries(relationType);
     }
 
     @Override

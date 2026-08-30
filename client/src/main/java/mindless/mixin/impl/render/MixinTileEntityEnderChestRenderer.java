@@ -15,7 +15,7 @@ public class MixinTileEntityEnderChestRenderer {
             method = "renderTileEntityAt(Lnet/minecraft/tileentity/TileEntityEnderChest;DDDFI)V",
             at = @At("HEAD")
     )
-    private void raven$enderChestChamsPre(TileEntityEnderChest te, double x, double y, double z, float partialTicks, int destroyStage, CallbackInfo ci) {
+    private void mindless$enderChestChamsPre(TileEntityEnderChest te, double x, double y, double z, float partialTicks, int destroyStage, CallbackInfo ci) {
         ChestESP.onRenderChestPre(te);
     }
 
@@ -23,7 +23,7 @@ public class MixinTileEntityEnderChestRenderer {
             method = "renderTileEntityAt(Lnet/minecraft/tileentity/TileEntityEnderChest;DDDFI)V",
             at = @At("RETURN")
     )
-    private void raven$enderChestChamsPost(TileEntityEnderChest te, double x, double y, double z, float partialTicks, int destroyStage, CallbackInfo ci) {
+    private void mindless$enderChestChamsPost(TileEntityEnderChest te, double x, double y, double z, float partialTicks, int destroyStage, CallbackInfo ci) {
         ChestESP.onRenderChestPost();
     }
 }

@@ -1,6 +1,6 @@
 package mindless.module.impl.player;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.event.GameTickEvent;
 import mindless.lag.api.EnumLagDirection;
 import mindless.lag.api.LagRequest;
@@ -45,7 +45,7 @@ public class FakeLag extends Module {
     private void rebindLagRequest() {
         if (activeLagRequest != null) activeLagRequest.getTimeout().forceTimeOut();
         activeLagRequest = new LagRequest(lagDirectionsForMode(), new ModuleBackedTimeout(this));
-        Raven.lagHandler.requestLag(activeLagRequest);
+        Mindless.lagHandler.requestLag(activeLagRequest);
     }
 
     private Set<EnumLagDirection> lagDirectionsForMode() {
@@ -78,8 +78,8 @@ public class FakeLag extends Module {
         long delayMs = (long) packetDelaySlider.getInput();
         if (delayMs <= 0) return;
         Set<EnumLagDirection> directions = lagDirectionsForMode();
-        if (directions.contains(EnumLagDirection.INBOUND)) Raven.lagHandler.releaseExpiredPackets(EnumLagDirection.INBOUND, delayMs);
-        if (directions.contains(EnumLagDirection.OUTBOUND)) Raven.lagHandler.releaseExpiredPackets(EnumLagDirection.OUTBOUND, delayMs);
+        if (directions.contains(EnumLagDirection.INBOUND)) Mindless.lagHandler.releaseExpiredPackets(EnumLagDirection.INBOUND, delayMs);
+        if (directions.contains(EnumLagDirection.OUTBOUND)) Mindless.lagHandler.releaseExpiredPackets(EnumLagDirection.OUTBOUND, delayMs);
     }
 
     @SubscribeEvent

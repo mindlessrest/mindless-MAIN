@@ -8,7 +8,7 @@ import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
@@ -122,7 +122,7 @@ public final class SpotifyWidgetRenderer {
     private static float bubbleHeight;
     private static boolean bubbleVisible;
 
-    private static final Map<String, RavenFontRenderer> FONTS = new HashMap<String, RavenFontRenderer>();
+    private static final Map<String, MindlessFontRenderer> FONTS = new HashMap<String, MindlessFontRenderer>();
 
     private SpotifyWidgetRenderer() {
     }
@@ -226,7 +226,7 @@ public final class SpotifyWidgetRenderer {
         // The bubble carries its own scale on top of the card's, so it can be sized to read from
         // across the room without dragging the player up with it.
         float lyricUiScale = uiScale * bubbleScale();
-        RavenFontRenderer lyricFont = lyricFontOfHeight(LABEL_HEIGHT * lyricUiScale * lyricScale());
+        MindlessFontRenderer lyricFont = lyricFontOfHeight(LABEL_HEIGHT * lyricUiScale * lyricScale());
         // Padded top and bottom like the panel, so the strip reads as the same object rather
         // than a caption squeezed under one.
         float lyricStripHeight = lyricLines.isEmpty()
@@ -343,10 +343,10 @@ public final class SpotifyWidgetRenderer {
         // The track title was pinned to Sf-Bold, so the Font setting appeared to do nothing: the
         // largest and most obvious text on the widget was the one piece that ignored it. It takes
         // the bold cut of the chosen family now, which for every family but SF is the family.
-        RavenFontRenderer titleFont = fontOfHeight(
+        MindlessFontRenderer titleFont = fontOfHeight(
                 mindless.utility.font.ModuleFont.boldVariant(SpotifyMiniPlayer.widgetFontName()),
                 TITLE_HEIGHT * uiScale);
-        RavenFontRenderer labelFont = fontOfHeight(LABEL_HEIGHT * uiScale);
+        MindlessFontRenderer labelFont = fontOfHeight(LABEL_HEIGHT * uiScale);
 
         String title = clip(titleFont, valueOr(info.getTitle(), "Nothing playing"), textWidth);
         String artist = clip(labelFont, valueOr(info.getArtist(), ""), textWidth);
@@ -419,7 +419,7 @@ public final class SpotifyWidgetRenderer {
      * the configured lyric animation time, so the eye follows the line moving into the middle
      * instead of being handed a new block to re-read.
      */
-    private static void drawLyricStrip(List<String> lines, RavenFontRenderer font,
+    private static void drawLyricStrip(List<String> lines, MindlessFontRenderer font,
                                        ResourceLocation wash, float x, float y, float width,
                                        float height, float radius, float padX, float uiScale,
                                        float alpha) {
@@ -643,7 +643,7 @@ public final class SpotifyWidgetRenderer {
      * running total is still the quick way to get close, so it is kept as a first guess and then
      * checked against the real thing, which is one or two characters' work.
      */
-    private static String clip(RavenFontRenderer font, String text, float maxWidth) {
+    private static String clip(MindlessFontRenderer font, String text, float maxWidth) {
         if (text == null || text.isEmpty()) {
             return "";
         }
@@ -702,7 +702,7 @@ public final class SpotifyWidgetRenderer {
      * black copy at a fixed offset, which at these sizes reads as the text having been printed
      * twice rather than as depth.
      */
-    private static void drawShadowedString(RavenFontRenderer font, String text, float x, float y,
+    private static void drawShadowedString(MindlessFontRenderer font, String text, float x, float y,
                                            int color, float uiScale, float alpha) {
         float offset = Math.max(0.6F, 1.1F * uiScale);
         int shadow = Utils.mergeAlpha(0x000000, Math.round(120 * alpha));
@@ -723,14 +723,14 @@ public final class SpotifyWidgetRenderer {
      * blurry at every size the card actually gets drawn at. Asking for the pixel height rebuilds
      * the atlas on its native grid instead.
      */
-    private static RavenFontRenderer fontOfHeight(String family, float pixelHeight) {
+    private static MindlessFontRenderer fontOfHeight(String family, float pixelHeight) {
         float height = Math.max(6.0F, pixelHeight);
         String key = family + "#" + Math.round(height * 2.0F);
-        RavenFontRenderer cached = FONTS.get(key);
+        MindlessFontRenderer cached = FONTS.get(key);
         if (cached != null) {
             return cached;
         }
-        RavenFontRenderer font = FontManager.getClickGuiRenderer(family, height);
+        MindlessFontRenderer font = FontManager.getClickGuiRenderer(family, height);
         if (FONTS.size() > 32) {
             FONTS.clear();
         }
@@ -738,12 +738,12 @@ public final class SpotifyWidgetRenderer {
         return font;
     }
 
-    private static RavenFontRenderer fontOfHeight(float pixelHeight) {
+    private static MindlessFontRenderer fontOfHeight(float pixelHeight) {
         return fontOfHeight(SpotifyMiniPlayer.widgetFontName(), pixelHeight);
     }
 
     /** The lyric strip carries its own face, which is usually not the one the widget wants. */
-    private static RavenFontRenderer lyricFontOfHeight(float pixelHeight) {
+    private static MindlessFontRenderer lyricFontOfHeight(float pixelHeight) {
         return fontOfHeight(SpotifyMiniPlayer.lyricsFontName(), pixelHeight);
     }
 

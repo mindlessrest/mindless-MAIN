@@ -6,7 +6,7 @@ notification, and media-rendering paths.
 
 ## What "compatible" means
 
-- A feature that only uses Raven's `onUpdate`, keybind, or ordinary Forge
+- A feature that only uses Mindless's `onUpdate`, keybind, or ordinary Forge
   event path does not need its own Minecraft transformer.
 - A feature that depends on a custom event or modified Minecraft method must
   have a native transformer producer in both MCP and SRG namespaces.
@@ -25,7 +25,7 @@ notification, and media-rendering paths.
 
 Chat Commands, Command Line, GUI, Settings, Spotify Info, Relationships, and
 the script/profile managers. Configuration loading is driven from
-`NativeBootstrap -> Raven.init`; ClickGUI construction and profile/script
+`NativeBootstrap -> Mindless.init`; ClickGUI construction and profile/script
 loading use the same initializer as the normal Forge mod. Spotify rendering
 is hooked through `GuiIngameForge` on Forge and `GuiIngame` on direct Lunar.
 

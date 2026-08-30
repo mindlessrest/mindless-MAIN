@@ -1,7 +1,7 @@
 package mindless.runtime;
 
 import com.google.common.util.concurrent.ListenableFuture;
-import mindless.Raven;
+import mindless.Mindless;
 import net.minecraft.client.Minecraft;
 
 import java.io.File;
@@ -15,11 +15,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Entry point invoked by RavenNative.dll after the injection JAR is added
+ * Entry point invoked by MindlessNative.dll after the injection JAR is added
  * to the LaunchClassLoader. Bypasses the Forge @Mod lifecycle: registers the
- * mixin configuration and drives Raven.init(null) manually.
+ * mixin configuration and drives Mindless.init(null) manually.
  *
- * Any failure inside Raven initialization is expanded (unwrap InvocationTarget /
+ * Any failure inside Mindless initialization is expanded (unwrap InvocationTarget /
  * causes) and dumped both to System.err and to a text file next to the DLL log,
  * so the trace survives the DLL unload that happens on bootstrap failure.
  */
@@ -59,21 +59,21 @@ public final class NativeBootstrap {
         ProgressPipe.report(0.55f, "Starting Mindless");
         try {
             ProgressPipe.report(0.57f, "Loading Mindless");
-            RavenTransformerManager manager = RavenTransformerManager.get();
+            MindlessTransformerManager manager = MindlessTransformerManager.get();
             manager.setDisabled(false);
             TransformerHooks.retransformNative();
             ProgressPipe.report(0.62f, "Loading Mindless");
             manager.assertNoTransformFailures();
             ProgressPipe.report(0.65f, "Loading Mindless");
-            log("RavenTransformerManager instantiated ("
+            log("MindlessTransformerManager instantiated ("
                     + manager.registeredCount()
                     + " targets)");
         } catch (Throwable managerFailure) {
             bootstrapFailure = managerFailure;
             STATE.set(BootstrapState.FAILED);
-            reportFailure("RavenTransformerManager init", managerFailure);
+            reportFailure("MindlessTransformerManager init", managerFailure);
             throw new RuntimeException(
-                    "Raven transformer initialization failed (see raven-native-java.log)",
+                    "Mindless transformer initialization failed (see mindless-native-java.log)",
                     managerFailure);
         }
         try {
@@ -94,14 +94,14 @@ public final class NativeBootstrap {
         } catch (Throwable initFailure) {
             bootstrapFailure = initFailure;
             STATE.set(BootstrapState.FAILED);
-            reportFailure("Raven init", initFailure);
-            throw new RuntimeException("Raven init failed (see raven-native-java.log)",
+            reportFailure("Mindless init", initFailure);
+            throw new RuntimeException("Mindless init failed (see mindless-native-java.log)",
                     initFailure);
         }
         STATE.set(BootstrapState.COMPLETE);
         ProgressPipe.report(1.0f, "Ready");
         ProgressPipe.close();
-        log("Raven bootstrap complete");
+        log("Mindless bootstrap complete");
     }
 
     private static boolean driveModInitOnClientThreadWithFallback(Minecraft minecraft) throws Exception {
@@ -118,7 +118,7 @@ public final class NativeBootstrap {
                     initFailure.set(failure);
                     bootstrapFailure = failure;
                     STATE.set(BootstrapState.FAILED);
-                    reportFailure("Raven init (client thread)", failure);
+                    reportFailure("Mindless init (client thread)", failure);
                 }
             }
         });
@@ -162,14 +162,14 @@ public final class NativeBootstrap {
                     driveModInit();
                     BootstrapState previous = STATE.getAndSet(BootstrapState.COMPLETE);
                     if (previous == BootstrapState.TIMED_OUT) {
-                        log("Raven bootstrap completed after the client-thread wait timed out");
+                        log("Mindless bootstrap completed after the client-thread wait timed out");
                     }
                 } catch (Throwable failure) {
                     initFailure.set(failure);
                     bootstrapFailure = failure;
                     BootstrapState previous = STATE.getAndSet(BootstrapState.FAILED);
                     if (previous == BootstrapState.TIMED_OUT) {
-                        reportFailure("Raven init after client-thread timeout", failure);
+                        reportFailure("Mindless init after client-thread timeout", failure);
                     }
                 }
             }
@@ -181,17 +181,17 @@ public final class NativeBootstrap {
         } catch (TimeoutException timeout) {
             log("driveModInitOnClientThread: TIMED OUT waiting for client thread");
             if (runPermission.compareAndSet(true, false)) {
-                // Timeout won before the Runnable entered Raven.init. Cancel the
+                // Timeout won before the Runnable entered Mindless.init. Cancel the
                 // queue entry; even if FutureTask is between dispatch steps, the
                 // gate makes its body a no-op.
                 scheduled.cancel(false);
                 throw new IllegalStateException(
-                        "Timed out before Raven initialization began on the client thread",
+                        "Timed out before Mindless initialization began on the client thread",
                         timeout);
             }
 
             if (STATE.compareAndSet(BootstrapState.STARTING, BootstrapState.TIMED_OUT)) {
-                log("Raven initialization is still running on the client thread; "
+                log("Mindless initialization is still running on the client thread; "
                         + "bootstrap will complete asynchronously");
                 return false;
             }
@@ -203,7 +203,7 @@ public final class NativeBootstrap {
             if (lateFailure != null) throw new RuntimeException(lateFailure);
             if (terminalState == BootstrapState.FAILED) {
                 throw new IllegalStateException(
-                        "Raven initialization failed while the client-thread wait timed out",
+                        "Mindless initialization failed while the client-thread wait timed out",
                         bootstrapFailure);
             }
             return false;
@@ -220,27 +220,27 @@ public final class NativeBootstrap {
         ProgressPipe.report(0.72f, "Starting modules");
         log("driveModInit: begin on thread " + Thread.currentThread().getName());
         ProgressPipe.report(0.75f, "Loading modules");
-        if (Raven.isUnloaded()) {
+        if (Mindless.isUnloaded()) {
             log("Re-initializing Mindless via loader re-injection");
-            Raven.reinject();
+            Mindless.reinject();
         } else {
-            log("driveModInit: constructing Raven");
-            Raven mod = new Raven();
-            log("driveModInit: Raven constructed");
+            log("driveModInit: constructing Mindless");
+            Mindless mod = new Mindless();
+            log("driveModInit: Mindless constructed");
             ProgressPipe.report(0.80f, "Loading modules");
             ProgressPipe.report(0.83f, "Applying patches");
-            Method init = Raven.class.getDeclaredMethod(
+            Method init = Mindless.class.getDeclaredMethod(
                     "init", net.minecraftforge.fml.common.event.FMLInitializationEvent.class);
             init.setAccessible(true);
             try {
-                log("driveModInit: invoking Raven.init");
+                log("driveModInit: invoking Mindless.init");
                 ProgressPipe.report(0.88f, "Almost there");
                 init.invoke(mod, (Object) null);
-                log("driveModInit: Raven.init returned");
+                log("driveModInit: Mindless.init returned");
             } catch (InvocationTargetException wrapper) {
                 Throwable cause = wrapper.getCause();
-                log("driveModInit: Raven.init THREW: " + cause);
-                reportFailure("Raven.init", cause != null ? cause : wrapper);
+                log("driveModInit: Mindless.init THREW: " + cause);
+                reportFailure("Mindless.init", cause != null ? cause : wrapper);
                 if (cause instanceof Exception) throw (Exception) cause;
                 if (cause instanceof Error) throw (Error) cause;
                 throw wrapper;
@@ -248,12 +248,12 @@ public final class NativeBootstrap {
         }
         ProgressPipe.report(0.92f, "Almost there");
         ProgressPipe.report(0.95f, "Finishing up");
-        log("Raven.init(null) completed on " + Thread.currentThread().getName());
+        log("Mindless.init(null) completed on " + Thread.currentThread().getName());
     }
 
     private static void reportFailure(String phase, Throwable error) {
         StringBuilder rendered = new StringBuilder();
-        rendered.append("[RavenNative] ").append(phase).append(" failed:\n");
+        rendered.append("[MindlessNative] ").append(phase).append(" failed:\n");
         Throwable current = error;
         int depth = 0;
         while (current != null && depth < 16) {
@@ -275,9 +275,9 @@ public final class NativeBootstrap {
     private static void writeToLog(String text) {
         try {
             String tempDir = System.getProperty("java.io.tmpdir");
-            File logDir = new File(tempDir, "RavenNative");
+            File logDir = new File(tempDir, "MindlessNative");
             logDir.mkdirs();
-            File logFile = new File(logDir, "raven-native-java.log");
+            File logFile = new File(logDir, "mindless-native-java.log");
             try (PrintWriter writer = new PrintWriter(
                     new java.io.FileOutputStream(logFile, true), true)) {
                 writer.println("--- " + new java.util.Date() + " ---");
@@ -289,7 +289,7 @@ public final class NativeBootstrap {
     }
 
     private static void log(String message) {
-        System.out.println("[RavenNative] " + message);
+        System.out.println("[MindlessNative] " + message);
         System.out.flush();
     }
 }

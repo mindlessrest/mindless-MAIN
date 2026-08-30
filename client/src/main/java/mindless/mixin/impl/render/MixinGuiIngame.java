@@ -5,7 +5,7 @@ import mindless.utility.shader.RoundedUtils;
 import mindless.module.impl.client.Settings;
 import mindless.utility.HudRenderBounds;
 import mindless.utility.TextGlowUtils;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.module.impl.render.ScoreboardModule;
 import mindless.runtime.GuiIngameState;
 import net.minecraft.client.Minecraft;
@@ -39,10 +39,10 @@ public abstract class MixinGuiIngame {
     private static final float SCOREBOARD_SCALE = GuiIngameState.SCOREBOARD_SCALE;
 
     @Unique
-    private final List<Score> raven$visibleScores = new ArrayList<Score>();
+    private final List<Score> mindless$visibleScores = new ArrayList<Score>();
 
     @Unique
-    private final List<String> raven$visibleLines = new ArrayList<String>();
+    private final List<String> mindless$visibleLines = new ArrayList<String>();
 
     @Shadow
     public abstract FontRenderer getFontRenderer();
@@ -55,12 +55,12 @@ public abstract class MixinGuiIngame {
      * edge of its own background.
      */
     @Unique
-    private int raven$width(RavenFontRenderer custom, FontRenderer vanilla, String text) {
+    private int mindless$width(MindlessFontRenderer custom, FontRenderer vanilla, String text) {
         return custom != null ? custom.getStringWidth(text) : vanilla.getStringWidth(text);
     }
 
     @Unique
-    private void raven$drawLine(RavenFontRenderer custom, FontRenderer vanilla, String text,
+    private void mindless$drawLine(MindlessFontRenderer custom, FontRenderer vanilla, String text,
                                 float x, float y, boolean glow) {
         if (custom != null) {
             if (glow) {
@@ -78,34 +78,34 @@ public abstract class MixinGuiIngame {
     }
 
     @Inject(method = "renderGameOverlay", at = @At("HEAD"))
-    private void raven$beginHudBlurFrame(float partialTicks, CallbackInfo callbackInfo) {
+    private void mindless$beginHudBlurFrame(float partialTicks, CallbackInfo callbackInfo) {
         BlurUtils.beginFrame();
     }
 
     @Inject(method = "renderScoreboard", at = @At("HEAD"), cancellable = true)
-    private void raven$renderUnifiedScoreboard(ScoreObjective objective, ScaledResolution resolution,
+    private void mindless$renderUnifiedScoreboard(ScoreObjective objective, ScaledResolution resolution,
                                                CallbackInfo callbackInfo) {
         if (!mindless.module.impl.render.ScoreboardModule.isCustomScoreboardEnabled()) {
             return;
         }
         Scoreboard scoreboard = objective.getScoreboard();
         Collection<Score> sortedScores = scoreboard.getSortedScores(objective);
-        raven$visibleScores.clear();
-        raven$visibleLines.clear();
+        mindless$visibleScores.clear();
+        mindless$visibleLines.clear();
         GuiIngameState.visibleScores.clear();
         GuiIngameState.visibleLines.clear();
 
         for (Score score : sortedScores) {
             String playerName = score.getPlayerName();
             if (playerName != null && !playerName.startsWith("#")) {
-                raven$visibleScores.add(score);
+                mindless$visibleScores.add(score);
             }
         }
 
-        if (raven$visibleScores.size() > 15) {
-            raven$visibleScores.subList(0, raven$visibleScores.size() - 15).clear();
+        if (mindless$visibleScores.size() > 15) {
+            mindless$visibleScores.subList(0, mindless$visibleScores.size() - 15).clear();
         }
-        if (raven$visibleScores.isEmpty()) {
+        if (mindless$visibleScores.isEmpty()) {
             callbackInfo.cancel();
             return;
         }
@@ -113,26 +113,26 @@ public abstract class MixinGuiIngame {
         FontRenderer font = getFontRenderer();
         // A bundled face brings its own size, so the panel's fixed shrink is not applied on top of
         // it -- the module's own scale setting is the one control over how large it comes out.
-        RavenFontRenderer customFont = ScoreboardModule.getCustomFont();
+        MindlessFontRenderer customFont = ScoreboardModule.getCustomFont();
         float fontScale = customFont != null ? 1.0f : SCOREBOARD_SCALE;
 
         String displayTitle = objective.getDisplayName();
-        int contentWidth = raven$width(customFont, font, displayTitle);
-        for (Score score : raven$visibleScores) {
+        int contentWidth = mindless$width(customFont, font, displayTitle);
+        for (Score score : mindless$visibleScores) {
             ScorePlayerTeam team = scoreboard.getPlayersTeam(score.getPlayerName());
             String line =
                     ScorePlayerTeam.formatPlayerName(team, score.getPlayerName());
-            raven$visibleLines.add(line);
+            mindless$visibleLines.add(line);
             GuiIngameState.visibleScores.add(score);
             GuiIngameState.visibleLines.add(line);
-            contentWidth = Math.max(contentWidth, raven$width(customFont, font, line));
+            contentWidth = Math.max(contentWidth, mindless$width(customFont, font, line));
         }
 
         int lineHeight = customFont != null ? customFont.getLineHeight() : font.FONT_HEIGHT;
         float scaledLineHeight = lineHeight * fontScale;
-        float rowsHeight = raven$visibleScores.size() * scaledLineHeight;
+        float rowsHeight = mindless$visibleScores.size() * scaledLineHeight;
         float panelWidth = contentWidth * fontScale + GuiIngameState.HORIZONTAL_PADDING * 2.0f;
-        float panelHeight = (raven$visibleScores.size() + 1) * scaledLineHeight
+        float panelHeight = (mindless$visibleScores.size() + 1) * scaledLineHeight
                 + GuiIngameState.VERTICAL_PADDING * 2.0f + 2.0f;
         float defaultBottom = resolution.getScaledHeight() / 2.0f + rowsHeight / 3.0f + 5.0f;
         float defaultLeft = resolution.getScaledWidth() - 3.0f - panelWidth;
@@ -175,17 +175,17 @@ public abstract class MixinGuiIngame {
         GlStateManager.scale(fontScale, fontScale, 1.0f);
 
         boolean glow = Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled();
-        float titleVisualWidth = raven$width(customFont, font, displayTitle) * fontScale;
+        float titleVisualWidth = mindless$width(customFont, font, displayTitle) * fontScale;
         int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / fontScale);
         int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / fontScale);
-        raven$drawLine(customFont, font, displayTitle, titleX, titleY, glow);
+        mindless$drawLine(customFont, font, displayTitle, titleX, titleY, glow);
 
-        for (int i = 0; i < raven$visibleScores.size(); i++) {
-            String playerText = raven$visibleLines.get(i);
+        for (int i = 0; i < mindless$visibleScores.size(); i++) {
+            String playerText = mindless$visibleLines.get(i);
             int y = Math.round((bottom - GuiIngameState.VERTICAL_PADDING
                     - (i + 1) * scaledLineHeight) / fontScale);
             int lineX = Math.round((left + GuiIngameState.HORIZONTAL_PADDING) / fontScale);
-            raven$drawLine(customFont, font, playerText, lineX, y, glow);
+            mindless$drawLine(customFont, font, playerText, lineX, y, glow);
         }
 
         GlStateManager.popMatrix();

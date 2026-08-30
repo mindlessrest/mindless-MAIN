@@ -1,6 +1,6 @@
 package mindless.module.impl.render;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.Module;
 import mindless.module.impl.world.AntiBot;
 import mindless.module.setting.impl.ButtonSetting;
@@ -87,7 +87,7 @@ public class Tracers extends Module {
             return;
         }
 
-        if (Raven.DEBUG) {
+        if (Mindless.DEBUG) {
             for (Entity entity : mc.theWorld.loadedEntityList) {
                 if (entity instanceof EntityLivingBase && entity != mc.thePlayer) {
                     addTrackedEntity(entity);

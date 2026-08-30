@@ -1,6 +1,6 @@
 package mindless.module.impl.world;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.player.Freecam;
@@ -68,7 +68,7 @@ public final class AntiBot {
     }
 
     public static void onEntityJoin(EntityJoinWorldEvent e) {
-        if ((e.entity instanceof EntityPlayer || Raven.DEBUG) && e.entity != mc.thePlayer) {
+        if ((e.entity instanceof EntityPlayer || Mindless.DEBUG) && e.entity != mc.thePlayer) {
             if (delay.getInput() != -1 && e.entity instanceof EntityPlayer) {
                 entities.put((EntityPlayer) e.entity, System.currentTimeMillis());
             }

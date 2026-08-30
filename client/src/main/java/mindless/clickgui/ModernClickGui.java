@@ -1,6 +1,6 @@
 package mindless.clickgui;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.clickgui.components.impl.ModuleComponent;
 import mindless.module.Module;
@@ -16,7 +16,7 @@ import mindless.utility.PotionSearchIndex;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.profile.Manager;
 import mindless.utility.profile.Profile;
 import mindless.utility.profile.ProfileModule;
@@ -1883,7 +1883,7 @@ public final class ModernClickGui extends ClickGui {
         // Immediate close races with Module.onKeyBind() in the same tick: the module
         // fires toggle() → onEnable() → sees mc.currentScreen == null → re-opens.
         // With guiClosing=true the screen stays alive during the animation, so
-        // onEnable()'s guard (mc.currentScreen != Raven.clickGui) prevents the re-open.
+        // onEnable()'s guard (mc.currentScreen != Mindless.clickGui) prevents the re-open.
         guiClosing = true;
     }
 
@@ -1951,8 +1951,8 @@ public final class ModernClickGui extends ClickGui {
         if (category == Module.category.profiles) {
             List<Module> profiles = new ArrayList<Module>();
             profiles.add(profileManagerModule);
-            if (Raven.profileManager != null && Raven.profileManager.profiles != null) {
-                for (Profile profile : Raven.profileManager.profiles) profiles.add(profile.getModule());
+            if (Mindless.profileManager != null && Mindless.profileManager.profiles != null) {
+                for (Profile profile : Mindless.profileManager.profiles) profiles.add(profile.getModule());
             }
             return profiles;
         }
@@ -1964,9 +1964,9 @@ public final class ModernClickGui extends ClickGui {
             pinManagerToTop(result);
             return result;
         }
-        if (Raven.getModuleManager() == null) return Collections.<Module>emptyList();
+        if (Mindless.getModuleManager() == null) return Collections.<Module>emptyList();
         List<Module> visible = new ArrayList<Module>();
-        for (Module mod : Raven.getModuleManager().inCategory(category)) {
+        for (Module mod : Mindless.getModuleManager().inCategory(category)) {
             if (Gui.shouldShowModule(mod)) visible.add(mod);
         }
         pinManagerToTop(visible);
@@ -2000,9 +2000,9 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void activateProfile(ProfileModule module) {
-        if (module == null || Raven.profileManager == null) return;
+        if (module == null || Mindless.profileManager == null) return;
         module.toggle();
-        Profile active = Raven.currentProfile;
+        Profile active = Mindless.currentProfile;
         if (active != null && active.getName().equalsIgnoreCase(module.getName())) {
             selectedModule = active.getModule();
             moduleSnapshot = new ModuleSnapshot(selectedModule);
@@ -2010,10 +2010,10 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void updateProfile(ProfileModule module) {
-        if (module == null || Raven.profileManager == null) return;
-        Profile profile = Raven.profileManager.getProfile(module.getName());
+        if (module == null || Mindless.profileManager == null) return;
+        Profile profile = Mindless.profileManager.getProfile(module.getName());
         if (profile == null) return;
-        Raven.profileManager.saveProfile(profile);
+        Mindless.profileManager.saveProfile(profile);
         profile.getModule().saved = true;
         moduleSnapshot = new ModuleSnapshot(profile.getModule());
         mindless.utility.Utils.sendMessage("&7Updated profile: &b" + profile.getName());
@@ -2700,24 +2700,24 @@ public final class ModernClickGui extends ClickGui {
      * scale 1.0. Previously headers came from an 11px atlas drawn at 1.45x and body text from a
      * 13px atlas drawn at 0.63x -- both resampled, which is what made the GUI look soft.
      */
-    private RavenFontRenderer scaledFont(float scale, boolean bold) {
+    private MindlessFontRenderer scaledFont(float scale, boolean bold) {
         float px = Math.max(6f, Math.round(BASE_TEXT_PX * scale * TEXT_SCALE));
         return FontManager.getClickGuiRenderer(uiFontFamily(bold), px);
     }
 
-    private RavenFontRenderer uiFont(boolean bold) {
+    private MindlessFontRenderer uiFont(boolean bold) {
         return scaledFont(1f, bold);
     }
 
     /** Returns the 9px renderer rasterised at its natural size — always rendered at scale 1.0
      *  so the atlas is never downsampled and glyphs stay crisp. */
-    private RavenFontRenderer uiSmallFont() {
+    private MindlessFontRenderer uiSmallFont() {
         return FontManager.getClickGuiSmallRenderer(uiFontFamily(false));
     }
 
     /** Draws text using the 9px small renderer at scale 1.0 — no GL downscaling, no blur. */
     private void drawSmallText(String text, float x, float y, int color) {
-        RavenFontRenderer renderer = uiSmallFont();
+        MindlessFontRenderer renderer = uiSmallFont();
         GL11.glPushMatrix(); GL11.glTranslatef(x, y, 0);
         renderer.drawString(text == null ? "" : text, 0, 0, color, false);
         GL11.glPopMatrix();
@@ -2738,7 +2738,7 @@ public final class ModernClickGui extends ClickGui {
      */
     private String trimSmall(String text, float maxWidth) {
         if (text == null || text.isEmpty()) return "";
-        RavenFontRenderer font = uiSmallFont();
+        MindlessFontRenderer font = uiSmallFont();
         if (font.getStringWidth(text) <= maxWidth) return text;
         String ellipsis = "..";
         float ellipsisW = font.getStringWidth(ellipsis);
@@ -2756,14 +2756,14 @@ public final class ModernClickGui extends ClickGui {
     }
 
     /** The longest prefix that fits, with at least one character kept whatever the width. */
-    private static String fitWithoutEllipsis(RavenFontRenderer font, String text, float maxWidth) {
+    private static String fitWithoutEllipsis(MindlessFontRenderer font, String text, float maxWidth) {
         int length = text.length();
         while (length > 1 && font.getStringWidth(text.substring(0, length)) > maxWidth) length--;
         return text.substring(0, length);
     }
 
     private void drawText(String text, float x, float y, int color, float scale, boolean bold) {
-        RavenFontRenderer renderer = scaledFont(scale, bold);
+        MindlessFontRenderer renderer = scaledFont(scale, bold);
         // Snap to the physical pixel grid. A fractional translate samples the glyph atlas
         // between texels, which smears every edge; this is the other half of the crispness fix.
         double rs = getActiveRenderScale();
@@ -2804,7 +2804,7 @@ public final class ModernClickGui extends ClickGui {
     /** {@link #trimSmall} at an arbitrary scale, and blanking the same way it used to. */
     private String trim(String text, float maxWidth, float scale, boolean bold) {
         if (text == null) return "";
-        RavenFontRenderer f = scaledFont(scale, bold);
+        MindlessFontRenderer f = scaledFont(scale, bold);
         if (f.getStringWidth(text) <= maxWidth) return text;
         String end = "..."; int i = text.length();
         while (i > 0 && f.getStringWidth(text.substring(0, i) + end) > maxWidth) i--;

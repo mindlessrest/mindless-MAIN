@@ -1,6 +1,6 @@
 package mindless.clickgui.components.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.components.Component;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
@@ -10,7 +10,7 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11;
 
@@ -105,7 +105,7 @@ public class SliderComponent extends Component {
         float labelX = (float) ((this.moduleComponent.categoryComponent.getX() + 4) * 2) + xOffset;
         float labelY = (float) ((this.moduleComponent.categoryComponent.getY() + this.o + 3) * 2);
 
-        RavenFontRenderer settingRenderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer settingRenderer = Gui.getClickGuiSettingFontRenderer();
         if (this.sliderSetting.isString) {
             settingRenderer.drawString(this.sliderSetting.getName(), labelX, labelY,
                     0xFFE7EAF0, true);
@@ -178,8 +178,8 @@ public class SliderComponent extends Component {
                 ModuleManager.sort();
             }
 
-            if (Raven.currentProfile != null) {
-                Raven.currentProfile.getModule().saved = false;
+            if (Mindless.currentProfile != null) {
+                Mindless.currentProfile.getModule().saved = false;
             }
         }
     }
@@ -232,12 +232,12 @@ public class SliderComponent extends Component {
             ModuleManager.sort();
         }
 
-        if (Raven.currentProfile != null) {
-            Raven.currentProfile.getModule().saved = false;
+        if (Mindless.currentProfile != null) {
+            Mindless.currentProfile.getModule().saved = false;
         }
 
         if (shouldCommitOnRelease()) {
-            Raven.clickGui.requestScaleRefresh();
+            Mindless.clickGui.requestScaleRefresh();
         }
     }
 
@@ -260,8 +260,8 @@ public class SliderComponent extends Component {
                 int next = (current + (forward ? 1 : -1) + count) % count;
                 this.sliderSetting.setValue(next);
                 onSliderChange();
-                if (Raven.currentProfile != null) {
-                    Raven.currentProfile.getModule().saved = false;
+                if (Mindless.currentProfile != null) {
+                    Mindless.currentProfile.getModule().saved = false;
                 }
             }
             return true;
@@ -284,7 +284,7 @@ public class SliderComponent extends Component {
                 sliderSetting.setValue(this.targetValue);
             }
             onSliderChange();
-            Raven.clickGui.requestScaleRefresh();
+            Mindless.clickGui.requestScaleRefresh();
         }
     }
 
@@ -325,7 +325,7 @@ public class SliderComponent extends Component {
         mc.fontRendererObj.drawStringWithShadow(prefix, labelX, labelY, -1);
 
         // Use the fixed clickgui-sized preview path for both GUI and HUD selectors.
-        RavenFontRenderer previewRenderer = FontManager.getClickGuiSettingRenderer(valueText);
+        MindlessFontRenderer previewRenderer = FontManager.getClickGuiSettingRenderer(valueText);
         float valueX = labelX + mc.fontRendererObj.getStringWidth(prefix);
         float valueY = labelY - (previewRenderer.getFontHeight() - mc.fontRendererObj.FONT_HEIGHT) / 2.0f;
         previewRenderer.drawString(valueText + suffix, valueX, valueY, 0xFFFFFF, true);

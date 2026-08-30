@@ -30,15 +30,15 @@ import java.util.Set;
 
 /**
  * Runtime replacement for Sponge Mixin. Registers ClassTransform transformers
- * that reproduce every Raven mixin, then re-transforms the target classes via
- * a native JVMTI ClassFileLoadHook installed by RavenNative.dll.
+ * that reproduce every Mindless mixin, then re-transforms the target classes via
+ * a native JVMTI ClassFileLoadHook installed by MindlessNative.dll.
  *
  * IMPORTANT: JVMTI RetransformClasses cannot add methods, fields, or
  * interfaces to already-loaded classes. Accessor mixins (@Accessor / @Invoker)
  * therefore cannot be reproduced by porting them; callers must go through
  * {@link AccessorBridge} instead.
  */
-public final class RavenTransformerManager {
+public final class MindlessTransformerManager {
     enum RuntimeNamespace {
         MCP,
         SRG
@@ -51,7 +51,7 @@ public final class RavenTransformerManager {
     }
 
     private static final Object LOCK = new Object();
-    private static volatile RavenTransformerManager INSTANCE;
+    private static volatile MindlessTransformerManager INSTANCE;
 
     private final TransformerManager delegate;
     private final AMapper mapper;
@@ -70,10 +70,10 @@ public final class RavenTransformerManager {
      * Whether a questionable class is refused rather than reported.
      *
      * <p>Off by default. On, for working out which class is really at fault when the JVM starts
-     * rejecting things: {@code -Draven.strictTransformVerify=true}.
+     * rejecting things: {@code -Dmindless.strictTransformVerify=true}.
      */
     private static final boolean STRICT_VERIFY =
-            Boolean.getBoolean("raven.strictTransformVerify");
+            Boolean.getBoolean("mindless.strictTransformVerify");
 
     /**
      * Targets the client cannot run without.
@@ -90,10 +90,10 @@ public final class RavenTransformerManager {
     /** File log survives the DLL unload and MC process; grep here to diagnose. */
     static void fileLog(String message) {
         try {
-            File dir = new File(System.getProperty("java.io.tmpdir"), "RavenNative");
+            File dir = new File(System.getProperty("java.io.tmpdir"), "MindlessNative");
             dir.mkdirs();
             try (PrintWriter w = new PrintWriter(
-                    new FileOutputStream(new File(dir, "raven-transformer.log"), true), true)) {
+                    new FileOutputStream(new File(dir, "mindless-transformer.log"), true), true)) {
                 w.println("[" + new java.util.Date() + "] " + message);
             }
         } catch (Throwable ignored) {}
@@ -102,7 +102,7 @@ public final class RavenTransformerManager {
 
     private static void dumpClassBytes(String canonicalName, byte[] bytes) {
         try {
-            File dir = new File(System.getProperty("java.io.tmpdir"), "RavenNative/classdump");
+            File dir = new File(System.getProperty("java.io.tmpdir"), "MindlessNative/classdump");
             dir.mkdirs();
             String fileName = canonicalName.replace('.', '/') + ".class";
             File out = new File(dir, fileName);
@@ -113,8 +113,8 @@ public final class RavenTransformerManager {
         } catch (Throwable ignored) {}
     }
 
-    private RavenTransformerManager() {
-        this(new LaunchClassProvider(RavenTransformerManager.class.getClassLoader()));
+    private MindlessTransformerManager() {
+        this(new LaunchClassProvider(MindlessTransformerManager.class.getClassLoader()));
     }
 
     /**
@@ -122,16 +122,16 @@ public final class RavenTransformerManager {
      * being transformed. Production always enters through {@link #get()} and
      * therefore keeps using {@link LaunchClassProvider}.
      */
-    RavenTransformerManager(IClassProvider provider) {
+    MindlessTransformerManager(IClassProvider provider) {
         this(provider, detectRuntimeNamespace(provider), detectRuntimeProfile(provider));
     }
 
     /** Explicit namespace seam used by the Forge and Lunar compatibility tests. */
-    RavenTransformerManager(IClassProvider provider, RuntimeNamespace runtimeNamespace) {
+    MindlessTransformerManager(IClassProvider provider, RuntimeNamespace runtimeNamespace) {
         this(provider, runtimeNamespace, RuntimeProfile.GENERIC);
     }
 
-    RavenTransformerManager(IClassProvider provider, RuntimeNamespace runtimeNamespace,
+    MindlessTransformerManager(IClassProvider provider, RuntimeNamespace runtimeNamespace,
                             RuntimeProfile runtimeProfile) {
         if (provider == null) throw new IllegalArgumentException("provider");
         if (runtimeNamespace == null) throw new IllegalArgumentException("runtimeNamespace");
@@ -139,30 +139,30 @@ public final class RavenTransformerManager {
         this.classProvider = provider;
         this.runtimeNamespace = runtimeNamespace;
         this.runtimeProfile = runtimeProfile;
-        ClassLoader loader = RavenTransformerManager.class.getClassLoader();
+        ClassLoader loader = MindlessTransformerManager.class.getClassLoader();
 
         // Forge production bytecode needs the bundled MCP -> SRG table.
         // Lunar's baked 1.8.9 classes already expose MCP/named members, so the
         // correct Lunar mapping operation is identity/pass-through.
         AMapper selectedMapper = null;
         if (runtimeNamespace == RuntimeNamespace.SRG) {
-            InputStream mappingsStream = loader.getResourceAsStream("raven-mappings.srg");
+            InputStream mappingsStream = loader.getResourceAsStream("mindless-mappings.srg");
             if (mappingsStream == null) {
                 throw new IllegalStateException(
-                        "raven-mappings.srg is required for the Forge/SRG runtime");
+                        "mindless-mappings.srg is required for the Forge/SRG runtime");
             }
             try {
                 selectedMapper = new SrgMapper(
                         MapperConfig.create().remapTransformer(true).fillSuperMappings(true),
                         mappingsStream);
-                fileLog("[RavenTransformer] runtime namespace SRG; "
-                        + "loaded raven-mappings.srg");
+                fileLog("[MindlessTransformer] runtime namespace SRG; "
+                        + "loaded mindless-mappings.srg");
             } catch (Throwable failure) {
-                fileLog("[RavenTransformer-ERR] SrgMapper init failed: " + failure);
+                fileLog("[MindlessTransformer-ERR] SrgMapper init failed: " + failure);
                 throw new IllegalStateException("Could not initialize Forge/SRG mappings", failure);
             }
         } else {
-            fileLog("[RavenTransformer] runtime namespace MCP "
+            fileLog("[MindlessTransformer] runtime namespace MCP "
                     + "(Lunar/deobfuscated); using identity mappings");
         }
 
@@ -188,13 +188,13 @@ public final class RavenTransformerManager {
             treeField.setAccessible(true);
             treeField.set(this.delegate,
                     new net.lenni0451.classtransform.utils.tree.ClassTree());
-            fileLog("[RavenTransformer] installed non-transforming ClassTree (reentrance guard)");
+            fileLog("[MindlessTransformer] installed non-transforming ClassTree (reentrance guard)");
         } catch (Throwable failure) {
-            fileLog("[RavenTransformer] ClassTree swap failed: " + failure);
+            fileLog("[MindlessTransformer] ClassTree swap failed: " + failure);
         }
         this.verifier = new TransformVerifier(provider, new TransformVerifier.Log() {
             public void warn(String message) {
-                fileLog("[RavenTransformer-WARN] " + message);
+                fileLog("[MindlessTransformer-WARN] " + message);
             }
         });
         this.targetInternalNames = new LinkedHashSet<>();
@@ -205,7 +205,7 @@ public final class RavenTransformerManager {
     }
 
     private static RuntimeProfile detectRuntimeProfile(IClassProvider provider) {
-        String override = System.getProperty("raven.runtimeProfile");
+        String override = System.getProperty("mindless.runtimeProfile");
         if (override != null) {
             String normalized = override.trim().toLowerCase(java.util.Locale.ROOT);
             if ("lunar".equals(normalized)) return RuntimeProfile.LUNAR;
@@ -214,7 +214,7 @@ public final class RavenTransformerManager {
                 return RuntimeProfile.GENERIC;
             }
             throw new IllegalArgumentException(
-                    "Unsupported raven.runtimeProfile value: " + override);
+                    "Unsupported mindless.runtimeProfile value: " + override);
         }
 
         // Test fixtures and non-native launches do not receive the native
@@ -231,7 +231,7 @@ public final class RavenTransformerManager {
     private static RuntimeNamespace detectRuntimeNamespace(IClassProvider provider) {
         if (provider == null) throw new IllegalArgumentException("provider");
 
-        String override = System.getProperty("raven.runtimeNamespace");
+        String override = System.getProperty("mindless.runtimeNamespace");
         if (override != null) {
             String normalized = override.trim().toLowerCase(java.util.Locale.ROOT);
             if ("mcp".equals(normalized) || "named".equals(normalized)
@@ -242,7 +242,7 @@ public final class RavenTransformerManager {
                 return RuntimeNamespace.SRG;
             }
             throw new IllegalArgumentException(
-                    "Unsupported raven.runtimeNamespace value: " + override);
+                    "Unsupported mindless.runtimeNamespace value: " + override);
         }
 
         try {
@@ -261,7 +261,7 @@ public final class RavenTransformerManager {
                     + (hasMcpClickMouse ? "both" : "neither")
                     + " MCP/SRG clickMouse names");
         } catch (Throwable failure) {
-            fileLog("[RavenTransformer] could not detect runtime namespace from "
+            fileLog("[MindlessTransformer] could not detect runtime namespace from "
                     + "Minecraft.clickMouse; defaulting to SRG for Forge compatibility: "
                     + failure);
             return RuntimeNamespace.SRG;
@@ -280,11 +280,11 @@ public final class RavenTransformerManager {
         return runtimeProfile;
     }
 
-    public static RavenTransformerManager get() {
-        RavenTransformerManager local = INSTANCE;
+    public static MindlessTransformerManager get() {
+        MindlessTransformerManager local = INSTANCE;
         if (local != null) return local;
         synchronized (LOCK) {
-            if (INSTANCE == null) INSTANCE = new RavenTransformerManager();
+            if (INSTANCE == null) INSTANCE = new MindlessTransformerManager();
             return INSTANCE;
         }
     }
@@ -322,7 +322,7 @@ public final class RavenTransformerManager {
         if (!targetInternalNames.contains(internalName)) return null;
         java.util.Set<String> inFlight = IN_FLIGHT.get();
         if (!inFlight.add(canonicalName)) {
-            fileLog("[RavenTransformer] " + canonicalName
+            fileLog("[MindlessTransformer] " + canonicalName
                     + " -> SKIPPED (already transforming on this thread)");
             return null;
         }
@@ -341,7 +341,7 @@ public final class RavenTransformerManager {
                 String schemaChange = findRetransformSchemaChange(originalBytes, result);
                 if (schemaChange != null) {
                     transformFailures.put(canonicalName, "schema changed: " + schemaChange);
-                    fileLog("[RavenTransformer-ERR] rejected " + canonicalName
+                    fileLog("[MindlessTransformer-ERR] rejected " + canonicalName
                             + " before JVMTI: retransformation schema changed ("
                             + schemaChange + ")");
                     return null;
@@ -359,13 +359,13 @@ public final class RavenTransformerManager {
                 // costs that class and this log line explains it.
                 String suspect = verifier.verify(originalBytes, result);
                 if (suspect != null) {
-                    String note = "[RavenTransformer-WARN] " + canonicalName
+                    String note = "[MindlessTransformer-WARN] " + canonicalName
                             + " looks questionable but was applied anyway: " + suspect;
                     fileLog(note);
                     if (STRICT_VERIFY) {
                         transformFailures.put(canonicalName, suspect);
-                        fileLog("[RavenTransformer-ERR] rejected " + canonicalName
-                                + " before JVMTI (raven.strictTransformVerify): " + suspect);
+                        fileLog("[MindlessTransformer-ERR] rejected " + canonicalName
+                                + " before JVMTI (mindless.strictTransformVerify): " + suspect);
                         return null;
                     }
                 }
@@ -373,19 +373,19 @@ public final class RavenTransformerManager {
             if (result == null || result == originalBytes || result.length == originalBytes.length) {
                 if (result == null || result == originalBytes) {
                     transformFailures.put(canonicalName, "transformer returned no changed bytecode");
-                    fileLog("[RavenTransformer] " + canonicalName + " -> NO CHANGE (transformer likely inert)");
+                    fileLog("[MindlessTransformer] " + canonicalName + " -> NO CHANGE (transformer likely inert)");
                     return null;
                 }
                 // same length but potentially different content
                 boolean identical = java.util.Arrays.equals(result, originalBytes);
                 if (identical) {
                     transformFailures.put(canonicalName, "transformer returned identical bytecode");
-                    fileLog("[RavenTransformer] " + canonicalName + " -> NO CHANGE (equal bytes)");
+                    fileLog("[MindlessTransformer] " + canonicalName + " -> NO CHANGE (equal bytes)");
                     return null;
                 }
             }
             transformFailures.remove(canonicalName);
-            fileLog("[RavenTransformer] " + canonicalName
+            fileLog("[MindlessTransformer] " + canonicalName
                     + " -> transformed (" + originalBytes.length + " -> " + result.length + " bytes)");
             return result;
         } catch (Throwable failure) {
@@ -403,7 +403,7 @@ public final class RavenTransformerManager {
                 }
                 cur = cur.getCause();
             }
-            fileLog("[RavenTransformer-ERR] failed to transform " + canonicalName
+            fileLog("[MindlessTransformer-ERR] failed to transform " + canonicalName
                     + ":\n" + sw.toString());
             return null;
         } finally {
@@ -436,7 +436,7 @@ public final class RavenTransformerManager {
             String target = failure.getKey();
             boolean isRequired = REQUIRED_TARGETS.contains(target)
                     || REQUIRED_TARGETS.contains(stripRegistrationPrefix(target));
-            String line = (isRequired ? "[RavenTransformer-ERR] REQUIRED " : "[RavenTransformer-WARN] skipped ")
+            String line = (isRequired ? "[MindlessTransformer-ERR] REQUIRED " : "[MindlessTransformer-WARN] skipped ")
                     + target + ": " + failure.getValue();
             fileLog(line);
             System.out.println(line);
@@ -454,8 +454,8 @@ public final class RavenTransformerManager {
             String message = "Required transformer targets did not apply to this game build: "
                     + required + " -- the client will start but its hooks into those classes are "
                     + "missing";
-            fileLog("[RavenTransformer-ERR] " + message);
-            System.out.println("[RavenTransformer-ERR] " + message);
+            fileLog("[MindlessTransformer-ERR] " + message);
+            System.out.println("[MindlessTransformer-ERR] " + message);
         }
     }
 
@@ -735,7 +735,7 @@ public final class RavenTransformerManager {
         boolean customSkyPresent = false;
         try {
             Class.forName("net.optifine.CustomSky", false,
-                    RavenTransformerManager.class.getClassLoader());
+                    MindlessTransformerManager.class.getClassLoader());
             customSkyPresent = true;
         } catch (Throwable ignored) {
             // OptiFine not present — skip.
@@ -768,7 +768,6 @@ public final class RavenTransformerManager {
                 "mindless.transformer.impl.network.TransformerNetworkManager",
                 // render
                 "mindless.transformer.impl.render.TransformerEntityRenderer",
-                "mindless.transformer.impl.render.TransformerAbstractClientPlayer",
                 "mindless.transformer.impl.render.TransformerFontRenderer",
                 "mindless.transformer.impl.render.TransformerGuiChat",
                 "mindless.transformer.impl.render.TransformerGuiNewChat",
@@ -777,7 +776,6 @@ public final class RavenTransformerManager {
                 "mindless.transformer.impl.render.TransformerGuiScreen",
                 "mindless.transformer.impl.render.TransformerGuiPlayerTabOverlay",
                 "mindless.transformer.impl.render.TransformerItemRenderer",
-                "mindless.transformer.impl.render.TransformerLayerCape",
                 "mindless.transformer.impl.render.TransformerRenderGlobal",
                 "mindless.transformer.impl.render.TransformerRenderEntityItem",
                 "mindless.transformer.impl.render.TransformerRenderManager",
@@ -797,7 +795,7 @@ public final class RavenTransformerManager {
         for (String transformer : transformers) {
             registerTransformer(transformer);
         }
-        fileLog("[RavenTransformer] registered " + targetInternalNames.size()
+        fileLog("[MindlessTransformer] registered " + targetInternalNames.size()
                 + " transformers successfully for profile " + runtimeProfile);
     }
 
@@ -815,14 +813,14 @@ public final class RavenTransformerManager {
      */
     private void auditDeclaredTargets(java.util.List<String> transformerClassNames) {
         if (runtimeNamespace != RuntimeNamespace.MCP) {
-            fileLog("[RavenTransformer] target audit skipped: obfuscated runtime namespace");
+            fileLog("[MindlessTransformer] target audit skipped: obfuscated runtime namespace");
             return;
         }
         try {
             TransformerAudit audit = new TransformerAudit(classProvider);
             java.util.List<String> problems = audit.audit(transformerClassNames);
             if (!audit.unreadableTargets().isEmpty()) {
-                fileLog("[RavenTransformer-WARN] target audit could not read "
+                fileLog("[MindlessTransformer-WARN] target audit could not read "
                         + audit.unreadableTargets().size() + " target class(es) and skipped them: "
                         + audit.unreadableTargets());
             }
@@ -831,20 +829,20 @@ public final class RavenTransformerManager {
                 if (!problem.startsWith(TransformerAudit.OPTIONAL_PREFIX)) breaking++;
             }
             if (problems.isEmpty()) {
-                fileLog("[RavenTransformer] target audit clean: every declared target exists "
+                fileLog("[MindlessTransformer] target audit clean: every declared target exists "
                         + "in this game build");
                 return;
             }
-            fileLog("[RavenTransformer] target audit: " + breaking + " declared target(s) missing"
+            fileLog("[MindlessTransformer] target audit: " + breaking + " declared target(s) missing"
                     + ", " + (problems.size() - breaking) + " optional hook(s) inactive"
                     + " on this game build:");
             for (String problem : problems) {
                 boolean optional = problem.startsWith(TransformerAudit.OPTIONAL_PREFIX);
-                fileLog((optional ? "[RavenTransformer-WARN]   " : "[RavenTransformer-ERR]   ")
+                fileLog((optional ? "[MindlessTransformer-WARN]   " : "[MindlessTransformer-ERR]   ")
                         + problem);
             }
         } catch (Throwable failure) {
-            fileLog("[RavenTransformer-WARN] target audit could not run: " + failure);
+            fileLog("[MindlessTransformer-WARN] target audit could not run: " + failure);
         }
     }
 
@@ -860,7 +858,7 @@ public final class RavenTransformerManager {
         } catch (Throwable failure) {
             String key = "registration:" + transformerClassName;
             transformFailures.put(key, failure.toString());
-            fileLog("[RavenTransformer-ERR] could not register "
+            fileLog("[MindlessTransformer-ERR] could not register "
                     + transformerClassName + ": " + failure);
             throw new IllegalStateException(
                     "Could not register runtime transformer " + transformerClassName,

@@ -1,6 +1,6 @@
 package mindless.utility.font;
 
-public interface RavenFontRenderer {
+public interface MindlessFontRenderer {
     @FunctionalInterface
     interface GlyphColorProvider {
         int colorForGlyph(char character, float xOffset, float width, Integer formattingColor);

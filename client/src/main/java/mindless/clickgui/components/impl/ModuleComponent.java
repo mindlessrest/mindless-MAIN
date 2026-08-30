@@ -1,6 +1,6 @@
 package mindless.clickgui.components.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.ClickGui;
 import mindless.clickgui.components.Component;
 import mindless.module.Module;
@@ -10,7 +10,7 @@ import mindless.module.impl.client.Gui;
 import mindless.utility.RenderUtils;
 import mindless.utility.Timer;
 import mindless.utility.Utils;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.profile.Manager;
 import mindless.utility.profile.ProfileModule;
 import net.minecraft.client.Minecraft;
@@ -340,12 +340,12 @@ public class ModuleComponent extends Component {
         if (this.mod.script != null && this.mod.script.error) {
             button_rgb = INVALID_COLOR;
         }
-        if (this.mod.moduleCategory() == Module.category.profiles && !(this.mod instanceof Manager) && !((ProfileModule) this.mod).saved && Raven.currentProfile != null && Raven.currentProfile.getModule() == this.mod) {
+        if (this.mod.moduleCategory() == Module.category.profiles && !(this.mod instanceof Manager) && !((ProfileModule) this.mod).saved && Mindless.currentProfile != null && Mindless.currentProfile.getModule() == this.mod) {
             button_rgb = UNSAVED_COLOR;
         }
 
         boolean scissorRequired = smoothTimer != null;
-        RavenFontRenderer titleRenderer = Gui.getClickGuiHeaderFontRenderer();
+        MindlessFontRenderer titleRenderer = Gui.getClickGuiHeaderFontRenderer();
 
         if (hasModuleHeader()) {
             // One muted status badge is quieter and cheaper than a layered light.
@@ -420,7 +420,7 @@ public class ModuleComponent extends Component {
         }
     }
 
-    private static void drawFittedModuleName(RavenFontRenderer renderer, String text, float x, float y,
+    private static void drawFittedModuleName(MindlessFontRenderer renderer, String text, float x, float y,
                                              float maxWidth, int color) {
         String name = text == null ? "" : text;
         float textWidth = Math.max(1.0f, renderer.getStringWidth(name));
@@ -476,8 +476,8 @@ public class ModuleComponent extends Component {
         if (hasModuleHeader() && this.overModuleName(x, y) && mouse == 0 && this.mod.canBeEnabled()) {
             this.mod.toggle();
             if (this.mod.moduleCategory() != Module.category.profiles) {
-                if (Raven.currentProfile != null) {
-                    Raven.currentProfile.getModule().saved = false;
+                if (Mindless.currentProfile != null) {
+                    Mindless.currentProfile.getModule().saved = false;
                 }
             }
             return true;

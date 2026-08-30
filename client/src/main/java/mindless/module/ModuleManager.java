@@ -9,7 +9,6 @@ import mindless.module.impl.client.Settings;
 import mindless.module.impl.client.SpotifyMiniPlayer;
 import mindless.module.impl.theme.ThemeManager;
 import mindless.module.impl.combat.*;
-import mindless.module.impl.fun.Capes;
 import mindless.module.impl.bedwars.*;
 import mindless.module.impl.minigames.*;
 import mindless.module.impl.movement.*;
@@ -19,7 +18,7 @@ import mindless.module.impl.other.*;
 import mindless.module.impl.player.*;
 import mindless.module.impl.render.*;
 import mindless.module.impl.world.*;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.profile.Manager;
 
 import java.util.ArrayList;
@@ -122,7 +121,7 @@ public class ModuleManager {
         this.addModule(themeManager = new ThemeManager());
         this.addModule(spotifyMiniPlayer = new SpotifyMiniPlayer());
         this.addModule(relationships = new Relationships());
-        if (mindless.Raven.playerRelationsManager == null || mindless.Raven.playerRelationsManager.isActive()) {
+        if (mindless.Mindless.playerRelationsManager == null || mindless.Mindless.playerRelationsManager.isActive()) {
             relationships.enable();
         }
 
@@ -152,9 +151,6 @@ public class ModuleManager {
         this.addModule(wTap = new WTap());
 
         this.addModule(new ExtraBobbing());
-        Capes capes = new Capes();
-        this.addModule(capes);
-        capes.enable();
 
         this.addModule(new AutoRequeue());
         this.addModule(new AntiMisplace());
@@ -346,7 +342,7 @@ public class ModuleManager {
             return;
         }
 
-        final RavenFontRenderer hudFont = HUD.getHudFontRenderer();
+        final MindlessFontRenderer hudFont = HUD.getHudFontRenderer();
         organizedModules.sort((o1, o2) -> hudFont.getStringWidth(HUD.getHudRenderText(o2)) - hudFont.getStringWidth(HUD.getHudRenderText(o1)));
     }
 

@@ -13,7 +13,7 @@ public final class EntityPlayerSPReflection {
     private EntityPlayerSPReflection() {}
 
     /**
-     * Bytecode marker replaced with INVOKESPECIAL by RavenTransformerManager.
+     * Bytecode marker replaced with INVOKESPECIAL by MindlessTransformerManager.
      * It must never survive into a transformed EntityPlayerSP method.
      */
     public static void callSuperOnLivingUpdateMarker(EntityPlayerSP self) {

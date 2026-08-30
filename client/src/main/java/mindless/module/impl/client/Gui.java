@@ -1,6 +1,6 @@
 package mindless.module.impl.client;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
@@ -8,7 +8,7 @@ import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 
 import java.awt.Color;
 
@@ -69,8 +69,8 @@ public class Gui extends Module {
     }
 
     public static mindless.clickgui.ClickGui getActiveGui() {
-        if (style != null && (int) style.getInput() == 1) return Raven.framesGui;
-        return Raven.clickGui;
+        if (style != null && (int) style.getInput() == 1) return Mindless.framesGui;
+        return Mindless.clickGui;
     }
 
     public static String getSelectedFontName() {
@@ -82,11 +82,11 @@ public class Gui extends Module {
         return font.getOptions()[index];
     }
 
-    public static RavenFontRenderer getClickGuiHeaderFontRenderer() {
+    public static MindlessFontRenderer getClickGuiHeaderFontRenderer() {
         return FontManager.getClickGuiHeaderRenderer(getSelectedFontName());
     }
 
-    public static RavenFontRenderer getClickGuiSettingFontRenderer() {
+    public static MindlessFontRenderer getClickGuiSettingFontRenderer() {
         return FontManager.getClickGuiSettingRenderer(getSelectedFontName());
     }
 

@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class GlyphFontRenderer implements RavenFontRenderer {
+public final class GlyphFontRenderer implements MindlessFontRenderer {
     private static final int FIRST_GLYPH = 0;
     private static final int LAST_GLYPH = 255;
     private static final int CHANNEL_MASK = 0xFF;

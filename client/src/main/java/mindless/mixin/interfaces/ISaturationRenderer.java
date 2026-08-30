@@ -3,7 +3,7 @@ package mindless.mixin.interfaces;
 import net.minecraft.client.shader.ShaderGroup;
 
 public interface ISaturationRenderer {
-    ShaderGroup raven$getSaturationShader();
+    ShaderGroup mindless$getSaturationShader();
 
-    void raven$setSaturationShader(ShaderGroup shader);
+    void mindless$setSaturationShader(ShaderGroup shader);
 }

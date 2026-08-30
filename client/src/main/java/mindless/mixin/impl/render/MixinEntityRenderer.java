@@ -86,12 +86,12 @@ public class MixinEntityRenderer implements ISaturationRenderer {
     }
 
     @Override
-    public ShaderGroup raven$getSaturationShader() {
+    public ShaderGroup mindless$getSaturationShader() {
         return SaturationShaderRuntime.get((EntityRenderer) (Object) this);
     }
 
     @Override
-    public void raven$setSaturationShader(ShaderGroup shader) {
+    public void mindless$setSaturationShader(ShaderGroup shader) {
         SaturationShaderRuntime.set((EntityRenderer) (Object) this, shader);
     }
 

@@ -1,7 +1,7 @@
 package mindless.module.setting;
 
 import com.google.gson.JsonObject;
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.clickgui.components.impl.ModuleComponent;
 import mindless.module.Module;
@@ -33,7 +33,7 @@ public abstract class Setting {
             return;
         }
         this.visible = visible;
-        for (CategoryComponent categoryComponent : Raven.clickGui.categories) {
+        for (CategoryComponent categoryComponent : Mindless.clickGui.categories) {
             if (categoryComponent.category == module.moduleCategory()) {
                 for (ModuleComponent moduleComponent : categoryComponent.modules) {
                     if (moduleComponent.mod.getName().equals(module.getName())) {

@@ -29,7 +29,7 @@ public final class TransformSafety {
             } else {
                 stableSince = 0L;
                 if (!announced && minecraft != null && minecraft.theWorld != null) {
-                    System.out.println("[RavenNative] Waiting for the user to return to a menu before transforming render classes");
+                    System.out.println("[MindlessNative] Waiting for the user to return to a menu before transforming render classes");
                     announced = true;
                 }
             }

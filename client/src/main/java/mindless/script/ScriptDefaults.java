@@ -1,6 +1,6 @@
 package mindless.script;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.ClickGui;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.clickgui.components.impl.ModuleComponent;
@@ -66,10 +66,10 @@ public class ScriptDefaults {
 
     public static void reloadModules() {
         modulesMap.clear();
-        for (Module module : Raven.getModuleManager().getModules()) {
+        for (Module module : Mindless.getModuleManager().getModules()) {
             modulesMap.put(module.getName(), module);
         }
-        for (Module module : Raven.scriptManager.scripts.values()) {
+        for (Module module : Mindless.scriptManager.scripts.values()) {
             modulesMap.put(module.getName(), module);
         }
     }
@@ -120,7 +120,7 @@ public class ScriptDefaults {
         }
 
         public static void async(final Runnable method) {
-            Raven.getCachedExecutor().execute(method);
+            Mindless.getCachedExecutor().execute(method);
         }
 
         public static int getFPS() {

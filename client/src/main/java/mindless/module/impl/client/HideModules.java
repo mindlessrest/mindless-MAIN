@@ -7,7 +7,7 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.runtime.GuiIngameState;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.ModuleFont;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.gui.MindlessButton;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
@@ -122,7 +122,7 @@ public class HideModules extends Module {
             drawRect(0, 0, width, height, 0x66000000);
             rows = HUD.renderHidePicker(mouseX, mouseY);
 
-            RavenFontRenderer font = FontManager.getHudRenderer(ModuleFont.nameOf(null), 1.0f);
+            MindlessFontRenderer font = FontManager.getHudRenderer(ModuleFont.nameOf(null), 1.0f);
             String title = "Click an entry to hide it";
             String subtitle = rows.isEmpty()
                     ? "Nothing is enabled to hide"
@@ -150,7 +150,7 @@ public class HideModules extends Module {
             RoundedUtils.drawRound(panelLeft, panelTop, PANEL_W, panelHeight,
                     GuiIngameState.panelRadius(), GuiIngameState.PANEL_FILL_COLOR);
 
-            RavenFontRenderer font = FontManager.getHudRenderer(ModuleFont.nameOf(null), 1.0f);
+            MindlessFontRenderer font = FontManager.getHudRenderer(ModuleFont.nameOf(null), 1.0f);
             font.drawString("Hide from arraylist", panelLeft + PADDING, panelTop + PADDING,
                     0xFFFFFFFF, false);
 
@@ -172,7 +172,7 @@ public class HideModules extends Module {
             org.lwjgl.opengl.GL11.glDisable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
         }
 
-        private void drawPanelRow(RavenFontRenderer font, Module module, float rowTop, int mouseX, int mouseY) {
+        private void drawPanelRow(MindlessFontRenderer font, Module module, float rowTop, int mouseX, int mouseY) {
             float rowLeft = panelLeft + PADDING;
             float rowRight = panelLeft + PANEL_W - PADDING;
             boolean hovered = mouseX >= rowLeft && mouseX <= rowRight

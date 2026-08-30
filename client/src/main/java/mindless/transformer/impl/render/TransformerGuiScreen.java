@@ -1,6 +1,6 @@
 package mindless.transformer.impl.render;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.ModuleManager;
 import net.lenni0451.classtransform.InjectionCallback;
 import net.lenni0451.classtransform.annotations.CInline;
@@ -20,7 +20,7 @@ public abstract class TransformerGuiScreen {
         if (msg.startsWith(".") && addToChat && ModuleManager.canExecuteChatCommand()) {
             Minecraft mc = Minecraft.getMinecraft();
             mc.ingameGUI.getChatGUI().addToSentMessages(msg);
-            Raven.commandManager.executeCommand(msg);
+            Mindless.commandManager.executeCommand(msg);
             ci.setCancelled(true);
         }
     }

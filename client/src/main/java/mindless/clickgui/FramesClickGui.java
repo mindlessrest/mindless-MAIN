@@ -1,12 +1,12 @@
 package mindless.clickgui;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.Module;
 import mindless.module.impl.client.Gui;
 import mindless.module.setting.Setting;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
@@ -132,7 +132,7 @@ public final class FramesClickGui extends ClickGui {
         ScaledResolution sr = new ScaledResolution(mc);
         float screenW = sr.getScaledWidth() / Gui.getClickGuiScale();
 
-        RavenFontRenderer font = Gui.getClickGuiHeaderFontRenderer();
+        MindlessFontRenderer font = Gui.getClickGuiHeaderFontRenderer();
         if (font == null) return;
 
         int accent = getAccentColor();
@@ -161,8 +161,8 @@ public final class FramesClickGui extends ClickGui {
     }
 
     private void drawFrames(int mx, int my) {
-        RavenFontRenderer headerFont = Gui.getClickGuiHeaderFontRenderer();
-        RavenFontRenderer moduleFont = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer headerFont = Gui.getClickGuiHeaderFontRenderer();
+        MindlessFontRenderer moduleFont = Gui.getClickGuiSettingFontRenderer();
         if (headerFont == null || moduleFont == null) return;
 
         int accent = getAccentColor();
@@ -222,7 +222,7 @@ public final class FramesClickGui extends ClickGui {
         }
     }
 
-    private float drawModuleSettings(Module mod, float fx, float startY, RavenFontRenderer font, int accent, int textCol) {
+    private float drawModuleSettings(Module mod, float fx, float startY, MindlessFontRenderer font, int accent, int textCol) {
         float cy = startY;
         float indent = FRAME_PAD + 10f;
 
@@ -267,7 +267,7 @@ public final class FramesClickGui extends ClickGui {
         float screenW = sr.getScaledWidth() / Gui.getClickGuiScale();
         float screenH = sr.getScaledHeight() / Gui.getClickGuiScale();
 
-        RavenFontRenderer font = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer font = Gui.getClickGuiSettingFontRenderer();
         if (font == null) return;
 
         float barX = (screenW - SEARCH_BAR_WIDTH) / 2f;
@@ -318,7 +318,7 @@ public final class FramesClickGui extends ClickGui {
         float screenW = sr.getScaledWidth() / Gui.getClickGuiScale();
         float screenH = sr.getScaledHeight() / Gui.getClickGuiScale();
 
-        RavenFontRenderer font = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer font = Gui.getClickGuiSettingFontRenderer();
         if (font == null) return;
 
         float panelW = 300f;
@@ -331,8 +331,8 @@ public final class FramesClickGui extends ClickGui {
                 new Color(0, 0, 0, 0), new Color(255, 255, 255, 25));
 
         Module themeModule = null;
-        if (Raven.getModuleManager() != null) {
-            List<Module> themes = Raven.getModuleManager().inCategory(Module.category.theme);
+        if (Mindless.getModuleManager() != null) {
+            List<Module> themes = Mindless.getModuleManager().inCategory(Module.category.theme);
             if (!themes.isEmpty()) themeModule = themes.get(0);
         }
 
@@ -493,8 +493,8 @@ public final class FramesClickGui extends ClickGui {
     // ------------------------------------------------------------------ util
 
     private List<Module> getModulesForCategory(Module.category category) {
-        if (Raven.getModuleManager() == null) return new ArrayList<>();
-        return Raven.getModuleManager().inCategory(category);
+        if (Mindless.getModuleManager() == null) return new ArrayList<>();
+        return Mindless.getModuleManager().inCategory(category);
     }
 
     private List<Module> filterModules(List<Module> modules) {

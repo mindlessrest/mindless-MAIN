@@ -1,12 +1,12 @@
 package mindless.clickgui.components.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.components.Component;
 import mindless.module.Module;
 import mindless.module.impl.client.Gui;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.utility.RenderUtils;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.profile.ProfileModule;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11;
@@ -38,7 +38,7 @@ public class ButtonComponent extends Component {
     }
 
     public void render() {
-        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
         float cx = this.moduleComponent.categoryComponent.getX();
         float cy = this.moduleComponent.categoryComponent.getY();
         float right = cx + this.moduleComponent.categoryComponent.getWidth() - 5;
@@ -94,8 +94,8 @@ public class ButtonComponent extends Component {
             }
             this.buttonSetting.toggle();
             this.mod.guiButtonToggled(this.buttonSetting);
-            if (Raven.currentProfile != null && !this.mod.ignoreOnSave) {
-                Raven.currentProfile.getModule().saved = false;
+            if (Mindless.currentProfile != null && !this.mod.ignoreOnSave) {
+                Mindless.currentProfile.getModule().saved = false;
             }
         }
         return false;

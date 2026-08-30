@@ -21,11 +21,11 @@ import org.lwjgl.input.Mouse;
 
 /**
  * Supplies the lifecycle events normally emitted by Forge's patched Minecraft
- * classes when Raven is running in a plain Lunar + OptiFine MCP process.
+ * classes when Mindless is running in a plain Lunar + OptiFine MCP process.
  */
 public final class LunarEventBridge {
     private static final boolean DIRECT_LUNAR = Boolean.parseBoolean(
-            System.getProperty("raven.embeddedForge", "false"));
+            System.getProperty("mindless.embeddedForge", "false"));
 
     private LunarEventBridge() {}
 
@@ -107,7 +107,7 @@ public final class LunarEventBridge {
 
     /**
      * Listeners that want the FML tick bus. Direct Lunar has no initialized
-     * FMLCommonHandler, so share Raven's event bus instead.
+     * FMLCommonHandler, so share Mindless's event bus instead.
      */
     public static void registerTickListener(Object listener) {
         if (DIRECT_LUNAR) MinecraftForge.EVENT_BUS.register(listener);

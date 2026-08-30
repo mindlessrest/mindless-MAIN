@@ -10,7 +10,7 @@ import org.junit.Test;
  * silently skips that handler after logging NoSuchMethodException.
  */
 public class ForgeEventRegistrationCompatibilityTest {
-    private static final String[] RAVEN_EVENTS = {
+    private static final String[] MINDLESS_EVENTS = {
             "AntiCheatFlagEvent",
             "ClickMouseEvent",
             "ClientRotationEvent",
@@ -37,9 +37,9 @@ public class ForgeEventRegistrationCompatibilityTest {
     };
 
     @Test
-    public void everyRavenForgeEventHasPublicZeroArgumentConstructor()
+    public void everyMindlessForgeEventHasPublicZeroArgumentConstructor()
             throws Exception {
-        for (String simpleName : RAVEN_EVENTS) {
+        for (String simpleName : MINDLESS_EVENTS) {
             Class<?> type = Class.forName("mindless.event." + simpleName);
             Assert.assertTrue(type.getName() + " must extend Forge Event",
                     Event.class.isAssignableFrom(type));

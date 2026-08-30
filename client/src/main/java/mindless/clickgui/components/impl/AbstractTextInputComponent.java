@@ -3,7 +3,7 @@ package mindless.clickgui.components.impl;
 import mindless.clickgui.components.Component;
 import mindless.clickgui.components.FocusableTextComponent;
 import mindless.utility.Theme;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import org.lwjgl.opengl.GL11;
 
 public abstract class AbstractTextInputComponent extends Component implements FocusableTextComponent {
@@ -143,7 +143,7 @@ public abstract class AbstractTextInputComponent extends Component implements Fo
     }
 
     protected static float centeredScaledTextY(float top, float height, float scale) {
-        RavenFontRenderer renderer = mindless.module.impl.client.Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = mindless.module.impl.client.Gui.getClickGuiSettingFontRenderer();
         float textBoxHeight = Math.max(1f, (renderer.getTextBottomOffset() - renderer.getTextTopOffset()) * scale);
         return top + (height - textBoxHeight) / 2f - renderer.getTextTopOffset() * scale;
     }
@@ -153,7 +153,7 @@ public abstract class AbstractTextInputComponent extends Component implements Fo
     }
 
     protected static void drawScaledText(String text, float x, float y, int color, float scale) {
-        RavenFontRenderer renderer = mindless.module.impl.client.Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = mindless.module.impl.client.Gui.getClickGuiSettingFontRenderer();
         GL11.glPushMatrix();
         GL11.glScaled(scale, scale, scale);
         renderer.drawString(text, x / scale, y / scale, color, false);

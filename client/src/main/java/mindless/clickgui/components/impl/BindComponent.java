@@ -1,13 +1,13 @@
 package mindless.clickgui.components.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.components.Component;
 import mindless.module.Module;
 import mindless.module.impl.client.Gui;
 import mindless.module.setting.impl.KeySetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.Theme;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.profile.ProfileModule;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.input.Keyboard;
@@ -49,7 +49,7 @@ public class BindComponent extends Component {
     @Override public boolean isBaseVisible() { return keySetting == null || keySetting.visible; }
 
     public void render() {
-        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
         GL11.glPushMatrix();
         GL11.glScaled(0.5D, 0.5D, 0.5D);
         if (keySetting == null) {
@@ -83,7 +83,7 @@ public class BindComponent extends Component {
         if (!overSetting(x, y) || !moduleComponent.isOpened || !moduleComponent.isVisible(this)) return false;
         if (button == 0 && moduleComponent.mod.moduleCategory() != Module.category.profiles && overEyeIcon(x, y)) {
             moduleComponent.mod.setHidden(!moduleComponent.mod.isHidden());
-            if (Raven.currentProfile != null) Raven.currentProfile.getModule().saved = false;
+            if (Mindless.currentProfile != null) Mindless.currentProfile.getModule().saved = false;
             return true;
         }
         if (moduleComponent.mod.canBeEnabled() && button == 0 && overBindText(x, y)) {
@@ -93,7 +93,7 @@ public class BindComponent extends Component {
         if (moduleComponent.mod.canBeEnabled() && button > 1 && isBinding) {
             if (keySetting != null) keySetting.setKey(button + 1000);
             else moduleComponent.mod.setBind(button + 1000);
-            if (Raven.currentProfile != null) Raven.currentProfile.getModule().saved = false;
+            if (Mindless.currentProfile != null) Mindless.currentProfile.getModule().saved = false;
             isBinding = false;
             return true;
         }
@@ -128,7 +128,7 @@ public class BindComponent extends Component {
 
     private boolean overBindText(int mouseX, int mouseY) {
         String text = getBindDisplayString();
-        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
 
         float left = getBindTextX();
         float top = getBindTextY();
@@ -158,7 +158,7 @@ public class BindComponent extends Component {
         if (!isBinding || scroll == 0) return;
         if (keySetting != null) keySetting.setKey(scroll > 0 ? 1069 : 1070);
         else moduleComponent.mod.setBind(scroll > 0 ? 1069 : 1070);
-        if (Raven.currentProfile != null) Raven.currentProfile.getModule().saved = false;
+        if (Mindless.currentProfile != null) Mindless.currentProfile.getModule().saved = false;
         isBinding = false;
     }
 
@@ -172,7 +172,7 @@ public class BindComponent extends Component {
             if (keySetting != null) keySetting.setKey(keybind);
             else moduleComponent.mod.setBind(keybind);
         }
-        if (Raven.currentProfile != null) Raven.currentProfile.getModule().saved = false;
+        if (Mindless.currentProfile != null) Mindless.currentProfile.getModule().saved = false;
         isBinding = false;
     }
 
@@ -197,7 +197,7 @@ public class BindComponent extends Component {
     @Override public float getHeightF() { return keySetting != null ? 0f : 16f; }
     @Override public int getHeight() { return Math.round(getHeightF()); }
 
-    private void drawString(RavenFontRenderer renderer, String s) {
+    private void drawString(MindlessFontRenderer renderer, String s) {
         renderer.drawString(s, (float) ((this.moduleComponent.categoryComponent.getX() + 4) * 2) + xOffset, (float) ((this.moduleComponent.categoryComponent.getY() + this.o + (this.keySetting == null ? 3 : 4)) * 2), Theme.getGradient(Theme.descriptor[0], Theme.descriptor[1], 0), true);
     }
 

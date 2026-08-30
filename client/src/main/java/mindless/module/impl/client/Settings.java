@@ -1,6 +1,6 @@
 package mindless.module.impl.client;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.KeySetting;
@@ -35,7 +35,6 @@ public class Settings extends Module {
     public static ButtonSetting sendMessage;
     public static ButtonSetting autoSaveProfiles;
 
-    public static SliderSetting customCapes;
 
     public static SliderSetting offset;
     public static SliderSetting timeMultiplier;
@@ -48,13 +47,11 @@ public class Settings extends Module {
 
     public Settings() {
         super("Settings", category.client, 0);
-        mindless.utility.CapeManager.reloadCustomCapes();
-        this.registerSetting(new ButtonSetting("Uninject", () -> Raven.uninject()));
+        this.registerSetting(new ButtonSetting("Uninject", () -> Mindless.uninject()));
         this.registerSetting(new DescriptionSetting("Diagnostics"));
         this.registerSetting(diagnostics = new ButtonSetting("Diagnostics", false));
         this.registerSetting(diagnosticsChat = new ButtonSetting("Diagnostics in chat", false));
         this.registerSetting(new ButtonSetting("Dump GL info", () -> mindless.utility.Diagnostics.dumpEnvironment()));
-        this.registerSetting(customCapes = new SliderSetting("Custom cape", 0, mindless.utility.CapeManager.getCapeOptions()));
         this.registerSetting(new DescriptionSetting("HUD layout"));
         this.registerSetting(new ButtonSetting("Edit HUD elements", () -> mc.displayGuiScreen(new HudEditor.Screen())));
         this.registerSetting(arrayListGlow = new ButtonSetting("Array List text glow", false));

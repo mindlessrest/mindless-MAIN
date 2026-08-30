@@ -9,7 +9,7 @@ import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.EntityPlayer;
@@ -213,7 +213,7 @@ public class Arrows extends Module {
             else if (arrowInput == 1) {
                 GlStateManager.rotate(-90.0f, 0.0f, 0.0f, 1.0f);
                 GlStateManager.scale(1.5, 1.5, 1.5);
-                RavenFontRenderer fr = getArrowFontRenderer();
+                MindlessFontRenderer fr = getArrowFontRenderer();
                 fr.drawString(">", -2.0f, -4.0f, color, false);
             }
             else if (arrowInput == 2) {
@@ -231,7 +231,7 @@ public class Arrows extends Module {
 
             if (renderDistance.isToggled()) {
                 String text = (int) mc.thePlayer.getDistanceToEntity(en) + "m";
-                RavenFontRenderer fr = getArrowFontRenderer();
+                MindlessFontRenderer fr = getArrowFontRenderer();
                 fr.drawString(text, (float) (-fr.getStringWidth(text) / 2), -4.0f, -1, true);
             }
 
@@ -247,7 +247,7 @@ public class Arrows extends Module {
         return font.getOptions()[index];
     }
 
-    private RavenFontRenderer getArrowFontRenderer() {
+    private MindlessFontRenderer getArrowFontRenderer() {
         return FontManager.getNametagRenderer(getSelectedFontName());
     }
 

@@ -1,6 +1,6 @@
 package mindless.module.impl.client;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.GroupSetting;
@@ -15,7 +15,7 @@ public class Relationships extends Module {
     public final PlayerListSetting friends = new PlayerListSetting(friendsGroup, "Players", PlayerRelationsManager.RelationType.FRIEND, "Type a username", 32);
     public final PlayerListSetting enemies = new PlayerListSetting(enemiesGroup, "Players", PlayerRelationsManager.RelationType.ENEMY, "Type a username", 32);
     public final ButtonSetting middleClickFriends = new ButtonSetting(middleClickGroup, "Middle click friends",
-        Raven.playerRelationsManager != null && Raven.playerRelationsManager.isMiddleClickFriends());
+        Mindless.playerRelationsManager != null && Mindless.playerRelationsManager.isMiddleClickFriends());
 
     public Relationships() {
         super("Relationships", category.client, 0);
@@ -37,22 +37,22 @@ public class Relationships extends Module {
 
     @Override
     public void guiButtonToggled(ButtonSetting buttonSetting) {
-        if (buttonSetting == middleClickFriends && Raven.playerRelationsManager != null) {
-            Raven.playerRelationsManager.setMiddleClickFriends(buttonSetting.isToggled());
+        if (buttonSetting == middleClickFriends && Mindless.playerRelationsManager != null) {
+            Mindless.playerRelationsManager.setMiddleClickFriends(buttonSetting.isToggled());
         }
     }
 
     @Override
     public void onEnable() {
-        if (Raven.playerRelationsManager != null) {
-            Raven.playerRelationsManager.setActive(true);
+        if (Mindless.playerRelationsManager != null) {
+            Mindless.playerRelationsManager.setActive(true);
         }
     }
 
     @Override
     public void onDisable() {
-        if (Raven.playerRelationsManager != null) {
-            Raven.playerRelationsManager.setActive(false);
+        if (Mindless.playerRelationsManager != null) {
+            Mindless.playerRelationsManager.setActive(false);
         }
     }
 }

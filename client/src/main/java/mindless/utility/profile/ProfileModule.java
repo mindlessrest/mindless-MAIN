@@ -1,6 +1,6 @@
 package mindless.utility.profile;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.ClickGui;
 import mindless.module.Module;
 import mindless.module.impl.client.Settings;
@@ -19,14 +19,14 @@ public class ProfileModule extends Module {
         this.profile = profile;
         this.displayName = name;
         this.registerSetting(new ButtonSetting("Update profile", () -> {
-            Raven.profileManager.saveProfile(this.profile);
+            Mindless.profileManager.saveProfile(this.profile);
             saved = true;
             Utils.sendMessage("&7Updated profile: &b" + getName());
         }));
         this.registerSetting(profileNameSetting = new TextSetting("Profile name", name, "Type a new name...", 32, this::renameProfile));
         this.registerSetting(new ButtonSetting("Delete profile", () -> {
             String profileName = getName();
-            if (Raven.profileManager.deleteProfile(profileName)) {
+            if (Mindless.profileManager.deleteProfile(profileName)) {
                 Utils.sendMessage("&7Deleted profile: &b" + profileName);
             }
         }));
@@ -39,12 +39,12 @@ public class ProfileModule extends Module {
             return;
         }
 
-        Raven.profileManager.loadProfile(this.getName());
+        Mindless.profileManager.loadProfile(this.getName());
 
         // The load sets this itself, and only when it got far enough to mean it. Claiming the
         // profile regardless is how a failed load ended up presented as the new profile, with the
         // old one's module state underneath it and "Update profile" ready to write that to disk.
-        if (Raven.currentProfile != profile) {
+        if (Mindless.currentProfile != profile) {
             return;
         }
 
@@ -56,10 +56,10 @@ public class ProfileModule extends Module {
 
     @Override
     public boolean isEnabled() {
-        if (Raven.currentProfile == null) {
+        if (Mindless.currentProfile == null) {
             return false;
         }
-        return Raven.currentProfile.getModule() == this;
+        return Mindless.currentProfile.getModule() == this;
     }
 
     @Override
@@ -73,12 +73,12 @@ public class ProfileModule extends Module {
     }
 
     private void renameProfile() {
-        if (Raven.profileManager == null) {
+        if (Mindless.profileManager == null) {
             return;
         }
 
         String oldName = getName();
-        if (Raven.profileManager.renameProfile(profile, profileNameSetting.getText())) {
+        if (Mindless.profileManager.renameProfile(profile, profileNameSetting.getText())) {
             profileNameSetting.setText(profile.getName());
             if (!oldName.equals(profile.getName())) {
                 Utils.sendMessage("&7Renamed profile: &b" + oldName + " &7to &b" + profile.getName());

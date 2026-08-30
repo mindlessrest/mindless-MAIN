@@ -2,7 +2,7 @@ package mindless.clickgui.components.impl;
 
 import mindless.module.impl.client.Gui;
 import mindless.utility.RenderUtils;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiTextField;
 import net.minecraftforge.fml.relauncher.ReflectionHelper;
@@ -85,7 +85,7 @@ public class ClickGuiTextField {
         float width = Math.max(0.0f, right - left - 4.0f);
         float backgroundBottom = bottom - 1.0f;
         float height = Math.max(0.0f, backgroundBottom - top);
-        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
 
         String fullText = textField.getText();
         int lineScrollOffset = Math.max(0, Math.min(getIntField(textField, LINE_SCROLL_OFFSET_FIELD, 0), fullText.length()));
@@ -150,7 +150,7 @@ public class ClickGuiTextField {
         }
     }
 
-    private String getVisibleText(String text, int startIndex, float width, RavenFontRenderer renderer) {
+    private String getVisibleText(String text, int startIndex, float width, MindlessFontRenderer renderer) {
         if (text == null || text.isEmpty() || width <= 0.0f) {
             return "";
         }
@@ -175,7 +175,7 @@ public class ClickGuiTextField {
         float textLeft,
         float top,
         float bottom,
-        RavenFontRenderer renderer,
+        MindlessFontRenderer renderer,
         String visibleText,
         int cursorPosition,
         int selectionEnd,
@@ -203,7 +203,7 @@ public class ClickGuiTextField {
         float textLeft,
         float top,
         float bottom,
-        RavenFontRenderer renderer,
+        MindlessFontRenderer renderer,
         String visibleText,
         int cursorPosition,
         int visibleStart,
@@ -221,12 +221,12 @@ public class ClickGuiTextField {
         RenderUtils.drawRect(cursorX, top + 2.0f, cursorX + 1.0f, bottom - 2.0f, CURSOR_COLOR);
     }
 
-    private float centeredScaledTextY(float top, float height, RavenFontRenderer renderer) {
+    private float centeredScaledTextY(float top, float height, MindlessFontRenderer renderer) {
         float textBoxHeight = Math.max(1.0f, (renderer.getTextBottomOffset() - renderer.getTextTopOffset()) * textScale);
         return top + (height - textBoxHeight) / 2.0f - renderer.getTextTopOffset() * textScale;
     }
 
-    private void drawScaledText(String text, float x, float y, int color, RavenFontRenderer renderer) {
+    private void drawScaledText(String text, float x, float y, int color, MindlessFontRenderer renderer) {
         GL11.glPushMatrix();
         GL11.glScaled(textScale, textScale, textScale);
         renderer.drawString(text, x / textScale, y / textScale, color, false);

@@ -4,7 +4,7 @@ import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 
 /**
  * How the chat box looks: its panel, its typeface, and whether messages are labelled with the
@@ -111,7 +111,7 @@ public class ChatModule extends Module {
      * into lines using its own metrics before this ever runs, so the default path has to stay
      * exactly the font those line breaks were measured with.
      */
-    public static RavenFontRenderer getCustomFont() {
+    public static MindlessFontRenderer getCustomFont() {
         if (!active() || font == null || isMinecraftFontSelected()) {
             return null;
         }

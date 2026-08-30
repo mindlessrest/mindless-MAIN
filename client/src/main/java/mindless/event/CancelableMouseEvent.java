@@ -9,7 +9,7 @@ import net.minecraftforge.fml.common.eventhandler.Cancelable;
  */
 @Cancelable
 public class CancelableMouseEvent extends MouseEvent {
-    private boolean ravenCanceled;
+    private boolean mindlessCanceled;
 
     @Override
     public boolean isCancelable() {
@@ -18,11 +18,11 @@ public class CancelableMouseEvent extends MouseEvent {
 
     @Override
     public boolean isCanceled() {
-        return ravenCanceled;
+        return mindlessCanceled;
     }
 
     @Override
     public void setCanceled(boolean cancel) {
-        ravenCanceled = cancel;
+        mindlessCanceled = cancel;
     }
 }

@@ -1,6 +1,6 @@
 package mindless.module.impl.player;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.event.ClientRotationEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.module.Module;
@@ -71,7 +71,7 @@ public class WaterBucket extends Module {
         if (!(shouldPickup = pickupWater.isToggled())) {
             this.lastSlot = -1;
         }
-        if (Raven.DEBUG) {
+        if (Mindless.DEBUG) {
             Utils.sendModuleMessage(this, "&7Placed with motionY &d" + Utils.round(mc.thePlayer.motionY, 2) + " &7and fall distance &d" + Utils.round(mc.thePlayer.fallDistance, 2));
         }
     }

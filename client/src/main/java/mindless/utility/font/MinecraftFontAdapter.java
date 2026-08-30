@@ -3,7 +3,7 @@ package mindless.utility.font;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 
-public final class MinecraftFontAdapter implements RavenFontRenderer {
+public final class MinecraftFontAdapter implements MindlessFontRenderer {
     private static final String COLOR_CODES = "0123456789abcdef";
     private static final char SECTION_SIGN = '\u00a7';
     private final FontRenderer fontRenderer;

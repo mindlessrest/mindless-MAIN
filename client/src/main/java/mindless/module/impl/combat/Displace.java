@@ -1,7 +1,7 @@
 package mindless.module.impl.combat;
 
 import mindless.utility.RenderUtils;
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.event.AttackEvent;
 import mindless.event.ClientRotationEvent;
 import mindless.event.GameTickEvent;
@@ -366,7 +366,7 @@ public class Displace extends Module {
         double scanDistance = scanRadius.getInput();
         Map<Long, Boolean> voidColumns = new HashMap<>();
         Map<Long, VoidNeighborhood> voidNeighborhoods = new HashMap<>();
-        VoidDebugScan debugScan = Raven.DEBUG
+        VoidDebugScan debugScan = Mindless.DEBUG
                 ? new VoidDebugScan(mc.theWorld, target.getEntityId(), target.posX, target.posY, target.posZ,
                 scanDistance, preferredYawPositive, preferredYawNegative)
                 : null;
@@ -966,7 +966,7 @@ public class Displace extends Module {
         }
 
         outboundBlink = new LagRequest(EnumLagDirection.ONLY_OUTBOUND, new ModuleBackedTimeout(this));
-        Raven.lagHandler.requestLag(outboundBlink);
+        Mindless.lagHandler.requestLag(outboundBlink);
     }
 
     private void releaseUseForOverrideAttack() {
@@ -1280,7 +1280,7 @@ public class Displace extends Module {
 
     private void renderFrozenVoidDebug() {
         VoidDebugScan scan = frozenVoidDebugScan;
-        if (!Raven.DEBUG || scan == null) {
+        if (!Mindless.DEBUG || scan == null) {
             return;
         }
 
@@ -1816,7 +1816,7 @@ public class Displace extends Module {
         }
 
         outboundBlink = new LagRequest(EnumLagDirection.ONLY_OUTBOUND, new ModuleBackedTimeout(this));
-        Raven.lagHandler.requestLag(outboundBlink);
+        Mindless.lagHandler.requestLag(outboundBlink);
         releaseBlinkNextGameTick = true;
     }
 
@@ -1840,7 +1840,7 @@ public class Displace extends Module {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onVoidDebugAttackPacket(SendPacketEvent e) {
-        if (!Raven.DEBUG || !isVoidMode() || !active || !Utils.nullCheck() || e.isCanceled()
+        if (!Mindless.DEBUG || !isVoidMode() || !active || !Utils.nullCheck() || e.isCanceled()
                 || !(e.getPacket() instanceof C02PacketUseEntity)) {
             return;
         }
@@ -1890,7 +1890,7 @@ public class Displace extends Module {
             resetOverrideAttackState();
         }
 
-        if (!Raven.DEBUG || !isVoidMode()) {
+        if (!Mindless.DEBUG || !isVoidMode()) {
             latestVoidDebugScan = null;
         }
 

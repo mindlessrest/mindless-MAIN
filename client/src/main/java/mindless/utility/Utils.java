@@ -5,7 +5,7 @@ import com.google.common.collect.Lists;
 import com.google.gson.JsonObject;
 import mindless.helper.MouseHelper;
 import mindless.runtime.AccessorBridge;
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
@@ -61,9 +61,9 @@ public class Utils implements IMinecraftInstance {
     public static final Logger log = LogManager.getLogger();
 
     public static boolean addEnemy(String name) {
-        if (Raven.playerRelationsManager != null) {
+        if (Mindless.playerRelationsManager != null) {
             // Chat feedback is owned by callers (e.g. .enemy command) — avoid double messages with sendMessage + replyWithHeader
-            return Raven.playerRelationsManager.addEnemy(name);
+            return Mindless.playerRelationsManager.addEnemy(name);
         }
         if (enemies.add(name.toLowerCase())) {
             sendMessage("&7Added enemy&7: &b" + name);
@@ -73,8 +73,8 @@ public class Utils implements IMinecraftInstance {
     }
 
     public static boolean removeEnemy(String name) {
-        if (Raven.playerRelationsManager != null) {
-            return Raven.playerRelationsManager.removeEnemy(name);
+        if (Mindless.playerRelationsManager != null) {
+            return Mindless.playerRelationsManager.removeEnemy(name);
         }
         if (enemies.remove(name.toLowerCase())) {
             sendMessage("&7Removed enemy&7: &b" + name);
@@ -389,8 +389,8 @@ public class Utils implements IMinecraftInstance {
     }
 
     public static boolean removeFriend(String name) {
-        if (Raven.playerRelationsManager != null) {
-            return Raven.playerRelationsManager.removeFriend(name);
+        if (Mindless.playerRelationsManager != null) {
+            return Mindless.playerRelationsManager.removeFriend(name);
         }
         if (friends.remove(name.toLowerCase())) {
             sendMessage("&7Removed &afriend&7: &b" + name);
@@ -418,8 +418,8 @@ public class Utils implements IMinecraftInstance {
     }
 
     public static boolean addFriend(String name) {
-        if (Raven.playerRelationsManager != null) {
-            return Raven.playerRelationsManager.addFriend(name);
+        if (Mindless.playerRelationsManager != null) {
+            return Mindless.playerRelationsManager.addFriend(name);
         }
         if (friends.add(name.toLowerCase())) {
             sendMessage("&7Added &afriend&7: &b" + name);
@@ -632,8 +632,8 @@ public class Utils implements IMinecraftInstance {
         if (ModuleManager.relationships != null && !ModuleManager.relationships.isEnabled()) {
             return false;
         }
-        if (Raven.playerRelationsManager != null) {
-            return Raven.playerRelationsManager.isEnemy(name);
+        if (Mindless.playerRelationsManager != null) {
+            return Mindless.playerRelationsManager.isEnemy(name);
         }
         return name != null && !enemies.isEmpty() && enemies.contains(name.toLowerCase());
     }
@@ -717,8 +717,8 @@ public class Utils implements IMinecraftInstance {
         if (ModuleManager.relationships != null && !ModuleManager.relationships.isEnabled()) {
             return false;
         }
-        if (Raven.playerRelationsManager != null) {
-            return Raven.playerRelationsManager.isFriend(name);
+        if (Mindless.playerRelationsManager != null) {
+            return Mindless.playerRelationsManager.isFriend(name);
         }
         return name != null && !friends.isEmpty() && friends.contains(name.toLowerCase());
     }

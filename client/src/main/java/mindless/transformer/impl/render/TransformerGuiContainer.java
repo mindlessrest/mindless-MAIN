@@ -13,7 +13,7 @@ import net.minecraft.inventory.Slot;
 public class TransformerGuiContainer {
     @CInline
     @CInject(method = "mouseClicked", target = @CTarget("HEAD"), cancellable = true)
-    private void raven$cancelManagedInventoryMouseClick(int mouseX, int mouseY, int mouseButton, InjectionCallback callbackInfo) {
+    private void mindless$cancelManagedInventoryMouseClick(int mouseX, int mouseY, int mouseButton, InjectionCallback callbackInfo) {
         if (shouldCancelManualInventoryInput()) {
             callbackInfo.setCancelled(true);
         }
@@ -21,7 +21,7 @@ public class TransformerGuiContainer {
 
     @CInline
     @CInject(method = "mouseClickMove", target = @CTarget("HEAD"), cancellable = true)
-    private void raven$cancelManagedInventoryMouseDrag(int mouseX, int mouseY, int clickedMouseButton, long timeSinceLastClick, InjectionCallback callbackInfo) {
+    private void mindless$cancelManagedInventoryMouseDrag(int mouseX, int mouseY, int clickedMouseButton, long timeSinceLastClick, InjectionCallback callbackInfo) {
         if (shouldCancelManualInventoryInput()) {
             callbackInfo.setCancelled(true);
         }
@@ -29,7 +29,7 @@ public class TransformerGuiContainer {
 
     @CInline
     @CInject(method = "mouseReleased", target = @CTarget("HEAD"), cancellable = true)
-    private void raven$cancelManagedInventoryMouseRelease(int mouseX, int mouseY, int state, InjectionCallback callbackInfo) {
+    private void mindless$cancelManagedInventoryMouseRelease(int mouseX, int mouseY, int state, InjectionCallback callbackInfo) {
         if (shouldCancelManualInventoryInput()) {
             callbackInfo.setCancelled(true);
         }
@@ -37,7 +37,7 @@ public class TransformerGuiContainer {
 
     @CInline
     @CInject(method = "handleMouseClick", target = @CTarget("HEAD"), cancellable = true)
-    private void raven$cancelManagedInventoryWindowClick(Slot slotIn, int slotId, int clickedButton, int clickType, InjectionCallback callbackInfo) {
+    private void mindless$cancelManagedInventoryWindowClick(Slot slotIn, int slotId, int clickedButton, int clickType, InjectionCallback callbackInfo) {
         if (shouldCancelManualInventoryInput()) {
             callbackInfo.setCancelled(true);
         }

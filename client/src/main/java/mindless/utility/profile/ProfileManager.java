@@ -1,7 +1,7 @@
 package mindless.utility.profile;
 
 import com.google.gson.*;
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.ClickGui;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.event.PostProfileLoadEvent;
@@ -124,7 +124,7 @@ public class ProfileManager implements IMinecraftInstance {
         }
         final String name = profile.getName();
         try {
-            Raven.getCachedExecutor().execute(new Runnable() {
+            Mindless.getCachedExecutor().execute(new Runnable() {
                 public void run() {
                     writeProfileFile(name, serialized);
                 }
@@ -140,15 +140,15 @@ public class ProfileManager implements IMinecraftInstance {
             JsonObject jsonObject = new JsonObject();
             jsonObject.addProperty("keybind", profile.getModule().getKeycode());
             JsonArray jsonArray = new JsonArray();
-            for (Module module : Raven.moduleManager.getModules()) {
+            for (Module module : Mindless.moduleManager.getModules()) {
                 if (module.ignoreOnSave && !shouldSaveModuleStateOnly(module)) {
                     continue;
                 }
                 JsonObject moduleInformation = module.ignoreOnSave ? getModuleStateObject(module) : getJsonObject(module);
                 jsonArray.add(moduleInformation);
             }
-            if (Raven.scriptManager != null && Raven.scriptManager.scripts != null) {
-                for (Module module : Raven.scriptManager.scripts.values()) {
+            if (Mindless.scriptManager != null && Mindless.scriptManager.scripts != null) {
+                for (Module module : Mindless.scriptManager.scripts.values()) {
                     if (module.ignoreOnSave) {
                         continue;
                     }
@@ -234,7 +234,7 @@ public class ProfileManager implements IMinecraftInstance {
      * overwrites every module with the incoming one's state, and the game closing.
      */
     public void flushCurrentProfile() {
-        Profile profile = Raven.currentProfile;
+        Profile profile = Mindless.currentProfile;
         if (profile == null || !isAutoSaveEnabled() || profile.getModule().saved) {
             return;
         }
@@ -250,7 +250,7 @@ public class ProfileManager implements IMinecraftInstance {
      * saved, and switching profiles threw the same changes away without a word.
      */
     public void autoSaveTick() {
-        Profile profile = Raven.currentProfile;
+        Profile profile = Mindless.currentProfile;
         if (profile == null || !isAutoSaveEnabled()) {
             dirtySince = 0L;
             return;
@@ -438,7 +438,7 @@ public class ProfileManager implements IMinecraftInstance {
 
         // Anything unsaved belongs to the profile being left, and the load below overwrites every
         // module with the incoming one. Written out here or gone without a word.
-        Profile outgoing = Raven.currentProfile;
+        Profile outgoing = Mindless.currentProfile;
         if (outgoing != null && !outgoing.getName().equalsIgnoreCase(profileName)) {
             flushCurrentProfile();
         }
@@ -480,9 +480,9 @@ public class ProfileManager implements IMinecraftInstance {
                 continue;
             }
 
-            Module module = Raven.moduleManager.getModule(moduleName);
-            if (module == null && moduleName.startsWith("sc-") && Raven.scriptManager != null) {
-                for (Module scriptModule : Raven.scriptManager.scripts.values()) {
+            Module module = Mindless.moduleManager.getModule(moduleName);
+            if (module == null && moduleName.startsWith("sc-") && Mindless.scriptManager != null) {
+                for (Module scriptModule : Mindless.scriptManager.scripts.values()) {
                     if (scriptModule.getName().equals(moduleName.substring(3))) {
                         module = scriptModule;
                     }
@@ -522,10 +522,10 @@ public class ProfileManager implements IMinecraftInstance {
             }
         }
 
-        if (!loadedRelationshipsState && ModuleManager.relationships != null && Raven.playerRelationsManager != null) {
+        if (!loadedRelationshipsState && ModuleManager.relationships != null && Mindless.playerRelationsManager != null) {
             RequestedModuleState relationshipsState = requestedModuleStates.get(ModuleManager.relationships);
             if (relationshipsState != null) {
-                relationshipsState.enabled = Raven.playerRelationsManager.isActive();
+                relationshipsState.enabled = Mindless.playerRelationsManager.isActive();
             }
         }
 
@@ -595,7 +595,7 @@ public class ProfileManager implements IMinecraftInstance {
 
         Profile loaded = getProfile(profileName);
         if (loaded != null) {
-            Raven.currentProfile = loaded;
+            Mindless.currentProfile = loaded;
             // Freshly read from disk, so nothing is owed until something changes.
             loaded.getModule().saved = true;
         }
@@ -604,7 +604,7 @@ public class ProfileManager implements IMinecraftInstance {
 
         try {
             boolean loadGuiPositions = Gui.loadGuiPositions.isToggled();
-            Raven.clickGui.refreshAfterProfileLoad();
+            Mindless.clickGui.refreshAfterProfileLoad();
             if (loadGuiPositions) {
                 for (CategoryComponent c : ClickGui.categories) {
                     SavedCategoryState state = savedGuiCategoryState.get(c.category.name());
@@ -617,14 +617,14 @@ public class ProfileManager implements IMinecraftInstance {
                             savedModernGuiOffset[0], savedModernGuiOffset[1]);
                 }
             }
-            Raven.clickGui.enforceHorizontalProfileLayout();
+            Mindless.clickGui.enforceHorizontalProfileLayout();
         }
         catch (Exception e) {
             e.printStackTrace();
         }
 
-        if (Raven.currentProfile != null) {
-            MinecraftForge.EVENT_BUS.post(new PostProfileLoadEvent(Raven.currentProfile.getName()));
+        if (Mindless.currentProfile != null) {
+            MinecraftForge.EVENT_BUS.post(new PostProfileLoadEvent(Mindless.currentProfile.getName()));
         }
     }
 
@@ -902,9 +902,9 @@ public class ProfileManager implements IMinecraftInstance {
     }
 
     private List<Module> getLoadableModules() {
-        List<Module> loadableModules = new ArrayList<Module>(Raven.getModuleManager().getModules());
-        if (Raven.scriptManager != null && Raven.scriptManager.scripts != null) {
-            loadableModules.addAll(Raven.scriptManager.scripts.values());
+        List<Module> loadableModules = new ArrayList<Module>(Mindless.getModuleManager().getModules());
+        if (Mindless.scriptManager != null && Mindless.scriptManager.scripts != null) {
+            loadableModules.addAll(Mindless.scriptManager.scripts.values());
         }
         return loadableModules;
     }
@@ -928,12 +928,12 @@ public class ProfileManager implements IMinecraftInstance {
             return false;
         }
 
-        boolean wasCurrentProfile = removedProfile != null && Raven.currentProfile == removedProfile;
+        boolean wasCurrentProfile = removedProfile != null && Mindless.currentProfile == removedProfile;
         if (removedProfile != null) {
             profiles.remove(removedProfile);
         }
         if (wasCurrentProfile) {
-            Raven.currentProfile = null;
+            Mindless.currentProfile = null;
         }
 
         if (profiles.isEmpty()) {
@@ -955,8 +955,8 @@ public class ProfileManager implements IMinecraftInstance {
     }
 
     public void loadProfiles() {
-        String currentProfileName = Raven.currentProfile != null ? Raven.currentProfile.getName() : null;
-        boolean currentProfileSaved = Raven.currentProfile == null || Raven.currentProfile.getModule().saved;
+        String currentProfileName = Mindless.currentProfile != null ? Mindless.currentProfile.getName() : null;
+        boolean currentProfileSaved = Mindless.currentProfile == null || Mindless.currentProfile.getModule().saved;
         profiles.clear();
         if (!directory.exists() && !directory.mkdirs()) {
             Utils.sendMessage("&cFailed to load profiles.");
@@ -1000,14 +1000,14 @@ public class ProfileManager implements IMinecraftInstance {
         }
 
         if (currentProfileName != null) {
-            Raven.currentProfile = getProfile(currentProfileName);
-            if (Raven.currentProfile != null) {
-                Raven.currentProfile.getModule().saved = currentProfileSaved;
+            Mindless.currentProfile = getProfile(currentProfileName);
+            if (Mindless.currentProfile != null) {
+                Mindless.currentProfile.getModule().saved = currentProfileSaved;
             }
         }
         
         // Auto-load the last active profile, or default if none saved
-        if (Raven.currentProfile == null && !profiles.isEmpty()) {
+        if (Mindless.currentProfile == null && !profiles.isEmpty()) {
             String lastProfile = getLastProfile();
             Profile toLoad = null;
             if (lastProfile != null) {
@@ -1019,7 +1019,7 @@ public class ProfileManager implements IMinecraftInstance {
             if (toLoad == null) {
                 toLoad = profiles.get(0);
             }
-            Raven.currentProfile = toLoad;
+            Mindless.currentProfile = toLoad;
             loadProfile(toLoad.getName());
         }
 
@@ -1053,7 +1053,7 @@ public class ProfileManager implements IMinecraftInstance {
     }
 
     public void loadInitialProfile() {
-        Raven.currentProfile = null;
+        Mindless.currentProfile = null;
     }
 
     public void failedMessage(String reason, String name) {
@@ -1100,10 +1100,10 @@ public class ProfileManager implements IMinecraftInstance {
     }
 
     private void refreshProfileModules() {
-        if (Raven.clickGui == null || Raven.clickGui.categories == null) {
+        if (Mindless.clickGui == null || Mindless.clickGui.categories == null) {
             return;
         }
-        for (CategoryComponent categoryComponent : Raven.clickGui.categories) {
+        for (CategoryComponent categoryComponent : Mindless.clickGui.categories) {
             if (categoryComponent.category == Module.category.profiles) {
                 categoryComponent.reloadModules(true);
                 break;

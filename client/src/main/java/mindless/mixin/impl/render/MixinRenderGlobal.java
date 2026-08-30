@@ -33,21 +33,21 @@ public class MixinRenderGlobal {
     }
 
     @Unique
-    private boolean raven$isFreelookActive() {
+    private boolean mindless$isFreelookActive() {
         return ModuleManager.freelook != null && ModuleManager.freelook.isEnabled() && Freelook.perspectiveToggled;
     }
 
     @Redirect(method = "setupTerrain", at = @At(value = "FIELD", target = "Lnet/minecraft/entity/Entity;rotationPitch:F"))
-    private float raven$setupTerrainRotationPitch(Entity entity) {
-        if (entity == mc.getRenderViewEntity() && raven$isFreelookActive()) {
+    private float mindless$setupTerrainRotationPitch(Entity entity) {
+        if (entity == mc.getRenderViewEntity() && mindless$isFreelookActive()) {
             return Freelook.cameraPitch;
         }
         return entity.rotationPitch;
     }
 
     @Redirect(method = "setupTerrain", at = @At(value = "FIELD", target = "Lnet/minecraft/entity/Entity;rotationYaw:F"))
-    private float raven$setupTerrainRotationYaw(Entity entity) {
-        if (entity == mc.getRenderViewEntity() && raven$isFreelookActive()) {
+    private float mindless$setupTerrainRotationYaw(Entity entity) {
+        if (entity == mc.getRenderViewEntity() && mindless$isFreelookActive()) {
             return Freelook.cameraYaw;
         }
         return entity.rotationYaw;
@@ -60,10 +60,10 @@ public class MixinRenderGlobal {
                     target = "Lnet/minecraft/client/renderer/RenderGlobal;getViewVector(Lnet/minecraft/entity/Entity;D)Lorg/lwjgl/util/vector/Vector3f;"
             )
     )
-    private Vector3f raven$setupTerrainViewVector(RenderGlobal renderGlobal, Entity entityIn, double partialTicks) {
+    private Vector3f mindless$setupTerrainViewVector(RenderGlobal renderGlobal, Entity entityIn, double partialTicks) {
         float pitch;
         float yaw;
-        if (entityIn == mc.getRenderViewEntity() && raven$isFreelookActive()) {
+        if (entityIn == mc.getRenderViewEntity() && mindless$isFreelookActive()) {
             pitch = Freelook.cameraPitch;
             yaw = Freelook.cameraYaw;
         } else {

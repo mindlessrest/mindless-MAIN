@@ -11,7 +11,7 @@ import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.ModuleFont;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
@@ -45,7 +45,7 @@ import java.util.Map;
  * and distance. Items of the same kind close together collapse into one card with a combined count,
  * so a scattered pile of forty ingots reads as one number instead of forty overlapping boxes.
  *
- * <p>The layout follows M1CK3Y's ResourceESP script for Raven bS (GPL-3.0), reimplemented against
+ * <p>The layout follows M1CK3Y's ResourceESP script for Mindless bS (GPL-3.0), reimplemented against
  * this client's own rendering rather than the script API. Two things are done differently on
  * purpose. Items are identified by their {@link Item} and, for potions, by the effect they carry,
  * where the script compared lowercased display-name substrings -- that misses anything the server
@@ -278,7 +278,7 @@ public class ItemESP extends Module {
     }
 
     private void draw(ScaledResolution resolution) {
-        RavenFontRenderer text = FontManager.getHudRenderer(ModuleFont.nameOf(font), 1.0f);
+        MindlessFontRenderer text = FontManager.getHudRenderer(ModuleFont.nameOf(font), 1.0f);
         float scale = (float) iconScale.getInput();
         float icon = 16f * scale;
         float padding = 2f * scale;

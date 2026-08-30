@@ -75,7 +75,7 @@ public class MixinPlayerControllerMP {
      * ({@code PlayerControllerMP}). Override at assignment time when FastMine break delay &lt; 5 ticks.
      */
     @Unique
-    private void raven$fastMineApplyBreakDelaySlider() {
+    private void mindless$fastMineApplyBreakDelaySlider() {
         BedAura bedAura = ModuleManager.bedAura;
         if (bedAura != null && bedAura.shouldOverrideFastMine()) {
             int delay = bedAura.getBreakDelayTicks();
@@ -98,23 +98,23 @@ public class MixinPlayerControllerMP {
         method = "clickBlock",
         at = @At(value = "FIELD", opcode = Opcodes.PUTFIELD, target = "Lnet/minecraft/client/multiplayer/PlayerControllerMP;blockHitDelay:I", ordinal = 0, shift = At.Shift.AFTER)
     )
-    private void raven$fastMineAfterClickBlockSetDelay(BlockPos loc, EnumFacing face, CallbackInfoReturnable<Boolean> cir) {
-        raven$fastMineApplyBreakDelaySlider();
+    private void mindless$fastMineAfterClickBlockSetDelay(BlockPos loc, EnumFacing face, CallbackInfoReturnable<Boolean> cir) {
+        mindless$fastMineApplyBreakDelaySlider();
     }
 
     @Inject(
         method = "onPlayerDamageBlock",
         at = @At(value = "FIELD", opcode = Opcodes.PUTFIELD, target = "Lnet/minecraft/client/multiplayer/PlayerControllerMP;blockHitDelay:I", ordinal = 1, shift = At.Shift.AFTER)
     )
-    private void raven$fastMineAfterCreativeMiningSetDelay(BlockPos posBlock, EnumFacing directionFacing, CallbackInfoReturnable<Boolean> cir) {
-        raven$fastMineApplyBreakDelaySlider();
+    private void mindless$fastMineAfterCreativeMiningSetDelay(BlockPos posBlock, EnumFacing directionFacing, CallbackInfoReturnable<Boolean> cir) {
+        mindless$fastMineApplyBreakDelaySlider();
     }
 
     @Inject(
         method = "onPlayerDamageBlock",
         at = @At(value = "FIELD", opcode = Opcodes.PUTFIELD, target = "Lnet/minecraft/client/multiplayer/PlayerControllerMP;blockHitDelay:I", ordinal = 2, shift = At.Shift.AFTER)
     )
-    private void raven$fastMineAfterBreakBlockSetDelay(BlockPos posBlock, EnumFacing directionFacing, CallbackInfoReturnable<Boolean> cir) {
-        raven$fastMineApplyBreakDelaySlider();
+    private void mindless$fastMineAfterBreakBlockSetDelay(BlockPos posBlock, EnumFacing directionFacing, CallbackInfoReturnable<Boolean> cir) {
+        mindless$fastMineApplyBreakDelaySlider();
     }
 }

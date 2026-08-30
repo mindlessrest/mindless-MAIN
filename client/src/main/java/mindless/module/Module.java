@@ -1,6 +1,6 @@
 package mindless.module;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.helper.MouseHelper;
 import mindless.module.impl.combat.AntiKnockback;
 import mindless.module.setting.Setting;
@@ -138,7 +138,7 @@ public class Module {
         }
 
         if (this.script != null) {
-            Raven.scriptManager.onEnable(script);
+            Mindless.scriptManager.onEnable(script);
         }
         else {
             if (!alwaysOn) {
@@ -158,7 +158,7 @@ public class Module {
         this.setEnabled(false);
         ModuleManager.organizedModules.remove(this);
         if (this.script != null) {
-            Raven.scriptManager.onDisable(script);
+            Mindless.scriptManager.onDisable(script);
         }
         else {
             if (!alwaysOn) {
@@ -231,8 +231,8 @@ public class Module {
         } else {
             this.enable();
         }
-        if (Raven.currentProfile != null && !(this instanceof mindless.module.impl.client.Gui)) {
-            Raven.currentProfile.getModule().saved = false;
+        if (Mindless.currentProfile != null && !(this instanceof mindless.module.impl.client.Gui)) {
+            Mindless.currentProfile.getModule().saved = false;
         }
     }
 

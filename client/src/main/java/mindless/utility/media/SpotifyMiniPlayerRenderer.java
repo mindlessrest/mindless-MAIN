@@ -1,6 +1,6 @@
 package mindless.utility.media;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.SpotifyMiniPlayer;
 import mindless.module.impl.render.AudioVisualizer;
@@ -9,7 +9,7 @@ import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.Minecraft;
@@ -84,9 +84,9 @@ public final class SpotifyMiniPlayerRenderer {
     private static float overflowLines;
     /** Lines past the first that a lyric may push the panel taller for. */
     private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
-    private static RavenFontRenderer cachedAdaptiveLyricFont;
+    private static MindlessFontRenderer cachedAdaptiveLyricFont;
     private static volatile String asyncAdaptiveFontKey;
-    private static volatile RavenFontRenderer asyncAdaptiveLyricFont;
+    private static volatile MindlessFontRenderer asyncAdaptiveLyricFont;
     private static Future<?> asyncAdaptiveFontTask;
     private static String marqueeTitle = "";
     private static long marqueeStartedAt;
@@ -235,8 +235,8 @@ public final class SpotifyMiniPlayerRenderer {
         float textScale = lowScaleLayout
                 ? Math.max(0.82F, Math.min(0.98F, 0.56F + uiScale * 0.62F))
                 : Math.max(0.78F, Math.min(1.02F, 0.84F + uiScale * 0.18F));
-        RavenFontRenderer uiFont = getUiFontRenderer(textScale);
-        RavenFontRenderer timeFont = uiFont;
+        MindlessFontRenderer uiFont = getUiFontRenderer(textScale);
+        MindlessFontRenderer timeFont = uiFont;
         TimedLyrics timedLyrics = mediaVisible ? mediaClient.getTimedLyrics() : TimedLyrics.empty();
         long livePositionMs = mediaInfo.getLivePositionMs();
         boolean renderLyrics = showLyrics && timedLyrics.isAvailable() && !timedLyrics.getLines().isEmpty();
@@ -245,7 +245,7 @@ public final class SpotifyMiniPlayerRenderer {
         // which is most of what read as flicker.
         boolean lyricsArea = showLyrics && (renderLyrics || timedLyrics.isLoading());
         LyricsTimeline lyricsTimeline = renderLyrics ? buildLyricsTimeline(mediaInfo, timedLyrics, livePositionMs) : null;
-        RavenFontRenderer lyricFont = uiFont;
+        MindlessFontRenderer lyricFont = uiFont;
         float lowScaleBreathingRoom = lowScaleLayout ? 8.0F : 0.0F;
         float width = getPanelWidth(mediaVisible, showAlbumArt) * uiScale + lowScaleBreathingRoom;
         float lyricOverflow = lyricsArea ? lyricOverflowHeight(timedLyrics) : 0.0F;
@@ -557,7 +557,7 @@ public final class SpotifyMiniPlayerRenderer {
         return new LyricsTimeline(timedLyrics, activeIndex, "", seeked, lyricLookupPositionMs);
     }
 
-    private static void renderLyricsTimeline(RavenFontRenderer uiFont, LyricsTimeline timeline, float textX, float lyricY,
+    private static void renderLyricsTimeline(MindlessFontRenderer uiFont, LyricsTimeline timeline, float textX, float lyricY,
                                              float textWidth, float lineAdvance, float viewportHeight,
                                              int primaryColor, int secondaryColor) {
         if (!timeline.statusMessage.isEmpty() || timeline.timedLyrics == null) {
@@ -640,7 +640,7 @@ public final class SpotifyMiniPlayerRenderer {
         }
     }
 
-    private static void drawScrollingTitle(RavenFontRenderer font, String title, float x, float y,
+    private static void drawScrollingTitle(MindlessFontRenderer font, String title, float x, float y,
                                            float availableWidth, int color) {
         String safeTitle = safeText(title, "Nothing playing");
         int titleWidth = font.getStringWidth(safeTitle);
@@ -675,7 +675,7 @@ public final class SpotifyMiniPlayerRenderer {
         }
     }
 
-    private static void drawKaraokeLyric(RavenFontRenderer font, WrappedLyric lyric,
+    private static void drawKaraokeLyric(MindlessFontRenderer font, WrappedLyric lyric,
                                          LyricsTimeline timeline, float textX, float drawY,
                                          float lineAdvance, int primaryColor, int secondaryColor) {
         boolean karaokeEnabled = SpotifyMiniPlayer.karaokeLyrics != null
@@ -730,7 +730,7 @@ public final class SpotifyMiniPlayerRenderer {
         }
     }
 
-    private static void drawGradientLyricString(RavenFontRenderer font, String text, float x,
+    private static void drawGradientLyricString(MindlessFontRenderer font, String text, float x,
                                                 float y, int alpha, double phaseOffset) {
         // One font pass keeps karaoke animation cheap. The previous per-letter
         // draw calls repeatedly pushed matrices and rebound state, which could
@@ -771,7 +771,7 @@ public final class SpotifyMiniPlayerRenderer {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
-    private static List<WrappedLyric> getWrappedLyrics(RavenFontRenderer font, TimedLyrics timedLyrics,
+    private static List<WrappedLyric> getWrappedLyrics(MindlessFontRenderer font, TimedLyrics timedLyrics,
                                                        float textWidth, float lineAdvance) {
         String layoutKey = SpotifyMiniPlayer.lyricsFontName() + ":" + Math.round(HUD.getSelectedFontScale() * 1000.0F)
                 + ":" + Math.round(textWidth) + ":" + Math.round(lineAdvance * 100.0F);
@@ -802,10 +802,10 @@ public final class SpotifyMiniPlayerRenderer {
         if (asyncWrappedTask == null || asyncWrappedTask.isDone()) {
             final TimedLyrics lyricsRef = timedLyrics;
             final String keyRef = layoutKey;
-            final RavenFontRenderer fontRef = font;
+            final MindlessFontRenderer fontRef = font;
             final float tw = textWidth;
             final float la = lineAdvance;
-            asyncWrappedTask = Raven.getCachedExecutor().submit(new Runnable() {
+            asyncWrappedTask = Mindless.getCachedExecutor().submit(new Runnable() {
                 @Override
                 public void run() {
                     List<WrappedLyric> result = computeWrappedLyrics(fontRef, lyricsRef, tw, la);
@@ -827,7 +827,7 @@ public final class SpotifyMiniPlayerRenderer {
         return Collections.emptyList();
     }
 
-    private static List<WrappedLyric> computeWrappedLyrics(RavenFontRenderer font, TimedLyrics timedLyrics,
+    private static List<WrappedLyric> computeWrappedLyrics(MindlessFontRenderer font, TimedLyrics timedLyrics,
                                                            float textWidth, float lineAdvance) {
         List<WrappedLyric> wrapped = new ArrayList<WrappedLyric>();
         float top = 0.0F;
@@ -843,7 +843,7 @@ public final class SpotifyMiniPlayerRenderer {
         return wrapped;
     }
 
-    private static RavenFontRenderer getAdaptiveLyricFont(float requestedScale, TimedLyrics timedLyrics,
+    private static MindlessFontRenderer getAdaptiveLyricFont(float requestedScale, TimedLyrics timedLyrics,
                                                           float textWidth) {
         String key = lastLyricsTrackKey + ":" + Math.round(textWidth)
                 + ":" + Math.round(requestedScale * 1000.0F)
@@ -865,11 +865,11 @@ public final class SpotifyMiniPlayerRenderer {
             final TimedLyrics lyricsRef = timedLyrics;
             final float tw = textWidth;
             final String keyRef = key;
-            asyncAdaptiveFontTask = Raven.getCachedExecutor().submit(new Runnable() {
+            asyncAdaptiveFontTask = Mindless.getCachedExecutor().submit(new Runnable() {
                 @Override
                 public void run() {
                     float fitMultiplier = 1.0F;
-                    RavenFontRenderer candidate = getLyricFontRenderer(rs);
+                    MindlessFontRenderer candidate = getLyricFontRenderer(rs);
                     if (lyricsRef != null && lyricsRef.isAvailable()) {
                         int maxWidth = Math.max(18, Math.round(tw));
                         while (fitMultiplier > 0.78F && hasLyricsWiderThanTwoLines(candidate, lyricsRef, maxWidth)) {
@@ -886,7 +886,7 @@ public final class SpotifyMiniPlayerRenderer {
         return cachedAdaptiveLyricFont != null ? cachedAdaptiveLyricFont : getLyricFontRenderer(requestedScale);
     }
 
-    private static boolean hasLyricsWiderThanTwoLines(RavenFontRenderer font, TimedLyrics timedLyrics,
+    private static boolean hasLyricsWiderThanTwoLines(MindlessFontRenderer font, TimedLyrics timedLyrics,
                                                       int maxWidth) {
         for (TimedLyrics.LyricsLine lyric : timedLyrics.getLines()) {
             if (wrapText(font, safeText(lyric.getText(), "Instrumental"), maxWidth).size() > 2) {
@@ -896,7 +896,7 @@ public final class SpotifyMiniPlayerRenderer {
         return false;
     }
 
-    private static List<String> wrapText(RavenFontRenderer font, String text, int maxWidth) {
+    private static List<String> wrapText(MindlessFontRenderer font, String text, int maxWidth) {
         if (text == null || text.trim().isEmpty()) {
             return Collections.singletonList("Instrumental");
         }
@@ -924,7 +924,7 @@ public final class SpotifyMiniPlayerRenderer {
         return lines.isEmpty() ? Collections.singletonList("Instrumental") : lines;
     }
 
-    private static void appendWrappedWord(RavenFontRenderer font, String word, int maxWidth,
+    private static void appendWrappedWord(MindlessFontRenderer font, String word, int maxWidth,
                                           List<String> lines, StringBuilder current) {
         if (font.getStringWidth(word) <= maxWidth) {
             current.append(word);
@@ -1018,7 +1018,7 @@ public final class SpotifyMiniPlayerRenderer {
         return clamped * clamped * clamped * (clamped * (clamped * 6.0F - 15.0F) + 10.0F);
     }
 
-    private static void drawHeaderRow(SystemMediaInfo mediaInfo, boolean mediaVisible, boolean showStatusBadge, float x, float y, float padding, float uiScale, RavenFontRenderer uiFont, int primaryColor, int secondaryColor, int accentColor, boolean lowScaleLayout) {
+    private static void drawHeaderRow(SystemMediaInfo mediaInfo, boolean mediaVisible, boolean showStatusBadge, float x, float y, float padding, float uiScale, MindlessFontRenderer uiFont, int primaryColor, int secondaryColor, int accentColor, boolean lowScaleLayout) {
         float dotSize = (lowScaleLayout ? 5.0F : 6.0F) * uiScale;
         float dotX = x + padding;
         float dotY = y + padding + (lowScaleLayout ? 2.8F : 3.5F) * uiScale;
@@ -1137,7 +1137,7 @@ public final class SpotifyMiniPlayerRenderer {
         if (albumArt == null) {
             String glyph = "\u266A";
             float glyphScale = Math.max(0.8F, Math.min(1.25F, size / 24.0F));
-            RavenFontRenderer glyphFont = getUiFontRenderer(glyphScale);
+            MindlessFontRenderer glyphFont = getUiFontRenderer(glyphScale);
             float glyphX = x + (size - glyphFont.getStringWidth(glyph)) * 0.5F;
             float glyphY = y + (size - glyphFont.getFontHeight()) * 0.5F - 1.0F;
             drawMiniText(glyphFont, glyph, glyphX, glyphY, Utils.mergeAlpha(0xF5FBFF, Math.max(72, alpha - 52)), true);
@@ -1160,7 +1160,7 @@ public final class SpotifyMiniPlayerRenderer {
         RoundedUtils.drawRound(x, y, size, size, Math.max(6.0F, size * 0.22F), false, new Color(255, 255, 255, Math.max(18, alpha / 8)));
         String glyph = "\u266B";
         float glyphScale = Math.max(0.8F, Math.min(1.25F, size / 24.0F));
-        RavenFontRenderer glyphFont = getUiFontRenderer(glyphScale);
+        MindlessFontRenderer glyphFont = getUiFontRenderer(glyphScale);
         float glyphX = x + (size - glyphFont.getStringWidth(glyph)) * 0.5F;
         float glyphY = y + (size - glyphFont.getFontHeight()) * 0.5F - 1.0F;
         drawMiniText(glyphFont, glyph, glyphX, glyphY, Utils.mergeAlpha(0xF5FBFF, Math.max(72, alpha - 52)), true);
@@ -1322,7 +1322,7 @@ public final class SpotifyMiniPlayerRenderer {
         return text == null || text.trim().isEmpty() ? fallback : text.trim();
     }
 
-    private static String trimToWidth(RavenFontRenderer uiFont, String text, int width) {
+    private static String trimToWidth(MindlessFontRenderer uiFont, String text, int width) {
         if (text == null) {
             return "";
         }
@@ -1397,17 +1397,17 @@ public final class SpotifyMiniPlayerRenderer {
         }
     }
 
-    private static float getLineAdvance(RavenFontRenderer uiFont, float uiScale, float compactRelief, boolean lowScaleLayout) {
+    private static float getLineAdvance(MindlessFontRenderer uiFont, float uiScale, float compactRelief, boolean lowScaleLayout) {
         return uiFont.getFontHeight() + Math.max(lowScaleLayout ? 1.6F : 1.5F, (lowScaleLayout ? 2.2F : 2.1F) * uiScale) + compactRelief * (lowScaleLayout ? 1.0F : 1.2F);
     }
 
     private static String cachedUiFontKey = "";
-    private static RavenFontRenderer cachedUiFont;
+    private static MindlessFontRenderer cachedUiFont;
     private static String cachedLyricFontKey = "";
-    private static RavenFontRenderer cachedLyricFont;
+    private static MindlessFontRenderer cachedLyricFont;
 
     /** The widget's own text: title, artist, badges, the note glyph on a missing cover. */
-    private static RavenFontRenderer getUiFontRenderer(float textScale) {
+    private static MindlessFontRenderer getUiFontRenderer(float textScale) {
         String fontName = SpotifyMiniPlayer.widgetFontName();
         float baseScale = HUD.getSelectedFontScale();
         float effectiveScale = baseScale * Math.max(0.6F, textScale);
@@ -1428,22 +1428,22 @@ public final class SpotifyMiniPlayerRenderer {
      * also read from the adaptive-fit task on a background thread, which is the other reason to
      * keep it off the slot the render thread is turning over.
      */
-    private static RavenFontRenderer getLyricFontRenderer(float textScale) {
+    private static MindlessFontRenderer getLyricFontRenderer(float textScale) {
         String fontName = SpotifyMiniPlayer.lyricsFontName();
         float baseScale = HUD.getSelectedFontScale();
         float effectiveScale = baseScale * Math.max(0.6F, textScale);
         String key = fontName + ":" + Math.round(effectiveScale * 1000.0F);
-        RavenFontRenderer cached = cachedLyricFont;
+        MindlessFontRenderer cached = cachedLyricFont;
         if (cached != null && key.equals(cachedLyricFontKey)) {
             return cached;
         }
-        RavenFontRenderer resolved = FontManager.getHudRenderer(fontName, effectiveScale);
+        MindlessFontRenderer resolved = FontManager.getHudRenderer(fontName, effectiveScale);
         cachedLyricFontKey = key;
         cachedLyricFont = resolved;
         return resolved;
     }
 
-    private static void drawMiniText(RavenFontRenderer font, String text, float x, float y, int color, boolean shadow) {
+    private static void drawMiniText(MindlessFontRenderer font, String text, float x, float y, int color, boolean shadow) {
         font.drawString(text, x, y, color, shadow);
     }
 

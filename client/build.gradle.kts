@@ -10,7 +10,7 @@ plugins {
 
 val baseGroup: String by project
 val mcVersion: String by project
-val ravenForgeVersion = providers.gradleProperty("ravenForgeVersion")
+val mindlessForgeVersion = providers.gradleProperty("mindlessForgeVersion")
     .orElse("1.8.9-11.15.1.2318-1.8.9")
     .get()
 val version: String by project
@@ -18,8 +18,8 @@ val modid: String by project
 val transformerFile = file("src/main/resources/accesstransformer.cfg")
 
 // "forge" = normal mod (Mixin). "injectable" = native DLL injection (ClassTransform/JVMTI).
-val ravenBuildType: String = run {
-    val explicit = project.findProperty("ravenBuildType") as String?
+val mindlessBuildType: String = run {
+    val explicit = project.findProperty("mindlessBuildType") as String?
     if (explicit != null) return@run explicit
     val requestedTasks = gradle.startParameter.taskNames
     if (requestedTasks.any { it.contains("Injection") || it.contains("lunarPayload") || it.contains("Native") })
@@ -34,7 +34,7 @@ loom {
     log4jConfigs.from(file("log4j2.xml"))
     launchConfigs {
         "client" {
-            if (ravenBuildType == "forge") {
+            if (mindlessBuildType == "forge") {
                 property("mixin.debug", "true")
                 arg("--tweakClass", "org.spongepowered.asm.launch.MixinTweaker")
             }
@@ -50,8 +50,8 @@ loom {
     }
     forge {
         pack200Provider.set(dev.architectury.pack200.java.Pack200Adapter())
-        if (ravenBuildType == "forge") {
-            mixinConfig("mixins.raven.json")
+        if (mindlessBuildType == "forge") {
+            mixinConfig("mixins.mindless.json")
         }
         if (transformerFile.exists()) {
             println("Installing access transformer")
@@ -59,9 +59,9 @@ loom {
         }
     }
 
-    if (ravenBuildType == "forge") {
+    if (mindlessBuildType == "forge") {
         mixin {
-            defaultRefmapName.set("mixins.raven.refmap.json")
+            defaultRefmapName.set("mixins.mindless.refmap.json")
         }
     }
 }
@@ -92,12 +92,12 @@ configurations.named("testRuntimeClasspath") {
 dependencies {
     minecraft("com.mojang:minecraft:1.8.9")
     mappings("de.oceanlabs.mcp:mcp_stable:22-1.8.9")
-    forge("net.minecraftforge:forge:$ravenForgeVersion")
+    forge("net.minecraftforge:forge:$mindlessForgeVersion")
 
     compileOnly("net.lenni0451.classtransform:core:1.15.1")
     compileOnly("net.lenni0451.classtransform:additionalclassprovider:1.15.1")
 
-    if (ravenBuildType == "forge") {
+    if (mindlessBuildType == "forge") {
         shadowImpl("org.spongepowered:mixin:0.7.11-SNAPSHOT") {
             isTransitive = false
             exclude(module = "gson")
@@ -143,9 +143,9 @@ dependencies {
 }
 
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
-    systemProperty("raven.testForgeVersion", ravenForgeVersion)
-    providers.systemProperty("raven.lunarBake").orNull?.let {
-        systemProperty("raven.lunarBake", it)
+    systemProperty("mindless.testForgeVersion", mindlessForgeVersion)
+    providers.systemProperty("mindless.lunarBake").orNull?.let {
+        systemProperty("mindless.lunarBake", it)
     }
 }
 
@@ -154,9 +154,9 @@ tasks.withType(org.gradle.jvm.tasks.Jar::class) {
     manifest.attributes.run {
         this["FMLCorePluginContainsFMLMod"] = "true"
         this["ForceLoadAsMod"] = "true"
-        if (ravenBuildType == "forge") {
+        if (mindlessBuildType == "forge") {
             this["TweakClass"] = "org.spongepowered.asm.launch.MixinTweaker"
-            this["MixinConfigs"] = "mixins.raven.json"
+            this["MixinConfigs"] = "mixins.mindless.json"
         }
         if (transformerFile.exists())
             this["FMLAT"] = "${modid}_at.cfg"
@@ -169,7 +169,7 @@ tasks.processResources {
     inputs.property("modid", modid)
     inputs.property("basePackage", baseGroup)
 
-    filesMatching(listOf("mcmod.info", "mixins.raven.json")) {
+    filesMatching(listOf("mcmod.info", "mixins.mindless.json")) {
         expand(inputs.properties)
     }
 
@@ -219,7 +219,7 @@ tasks.shadowJar {
         "fabric.mod.json"
     )
 
-    if (ravenBuildType != "forge") {
+    if (mindlessBuildType != "forge") {
         relocate("org.objectweb.asm", "mindless.deps.org.objectweb.asm")
     }
     relocate("org.slf4j", "mindless.deps.org.slf4j")
@@ -276,7 +276,7 @@ val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
         include("mindless/module/setting/**")
         include("mindless/utility/**")
         include("mindless/event/**")
-        include("mindless/Raven.class")
+        include("mindless/Mindless.class")
     }
 
     // Minecraft + Forge classes from loom's mapped jar
@@ -311,7 +311,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 // ---------------------------------------------------------------------------
-// Native injection bundle (RavenNative.dll + RavenInjector.exe).
+// Native injection bundle (MindlessNative.dll + MindlessInjector.exe).
 // Requires: Visual Studio 2022 C++ x64, CMake >= 3.21, and a JDK exposing
 // jni.h + jvmti.h (JDK 8 is fine). Set -PnativeJavaHome to point at it.
 // ---------------------------------------------------------------------------
@@ -333,7 +333,7 @@ fun lunarPayloadJarFile(): File =
 
 val configureNative by tasks.registering(Exec::class) {
     group = "native"
-    description = "Runs CMake to configure the RavenNative build tree."
+    description = "Runs CMake to configure the MindlessNative build tree."
     dependsOn(tasks.remapJar, lunarPayloadJar)
     doFirst {
         val payload = payloadJarFile()
@@ -349,16 +349,16 @@ val configureNative by tasks.registering(Exec::class) {
             "-S", nativeDir.absolutePath,
             "-B", nativeBuildDir.absolutePath,
             "-A", "x64",
-            "-DRAVEN_JAVA_HOME=$nativeJavaHome",
-            "-DRAVEN_FORGE_PAYLOAD_JAR=${payload.absolutePath}",
-            "-DRAVEN_LUNAR_PAYLOAD_JAR=${lunarPayload.absolutePath}"
+            "-DMINDLESS_JAVA_HOME=$nativeJavaHome",
+            "-DMINDLESS_FORGE_PAYLOAD_JAR=${payload.absolutePath}",
+            "-DMINDLESS_LUNAR_PAYLOAD_JAR=${lunarPayload.absolutePath}"
         )
     }
 }
 
 val buildNative by tasks.registering(Exec::class) {
     group = "native"
-    description = "Builds RavenNative.dll + RavenInjector.exe in Release."
+    description = "Builds MindlessNative.dll + MindlessInjector.exe in Release."
     dependsOn(configureNative)
     doFirst {
         commandLine(
@@ -375,7 +375,7 @@ val prepareInjectionBundle by tasks.registering(Sync::class) {
     description = "Assembles build/injection/ with DLL, EXE, and README."
     dependsOn(buildNative)
     from(nativeDistDir) {
-        include("RavenNative.dll", "RavenInjector.exe")
+        include("MindlessNative.dll", "MindlessInjector.exe")
     }
     from(nativeDir) {
         include("README.md")
@@ -389,7 +389,7 @@ tasks.register("buildMinecraft") {
     dependsOn(remapJar)
 
     doFirst {
-        logger.lifecycle("buildMinecraft: building Raven bS and installing it into your .minecraft mods folder...")
+        logger.lifecycle("buildMinecraft: building Mindless bS and installing it into your .minecraft mods folder...")
     }
 
     doLast {
@@ -420,7 +420,7 @@ tasks.register("buildInjection") {
     description = "Builds injectable JAR + Lunar payload + native DLL/EXE bundle."
     dependsOn(tasks.remapJar, lunarPayloadJar, prepareInjectionBundle)
     doFirst {
-        logger.lifecycle("buildInjection: building injectable Raven + native bundle...")
+        logger.lifecycle("buildInjection: building injectable Mindless + native bundle...")
     }
     doLast {
         val builtJar = remapJar.archiveFile.get().asFile

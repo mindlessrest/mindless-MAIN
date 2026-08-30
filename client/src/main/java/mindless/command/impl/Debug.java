@@ -1,6 +1,6 @@
 package mindless.command.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.command.Command;
 import mindless.command.CommandInput;
 import mindless.helper.DebugHelper;
@@ -27,8 +27,8 @@ public class Debug extends Command {
     @Override
     public void execute(CommandInput input) {
         if (input.argumentCount() == 0) {
-            Raven.DEBUG = !Raven.DEBUG;
-            replyWithHeader("&7Debug " + (Raven.DEBUG ? "&aenabled" : "&cdisabled") + "&7.");
+            Mindless.DEBUG = !Mindless.DEBUG;
+            replyWithHeader("&7Debug " + (Mindless.DEBUG ? "&aenabled" : "&cdisabled") + "&7.");
             return;
         }
 

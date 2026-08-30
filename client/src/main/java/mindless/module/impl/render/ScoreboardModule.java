@@ -3,7 +3,7 @@ package mindless.module.impl.render;
 import mindless.module.Module;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 
 public class ScoreboardModule extends Module {
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
@@ -41,7 +41,7 @@ public class ScoreboardModule extends Module {
      * to save a branch would move every line by a pixel or two for everyone who never asked for a
      * different font.
      */
-    public static RavenFontRenderer getCustomFont() {
+    public static MindlessFontRenderer getCustomFont() {
         if (instance == null || !instance.isEnabled() || font == null || isMinecraftFontSelected()) {
             return null;
         }

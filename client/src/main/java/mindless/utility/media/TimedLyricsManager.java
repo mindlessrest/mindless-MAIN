@@ -4,7 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.utility.NetworkUtils;
 
 import java.io.StringReader;
@@ -71,7 +71,7 @@ final class TimedLyricsManager {
         pendingTrackKey = trackKey;
         final SystemMediaInfo requestInfo = mediaInfo;
         final String requestTrackKey = trackKey;
-        pendingRequest = Raven.getCachedExecutor().submit(new Runnable() {
+        pendingRequest = Mindless.getCachedExecutor().submit(new Runnable() {
             @Override
             public void run() {
                 TimedLyrics lyrics = fetchTimedLyrics(requestInfo);
@@ -185,7 +185,7 @@ final class TimedLyricsManager {
         pendingTrackKey = trackKey;
         final SystemMediaInfo requestInfo = mediaInfo;
         final String requestTrackKey = trackKey;
-        pendingRequest = Raven.getCachedExecutor().submit(new Runnable() {
+        pendingRequest = Mindless.getCachedExecutor().submit(new Runnable() {
             @Override
             public void run() {
                 TimedLyrics lyrics = fetchTimedLyrics(requestInfo);

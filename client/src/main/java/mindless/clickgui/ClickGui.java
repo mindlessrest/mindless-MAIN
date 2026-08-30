@@ -1,6 +1,6 @@
 package mindless.clickgui;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.components.Component;
 import mindless.clickgui.components.FocusableTextComponent;
 import mindless.clickgui.components.impl.BindComponent;
@@ -15,7 +15,7 @@ import mindless.utility.CommandHandler;
 import mindless.utility.Timer;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.Minecraft;
@@ -88,7 +88,7 @@ public class ClickGui extends GuiScreen {
 
     public void initMain() {
         (this.logoSmoothWidth = this.smoothEntity = this.blurSmooth = this.backgroundFade = new Timer(500.0F)).start();
-        this.sf = Raven.getScheduledExecutor().schedule(() -> {
+        this.sf = Mindless.getScheduledExecutor().schedule(() -> {
             (this.logoSmoothLength = new Timer(650.0F)).start();
         }, 650L, TimeUnit.MILLISECONDS);
     }

@@ -1,6 +1,6 @@
 package mindless.utility;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.helper.PingHelper;
 import mindless.module.Module;
 import mindless.module.impl.client.Settings;
@@ -58,7 +58,7 @@ public class CommandHandler implements IMinecraftInstance {
 
         print("Setting...", 1);
         String apiKey = args[1];
-        Raven.getScheduledExecutor().execute(() -> {
+        Mindless.getScheduledExecutor().execute(() -> {
             if (NetworkUtils.isHypixelKeyValid(apiKey)) {
                 NetworkUtils.API_KEY = apiKey;
                 print("&a" + "success!", 0);
@@ -122,7 +122,7 @@ public class CommandHandler implements IMinecraftInstance {
 
         String playerName = args[1];
         print("Retrieving data...", 1);
-        Raven.getScheduledExecutor().execute(() -> {
+        Mindless.getScheduledExecutor().execute(() -> {
             int[] stats = ProfileUtils.getHypixelStats(playerName, ProfileUtils.DM.OVERALL);
             if (stats != null) {
                 if (stats[0] == -1) {
@@ -224,7 +224,7 @@ public class CommandHandler implements IMinecraftInstance {
             return;
         }
 
-        for (Module module : Raven.getModuleManager().getModules()) {
+        for (Module module : Mindless.getModuleManager().getModules()) {
             String moduleName = module.getName().toLowerCase().replace(" ", "");
             if (moduleName.equals(args[1].toLowerCase())) {
                 module.setHidden(true);
@@ -239,7 +239,7 @@ public class CommandHandler implements IMinecraftInstance {
             return;
         }
 
-        for (Module module : Raven.getModuleManager().getModules()) {
+        for (Module module : Mindless.getModuleManager().getModules()) {
             String moduleName = module.getName().toLowerCase().replace(" ", "");
             if (moduleName.equals(args[1].toLowerCase())) {
                 module.setHidden(false);
@@ -255,7 +255,7 @@ public class CommandHandler implements IMinecraftInstance {
         }
 
         if (args[1].equals("clear")) {
-            Raven.playerRelationsManager.clearFriends();
+            Mindless.playerRelationsManager.clearFriends();
             print("&aFriends cleared.", 1);
             return;
         }
@@ -277,7 +277,7 @@ public class CommandHandler implements IMinecraftInstance {
         }
 
         if (args[1].equals("clear")) {
-            Raven.playerRelationsManager.clearEnemies();
+            Mindless.playerRelationsManager.clearEnemies();
             print("&aEnemies cleared.", 1);
             return;
         }
@@ -295,12 +295,12 @@ public class CommandHandler implements IMinecraftInstance {
     private static void handleProfilesCommand(String[] args, boolean hasArgs) {
         if (!hasArgs) {
             print("&aAvailable profiles:", 1);
-            if (Raven.profileManager.profiles.isEmpty()) {
+            if (Mindless.profileManager.profiles.isEmpty()) {
                 print("None", 0);
                 return;
             }
-            for (int i = 0; i < Raven.profileManager.profiles.size(); ++i) {
-                print(i + 1 + ". " + Raven.profileManager.profiles.get(i).getName(), 0);
+            for (int i = 0; i < Mindless.profileManager.profiles.size(); ++i) {
+                print(i + 1 + ". " + Mindless.profileManager.profiles.get(i).getName(), 0);
             }
         }
         else if (args != null && args.length > 1) {
@@ -316,10 +316,10 @@ public class CommandHandler implements IMinecraftInstance {
                         print("&cInvalid name.", 1);
                         return;
                     }
-                    Raven.profileManager.saveProfile(new Profile(profileName, 0));
+                    Mindless.profileManager.saveProfile(new Profile(profileName, 0));
                     print("&aSaved profile:", 1);
                     print(profileName, 0);
-                    Raven.profileManager.loadProfiles();
+                    Mindless.profileManager.loadProfiles();
                     break;
                 }
                 case "load":
@@ -329,9 +329,9 @@ public class CommandHandler implements IMinecraftInstance {
                         return;
                     }
                     String profileName = args[2];
-                    for (Profile profile : Raven.profileManager.profiles) {
+                    for (Profile profile : Mindless.profileManager.profiles) {
                         if (profile.getName().equals(profileName)) {
-                            Raven.profileManager.loadProfile(profile.getName());
+                            Mindless.profileManager.loadProfile(profile.getName());
                             print("&aLoaded profile:", 1);
                             print(profileName, 0);
                             if (Settings.sendMessage.isToggled()) {
@@ -350,12 +350,12 @@ public class CommandHandler implements IMinecraftInstance {
                         return;
                     }
                     String profileName = args[2];
-                    for (Profile profile : Raven.profileManager.profiles) {
+                    for (Profile profile : Mindless.profileManager.profiles) {
                         if (profile.getName().equals(profileName)) {
-                            Raven.profileManager.deleteProfile(profile.getName());
+                            Mindless.profileManager.deleteProfile(profile.getName());
                             print("&aRemoved profile:", 1);
                             print(profileName, 0);
-                            Raven.profileManager.loadProfiles();
+                            Mindless.profileManager.loadProfiles();
                             return;
                         }
                     }
@@ -419,8 +419,8 @@ public class CommandHandler implements IMinecraftInstance {
                 handleEnemyCommand(args);
                 break;
             case "debug":
-                Raven.DEBUG = !Raven.DEBUG;
-                print("Debug " + (Raven.DEBUG ? "enabled" : "disabled") + ".", 1);
+                Mindless.DEBUG = !Mindless.DEBUG;
+                print("Debug " + (Mindless.DEBUG ? "enabled" : "disabled") + ".", 1);
                 break;
             case "profiles":
             case "p":

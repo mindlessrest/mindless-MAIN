@@ -36,7 +36,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Replaces every {@code (IAccessorX) obj} cast that Raven used to depend on
+ * Replaces every {@code (IAccessorX) obj} cast that Mindless used to depend on
  * mixin-generated interfaces. Runtime injection cannot add interfaces to
  * already-loaded classes, so all accessors go through direct reflection.
  *

@@ -1,12 +1,12 @@
 package mindless.clickgui.components.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.components.Component;
 import mindless.module.impl.client.Gui;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.Timer;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
@@ -125,7 +125,7 @@ public class ColorComponent extends Component {
                 boxX + PREVIEW_BOX_SIZE, boxY + PREVIEW_BOX_SIZE,
                 colorSetting.getColor());
 
-        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
         GL11.glPushMatrix();
         GL11.glScaled(0.5, 0.5, 0.5);
         float textOffset = renderer.getStringWidth("[+]  ");
@@ -224,7 +224,7 @@ public class ColorComponent extends Component {
         }
 
         // Hex readout, so the value is legible and copyable by eye instead of guessed at.
-        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
         String hex = String.format("#%06X", colorSetting.getRGB() & 0xFFFFFF);
         if (colorSetting.hasAlpha()) {
             hex = hex + "  " + Math.round(colorSetting.getAlpha() / 2.55f) + "%";
@@ -477,8 +477,8 @@ public class ColorComponent extends Component {
     }
 
     private void markUnsaved() {
-        if (Raven.currentProfile != null) {
-            Raven.currentProfile.getModule().saved = false;
+        if (Mindless.currentProfile != null) {
+            Mindless.currentProfile.getModule().saved = false;
         }
     }
 }

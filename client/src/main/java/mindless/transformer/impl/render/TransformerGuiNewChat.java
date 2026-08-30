@@ -4,7 +4,7 @@ import mindless.module.impl.client.Settings;
 import mindless.module.impl.render.ChatModule;
 import mindless.runtime.GuiNewChatState;
 import mindless.runtime.HudTextRenderer;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.ScaledResolutionCache;
 import net.lenni0451.classtransform.InjectionCallback;
@@ -55,7 +55,7 @@ public abstract class TransformerGuiNewChat {
 
     @CInline
     @CInject(method = "drawChat", target = @CTarget("HEAD"), cancellable = true)
-    private void raven$renderChat(int updateCounter, InjectionCallback ci) {
+    private void mindless$renderChat(int updateCounter, InjectionCallback ci) {
         if (mc.gameSettings.chatVisibility == EntityPlayer.EnumChatVisibility.HIDDEN) return;
         int totalLines = drawnChatLines.size();
         if (totalLines <= 0) {
@@ -81,7 +81,7 @@ public abstract class TransformerGuiNewChat {
 
         // Chat's own Font and spacing settings, which this path had never read -- it drew every
         // line with mc.fontRendererObj regardless of what the module said.
-        RavenFontRenderer chatFont = ChatModule.getCustomFont();
+        MindlessFontRenderer chatFont = ChatModule.getCustomFont();
         float rowHeight = (chatFont != null ? chatFont.getLineHeight() : 9.0f) + ChatModule.lineSpacing();
         if (rowHeight < 1.0f) rowHeight = 1.0f;
         float headSize = ChatModule.playerHeads() ? ChatModule.headSize() : 0.0f;

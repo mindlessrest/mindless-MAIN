@@ -5,7 +5,7 @@ import mindless.module.impl.client.Gui;
 import mindless.module.setting.impl.GroupSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.Timer;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import org.lwjgl.opengl.GL11;
 
 public class GroupComponent extends Component {
@@ -58,7 +58,7 @@ public class GroupComponent extends Component {
 
     public void render() {
         float progress = getAnimationProgress();
-        RavenFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
+        MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
         float cx = this.component.categoryComponent.getX();
         float cy = this.component.categoryComponent.getY();
         RenderUtils.drawRoundedRectangle(cx + 3, cy + this.o + 1,
@@ -122,7 +122,7 @@ public class GroupComponent extends Component {
         return x > this.x && x < this.x + this.component.categoryComponent.getWidth() && y > this.y && y < this.y + 11;
     }
 
-    private void drawString(RavenFontRenderer renderer, String text, float x, float y) {
+    private void drawString(MindlessFontRenderer renderer, String text, float x, float y) {
         renderer.drawString(text, x, y, -1, false);
     }
 }

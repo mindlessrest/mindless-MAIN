@@ -56,7 +56,7 @@ public final class FontManager {
     private static final String[] HUD_FONT_OPTIONS = buildHudFontOptions();
     private static final Map<String, BundledFont> BUNDLED_FONT_MAP = buildBundledFontMap();
     private static final Map<String, Font> BASE_FONT_CACHE = new ConcurrentHashMap<String, Font>();
-    private static final Map<String, RavenFontRenderer> FONT_CACHE = new LinkedHashMap<String, RavenFontRenderer>(16, 0.75f, true);
+    private static final Map<String, MindlessFontRenderer> FONT_CACHE = new LinkedHashMap<String, MindlessFontRenderer>(16, 0.75f, true);
 
     private FontManager() {
     }
@@ -65,20 +65,20 @@ public final class FontManager {
         return HUD_FONT_OPTIONS.clone();
     }
 
-    public static RavenFontRenderer getHudRenderer(String family, float scale) {
+    public static MindlessFontRenderer getHudRenderer(String family, float scale) {
         float safeScale = Math.max(0.5f, Math.min(2.0f, scale));
         return getRenderer(family, DEFAULT_HUD_FONT_SIZE * safeScale);
     }
 
-    public static RavenFontRenderer getClickGuiHeaderRenderer(String family) {
+    public static MindlessFontRenderer getClickGuiHeaderRenderer(String family) {
         return getRendererForPixelHeight(family, DEFAULT_CLICK_GUI_HEADER_HEIGHT);
     }
 
-    public static RavenFontRenderer getClickGuiSettingRenderer(String family) {
+    public static MindlessFontRenderer getClickGuiSettingRenderer(String family) {
         return getRendererForPixelHeight(family, DEFAULT_CLICK_GUI_SETTING_HEIGHT);
     }
 
-    public static RavenFontRenderer getClickGuiSmallRenderer(String family) {
+    public static MindlessFontRenderer getClickGuiSmallRenderer(String family) {
         return getRendererForPixelHeight(family, DEFAULT_CLICK_GUI_SMALL_HEIGHT);
     }
 
@@ -91,7 +91,7 @@ public final class FontManager {
      * three times what the atlas holds, and a magnified atlas is a blurry one. The boost gives it
      * that headroom. Metrics are divided back down by the same factor, so nothing moves.
      */
-    public static RavenFontRenderer getNametagRenderer(String family) {
+    public static MindlessFontRenderer getNametagRenderer(String family) {
         float fontSize = DEFAULT_NAMETAG_FONT_SIZE;
         BundledFont bundledFont;
 
@@ -105,9 +105,9 @@ public final class FontManager {
         }
 
         String key = family + "#nametag#" + quantizeForCacheKey(fontSize) + "#" + getUiScale();
-        return getCachedRenderer(key, new Supplier<RavenFontRenderer>() {
+        return getCachedRenderer(key, new Supplier<MindlessFontRenderer>() {
             @Override
-            public RavenFontRenderer get() {
+            public MindlessFontRenderer get() {
                 Font baseFont = BASE_FONT_CACHE.computeIfAbsent(bundledFont.fileName, FontManager::loadBaseFont);
                 if (baseFont == null) {
                     return getMinecraftRenderer(fontSize);
@@ -118,7 +118,7 @@ public final class FontManager {
         });
     }
 
-    private static RavenFontRenderer getRenderer(String family, float fontSize) {
+    private static MindlessFontRenderer getRenderer(String family, float fontSize) {
         float safeFontSize = Math.max(1.0f, fontSize);
         BundledFont bundledFont;
 
@@ -132,9 +132,9 @@ public final class FontManager {
         }
 
         String key = family + "#" + quantizeForCacheKey(safeFontSize) + "#" + getUiScale();
-        return getCachedRenderer(key, new Supplier<RavenFontRenderer>() {
+        return getCachedRenderer(key, new Supplier<MindlessFontRenderer>() {
             @Override
-            public RavenFontRenderer get() {
+            public MindlessFontRenderer get() {
             Font baseFont = BASE_FONT_CACHE.computeIfAbsent(bundledFont.fileName, FontManager::loadBaseFont);
             if (baseFont == null) {
                 return getMinecraftRenderer(safeFontSize);
@@ -150,11 +150,11 @@ public final class FontManager {
      * Drawing a 13px atlas at 0.63x, or an 11px atlas at 1.33x, is what makes GUI text mushy;
      * asking for the height actually needed keeps every glyph on its native grid.
      */
-    public static RavenFontRenderer getClickGuiRenderer(String family, float pixelHeight) {
+    public static MindlessFontRenderer getClickGuiRenderer(String family, float pixelHeight) {
         return getRendererForPixelHeight(family, pixelHeight);
     }
 
-    private static RavenFontRenderer getRendererForPixelHeight(String family, float targetHeight) {
+    private static MindlessFontRenderer getRendererForPixelHeight(String family, float targetHeight) {
         float safeTargetHeight = Math.max(1.0f, targetHeight);
         BundledFont bundledFont;
 
@@ -168,9 +168,9 @@ public final class FontManager {
         }
 
         String key = family + "#height#" + quantizeForCacheKey(safeTargetHeight) + "#" + getUiScale();
-        return getCachedRenderer(key, new Supplier<RavenFontRenderer>() {
+        return getCachedRenderer(key, new Supplier<MindlessFontRenderer>() {
             @Override
-            public RavenFontRenderer get() {
+            public MindlessFontRenderer get() {
             Font baseFont = BASE_FONT_CACHE.computeIfAbsent(bundledFont.fileName, FontManager::loadBaseFont);
             if (baseFont == null) {
                 return getMinecraftRenderer(safeTargetHeight);
@@ -181,7 +181,7 @@ public final class FontManager {
         });
     }
 
-    private static RavenFontRenderer createHeightMatchedRenderer(Font baseFont, float targetHeight) {
+    private static MindlessFontRenderer createHeightMatchedRenderer(Font baseFont, float targetHeight) {
         float derivedSize = targetHeight;
         GlyphFontRenderer renderer = new GlyphFontRenderer(baseFont.deriveFont(derivedSize), true);
 
@@ -201,13 +201,13 @@ public final class FontManager {
         return renderer;
     }
 
-    private static RavenFontRenderer getMinecraftRenderer(float fontSize) {
+    private static MindlessFontRenderer getMinecraftRenderer(float fontSize) {
         float vanillaHeight = Math.max(1.0f, Minecraft.getMinecraft().fontRendererObj.FONT_HEIGHT);
         float scale = Math.max(0.5f, Math.min(2.0f, fontSize / vanillaHeight));
         String key = MINECRAFT + "#" + quantizeForCacheKey(scale);
-        return getCachedRenderer(key, new Supplier<RavenFontRenderer>() {
+        return getCachedRenderer(key, new Supplier<MindlessFontRenderer>() {
             @Override
-            public RavenFontRenderer get() {
+            public MindlessFontRenderer get() {
                 return new MinecraftFontAdapter(Minecraft.getMinecraft().fontRendererObj, scale);
             }
         });
@@ -292,8 +292,8 @@ public final class FontManager {
         }
     }
 
-    private static synchronized RavenFontRenderer getCachedRenderer(String key, Supplier<RavenFontRenderer> rendererSupplier) {
-        RavenFontRenderer renderer = FONT_CACHE.get(key);
+    private static synchronized MindlessFontRenderer getCachedRenderer(String key, Supplier<MindlessFontRenderer> rendererSupplier) {
+        MindlessFontRenderer renderer = FONT_CACHE.get(key);
         if (renderer != null) {
             return renderer;
         }
@@ -306,12 +306,12 @@ public final class FontManager {
 
     private static void trimFontCache() {
         while (FONT_CACHE.size() > MAX_CACHED_RENDERERS) {
-            Iterator<Map.Entry<String, RavenFontRenderer>> iterator = FONT_CACHE.entrySet().iterator();
+            Iterator<Map.Entry<String, MindlessFontRenderer>> iterator = FONT_CACHE.entrySet().iterator();
             if (!iterator.hasNext()) {
                 return;
             }
 
-            Map.Entry<String, RavenFontRenderer> eldestEntry = iterator.next();
+            Map.Entry<String, MindlessFontRenderer> eldestEntry = iterator.next();
             iterator.remove();
             if (eldestEntry.getValue() != null) {
                 eldestEntry.getValue().destroy();

@@ -27,9 +27,9 @@ CPU_COUNT = os.cpu_count() or 4
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
 NATIVE_BUILD_DIR = CLIENT_DIR / "native_build"
-NATIVE_DLL_OUT   = NATIVE_BUILD_DIR / "dist" / "RavenNative.dll"
+NATIVE_DLL_OUT   = NATIVE_BUILD_DIR / "dist" / "MindlessNative.dll"
 
-LOADER_RUNTIME   = LOADER_DIR / "assets" / "runtime" / "RavenNative.dll"
+LOADER_RUNTIME   = LOADER_DIR / "assets" / "runtime" / "MindlessNative.dll"
 
 VS_ROOTS = [
     r"C:\Program Files\Microsoft Visual Studio",
@@ -389,7 +389,7 @@ def build_client(jdk17):
 
 
 def build_native_dll(cmake, clang, ninja, jdk):
-    section("RavenNative.dll - build")
+    section("MindlessNative.dll - build")
 
     if not FORGE_JAR.is_file():
         err(f"Forge JAR missing: {FORGE_JAR}")
@@ -409,7 +409,7 @@ def build_native_dll(cmake, clang, ninja, jdk):
     # the mtime. Deleting the .res and output DLL guarantees a full recompile.
     for res_file in NATIVE_BUILD_DIR.rglob("payload.rc.res"):
         res_file.unlink(missing_ok=True)
-    dist_dll = NATIVE_BUILD_DIR / "dist" / "RavenNative.dll"
+    dist_dll = NATIVE_BUILD_DIR / "dist" / "MindlessNative.dll"
     if dist_dll.is_file():
         dist_dll.unlink()
 
@@ -418,9 +418,9 @@ def build_native_dll(cmake, clang, ninja, jdk):
         "-G", "Ninja",
         f"-DCMAKE_C_COMPILER={str(clang).replace(chr(92), '/')}",
         f"-DCMAKE_MAKE_PROGRAM={str(ninja).replace(chr(92), '/')}",
-        f"-DRAVEN_JAVA_HOME={str(jdk).replace(chr(92), '/')}",
-        f"-DRAVEN_FORGE_PAYLOAD_JAR={str(FORGE_JAR).replace(chr(92), '/')}",
-        f"-DRAVEN_LUNAR_PAYLOAD_JAR={str(LUNAR_JAR).replace(chr(92), '/')}",
+        f"-DMINDLESS_JAVA_HOME={str(jdk).replace(chr(92), '/')}",
+        f"-DMINDLESS_FORGE_PAYLOAD_JAR={str(FORGE_JAR).replace(chr(92), '/')}",
+        f"-DMINDLESS_LUNAR_PAYLOAD_JAR={str(LUNAR_JAR).replace(chr(92), '/')}",
     ]
     extra_env = {"PATH": str(clang.parent) + os.pathsep + os.environ.get("PATH", "")}
 
@@ -439,7 +439,7 @@ def build_native_dll(cmake, clang, ninja, jdk):
     )
     if needs_configure:
         if not run(cfg_cmd, CLIENT_DIR, extra_env):
-            err("RavenNative cmake configure failed")
+            err("MindlessNative cmake configure failed")
             return False
         ok("configured")
     else:
@@ -448,18 +448,18 @@ def build_native_dll(cmake, clang, ninja, jdk):
     build_cmd = [str(cmake), "--build", str(NATIVE_BUILD_DIR), "--config", "Release",
                  "--parallel", str(CPU_COUNT)]
     if not run(build_cmd, CLIENT_DIR, extra_env):
-        err("RavenNative build failed")
+        err("MindlessNative build failed")
         return False
     ok("build complete")
 
     LOADER_RUNTIME.parent.mkdir(parents=True, exist_ok=True)
 
     if not NATIVE_DLL_OUT.is_file():
-        err(f"RavenNative.dll not found at {NATIVE_DLL_OUT}")
+        err(f"MindlessNative.dll not found at {NATIVE_DLL_OUT}")
         return False
     
     shutil.copy2(str(NATIVE_DLL_OUT), str(LOADER_RUNTIME))
-    ok(f"RavenNative.dll -> {LOADER_RUNTIME}")
+    ok(f"MindlessNative.dll -> {LOADER_RUNTIME}")
 
     return True
 
@@ -482,7 +482,7 @@ def build_loader(cmake, extra_env):
         info("configure skipped (CMakeCache up to date)")
 
     # Force rebuild when embedded assets change: touch the generated .rc so
-    # Ninja re-links the EXE with fresh RavenNative.dll / other resources.
+    # Ninja re-links the EXE with fresh MindlessNative.dll / other resources.
     loader_rc = BUILD_DIR / "resources_gen.rc"
     if loader_rc.is_file():
         loader_rc.touch()
@@ -613,7 +613,7 @@ def main():
     if jdk_any:
         ok(f"JDK (native)  : {jdk_any}")
     else:
-        warn("No JDK found - RavenNative.dll build will fail")
+        warn("No JDK found - MindlessNative.dll build will fail")
 
     save_tool_cache({
         "clang": clang, "lld": lld, "ninja": ninja, "vcpkg": vcpkg, "cmake": cmake,
@@ -636,7 +636,7 @@ def main():
                 print(f"\n{BOLD}{RED}Build failed.{RESET}")
                 sys.exit(1)
         else:
-            warn("Skipping RavenNative.dll rebuild - missing tools")
+            warn("Skipping MindlessNative.dll rebuild - missing tools")
 
     if build_loader_flag and llvm and ninja and vcpkg and cmake:
         section("Updating CMakePresets.json")

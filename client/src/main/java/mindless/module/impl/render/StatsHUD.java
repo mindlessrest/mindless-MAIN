@@ -8,7 +8,7 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.network.NetworkPlayerInfo;
@@ -97,7 +97,7 @@ public class StatsHUD extends Module {
     }
 
     private float[] drawStat(StatPanel panel, String label, String value) {
-        RavenFontRenderer font = HUD.getHudFontRenderer();
+        MindlessFontRenderer font = HUD.getHudFontRenderer();
         if (font == null) return null;
 
         panel.syncPositionToResolution();

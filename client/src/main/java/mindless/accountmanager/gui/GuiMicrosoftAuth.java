@@ -14,7 +14,7 @@ import mindless.accountmanager.utils.Notification;
 import mindless.accountmanager.utils.SystemUtils;
 import mindless.accountmanager.utils.TextFormatting;
 import mindless.utility.font.MinecraftFontAdapter;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
@@ -132,9 +132,9 @@ public class GuiMicrosoftAuth extends GuiScreen {
         if (copyButton  != null) copyButton.enabled  = openButtonEnabled;
 
         drawRect(0, 0, width, height, GuiAccountManager.C_BG);
-        RavenFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
-        RavenFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
-        RavenFontRenderer sfSm   = new MinecraftFontAdapter(fontRendererObj);
+        MindlessFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
+        MindlessFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
+        MindlessFontRenderer sfSm   = new MinecraftFontAdapter(fontRendererObj);
 
         int cardW = 280, cardH = 160;
         int cardX = width/2 - cardW/2, cardY = height/2 - cardH/2 - 30;

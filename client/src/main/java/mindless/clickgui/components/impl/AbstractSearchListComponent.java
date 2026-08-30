@@ -1,6 +1,6 @@
 package mindless.clickgui.components.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.animation.ScrollOffsetAnimation;
 import mindless.module.impl.client.Gui;
 import mindless.utility.RenderUtils;
@@ -271,8 +271,8 @@ public abstract class AbstractSearchListComponent extends AbstractTextInputCompo
     }
 
     protected final void markUnsaved() {
-        if (Raven.currentProfile != null) {
-            Raven.currentProfile.getModule().saved = false;
+        if (Mindless.currentProfile != null) {
+            Mindless.currentProfile.getModule().saved = false;
         }
     }
 

@@ -1,6 +1,6 @@
 package mindless.command.impl;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.command.Command;
 import mindless.command.CommandInput;
 import mindless.utility.Utils;
@@ -17,7 +17,7 @@ public class Profiles extends Command {
     @Override
     public void execute(CommandInput input) {
         if (input.argumentCount() == 0) {
-            List<Profile> profiles = Raven.profileManager.profiles;
+            List<Profile> profiles = Mindless.profileManager.profiles;
             if (profiles.isEmpty()) {
                 replyWithHeader("&7No profiles found");
                 return;
@@ -25,7 +25,7 @@ public class Profiles extends Command {
 
             replyWithHeader("&b" + profiles.size() + " &7profile" + (profiles.size() == 1 ? "" : "s") + " loaded.");
             for (Profile profile : profiles) {
-                replyWithHeader(" &7" + profile.getName() + (profile == Raven.currentProfile ? " &7(&bcurrent&7)" : ""));
+                replyWithHeader(" &7" + profile.getName() + (profile == Mindless.currentProfile ? " &7(&bcurrent&7)" : ""));
             }
             return;
         }
@@ -84,9 +84,9 @@ public class Profiles extends Command {
 
     private void handleSave(CommandInput input) {
         if (input.argumentCount() < 2) {
-            if (Raven.currentProfile != null) {
-                Utils.sendMessage("&7Saved profile: &b" + Raven.currentProfile);
-                Raven.profileManager.saveProfile(Raven.currentProfile);
+            if (Mindless.currentProfile != null) {
+                Utils.sendMessage("&7Saved profile: &b" + Mindless.currentProfile);
+                Mindless.profileManager.saveProfile(Mindless.currentProfile);
             } else {
                 syntaxError();
             }
@@ -94,14 +94,14 @@ public class Profiles extends Command {
         }
 
         String saveName = input.joinArguments(1);
-        Profile savedProfile = Raven.profileManager.getProfile(saveName);
+        Profile savedProfile = Mindless.profileManager.getProfile(saveName);
         if (savedProfile == null) {
-            savedProfile = Raven.profileManager.createProfile(saveName, 0);
+            savedProfile = Mindless.profileManager.createProfile(saveName, 0);
             if (savedProfile == null) {
                 return;
             }
         } else {
-            Raven.profileManager.saveProfile(savedProfile);
+            Mindless.profileManager.saveProfile(savedProfile);
         }
         replyWithHeader("&7Saved profile: &b" + saveName);
     }
@@ -113,12 +113,12 @@ public class Profiles extends Command {
         }
 
         String loadName = input.joinArguments(1);
-        if (Raven.profileManager.getProfile(loadName) == null) {
+        if (Mindless.profileManager.getProfile(loadName) == null) {
             replyWithHeader("&b" + loadName + " &7does not exist");
             return;
         }
 
-        Raven.profileManager.loadProfile(loadName);
+        Mindless.profileManager.loadProfile(loadName);
         replyWithHeader("&7Enabled profile: &b" + loadName);
     }
 
@@ -129,14 +129,14 @@ public class Profiles extends Command {
         }
 
         String deleteName = input.joinArguments(1);
-        if (Raven.profileManager.getProfile(deleteName) == null) {
+        if (Mindless.profileManager.getProfile(deleteName) == null) {
             replyWithHeader("&cProfile &b" + deleteName + " &7does not exist");
             return;
         }
 
-        Raven.profileManager.deleteProfile(deleteName);
+        Mindless.profileManager.deleteProfile(deleteName);
         replyWithHeader("&7Removed profile: &b" + deleteName);
-        Raven.profileManager.loadProfiles();
+        Mindless.profileManager.loadProfiles();
     }
 
     private void handleRename(CommandInput input) {
@@ -153,18 +153,18 @@ public class Profiles extends Command {
 
         String oldName = renameArguments.oldName;
         String newName = renameArguments.newName;
-        Profile oldProfile = Raven.profileManager.getProfile(oldName);
+        Profile oldProfile = Mindless.profileManager.getProfile(oldName);
         if (oldProfile == null) {
             replyWithHeader("&b" + oldName + " &7does not exist");
             return;
         }
 
-        if (Raven.profileManager.getProfile(newName) != null) {
+        if (Mindless.profileManager.getProfile(newName) != null) {
             replyWithHeader("&b" + newName + " &7already exists");
             return;
         }
 
-        if (!Raven.profileManager.renameProfile(oldProfile, newName)) {
+        if (!Mindless.profileManager.renameProfile(oldProfile, newName)) {
             return;
         }
 
@@ -174,7 +174,7 @@ public class Profiles extends Command {
     private List<String> suggestProfileNames(String query) {
         String loweredQuery = query == null ? "" : query.toLowerCase();
         List<String> profileNames = new ArrayList<>();
-        for (Profile profile : Raven.profileManager.profiles) {
+        for (Profile profile : Mindless.profileManager.profiles) {
             if (profile.getName().toLowerCase().startsWith(loweredQuery)) {
                 profileNames.add(profile.getName());
             }
@@ -205,7 +205,7 @@ public class Profiles extends Command {
         }
 
         String bestMatch = null;
-        for (Profile profile : Raven.profileManager.profiles) {
+        for (Profile profile : Mindless.profileManager.profiles) {
             String profileName = profile.getName();
             if (trimmed.length() <= profileName.length()) {
                 continue;

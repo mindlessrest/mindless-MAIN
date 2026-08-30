@@ -2,7 +2,7 @@ package mindless.mixin.impl.render;
 
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.render.ChatModule;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
@@ -33,13 +33,13 @@ import java.util.Map;
 @Mixin(GuiNewChat.class)
 public abstract class MixinGuiNewChat {
     @Unique
-    private static final long RAVEN_MESSAGE_ANIMATION_MS = 320L;
+    private static final long MINDLESS_MESSAGE_ANIMATION_MS = 320L;
 
     @Unique
-    private final Map<ChatLine, Long> raven$messageBirths = new IdentityHashMap<ChatLine, Long>();
+    private final Map<ChatLine, Long> mindless$messageBirths = new IdentityHashMap<ChatLine, Long>();
 
     @Unique
-    private long raven$lastAnimationCleanup;
+    private long mindless$lastAnimationCleanup;
 
     @Shadow
     private Minecraft mc;
@@ -66,7 +66,7 @@ public abstract class MixinGuiNewChat {
     public abstract int getChatWidth();
 
     @Inject(method = "drawChat", at = @At("HEAD"), cancellable = true)
-    private void raven$renderChat(int updateCounter, CallbackInfo ci) {
+    private void mindless$renderChat(int updateCounter, CallbackInfo ci) {
         if (mc.gameSettings.chatVisibility == EntityPlayer.EnumChatVisibility.HIDDEN) return;
         int totalLines = drawnChatLines.size();
         if (totalLines <= 0) {
@@ -81,19 +81,19 @@ public abstract class MixinGuiNewChat {
         int visibleLines = Math.min(lineCount, Math.max(0, totalLines - scrollPos));
         ScaledResolution sr = ScaledResolutionCache.get();
         long now = System.currentTimeMillis();
-        raven$updateMessageAnimations(now);
+        mindless$updateMessageAnimations(now);
 
         double newestProgress = 1.0;
         if (scrollPos == 0 && !drawnChatLines.isEmpty()) {
-            newestProgress = raven$getAnimationProgress(drawnChatLines.get(0), now);
+            newestProgress = mindless$getAnimationProgress(drawnChatLines.get(0), now);
         }
-        double newestEase = raven$easeOutCubic(newestProgress);
+        double newestEase = mindless$easeOutCubic(newestProgress);
         double animatedRows = Math.max(0.0, visibleLines - 1.0 + newestEase);
 
         // One row's height, which the panel and the message positions both have to agree on. A
         // taller face or extra spacing pushes the lines apart and the panel has to grow with them,
         // or the oldest messages end up outside their own background.
-        RavenFontRenderer chatFont = ChatModule.getCustomFont();
+        MindlessFontRenderer chatFont = ChatModule.getCustomFont();
         float rowHeight = (chatFont != null ? chatFont.getLineHeight() : 9.0f) + ChatModule.lineSpacing();
         if (rowHeight < 1.0f) rowHeight = 1.0f;
         float headSize = ChatModule.playerHeads() ? ChatModule.headSize() : 0.0f;
@@ -129,8 +129,8 @@ public abstract class MixinGuiNewChat {
             ChatLine chatLine = drawnChatLines.get(i + scrollPos);
             if (chatLine == null) continue;
             rendered++;
-            double progress = raven$getAnimationProgress(chatLine, now);
-            double eased = raven$easeOutCubic(progress);
+            double progress = mindless$getAnimationProgress(chatLine, now);
+            double eased = mindless$easeOutCubic(progress);
             float x = (float) ((1.0 - eased) * -12.0);
             float y = -i * rowHeight - 8.0f;
             if (i > 0) y += insertionOffset;
@@ -196,30 +196,30 @@ public abstract class MixinGuiNewChat {
     }
 
     @Unique
-    private void raven$updateMessageAnimations(long now) {
+    private void mindless$updateMessageAnimations(long now) {
         for (ChatLine line : drawnChatLines) {
-            if (line != null && !raven$messageBirths.containsKey(line)) {
-                raven$messageBirths.put(line, now);
+            if (line != null && !mindless$messageBirths.containsKey(line)) {
+                mindless$messageBirths.put(line, now);
             }
         }
 
         // Avoid allocating a temporary identity set every rendered frame.
         // Old animation entries only need occasional cleanup.
-        if (now - raven$lastAnimationCleanup >= 1000L) {
-            raven$messageBirths.keySet().retainAll(drawnChatLines);
-            raven$lastAnimationCleanup = now;
+        if (now - mindless$lastAnimationCleanup >= 1000L) {
+            mindless$messageBirths.keySet().retainAll(drawnChatLines);
+            mindless$lastAnimationCleanup = now;
         }
     }
 
     @Unique
-    private double raven$getAnimationProgress(ChatLine line, long now) {
-        Long birth = raven$messageBirths.get(line);
+    private double mindless$getAnimationProgress(ChatLine line, long now) {
+        Long birth = mindless$messageBirths.get(line);
         if (birth == null) return 1.0;
-        return MathHelper.clamp_double((now - birth) / (double) RAVEN_MESSAGE_ANIMATION_MS, 0.0, 1.0);
+        return MathHelper.clamp_double((now - birth) / (double) MINDLESS_MESSAGE_ANIMATION_MS, 0.0, 1.0);
     }
 
     @Unique
-    private double raven$easeOutCubic(double progress) {
+    private double mindless$easeOutCubic(double progress) {
         double remaining = 1.0 - progress;
         return 1.0 - remaining * remaining * remaining;
     }

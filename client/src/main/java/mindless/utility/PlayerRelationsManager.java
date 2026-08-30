@@ -6,7 +6,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.ClickGui;
 import mindless.clickgui.components.Component;
 import mindless.clickgui.components.impl.CategoryComponent;
@@ -282,7 +282,7 @@ public class PlayerRelationsManager implements IMinecraftInstance {
     }
 
     private void refreshRelationshipsModuleUi() {
-        if (Raven.clickGui == null || ClickGui.categories == null || ModuleManager.relationships == null) {
+        if (Mindless.clickGui == null || ClickGui.categories == null || ModuleManager.relationships == null) {
             return;
         }
 

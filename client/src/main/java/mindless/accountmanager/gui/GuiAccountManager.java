@@ -19,7 +19,7 @@ import mindless.accountmanager.auth.SessionManager;
 import mindless.accountmanager.utils.Notification;
 import mindless.accountmanager.utils.TextFormatting;
 import mindless.utility.font.MinecraftFontAdapter;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
@@ -219,8 +219,8 @@ public class GuiAccountManager extends GuiScreen {
 
     @Override
     public void drawScreen(int mx, int my, float pt) {
-        RavenFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
-        RavenFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
+        MindlessFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
+        MindlessFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
 
         // Full-screen background
         drawRect(0, 0, width, height, C_BG);
@@ -277,7 +277,7 @@ public class GuiAccountManager extends GuiScreen {
         }
     }
 
-    private void drawStyledButtons(int mx, int my, RavenFontRenderer fr) {
+    private void drawStyledButtons(int mx, int my, MindlessFontRenderer fr) {
         for (GuiButton b : buttonList) {
             if (b == restoreButton) continue;
             int bg   = b.id == 2 ? (b.enabled ? 0xCC2A1212 : C_ROW) : C_ROW;
@@ -287,7 +287,7 @@ public class GuiAccountManager extends GuiScreen {
         }
     }
 
-    private void drawStyledButton(GuiButton b, int mx, int my, RavenFontRenderer fr,
+    private void drawStyledButton(GuiButton b, int mx, int my, MindlessFontRenderer fr,
                                    int bg, int bgHover, int fg) {
         boolean hov = b.enabled && mx >= b.xPosition && mx < b.xPosition + b.width
                 && my >= b.yPosition && my < b.yPosition + b.height;
@@ -435,7 +435,7 @@ public class GuiAccountManager extends GuiScreen {
                         notification = new Notification(TextFormatting.translate("&aRemoved " + removed + " invalid account(s)"), 5000L);
                         updateScreen();
                     });
-                }, "raven-delete-invalid").start();
+                }, "mindless-delete-invalid").start();
                 break;
             }
             case 8: {
@@ -505,8 +505,8 @@ public class GuiAccountManager extends GuiScreen {
         protected void drawSlot(int id, int x, int y, int h, int mx, int my) {
             if (id < 0 || id >= filteredList.size()) return;
             Account account = filteredList.get(id);
-            RavenFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
-            RavenFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
+            MindlessFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
+            MindlessFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
 
             boolean hov = mx >= x && mx <= x + getListWidth() && my >= y && my <= y + h;
             if (isSelected(id)) {

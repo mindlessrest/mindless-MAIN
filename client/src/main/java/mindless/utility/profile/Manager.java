@@ -1,6 +1,6 @@
 package mindless.utility.profile;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.TextSetting;
@@ -18,16 +18,16 @@ public class Manager extends Module {
         this.registerSetting(createProfileName = new TextSetting("Name", "", "Profile name...", 32, this::createProfile));
         this.registerSetting(createProfile = new ButtonSetting("Create", () -> createProfile()));
         this.registerSetting(loadProfiles = new ButtonSetting("Reload profiles", () -> {
-            if (Utils.nullCheck() && Raven.profileManager != null) {
-                Raven.profileManager.loadProfiles();
+            if (Utils.nullCheck() && Mindless.profileManager != null) {
+                Mindless.profileManager.loadProfiles();
             }
         }));
         this.registerSetting(openFolder = new ButtonSetting("Open folder", () -> {
             try {
-                Desktop.getDesktop().open(Raven.profileManager.directory);
+                Desktop.getDesktop().open(Mindless.profileManager.directory);
             }
             catch (IOException ex) {
-                Raven.profileManager.directory.mkdirs();
+                Mindless.profileManager.directory.mkdirs();
                 Utils.sendMessage("&cError locating folder, recreated.");
             }
         }));
@@ -36,7 +36,7 @@ public class Manager extends Module {
     }
 
     private void createProfile() {
-        if (!Utils.nullCheck() || Raven.profileManager == null) {
+        if (!Utils.nullCheck() || Mindless.profileManager == null) {
             return;
         }
 
@@ -46,7 +46,7 @@ public class Manager extends Module {
             return;
         }
 
-        Profile profile = Raven.profileManager.createProfile(name, 0);
+        Profile profile = Mindless.profileManager.createProfile(name, 0);
         if (profile != null) {
             createProfileName.setText("");
             Utils.sendMessage("&7Created profile: &b" + profile.getName());

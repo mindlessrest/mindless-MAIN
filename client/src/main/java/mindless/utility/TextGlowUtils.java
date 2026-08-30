@@ -1,7 +1,7 @@
 package mindless.utility;
 
 import mindless.utility.font.GlyphBatch;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.util.StringUtils;
 
@@ -45,7 +45,7 @@ public final class TextGlowUtils {
      * nothing between them that would force a draw, and closing the batch once instead of
      * twenty-one times turns a glowing line of text into a single draw call.
      */
-    public static void drawGlow(RavenFontRenderer font, String text, float x, float y, int color) {
+    public static void drawGlow(MindlessFontRenderer font, String text, float x, float y, int color) {
         if (font == null) return;
         GlyphBatch.begin();
         try {

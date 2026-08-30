@@ -40,7 +40,7 @@ public class MixinMinecraft {
             shift = At.Shift.AFTER
         )
     )
-    private void raven$fastMinePassiveBlockHitDelay(CallbackInfo ci) {
+    private void mindless$fastMinePassiveBlockHitDelay(CallbackInfo ci) {
         BedAura bedAura = ModuleManager.bedAura;
         if (bedAura != null && bedAura.shouldOverrideFastMine()) {
             return;

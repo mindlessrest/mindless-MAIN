@@ -46,7 +46,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
 @Mod(modid = "mindless", name = "Mindless", version = "1.0", acceptedMinecraftVersions = "[1.8.9]")
-public class Raven {
+public class Mindless {
     public static boolean DEBUG = false;
 
     public static Minecraft mc = Minecraft.getMinecraft();
@@ -67,7 +67,7 @@ public class Raven {
 
     private static boolean firstLoad;
 
-    public Raven() {
+    public Mindless() {
         moduleManager = new ModuleManager();
     }
 
@@ -79,7 +79,7 @@ public class Raven {
         Runtime.getRuntime().addShutdownHook(new Thread(cachedExecutor::shutdown));
         // Closing the game is the one exit that never goes through anything of ours, so the last
         // few seconds of changes have to be caught here or they are simply not written.
-        Runtime.getRuntime().addShutdownHook(new Thread(Raven::saveOnShutdown));
+        Runtime.getRuntime().addShutdownHook(new Thread(Mindless::saveOnShutdown));
 
         registerHandler(this, true);
         registerHandler(new DebugHelper(), false);
@@ -153,12 +153,12 @@ public class Raven {
                     }
                 }
                 if (mc.currentScreen == null) {
-                    for (Module module : Raven.scriptManager.scripts.values()) {
+                    for (Module module : Mindless.scriptManager.scripts.values()) {
                         module.onKeyBind();
                     }
                 }
                 else {
-                    for (Module module : Raven.scriptManager.scripts.values()) {
+                    for (Module module : Mindless.scriptManager.scripts.values()) {
                         module.syncKeyBindState();
                     }
                     if (mc.currentScreen instanceof ClickGui) {
@@ -175,12 +175,12 @@ public class Raven {
         else {
             MouseHelper.clearWheelCache();
             if (mc.currentScreen == null && Utils.nullCheck()) {
-                for (Profile profile : Raven.profileManager.profiles) {
+                for (Profile profile : Mindless.profileManager.profiles) {
                     profile.getModule().onKeyBind();
                 }
             }
             else if (Utils.nullCheck()) {
-                for (Profile profile : Raven.profileManager.profiles) {
+                for (Profile profile : Mindless.profileManager.profiles) {
                     profile.getModule().syncKeyBindState();
                 }
             }
@@ -418,7 +418,7 @@ public class Raven {
 
         // Untransform classes back to baseline original bytecode
         try {
-            mindless.runtime.RavenTransformerManager.get().setDisabled(true);
+            mindless.runtime.MindlessTransformerManager.get().setDisabled(true);
             mindless.runtime.TransformerHooks.untransformNative();
         } catch (Throwable t) {
             markNativeLog("Untransform classes failed: " + t);
@@ -429,7 +429,7 @@ public class Raven {
         } catch (Throwable ignored) {
         }
 
-        markNativeLog("Raven self-destructed; ready for loader re-injection");
+        markNativeLog("Mindless self-destructed; ready for loader re-injection");
         try {
             Utils.sendMessage("&7Mindless self-destructed. Run MindlessLoader to load again.");
         } catch (Throwable ignored) {
@@ -446,9 +446,9 @@ public class Raven {
      */
     private static void markNativeLog(String message) {
         try {
-            java.io.File dir = new java.io.File(System.getProperty("java.io.tmpdir"), "RavenNative");
+            java.io.File dir = new java.io.File(System.getProperty("java.io.tmpdir"), "MindlessNative");
             if (!dir.isDirectory() && !dir.mkdirs()) return;
-            java.io.File log = new java.io.File(dir, "raven-native.log");
+            java.io.File log = new java.io.File(dir, "mindless-native.log");
             try (java.io.PrintWriter writer = new java.io.PrintWriter(
                     new java.io.FileOutputStream(log, true), true)) {
                 writer.println("[" + new java.util.Date() + "] " + message);
@@ -476,7 +476,7 @@ public class Raven {
 
         // Re-transform classes back to transformed bytecode
         try {
-            mindless.runtime.RavenTransformerManager.get().setDisabled(false);
+            mindless.runtime.MindlessTransformerManager.get().setDisabled(false);
             mindless.runtime.TransformerHooks.retransformNative();
         } catch (Throwable t) {
             markNativeLog("Retransform classes failed: " + t);
@@ -504,7 +504,7 @@ public class Raven {
 
 
         unloaded = false;
-        markNativeLog("Raven reinjected; client is active again");
+        markNativeLog("Mindless reinjected; client is active again");
         try {
             Utils.sendMessage("&7Mindless reinjected.");
         } catch (Throwable ignored) {

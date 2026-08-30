@@ -1,6 +1,6 @@
 package mindless.module.impl.combat;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.event.AttackEvent;
 import mindless.event.PreAttackEvent;
 import mindless.event.PrePlayerInteractEvent;
@@ -628,7 +628,7 @@ public class Autoblock extends Module {
             return;
         }
         outboundLag = new LagRequest(EnumLagDirection.ONLY_OUTBOUND, new ModuleBackedTimeout(this));
-        Raven.lagHandler.requestLag(outboundLag);
+        Mindless.lagHandler.requestLag(outboundLag);
         isLagging = true;
         lagStartTick = lagReferenceTick;
         syncBlockAnimation();

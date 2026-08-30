@@ -20,7 +20,7 @@ extern HMODULE   g_module;
 
 void  vape_log(const wchar_t *format, ...);
 void  vape_log_pending_exception(JNIEnv *env, const wchar_t *context);
-jint  raven_initialize_jvmti(JavaVM *vm);
+jint  mindless_initialize_jvmti(JavaVM *vm);
 
 #ifdef __cplusplus
 }

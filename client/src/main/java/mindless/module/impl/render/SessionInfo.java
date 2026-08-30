@@ -7,7 +7,7 @@ import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.ModuleFont;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
@@ -205,8 +205,8 @@ public class SessionInfo extends Module {
         if (modern) {
             // Modern anchors on the right edge; convert left-edge drag coordinate.
             float s = (float) scale.getInput();
-            RavenFontRenderer font = HUD.getHudFontRenderer();
-            RavenFontRenderer bigFont = valueFont();
+            MindlessFontRenderer font = HUD.getHudFontRenderer();
+            MindlessFontRenderer bigFont = valueFont();
             if (font == null || bigFont == null) return null;
             // Estimate width for positioning
             float[] prev = drawModern();
@@ -332,8 +332,8 @@ public class SessionInfo extends Module {
     }
 
     private float[] drawModern() {
-        RavenFontRenderer font = HUD.getHudFontRenderer();
-        RavenFontRenderer bigFont = valueFont();
+        MindlessFontRenderer font = HUD.getHudFontRenderer();
+        MindlessFontRenderer bigFont = valueFont();
         if (font == null || bigFont == null) return null;
 
         syncPositionToResolution();
@@ -408,7 +408,7 @@ public class SessionInfo extends Module {
     }
 
     /** A real larger face for the numbers, rather than scaling the small one up and blurring it. */
-    private static RavenFontRenderer valueFont() {
+    private static MindlessFontRenderer valueFont() {
         return FontManager.getHudRenderer(ModuleFont.nameOf(font),
                 Math.min(2.0f, HUD.getSelectedFontScale() * 1.6f));
     }
@@ -455,7 +455,7 @@ public class SessionInfo extends Module {
         return counts;
     }
 
-    private float cellWidth(RavenFontRenderer small, RavenFontRenderer big, java.util.List<String> vals, java.util.List<String> labels) {
+    private float cellWidth(MindlessFontRenderer small, MindlessFontRenderer big, java.util.List<String> vals, java.util.List<String> labels) {
         float widest = 0.0f;
         for (int i = 0; i < vals.size(); i++) {
             widest = Math.max(widest, Math.max(big.getStringWidth(vals.get(i)),
@@ -465,8 +465,8 @@ public class SessionInfo extends Module {
     }
 
     private float[] measure() {
-        RavenFontRenderer small = HUD.getHudFontRenderer();
-        RavenFontRenderer big = valueFont();
+        MindlessFontRenderer small = HUD.getHudFontRenderer();
+        MindlessFontRenderer big = valueFont();
         if (small == null || big == null) return null;
 
         java.util.List<String> vals = activeValues();
@@ -488,8 +488,8 @@ public class SessionInfo extends Module {
 
     /** Draws the panel and returns its bounds as {left, top, right, bottom}. */
     private float[] draw() {
-        RavenFontRenderer small = HUD.getHudFontRenderer();
-        RavenFontRenderer big = valueFont();
+        MindlessFontRenderer small = HUD.getHudFontRenderer();
+        MindlessFontRenderer big = valueFont();
         if (small == null || big == null) return null;
         float[] size = measure();
         if (size == null) return null;
@@ -578,7 +578,7 @@ public class SessionInfo extends Module {
         return new float[] { left, top, left + w, top + h };
     }
 
-    private static void font(RavenFontRenderer renderer, String text, float x, float y, int color) {
+    private static void font(MindlessFontRenderer renderer, String text, float x, float y, int color) {
         renderer.drawString(text, Math.round(x), Math.round(y), color, false);
     }
 

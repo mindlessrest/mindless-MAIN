@@ -1,6 +1,6 @@
 package mindless.utility.media;
 
-import mindless.Raven;
+import mindless.Mindless;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.util.ResourceLocation;
@@ -73,7 +73,7 @@ public final class SystemMediaClient {
     private volatile boolean visualizerWantsArtwork;
     private volatile long lastNativePositionMs = Long.MIN_VALUE;
     private final ScheduledExecutorService mediaExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "Raven-MediaPoll");
+        Thread t = new Thread(r, "Mindless-MediaPoll");
         t.setDaemon(true);
         t.setPriority(Thread.NORM_PRIORITY - 1);
         return t;
@@ -199,7 +199,7 @@ public final class SystemMediaClient {
                 decodedAlbumArt = null;
                 clearAlbumArtTextureLocked();
                 final byte[] encodedImage = mediaInfo.getAlbumArtBytes();
-                albumArtDecodeTask = Raven.getCachedExecutor().submit(new Runnable() {
+                albumArtDecodeTask = Mindless.getCachedExecutor().submit(new Runnable() {
                     @Override
                     public void run() {
                         BufferedImage image = decodeAndResizeAlbumArt(encodedImage);

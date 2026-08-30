@@ -16,7 +16,7 @@ public class TransformerTileEntityEnderChestRenderer {
             method = "renderTileEntityAt(Lnet/minecraft/tileentity/TileEntityEnderChest;DDDFI)V",
             target = @CTarget("HEAD")
     )
-    private void raven$enderChestChamsPre(TileEntityEnderChest te, double x, double y, double z, float partialTicks, int destroyStage, InjectionCallback ci) {
+    private void mindless$enderChestChamsPre(TileEntityEnderChest te, double x, double y, double z, float partialTicks, int destroyStage, InjectionCallback ci) {
         ChestESP.onRenderChestPre(te);
     }
 
@@ -25,7 +25,7 @@ public class TransformerTileEntityEnderChestRenderer {
             method = "renderTileEntityAt(Lnet/minecraft/tileentity/TileEntityEnderChest;DDDFI)V",
             target = @CTarget("RETURN")
     )
-    private void raven$enderChestChamsPost(TileEntityEnderChest te, double x, double y, double z, float partialTicks, int destroyStage, InjectionCallback ci) {
+    private void mindless$enderChestChamsPost(TileEntityEnderChest te, double x, double y, double z, float partialTicks, int destroyStage, InjectionCallback ci) {
         ChestESP.onRenderChestPost();
     }
 }

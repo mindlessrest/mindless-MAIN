@@ -1,6 +1,6 @@
 package mindless.runtime;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.animation.ScrollOffsetAnimation;
 import mindless.module.impl.client.Gui;
 import mindless.utility.RenderUtils;
@@ -36,7 +36,7 @@ public final class ChatCommandRuntime {
     }
 
     public static String nextCompletion(GuiChat chat, String input) {
-        if (Raven.commandManager == null || !Raven.commandManager.isCommand(input)) {
+        if (Mindless.commandManager == null || !Mindless.commandManager.isCommand(input)) {
             resetCompletions(state(chat));
             return null;
         }
@@ -46,7 +46,7 @@ public final class ChatCommandRuntime {
             suggestions = state.completions;
             state.completionIndex = (state.completionIndex + 1) % suggestions.length;
         } else {
-            suggestions = Raven.commandManager.getAutoComplete(input);
+            suggestions = Mindless.commandManager.getAutoComplete(input);
             if (suggestions.length == 0) {
                 resetCompletions(state);
                 return null;
@@ -58,15 +58,15 @@ public final class ChatCommandRuntime {
     }
 
     public static boolean handleMouseInput(GuiChat chat, String input, int width, int height) {
-        if (Raven.commandManager == null) return false;
+        if (Mindless.commandManager == null) return false;
         int wheel = Mouse.getEventDWheel();
         if (wheel == 0) return false;
         State state = state(chat);
-        if (!Raven.commandManager.isCommand(input)) {
+        if (!Mindless.commandManager.isCommand(input)) {
             resetPreview(state);
             return false;
         }
-        String[] suggestions = Raven.commandManager.getPreviewSuggestions(input);
+        String[] suggestions = Mindless.commandManager.getPreviewSuggestions(input);
         int rows = Math.min(MAX_PREVIEW_ROWS, suggestions.length);
         if (rows == 0 || suggestions.length <= rows) {
             syncPreview(state, input, suggestions.length, rows);
@@ -85,11 +85,11 @@ public final class ChatCommandRuntime {
 
     public static void drawSuggestions(GuiChat chat, String input, int width, int height) {
         State state = state(chat);
-        if (Raven.commandManager == null || !Raven.commandManager.isCommand(input)) {
+        if (Mindless.commandManager == null || !Mindless.commandManager.isCommand(input)) {
             resetPreview(state);
             return;
         }
-        String[] suggestions = Raven.commandManager.getPreviewSuggestions(input);
+        String[] suggestions = Mindless.commandManager.getPreviewSuggestions(input);
         if (suggestions.length == 0) {
             resetPreview(state);
             return;

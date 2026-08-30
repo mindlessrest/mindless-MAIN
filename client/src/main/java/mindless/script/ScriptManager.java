@@ -1,6 +1,6 @@
 package mindless.script;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.module.Module;
 import mindless.module.setting.impl.TextSetting;
@@ -609,9 +609,9 @@ public class ScriptManager {
 
             Module module = new Module(script);
             attachManagerSettings(script, module);
-            Raven.scriptManager.scripts.put(script, module);
+            Mindless.scriptManager.scripts.put(script, module);
             ScriptDefaults.reloadModules();
-            Raven.scriptManager.invoke("onLoad", module);
+            Mindless.scriptManager.invoke("onLoad", module);
            // System.out.println("[Scripts] Loaded jar script: " + scriptName);
             return true;
         } catch (Throwable t) {
@@ -681,9 +681,9 @@ public class ScriptManager {
         script.run();
         Module module = new Module(script);
         attachManagerSettings(script, module);
-        Raven.scriptManager.scripts.put(script, module);
+        Mindless.scriptManager.scripts.put(script, module);
         ScriptDefaults.reloadModules();
-        Raven.scriptManager.invoke("onLoad", module);
+        Mindless.scriptManager.invoke("onLoad", module);
         return !script.error;
     }
 
@@ -787,7 +787,7 @@ public class ScriptManager {
     }
 
     private void refreshScriptModules() {
-        for (CategoryComponent categoryComponent : Raven.clickGui.categories) {
+        for (CategoryComponent categoryComponent : Mindless.clickGui.categories) {
             if (categoryComponent.category == Module.category.scripts) {
                 categoryComponent.reloadModules(false);
                 break;
@@ -843,7 +843,7 @@ public class ScriptManager {
     }
 
     private String buildDefaultScriptTemplate() {
-        return "// New Raven script\n"
+        return "// New Mindless script\n"
             + "void onLoad() {\n"
             + "}\n\n"
             + "void onEnable() {\n"

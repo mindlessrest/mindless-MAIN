@@ -11,7 +11,7 @@ import net.minecraft.util.MathHelper;
 /**
  * OptiFine's CustomSky.renderSky reads world time to pick a sky texture.
  * Weather.time overrides that. We target the class by string because
- * OptiFine isn't a compile-time dep — RavenTransformerManager only
+ * OptiFine isn't a compile-time dep — MindlessTransformerManager only
  * registers this transformer when net.optifine.CustomSky is present.
  *
  * The mixin was a @ModifyVariable("STORE"); we replicate with a @CInject

@@ -355,7 +355,7 @@ public class Particles extends Module {
                 }
             }
             return mc.getTextureManager().getDynamicTextureLocation(
-                    "raven_particle_mask_" + name, new DynamicTexture(mask));
+                    "mindless_particle_mask_" + name, new DynamicTexture(mask));
         } catch (Exception ignored) {
             return new ResourceLocation("mindless", "textures/particles/" + fileName);
         }

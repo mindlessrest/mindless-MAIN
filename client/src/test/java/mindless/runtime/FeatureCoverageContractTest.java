@@ -67,12 +67,6 @@ public class FeatureCoverageContractTest {
         contracts.put("src/main/java/mindless/runtime/LunarEventBridge.java",
                 new String[]{"postClientTick", "postRenderTick", "postRenderWorld", "postOverlayPre",
                         "postGuiOpen", "postRenderPlayerPre", "postRenderLivingSpecialsPre"});
-        contracts.put("src/main/java/mindless/module/impl/fun/Capes.java",
-                new String[]{"raw.githubusercontent.com/mindlessrest/resources/",
-                        "downloadMindlessCapeAsync", "Raven.getCachedExecutor().execute",
-                        "mc.addScheduledTask", "selectMindlessCape", "instance.isEnabled"});
-        contracts.put("src/main/java/mindless/module/ModuleManager.java",
-                new String[]{"Capes capes = new Capes()", "capes.enable()"});
 
         for (Map.Entry<String, String[]> contract : contracts.entrySet()) {
             String source = read(contract.getKey());

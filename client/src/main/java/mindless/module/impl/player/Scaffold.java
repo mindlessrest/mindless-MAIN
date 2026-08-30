@@ -14,7 +14,7 @@ import mindless.utility.shader.RoundedUtils;
 import mindless.module.impl.render.HUD;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.ModuleFont;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import org.lwjgl.opengl.GL20;
 import java.awt.Color;
@@ -419,8 +419,8 @@ public class Scaffold extends Module {
         // same rectangle.
         float scale = Math.max(0.0F, popScale);
 
-        RavenFontRenderer countFont = countFont();
-        RavenFontRenderer labelFont = HUD.getHudFontRenderer();
+        MindlessFontRenderer countFont = countFont();
+        MindlessFontRenderer labelFont = HUD.getHudFontRenderer();
 
         int shownBlocks = Math.round(displayedBlocks);
         String countText = Integer.toString(shownBlocks);
@@ -503,15 +503,15 @@ public class Scaffold extends Module {
     }
 
     /** Height is driven by the fonts, so a larger HUD scale grows the panel with the text. */
-    private float overlayHeight(RavenFontRenderer countFont, RavenFontRenderer labelFont) {
+    private float overlayHeight(MindlessFontRenderer countFont, MindlessFontRenderer labelFont) {
         float content = countFont.getFontHeight() + 1.0F + labelFont.getFontHeight() + BAR_GAP + BAR_HEIGHT;
         return Math.max(BADGE_SIZE, content) + PANEL_PAD_Y * 2.0F;
     }
 
     /** The overlay's footprint, for the drag handle and the editor. */
     private float[] overlaySize(ItemStack badgeStack) {
-        RavenFontRenderer countFont = countFont();
-        RavenFontRenderer labelFont = HUD.getHudFontRenderer();
+        MindlessFontRenderer countFont = countFont();
+        MindlessFontRenderer labelFont = HUD.getHudFontRenderer();
         float rateW = labelFont.getStringWidth("0.0") + labelFont.getStringWidth(" BPS");
         float countW = countFont.getStringWidth(Integer.toString(Math.max(0, getTotalBlocks())));
         float labelW = labelFont.getStringWidth("BLOCKS");
@@ -521,7 +521,7 @@ public class Scaffold extends Module {
     }
 
     /** A real larger face for the count, rather than scaling the small one up and blurring it. */
-    private static RavenFontRenderer countFont() {
+    private static MindlessFontRenderer countFont() {
         return FontManager.getHudRenderer(ModuleFont.nameOf(counterFont),
                 Math.min(2.0F, HUD.getSelectedFontScale() * 1.55F));
     }

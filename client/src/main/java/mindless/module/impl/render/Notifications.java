@@ -1,6 +1,6 @@
 package mindless.module.impl.render;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.Settings;
@@ -10,7 +10,7 @@ import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Theme;
 import mindless.utility.Utils;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
@@ -127,8 +127,8 @@ public class Notifications extends Module {
         }
 
         for (Module m : ModuleManager.modules) checkModuleState(m, now, dur);
-        if (Raven.scriptManager != null) {
-            for (Module m : Raven.scriptManager.scripts.values()) checkModuleState(m, now, dur);
+        if (Mindless.scriptManager != null) {
+            for (Module m : Mindless.scriptManager.scripts.values()) checkModuleState(m, now, dur);
         }
 
         long keep = SLIDE + FADE + 200;
@@ -162,7 +162,7 @@ public class Notifications extends Module {
     }
 
     private boolean isScriptModule(Module module) {
-        return Raven.scriptManager != null && Raven.scriptManager.scripts.containsValue(module);
+        return Mindless.scriptManager != null && Mindless.scriptManager.scripts.containsValue(module);
     }
 
     private void push(String title, boolean enabled, long dur, long now) {
@@ -174,7 +174,7 @@ public class Notifications extends Module {
     }
 
     /** Width that fits this card's own text, so short names get a short card. */
-    private static float cardWidth(RavenFontRenderer font, String title, String status, String clock) {
+    private static float cardWidth(MindlessFontRenderer font, String title, String status, String clock) {
         float text = Math.max(font.getStringWidth(title), font.getStringWidth(status));
         float w = PAD_L + ICON + ICON_GAP + text + CLOCK_GAP + font.getStringWidth(clock) + PAD_R;
         return Math.max(W_MIN, Math.min(W_MAX, w));
@@ -213,7 +213,7 @@ public class Notifications extends Module {
     public void onRenderTick(TickEvent.RenderTickEvent e) {
         if (e.phase != TickEvent.Phase.END || !Utils.nullCheck() || cards.isEmpty()) return;
 
-        RavenFontRenderer font = HUD.getHudFontRenderer();
+        MindlessFontRenderer font = HUD.getHudFontRenderer();
         if (font == null) return;
 
         ScaledResolution sr = ScaledResolutionCache.get();
@@ -256,7 +256,7 @@ public class Notifications extends Module {
         RenderUtils.syncGlState();
     }
 
-    private void drawCard(Card c, float rightEdge, float y, RavenFontRenderer font,
+    private void drawCard(Card c, float rightEdge, float y, MindlessFontRenderer font,
                           float alpha, int a, int gradL, int gradR, long now) {
         long age = now - c.birthMs;
         float progress = c.durationMs <= 0L

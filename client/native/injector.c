@@ -12,12 +12,12 @@
 #include <wchar.h>
 
 /*
- * RavenInjector.exe — enumerates visible java.exe/javaw.exe windows every
+ * MindlessInjector.exe — enumerates visible java.exe/javaw.exe windows every
  * 750 ms, lets the user pick one with Up/Down/Enter, and injects
- * RavenNative.dll via CreateRemoteThread(LoadLibraryW). x64 only.
+ * MindlessNative.dll via CreateRemoteThread(LoadLibraryW). x64 only.
  *
- * Non-interactive form for scripts: RavenInjector.exe <pid> <dll-path>
- * Default DLL name looked up next to the exe: RavenNative.dll
+ * Non-interactive form for scripts: MindlessInjector.exe <pid> <dll-path>
+ * Default DLL name looked up next to the exe: MindlessNative.dll
  */
 
 #define MAX_CANDIDATES 256
@@ -63,8 +63,8 @@ static int default_dll_path(wchar_t *output, DWORD capacity) {
     if (length == 0 || length >= capacity) return 0;
     file_name = wcsrchr(output, L'\\');
     file_name = file_name == NULL ? output : file_name + 1;
-    if ((size_t)(file_name - output) + wcslen(L"RavenNative.dll") + 1 > capacity) return 0;
-    wcscpy(file_name, L"RavenNative.dll");
+    if ((size_t)(file_name - output) + wcslen(L"MindlessNative.dll") + 1 > capacity) return 0;
+    wcscpy(file_name, L"MindlessNative.dll");
     attributes = GetFileAttributesW(output);
     return attributes != INVALID_FILE_ATTRIBUTES
             && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
@@ -165,7 +165,7 @@ static void render_selector(const process_candidate *candidates, size_t count,
         SetConsoleCursorPosition(output, home);
         previous_rows = rows;
     }
-    wprintf(L"Raven Injector\n");
+    wprintf(L"Mindless Injector\n");
     wprintf(L"DLL: %ls\n\n", dll_path);
     wprintf(L"Select a Java game window (Up/Down, Enter to inject, Esc to quit)\n\n");
     if (count == 0) {
@@ -350,7 +350,7 @@ static int inject_library(DWORD process_id, const wchar_t *dll_path) {
     }
     if (result == 0) {
         fwprintf(stderr, L"LoadLibraryW returned, but the DLL is not mapped. "
-                L"Inspect raven-native.log for bootstrap failure.\n"); goto cleanup;
+                L"Inspect mindless-native.log for bootstrap failure.\n"); goto cleanup;
     }
 
     cleanup:
@@ -369,10 +369,10 @@ static int inject_library(DWORD process_id, const wchar_t *dll_path) {
 
 static void usage(const wchar_t *program) {
     fwprintf(stderr,
-            L"Usage: %ls [RavenNative.dll]\n"
-            L"       %ls <minecraft-pid> <RavenNative.dll>\n"
+            L"Usage: %ls [MindlessNative.dll]\n"
+            L"       %ls <minecraft-pid> <MindlessNative.dll>\n"
             L"Without a PID, an automatically refreshing Java window selector is shown.\n"
-            L"The injected DLL loads and starts the Raven payload automatically.\n",
+            L"The injected DLL loads and starts the Mindless payload automatically.\n",
             program, program);
 }
 
@@ -394,7 +394,7 @@ int wmain(int argc, wchar_t **argv) {
             fwprintf(stderr, L"DLL does not exist: %ls\n", argv[1]); return 2;
         }
     } else if (!default_dll_path(dll_path, MAX_PATH)) {
-        fwprintf(stderr, L"RavenNative.dll was not found beside the injector.\n");
+        fwprintf(stderr, L"MindlessNative.dll was not found beside the injector.\n");
         usage(argv[0]); return 2;
     }
     if (argc != 3) {
@@ -410,7 +410,7 @@ int wmain(int argc, wchar_t **argv) {
             return 0;
         }
     }
-    wprintf(L"Loaded %ls into PID %lu; Raven bootstrap is running asynchronously.\n",
+    wprintf(L"Loaded %ls into PID %lu; Mindless bootstrap is running asynchronously.\n",
             dll_path, process_id);
     return 0;
 }

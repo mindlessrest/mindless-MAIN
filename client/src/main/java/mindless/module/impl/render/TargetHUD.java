@@ -434,7 +434,7 @@ public class TargetHUD extends Module {
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.enableTexture2D();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-        mindless.utility.font.RavenFontRenderer hudFont = HUD.getHudFontRenderer();
+        mindless.utility.font.MindlessFontRenderer hudFont = HUD.getHudFontRenderer();
         hudFont.drawString(string, (float) n13, (float) y, (new Color(220, 220, 220, 255).getRGB() & 0xFFFFFF) | Utils.clamp(alpha + 15) << 24, true);
         GlStateManager.disableBlend();
 
@@ -612,8 +612,8 @@ public class TargetHUD extends Module {
     private EntityLivingBase getActiveTarget() {
         if (KillAura.target != null) return KillAura.target;
         if (KillAura.attackingEntity != null) return KillAura.attackingEntity;
-        if (mindless.Raven.getModuleManager() != null) {
-            for (mindless.module.Module mod : mindless.Raven.getModuleManager().getModules()) {
+        if (mindless.Mindless.getModuleManager() != null) {
+            for (mindless.module.Module mod : mindless.Mindless.getModuleManager().getModules()) {
                 if (mod instanceof AimAssist && mod.isEnabled()) {
                     net.minecraft.entity.Entity aimTarget = ((AimAssist) mod).getAimAssistTarget();
                     if (aimTarget instanceof EntityLivingBase) return (EntityLivingBase) aimTarget;

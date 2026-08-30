@@ -10,7 +10,7 @@ import mindless.runtime.LunarEventBridge;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
@@ -203,7 +203,7 @@ public class Nametags extends Module {
     }
 
     private void updateRenderStates() {
-        RavenFontRenderer fontRenderer = getNametagFontRenderer();
+        MindlessFontRenderer fontRenderer = getNametagFontRenderer();
         Entity viewer = mc.getRenderViewEntity();
         if (viewer == null) {
             renderStateCount = 0;
@@ -283,7 +283,7 @@ public class Nametags extends Module {
     private void renderNametags(float partialTicks) {
         RenderManager renderManager = mc.getRenderManager();
         FontRenderer itemFontRenderer = mc.fontRendererObj;
-        RavenFontRenderer textRenderer = getNametagFontRenderer();
+        MindlessFontRenderer textRenderer = getNametagFontRenderer();
         if (renderManager == null || itemFontRenderer == null || renderStateCount == 0) {
             return;
         }
@@ -369,7 +369,7 @@ public class Nametags extends Module {
         return Math.max(scaleValue, scaledValue);
     }
 
-    private void renderCustomName(NametagRenderState state, float partialTicks, RenderManager renderManager, RavenFontRenderer textRenderer, FontRenderer itemFontRenderer) {
+    private void renderCustomName(NametagRenderState state, float partialTicks, RenderManager renderManager, MindlessFontRenderer textRenderer, FontRenderer itemFontRenderer) {
         EntityPlayer entity = state.player;
         if (entity == null || entity.isDead || entity.deathTime > 0) {
             return;
@@ -451,11 +451,11 @@ public class Nametags extends Module {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
-    private void drawDisplayName(NametagRenderState state, RavenFontRenderer textRenderer) {
+    private void drawDisplayName(NametagRenderState state, MindlessFontRenderer textRenderer) {
         textRenderer.drawString(state.displayName, -state.stringHalfWidth, 0.0f, 0xFFFFFFFF, textShadow.isToggled());
     }
 
-    private void renderBackground(int stringWidth, float textY, int teamColor, int relationshipColor, RavenFontRenderer fontRenderer) {
+    private void renderBackground(int stringWidth, float textY, int teamColor, int relationshipColor, MindlessFontRenderer fontRenderer) {
         GlStateManager.disableTexture2D();
         Tessellator tessellator = Tessellator.getInstance();
         WorldRenderer worldRenderer = tessellator.getWorldRenderer();
@@ -556,7 +556,7 @@ public class Nametags extends Module {
         return font.getOptions()[index];
     }
 
-    private RavenFontRenderer getNametagFontRenderer() {
+    private MindlessFontRenderer getNametagFontRenderer() {
         return FontManager.getNametagRenderer(getSelectedFontName());
     }
 

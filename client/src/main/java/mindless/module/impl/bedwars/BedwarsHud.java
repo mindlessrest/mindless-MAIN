@@ -6,7 +6,7 @@ import mindless.module.impl.render.HUD;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ScaledResolutionCache;
-import mindless.utility.font.RavenFontRenderer;
+import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
@@ -78,7 +78,7 @@ public abstract class BedwarsHud extends Module {
     }
 
     private float[] draw() {
-        RavenFontRenderer font = HUD.getHudFontRenderer();
+        MindlessFontRenderer font = HUD.getHudFontRenderer();
         if (font == null) return null;
 
         List<String> lines = lines();

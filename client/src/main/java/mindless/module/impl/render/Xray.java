@@ -1,6 +1,6 @@
 package mindless.module.impl.render;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -61,7 +61,7 @@ public class Xray extends Module {
             return;
         }
         lastCheck = System.currentTimeMillis();
-        Raven.getCachedExecutor().execute(() -> {
+        Mindless.getCachedExecutor().execute(() -> {
             int n = (int) range.getInput();
             int playerX = (int) mc.thePlayer.posX;
             int playerY = (int) mc.thePlayer.posY;

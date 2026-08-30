@@ -35,7 +35,7 @@ import java.util.List;
  * actually going to draw them. A feature switched off in the mini player is never fetched at all.
  */
 final class NativeMediaBridge {
-    private static final String[] LIBRARY_BASENAMES = new String[] { "MindlessMediaBridge", "RavenMediaBridge" };
+    private static final String[] LIBRARY_BASENAMES = new String[] { "MindlessMediaBridge" };
     private static final String BUNDLED_LIBRARY_RESOURCE = "/mindless/native/MindlessMediaBridge.dll";
 
     /** The source application changes only when a different player takes over the session. */
@@ -425,9 +425,7 @@ final class NativeMediaBridge {
         File mindlessDir = new File(dataDir, "mindless");
         return new File[] {
                 new File(mindlessDir, "MindlessMediaBridge.dll"),
-                new File(mindlessDir, "RavenMediaBridge.dll"),
-                new File(new File(mindlessDir, "media-helper"), "MindlessMediaBridge.dll"),
-                new File(new File(mindlessDir, "media-helper"), "RavenMediaBridge.dll")
+                new File(new File(mindlessDir, "media-helper"), "MindlessMediaBridge.dll")
         };
     }
 

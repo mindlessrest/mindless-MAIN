@@ -1,6 +1,6 @@
 package mindless.runtime;
 
-import mindless.Raven;
+import mindless.Mindless;
 import net.minecraftforge.fml.common.eventhandler.Event;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.junit.Assert;
@@ -24,7 +24,7 @@ import java.util.stream.Stream;
 public class EventHandlerContractTest {
     @Test
     public void everyMindlessSubscriberUsesRegistrableEventTypes() throws Exception {
-        URI rootUri = Raven.class.getProtectionDomain().getCodeSource().getLocation().toURI();
+        URI rootUri = Mindless.class.getProtectionDomain().getCodeSource().getLocation().toURI();
         Path root = Paths.get(rootUri);
         Path packageRoot = root.resolve("mindless");
         List<String> failures = new ArrayList<>();

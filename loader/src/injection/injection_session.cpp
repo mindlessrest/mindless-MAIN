@@ -125,7 +125,7 @@ std::wstring sibling_log(const std::wstring& modulePath)
 {
     size_t separator = modulePath.find_last_of(L"\\/");
     if (separator == std::wstring::npos) return {};
-    return modulePath.substr(0, separator + 1) + L"raven-native.log";
+    return modulePath.substr(0, separator + 1) + L"mindless-native.log";
 }
 
 bool contains(const std::string& text, const char* value)
@@ -137,11 +137,11 @@ bool contains(const std::string& text, const char* value)
 // appended to across a session, so only the ordering of the final markers says anything.
 bool uninjected_since_load(const std::string& text)
 {
-    size_t uninjected = text.rfind("Raven uninjected");
+    size_t uninjected = text.rfind("Mindless uninjected");
     if (uninjected == std::string::npos) return false;
 
-    size_t live = text.rfind("Raven reinjected");
-    size_t started = text.rfind("NativeBootstrap.start completed; Raven is active");
+    size_t live = text.rfind("Mindless reinjected");
+    size_t started = text.rfind("NativeBootstrap.start completed; Mindless is active");
     if (live == std::string::npos || (started != std::string::npos && started > live))
     {
         live = started;
@@ -161,10 +161,10 @@ bool InjectionSession::start(uint32_t processId)
 {
     if (phase_ != InjectionPhase::Idle) return false;
 
-    std::wstring loadedModule = remote_module_path(processId, L"RavenNative.dll");
+    std::wstring loadedModule = remote_module_path(processId, L"MindlessNative.dll");
     if (!loadedModule.empty())
     {
-        uintptr_t baseAddr = remote_module_base(processId, L"RavenNative.dll");
+        uintptr_t baseAddr = remote_module_base(processId, L"MindlessNative.dll");
         if (baseAddr != 0)
         {
             HANDLE hProcess = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ, FALSE, processId);
@@ -294,7 +294,7 @@ bool InjectionSession::inject_remote()
 
     for (int attempt = 0; attempt < 100; ++attempt)
     {
-        if (!remote_module_path(targetProcessId_, L"RavenNative.dll").empty())
+        if (!remote_module_path(targetProcessId_, L"MindlessNative.dll").empty())
         {
             success = true;
             break;
@@ -429,8 +429,8 @@ bool InjectionSession::prepare_runtime()
         GetLastError() != ERROR_ALREADY_EXISTS)
         return false;
 
-    dllPath_ = directory_ + L"\\RavenNative.dll";
-    logPath_ = directory_ + L"\\raven-native.log";
+    dllPath_ = directory_ + L"\\MindlessNative.dll";
+    logPath_ = directory_ + L"\\mindless-native.log";
     DeleteFileW(logPath_.c_str());
 
     pipe_ = CreateNamedPipeW(
@@ -440,7 +440,7 @@ bool InjectionSession::prepare_runtime()
         1, 0, 4096, 0, nullptr
     );
 
-    return write_resource(IDR_RAVEN_NATIVE, dllPath_);
+    return write_resource(IDR_MINDLESS_NATIVE, dllPath_);
 }
 
 void InjectionSession::fail(std::string status, std::string solution)
@@ -514,7 +514,7 @@ void InjectionSession::update_bootstrap()
     std::string log = read_text_file(logPath_);
     if (log.empty() && !pipeConnected_) return;
 
-    if (contains(log, "NativeBootstrap.start completed; Raven is active"))
+    if (contains(log, "NativeBootstrap.start completed; Mindless is active"))
     {
         phase_ = InjectionPhase::Complete;
         status_ = "Ready";
@@ -538,7 +538,7 @@ void InjectionSession::update_bootstrap()
         contains(log, "retransformed "))
         bootstrapProgress_ = 0.97f;
     else if (contains(log, "safe main-menu transform window is ready") ||
-             contains(log, "RavenTransformerManager constructed") ||
+             contains(log, "MindlessTransformerManager constructed") ||
              contains(log, "apply_transformers: step"))
         bootstrapProgress_ = 0.81f;
     else if (contains(log, "NativeBootstrap linked") ||

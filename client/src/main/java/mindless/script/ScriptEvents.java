@@ -1,6 +1,6 @@
 package mindless.script;
 
-import mindless.Raven;
+import mindless.Mindless;
 import mindless.event.*;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
@@ -38,7 +38,7 @@ public class ScriptEvents {
         if (Utils.stripColor(e.message.getUnformattedText()).isEmpty()) {
             return;
         }
-        if (Raven.scriptManager.invokeBoolean("onChat", module, e.message.getUnformattedText(), e.type) == 0) {
+        if (Mindless.scriptManager.invokeBoolean("onChat", module, e.message.getUnformattedText(), e.type) == 0) {
             e.setCanceled(true);
         }
     }
@@ -52,7 +52,7 @@ public class ScriptEvents {
             return;
         }
         CPacket packet = PacketHandler.convertServerBound(e.getPacket());
-        if (packet != null && Raven.scriptManager.invokeBoolean("onPacketSent", module, packet) == 0) {
+        if (packet != null && Mindless.scriptManager.invokeBoolean("onPacketSent", module, packet) == 0) {
             e.setCanceled(true);
         }
     }
@@ -66,7 +66,7 @@ public class ScriptEvents {
             return;
         }
         CPacket packet = PacketHandler.convertServerBound(e.getPacket());
-        Raven.scriptManager.invoke("onDispatchPacket", module, packet);
+        Mindless.scriptManager.invoke("onDispatchPacket", module, packet);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -75,7 +75,7 @@ public class ScriptEvents {
             return;
         }
         SPacket packet = PacketHandler.convertClientBound(e.getPacket());
-        if (packet != null && Raven.scriptManager.invokeBoolean("onPacketReceived", module, packet) == 0) {
+        if (packet != null && Mindless.scriptManager.invokeBoolean("onPacketReceived", module, packet) == 0) {
             e.setCanceled(true);
         }
     }
@@ -85,7 +85,7 @@ public class ScriptEvents {
         if (e.isCanceled()) {
             return;
         }
-        if (Raven.scriptManager.invokeBoolean("onPreAttack", module) == 0) {
+        if (Mindless.scriptManager.invokeBoolean("onPreAttack", module) == 0) {
             e.setCanceled(true);
         }
     }
@@ -97,14 +97,14 @@ public class ScriptEvents {
         }
         Entity target = Entity.convert(e.target);
         Entity attacker = Entity.convert(e.attacker);
-        if (Raven.scriptManager.invokeBoolean("onAttackEntity", module, target, attacker) == 0) {
+        if (Mindless.scriptManager.invokeBoolean("onAttackEntity", module, target, attacker) == 0) {
             e.setCanceled(true);
         }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onClientRotations(ClientRotationEvent e) {
-        Float[] rotations = Raven.scriptManager.invokeFloatArray("getRotations", module);
+        Float[] rotations = Mindless.scriptManager.invokeFloatArray("getRotations", module);
         if (rotations == null || rotations.length == 0 || rotations.length > 2) {
             return;
         }
@@ -121,7 +121,7 @@ public class ScriptEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPrePlayerMovementInput(PrePlayerInputEvent e) {
         MovementInput input = new MovementInput(e, (byte) 0);
-        Raven.scriptManager.invoke("onPrePlayerInput", module, input);
+        Mindless.scriptManager.invoke("onPrePlayerInput", module, input);
         if (e.isEquals(input)) {
             return;
         }
@@ -136,7 +136,7 @@ public class ScriptEvents {
         if (e.isCanceled()) {
             return;
         }
-        if (Raven.scriptManager.invokeBoolean("onKeyPress", module, e.typedChar, e.keyCode) == 0) {
+        if (Mindless.scriptManager.invokeBoolean("onKeyPress", module, e.typedChar, e.keyCode) == 0) {
             e.setCanceled(true);
         }
     }
@@ -146,7 +146,7 @@ public class ScriptEvents {
         if (e.isCanceled()) {
             return;
         }
-        Raven.scriptManager.invoke("onKey", module, e.keyName, e.keyCode, e.state, e.inGui);
+        Mindless.scriptManager.invoke("onKey", module, e.keyName, e.keyCode, e.state, e.inGui);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -157,7 +157,7 @@ public class ScriptEvents {
         Minecraft mc = Minecraft.getMinecraft();
         AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks, 0);
         try {
-            Raven.scriptManager.invoke("onRenderWorld", module, e.partialTicks);
+            Mindless.scriptManager.invoke("onRenderWorld", module, e.partialTicks);
         } finally {
             restoreWorldRenderState(mc, e.partialTicks);
         }
@@ -165,12 +165,12 @@ public class ScriptEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPreUpdate(PreUpdateEvent e) {
-        Raven.scriptManager.invoke("onPreUpdate", module);
+        Mindless.scriptManager.invoke("onPreUpdate", module);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPostUpdate(PostUpdateEvent e) {
-        Raven.scriptManager.invoke("onPostUpdate", module);
+        Mindless.scriptManager.invoke("onPostUpdate", module);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -181,7 +181,7 @@ public class ScriptEvents {
         Minecraft mc = Minecraft.getMinecraft();
         mc.entityRenderer.setupOverlayRendering();
         try {
-            Raven.scriptManager.invoke("onRenderTick", module, e.renderTickTime);
+            Mindless.scriptManager.invoke("onRenderTick", module, e.renderTickTime);
         } finally {
             restoreOverlayRenderState(mc);
         }
@@ -189,7 +189,7 @@ public class ScriptEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onAntiCheatFlag(AntiCheatFlagEvent e) {
-        Raven.scriptManager.invoke("onAntiCheatFlag", module, e.flag, Entity.convert(e.entity));
+        Mindless.scriptManager.invoke("onAntiCheatFlag", module, e.flag, Entity.convert(e.entity));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -197,20 +197,20 @@ public class ScriptEvents {
         if (e.guiScreen == null) {
             return;
         }
-        Raven.scriptManager.invoke("onGuiUpdate", module, e.guiScreen.getClass().getSimpleName(), e.opened);
+        Mindless.scriptManager.invoke("onGuiUpdate", module, e.guiScreen.getClass().getSimpleName(), e.opened);
     }
 
     @SubscribeEvent
     public void onDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent e) {
         Minecraft.getMinecraft().addScheduledTask(
-                () -> Raven.scriptManager.invoke("onDisconnect", module)
+                () -> Mindless.scriptManager.invoke("onDisconnect", module)
         );
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPreMotion(PreMotionEvent e) {
         PlayerState playerState = new PlayerState(e, (byte) 0);
-        Raven.scriptManager.invoke("onPreMotion", module, playerState);
+        Mindless.scriptManager.invoke("onPreMotion", module, playerState);
         if (e.isEquals(playerState)) {
             return;
         }
@@ -228,7 +228,7 @@ public class ScriptEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPrePlayerInteract(PrePlayerInteractEvent e) {
-        Raven.scriptManager.invoke("onPrePlayerInteract", module);
+        Mindless.scriptManager.invoke("onPrePlayerInteract", module);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -236,17 +236,17 @@ public class ScriptEvents {
         if (e.entity == null) {
             return;
         }
-        Raven.scriptManager.invoke("onWorldJoin", module, Entity.convert(e.entity));
+        Mindless.scriptManager.invoke("onWorldJoin", module, Entity.convert(e.entity));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPostInput(PostPlayerInputEvent e) {
-        Raven.scriptManager.invoke("onPostPlayerInput", module);
+        Mindless.scriptManager.invoke("onPostPlayerInput", module);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPostMotion(PostMotionEvent e) {
-        Raven.scriptManager.invoke("onPostMotion", module);
+        Mindless.scriptManager.invoke("onPostMotion", module);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -262,7 +262,7 @@ public class ScriptEvents {
                 state = false;
             }
         }
-        if (Raven.scriptManager.invokeBoolean("onMouse", module, e.button, state, e.x, e.y) == 0) {
+        if (Mindless.scriptManager.invokeBoolean("onMouse", module, e.button, state, e.x, e.y) == 0) {
             e.setCanceled(true);
         }
     }
@@ -272,7 +272,7 @@ public class ScriptEvents {
         if (!Utils.nullCheck()) {
             return;
         }
-        if (Raven.scriptManager.invokeBoolean("onPreRenderModel", module, Entity.convert(e.entity)) == 0) {
+        if (Mindless.scriptManager.invokeBoolean("onPreRenderModel", module, Entity.convert(e.entity)) == 0) {
             e.setCanceled(true);
         }
     }
@@ -282,17 +282,17 @@ public class ScriptEvents {
         if (!Utils.nullCheck()) {
             return;
         }
-        Raven.scriptManager.invoke("onPostRenderModel", module, Entity.convert(e.entity));
+        Mindless.scriptManager.invoke("onPostRenderModel", module, Entity.convert(e.entity));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onScreenRender(GuiScreenEvent.DrawScreenEvent.Post event) {
-        Raven.scriptManager.invoke("onScreenRender", module, event.gui == null ? "" : event.gui.getClass().getSimpleName(), event.mouseX, event.mouseY, event.renderPartialTicks);
+        Mindless.scriptManager.invoke("onScreenRender", module, event.gui == null ? "" : event.gui.getClass().getSimpleName(), event.mouseX, event.mouseY, event.renderPartialTicks);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPlayerMove(PlayerMoveEvent e) {
-        Raven.scriptManager.invoke("onPlayerMove", module, new Vec3(e.x, e.y, e.z));
+        Mindless.scriptManager.invoke("onPlayerMove", module, new Vec3(e.x, e.y, e.z));
     }
 
     private void restoreWorldRenderState(Minecraft mc, float partialTicks) {

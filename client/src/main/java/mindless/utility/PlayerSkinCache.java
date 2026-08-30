@@ -7,7 +7,7 @@ import com.mojang.authlib.ProfileLookupCallback;
 import com.mojang.authlib.minecraft.MinecraftProfileTexture;
 import com.mojang.authlib.minecraft.MinecraftProfileTexture.Type;
 import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
-import mindless.Raven;
+import mindless.Mindless;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.client.resources.DefaultPlayerSkin;
@@ -68,8 +68,8 @@ public class PlayerSkinCache {
             if (uuid != null) {
                 UUIDS.put(normalized, uuid);
             }
-            if (profile.getName() != null && Raven.playerRelationsManager != null) {
-                Raven.playerRelationsManager.refreshDisplayName(profile.getName());
+            if (profile.getName() != null && Mindless.playerRelationsManager != null) {
+                Mindless.playerRelationsManager.refreshDisplayName(profile.getName());
             }
             ResourceLocation location = playerInfo.getLocationSkin();
             if (location != null) {
@@ -165,8 +165,8 @@ public class PlayerSkinCache {
         if (profile.getId() != null) {
             UUIDS.put(normalized, profile.getId());
         }
-        if (profile.getName() != null && Raven.playerRelationsManager != null) {
-            Raven.playerRelationsManager.refreshDisplayName(profile.getName());
+        if (profile.getName() != null && Mindless.playerRelationsManager != null) {
+            Mindless.playerRelationsManager.refreshDisplayName(profile.getName());
         }
 
         Minecraft minecraft = Minecraft.getMinecraft();
