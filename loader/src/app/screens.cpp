@@ -334,6 +334,76 @@ static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
     return hovered && input.lmbReleased;
 }
 
+static std::string clipboard_text()
+{
+    if (!OpenClipboard(nullptr))
+        return {};
+
+    std::string out;
+
+    if (HANDLE data = GetClipboardData(CF_UNICODETEXT))
+    {
+        if (const wchar_t* wide = static_cast<const wchar_t*>(GlobalLock(data)))
+        {
+            int n = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+            if (n > 1)
+            {
+                out.resize(static_cast<size_t>(n) - 1);
+                WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), n, nullptr, nullptr);
+            }
+            GlobalUnlock(data);
+        }
+    }
+
+    CloseClipboard();
+    return out;
+}
+
+static void set_clipboard_text(const std::string& text)
+{
+    if (!OpenClipboard(nullptr))
+        return;
+
+    EmptyClipboard();
+
+    int n = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
+    if (n > 0)
+    {
+        if (HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, static_cast<size_t>(n) * sizeof(wchar_t)))
+        {
+            void* dst = GlobalLock(mem);
+            if (dst)
+            {
+                MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, static_cast<wchar_t*>(dst), n);
+                GlobalUnlock(mem);
+            }
+
+            // The clipboard takes ownership of the block only once SetClipboardData succeeds.
+            if (!dst || !SetClipboardData(CF_UNICODETEXT, mem))
+                GlobalFree(mem);
+        }
+    }
+
+    CloseClipboard();
+}
+
+// The atlas is byte-indexed over printable ASCII, so a pasted tab, newline or accent would
+// render as a hole. Dropping them keeps what is shown equal to what was stored.
+static void append_typed(std::string& field, std::string_view chars)
+{
+    for (char c : chars)
+    {
+        if (field.size() >= AppState::MaxFieldLength)
+            break;
+
+        unsigned char u = static_cast<unsigned char>(c);
+        if (u < 32 || u > 126)
+            continue;
+
+        field.push_back(c);
+    }
+}
+
 static void draw_login_content(DrawList& dl, AppState& state,
                                 const InputState& input, ScreenFonts fonts,
                                 const Rect& wr, float alpha, float dt,
@@ -395,8 +465,35 @@ static void draw_login_content(DrawList& dl, AppState& state,
 
         std::string& field = state.focusField == 0 ? state.username : state.password;
 
-        if (input.key_down(VK_CONTROL) && input.key_pressed('A'))
+        bool ctrl   = input.key_down(VK_CONTROL);
+        bool masked = state.focusField == 1;
+
+        if (ctrl && input.key_pressed('A'))
             state.selectAll = !field.empty();
+
+        // Nothing reads a masked field back out, so the password never reaches the clipboard.
+        bool cut = ctrl && input.key_pressed('X');
+        if (!masked && state.selectAll && !field.empty() && (cut || input.key_pressed('C')))
+        {
+            set_clipboard_text(field);
+            if (cut)
+            {
+                field.clear();
+                state.selectAll  = false;
+                state.caretPhase = 0.0f;
+            }
+        }
+
+        if (ctrl && input.key_pressed('V'))
+        {
+            if (state.selectAll)
+            {
+                field.clear();
+                state.selectAll = false;
+            }
+            append_typed(field, clipboard_text());
+            state.caretPhase = 0.0f;
+        }
 
         if (!input.textInput.empty() && state.selectAll)
         {
@@ -404,8 +501,7 @@ static void draw_login_content(DrawList& dl, AppState& state,
             state.selectAll = false;
         }
 
-        for (char c : input.textInput)
-            if (field.size() < AppState::MaxFieldLength) field.push_back(c);
+        append_typed(field, input.textInput);
 
         if (input.key_repeat(VK_BACK) && !field.empty())
         {
