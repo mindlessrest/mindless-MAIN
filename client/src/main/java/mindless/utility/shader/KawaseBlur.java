@@ -254,8 +254,12 @@ public class KawaseBlur {
     }
 
     private static void renderFBO(Framebuffer framebuffer, int framebufferTexture, ShaderUtils shader, float offset) {
-        framebuffer.framebufferClear();
-        framebuffer.bindFramebuffer(false);
+        // bindFramebuffer(true) is the whole of what the clear was here for. framebufferClear
+        // binds with the viewport, clears, then unbinds, so the pair cost three framebuffer binds
+        // and a full-surface clear per pass to establish a viewport -- and the clear itself was
+        // dead, because both kawase shaders write every channel of every pixel of a quad that
+        // covers the target, at alpha 1, so nothing of the old contents can survive either way.
+        framebuffer.bindFramebuffer(true);
         shader.init();
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         GlStateManager.bindTexture(framebufferTexture);

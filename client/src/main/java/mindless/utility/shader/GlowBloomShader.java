@@ -18,10 +18,12 @@ import org.lwjgl.opengl.GL20;
  * body and fades to nothing further out, which is what a Gaussian blur gives.
  *
  * The blur is separable: a horizontal pass, then a vertical one. Doing it as two one-dimensional
- * passes costs thirty-three samples each instead of the one thousand and eighty-nine a square
- * kernel of the same width would need.
+ * passes costs seventeen samples each instead of the two hundred and eighty-nine a square kernel
+ * of the same width would need. The kernel is symmetric, so the sixteen outer taps are read as
+ * eight mirrored pairs against eight weights, and the normaliser is those weights' analytic sum
+ * rather than a total accumulated per fragment.
  *
- * Both blur passes run at half resolution in each axis. Thirty-three taps per pixel is a lot of
+ * Both blur passes run at half resolution in each axis. Seventeen taps per pixel is a lot of
  * texture traffic to spend on an image whose entire purpose is to have no detail in it: at 1080p
  * two full-resolution passes fetch about a hundred and forty million texels every frame, and three
  * quarters of that buys nothing a wide Gaussian can express. The composite that follows is the one
@@ -161,16 +163,15 @@ public class GlowBloomShader {
                 "    gl_FragColor = vec4(tint, glow);\n" +
                 "    return;\n" +
                 "  }\n" +
-                "  vec2 sampleStep = direction * texelSize * (radius / 16.0);\n" +
-                "  float acc = 0.0;\n" +
-                "  float weightSum = 0.0;\n" +
-                "  for (int i = -16; i <= 16; i++) {\n" +
+                "  vec2 sampleStep = direction * texelSize * (radius / 8.0);\n" +
+                "  float acc = texture2D(tex, uv).a;\n" +
+                "  for (int i = 1; i <= 8; i++) {\n" +
                 "    float fi = float(i);\n" +
-                "    float w = exp(-fi * fi / 72.0);\n" +
-                "    acc += texture2D(tex, uv + sampleStep * fi).a * w;\n" +
-                "    weightSum += w;\n" +
+                "    float w = exp(-fi * fi / 18.0);\n" +
+                "    vec2 d = sampleStep * fi;\n" +
+                "    acc += (texture2D(tex, uv + d).a + texture2D(tex, uv - d).a) * w;\n" +
                 "  }\n" +
-                "  gl_FragColor = vec4(tint, acc / weightSum);\n" +
+                "  gl_FragColor = vec4(tint, acc * 0.13357122);\n" +
                 "}";
 
         private BlurPass() {
