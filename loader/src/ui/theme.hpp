@@ -19,6 +19,7 @@ struct Theme
     Color accentHover = 0xD8B4EC;
     Color accentPress = 0xA87BBF;
     Color accentDim   = Color(0xC9A0DC).with_alpha(0.15f);
+    Color accentGlow  = 0xE6A8D4;   // warmer than the accent — reads as light pink once diffused
     Color accentText  = 0x1A1424;   // sits on the accent fill, which is far too light for white
 
     Color buttonBg    = 0x1A1C22;

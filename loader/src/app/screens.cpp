@@ -222,6 +222,16 @@ static const float kContentTop = 46.0f;
 
 
 
+// Kept out of draw_text_field so every glow is laid down before any field fill: drawn inline,
+// the lower field would paint over the half of the upper field's glow that spills onto it.
+static void draw_field_glow(DrawList& dl, Rect r, float focus, float alpha)
+{
+    if (focus <= 0.004f) return;
+
+    const Theme& t = g_theme;
+    dl.glow_rounded_rect(r, t.accentGlow.with_alpha(0.24f * focus * alpha), t.buttonRadius, 20.0f);
+}
+
 static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
                              std::string_view placeholder, const std::string& text,
                              bool focused, bool mask, bool selected, Tween& hover, Tween& focus,
@@ -238,16 +248,11 @@ static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
     float h = hover.value();
     float f = focus.value();
 
-    Color bg     = t.buttonBg.lerp(t.buttonHover, h * 0.55f);
+    Color bg     = t.buttonBg.lerp(t.buttonHover, h * 0.55f).lerp(t.accentDim, f * 0.5f);
     Color border = t.buttonBorder.lerp(t.accent, f);
 
     dl.fill_rounded_rect(r, bg.with_alpha(bg.a * alpha), t.buttonRadius);
     dl.stroke_rounded_rect(r, border.with_alpha(border.a * alpha), t.buttonRadius, 1.0f);
-
-    if (f > 0.004f)
-        dl.stroke_rounded_rect(r.inset(-2.5f),
-                               t.accentDim.with_alpha(t.accentDim.a * f * alpha),
-                               t.buttonRadius + 2.5f, 1.5f);
 
     const float padX = 12.0f;
     const float dotSz = 5.0f;
@@ -391,6 +396,9 @@ static void draw_login_content(DrawList& dl, AppState& state,
 
     Rect userR = { fieldX, groupY,                 fieldW, fieldH };
     Rect passR = { fieldX, userR.bottom() + 10.0f, fieldW, fieldH };
+
+    draw_field_glow(dl, userR, state.userFocus.value(), alpha);
+    draw_field_glow(dl, passR, state.passFocus.value(), alpha);
 
     if (draw_text_field(dl, fn, userR, "Username", state.username, state.focusField == 0,
                         false, state.selectAll && state.focusField == 0,
