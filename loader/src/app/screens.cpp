@@ -128,38 +128,44 @@ bool draw_chrome(DrawList& dl, const InputState& input,
 
     dl.fill_rounded_rect(pill, Color(0x1A1C22), radius);
 
+    // Each half keeps the pill's round on its outer end and stops flat at the seam: the fill
+    // overhangs the midline so its inner cap lands outside the clip and never shows.
     if (minT > 0.001f)
     {
-        dl.push_clip(pill);
-        dl.fill_rounded_rect({ mnR.x - 1.0f, mnR.y, mnR.w + 1.0f, mnR.h },
+        dl.push_clip(mnR);
+        dl.fill_rounded_rect({ mnR.x, mnR.y, mnR.w + radius, mnR.h },
                              t.buttonHover.with_alpha(minT), radius);
         dl.pop_clip();
     }
     if (closeT > 0.001f)
     {
-        dl.push_clip(pill);
-        dl.fill_rounded_rect({ clR.x, clR.y, clR.w + 1.0f, clR.h },
-                             t.buttonHover.with_alpha(closeT), radius);
+        dl.push_clip(clR);
+        dl.fill_rounded_rect({ clR.x - radius, clR.y, clR.w + radius, clR.h },
+                             t.buttonHover.lerp(t.danger, 0.42f).with_alpha(closeT), radius);
         dl.pop_clip();
     }
 
+    dl.fill_rect({ pill.x + btnW, pill.y + 7.0f, 1.0f, pill.h - 14.0f },
+                 Color(0x282B36).with_alpha(1.0f - std::max(minT, closeT)));
+
     dl.stroke_rounded_rect(pill, Color(0x282B36), radius, 1.0f);
 
-    float dashW = 7.0f;
-    float dashY = mnR.y + mnR.h * 0.5f - 0.6f;
-    dl.fill_rect({ mnR.x + (btnW - dashW) * 0.5f, dashY, dashW, 1.5f },
-                 t.textSecond.lerp(t.text, minT * 0.6f));
+    const float dashW = 8.0f;
+    const float dashH = 1.5f;
+    dl.fill_rounded_rect({ mnR.x + (btnW - dashW) * 0.5f, mnR.y + (mnR.h - dashH) * 0.5f,
+                           dashW, dashH },
+                         t.textSecond.lerp(t.text, minT), dashH * 0.5f);
 
     const char* xStr = "\xD7";
     float xw = fonts.normal.measure_text_width(xStr);
     float xt = vcenter_text(fonts.normal, clR.y, clR.h);
     dl.draw_text(xStr, { clR.x + (clR.w - xw) * 0.5f, xt },
-                 t.textSecond.lerp(t.text, closeT * 0.6f), fonts.normal);
+                 t.textSecond.lerp(t.text, closeT), fonts.normal);
 
-    if (mnR.contains(input.mousePos) && input.lmbReleased && window)
+    if (mnHov && input.lmbReleased && window)
         window->minimize();
 
-    return clR.contains(input.mousePos) && input.lmbReleased;
+    return clHov && input.lmbReleased;
 }
 
 static void draw_splash(DrawList& dl, AppState& state,
