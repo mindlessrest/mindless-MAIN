@@ -141,7 +141,7 @@ bool draw_chrome(DrawList& dl, const InputState& input,
     {
         dl.push_clip(clR);
         dl.fill_rounded_rect({ clR.x - radius, clR.y, clR.w + radius, clR.h },
-                             t.buttonHover.lerp(t.danger, 0.42f).with_alpha(closeT), radius);
+                             t.buttonHover.with_alpha(closeT), radius);
         dl.pop_clip();
     }
 
