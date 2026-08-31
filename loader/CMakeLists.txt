@@ -48,6 +48,7 @@ set(ICON_PATH     "${CMAKE_SOURCE_DIR}/assets/logo.ico")
 set(MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/app.manifest")
 set(FONT_PATH     "${CMAKE_SOURCE_DIR}/assets/fonts/inter.ttf")
 set(LOGO_PNG_PATH "${CMAKE_SOURCE_DIR}/assets/logo.png")
+set(LUNAR_PNG_PATH "${CMAKE_SOURCE_DIR}/assets/lunar.png")
 set(MINDLESS_NATIVE_PATH   "${CMAKE_SOURCE_DIR}/assets/runtime/MindlessNative.dll")
 configure_file(src/resources.rc.in "${CMAKE_CURRENT_BINARY_DIR}/resources_gen.rc" @ONLY)
 
@@ -75,6 +76,7 @@ add_custom_command(
             "${CMAKE_SOURCE_DIR}/src/app.manifest"
             "${CMAKE_SOURCE_DIR}/assets/logo.ico"
             "${CMAKE_SOURCE_DIR}/assets/logo.png"
+            "${CMAKE_SOURCE_DIR}/assets/lunar.png"
             "${CMAKE_SOURCE_DIR}/assets/fonts/inter.ttf"
             "${CMAKE_SOURCE_DIR}/assets/runtime/MindlessNative.dll"
     COMMENT "Compiling resources"

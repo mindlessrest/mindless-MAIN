@@ -1,5 +1,6 @@
 #include "process_list.hpp"
 #include "renderer/image.hpp"
+#include "resource.h"
 #include <windows.h>
 #include <tlhelp32.h>
 #include <psapi.h>
@@ -87,6 +88,20 @@ static bool is_minecraft_window(const std::string& title)
     return false;
 }
 
+// javaw.exe carries the generic Java icon whatever is running inside it, so a Lunar instance
+// would otherwise show the same coffee cup as every other launcher.
+static Image load_lunar_icon(ID3D11Device* device)
+{
+    HMODULE mod  = GetModuleHandleW(nullptr);
+    HRSRC   rsrc = FindResourceW(mod, MAKEINTRESOURCEW(IDR_LUNAR_PNG), RT_RCDATA);
+    if (!rsrc) return {};
+
+    HGLOBAL hgl = LoadResource(mod, rsrc);
+    if (!hgl) return {};
+
+    return load_image_from_memory(LockResource(hgl), SizeofResource(mod, rsrc), device);
+}
+
 static Image extract_process_icon(DWORD pid, ID3D11Device* device)
 {
     HANDLE proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
@@ -171,7 +186,9 @@ std::vector<ProcessEntry> enumerate_targets(ID3D11Device* device)
             pe.name     = "javaw.exe";
             pe.display  = detect_display(title);
             pe.subtitle = detect_subtitle(title, pid);
-            pe.icon     = extract_process_icon(pid, device);
+            pe.icon     = pe.display == "Lunar Client" ? load_lunar_icon(device) : Image{};
+            if (!pe.icon.valid())
+                pe.icon = extract_process_icon(pid, device);
             pe.demo     = false;
             result.push_back(std::move(pe));
         }
