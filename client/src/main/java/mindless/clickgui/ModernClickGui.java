@@ -172,6 +172,16 @@ public final class ModernClickGui extends ClickGui {
     private TextSetting activeText;
     private Setting activeList;
     private String listDraft = "";
+
+    /**
+     * Caret, selection and clipboard for whichever field currently has focus.
+     *
+     * <p>One instance covers the setting input, the list input and the command line because only
+     * one of them can be focused at a time. Each loads its value on focus and takes the edits
+     * straight back, so the strings around it stay the source of truth for everything that reads
+     * them. The search box is not routed through here -- it already had its own equivalent.
+     */
+    private final TextEditor editor = new TextEditor();
     private Setting suggestionSetting;
     private String suggestionQuery = "";
     private List<Suggestion> suggestionCache = Collections.emptyList();
@@ -1448,9 +1458,14 @@ public final class ModernClickGui extends ClickGui {
         rounded(x1 + 8, iy, x2 - 8, y + h - 7, 4f,
                 fa(opaque(mixColor(CONTROL, CONTROL_HOVER, focus)), alpha));
         resetTextRenderState();
-        String shown = value.isEmpty() && activeText != setting ? placeholder : value + (activeText == setting && blink() ? "|" : "");
-        drawTextVCentered(trim(shown, x2 - x1 - 28, .69f, false), x1 + 14, iy, y + h - 7,
-                fa(value.isEmpty() ? DIM : TEXT, alpha), .69f, false);
+        float available = x2 - x1 - 28;
+        if (activeText == setting) {
+            drawEditable(x1 + 14, iy, y + h - 7, available, .69f, fa(TEXT, alpha), alpha);
+        } else {
+            String shown = value.isEmpty() ? placeholder : value;
+            drawTextVCentered(trim(shown, available, .69f, false), x1 + 14, iy, y + h - 7,
+                    fa(value.isEmpty() ? DIM : TEXT, alpha), .69f, false);
+        }
     }
 
     private void drawListSetting(Setting setting, float y, float h, int mx, int my, float alpha) {
@@ -1463,9 +1478,12 @@ public final class ModernClickGui extends ClickGui {
         rounded(x1 + 8, iy, x2 - 34, iy + 21, 4f,
                 fa(opaque(mixColor(CONTROL, CONTROL_HOVER, focus)), alpha));
         resetTextRenderState();
-        String shown = activeList == setting ? listDraft + (blink() ? "|" : "") : listPlaceholder(setting);
-        drawTextVCentered(trim(shown, x2 - x1 - 66, .66f, false), x1 + 14, iy, iy + 21,
-                fa(activeList == setting && !listDraft.isEmpty() ? TEXT : DIM, alpha), .66f, false);
+        if (activeList == setting) {
+            drawEditable(x1 + 14, iy, iy + 21, x2 - x1 - 66, .66f, fa(TEXT, alpha), alpha);
+        } else {
+            drawTextVCentered(trim(listPlaceholder(setting), x2 - x1 - 66, .66f, false), x1 + 14, iy, iy + 21,
+                    fa(DIM, alpha), .66f, false);
+        }
         rounded(x2 - 29, iy, x2 - 8, iy + 21, 4f, fa(GOLD_SOFT, alpha));
         drawCenteredV("+", x2 - 29, x2 - 8, iy, iy + 21, fa(GOLD, alpha), .8f, true);
         float ey = iy + 27;
@@ -1495,14 +1513,54 @@ public final class ModernClickGui extends ClickGui {
         }
     }
 
+    /**
+     * Draws the focused field: the window follows the caret, the selection sits behind the text,
+     * and the caret is a rule between two characters rather than a bar stuck on the end.
+     *
+     * <p>Nothing here ellipsizes. {@link #trim} is right for a label that has to fit, and wrong
+     * for a field being typed into -- it keeps a prefix and drops the rest, so the end of a long
+     * value could never be seen however far the caret was moved.
+     */
+    private void drawEditable(float x, float y1, float y2, float available, float scale,
+                              int color, float alpha) {
+        String text = editor.getText();
+        int caret = Math.max(0, Math.min(text.length(), editor.getCaret()));
+
+        int start = 0;
+        while (start < caret && textWidth(text.substring(start, caret), scale, false) > available) start++;
+        int end = start;
+        while (end < text.length() && textWidth(text.substring(start, end + 1), scale, false) <= available) end++;
+
+        if (editor.hasSelection()) {
+            int from = Math.max(start, editor.selectionStart());
+            int to = Math.min(end, editor.selectionEnd());
+            if (to > from) {
+                float sx = x + textWidth(text.substring(start, from), scale, false);
+                float ex = x + textWidth(text.substring(start, to), scale, false);
+                rounded(sx, y1 + 4, ex, y2 - 4, 1f, fa(withAlpha(ACCENT, 95), alpha));
+            }
+        }
+
+        drawTextVCentered(text.substring(start, end), x, y1, y2, color, scale, false);
+
+        if (blink()) {
+            float cx = x + textWidth(text.substring(start, caret), scale, false);
+            rounded(cx, y1 + 4, cx + 1, y2 - 4, 0f, fa(TEXT, alpha));
+        }
+    }
+
     private void drawCommandPalette(int mx, int my) {
         if (!CommandLine.opened) return;
         float w = Math.min(390, width - 30), x = (width - w) / 2f, y = baseY + panelH - 47;
         panelSurface(x, y, x + w, y + 35, argb(245, 10, 12, 14));
         drawTextVCentered(">", x + 11, y, y + 35, GOLD, .85f, true);
-        String shown = commandDraft + (commandFocused && blink() ? "|" : "");
-        drawTextVCentered(trim(shown.isEmpty() ? "Type a command..." : shown, w - 48, .73f, false), x + 26, y, y + 35,
-                shown.isEmpty() ? DIM : TEXT, .73f, false);
+        if (commandFocused) {
+            drawEditable(x + 26, y, y + 35, w - 48, .73f, TEXT, 1f);
+        } else {
+            String shown = commandDraft.isEmpty() ? "Type a command..." : commandDraft;
+            drawTextVCentered(trim(shown, w - 48, .73f, false), x + 26, y, y + 35,
+                    commandDraft.isEmpty() ? DIM : TEXT, .73f, false);
+        }
     }
 
     private void drawAboutWindow(int mx, int my) {
@@ -1566,6 +1624,7 @@ public final class ModernClickGui extends ClickGui {
         if (mouseButton != 0 && mouseButton != 1) return;
 
         if (CommandLine.opened) {
+            if (!commandFocused) editor.reset(commandDraft);
             commandFocused = true;
             return;
         }
@@ -1751,10 +1810,11 @@ public final class ModernClickGui extends ClickGui {
             }
         } else if (setting instanceof TextSetting) {
             activeText = (TextSetting) setting;
+            editor.reset(activeText.getText());
             activeList = null;
         } else if (isList(setting)) {
             float iy = y + 22;
-            if (inside(mx, my, x1 + 8, iy, x2 - 34, iy + 21)) { activeList = setting; listDraft = ""; clearSuggestions(); return; }
+            if (inside(mx, my, x1 + 8, iy, x2 - 34, iy + 21)) { activeList = setting; listDraft = ""; editor.reset(""); clearSuggestions(); return; }
             if (inside(mx, my, x2 - 29, iy, x2 - 8, iy + 21)) { addListEntry(setting); return; }
             float ey = iy + 27;
             for (Suggestion suggestion : suggestionsFor(setting)) {
@@ -1854,8 +1914,8 @@ public final class ModernClickGui extends ClickGui {
         }
         if (CommandLine.opened) {
             if (keyCode == Keyboard.KEY_ESCAPE) { CommandLine.opened = false; CommandLine.closed = false; commandFocused = false; return; }
-            if (keyCode == Keyboard.KEY_RETURN && !commandDraft.trim().isEmpty()) { CommandHandler.runCommand(commandDraft); commandDraft = ""; return; }
-            commandDraft = editString(commandDraft, typedChar, keyCode, 256);
+            if (keyCode == Keyboard.KEY_RETURN && !commandDraft.trim().isEmpty()) { CommandHandler.runCommand(commandDraft); commandDraft = ""; editor.reset(""); return; }
+            if (editor.keyTyped(typedChar, keyCode, 256)) commandDraft = editor.getText();
             return;
         }
         if (searchFocused) {
@@ -1865,13 +1925,13 @@ public final class ModernClickGui extends ClickGui {
         if (activeText != null) {
             if (keyCode == Keyboard.KEY_ESCAPE) { activeText = null; return; }
             if (keyCode == Keyboard.KEY_RETURN) { activeText.submit(); activeText = null; return; }
-            activeText.setText(editString(activeText.getText(), typedChar, keyCode, activeText.getMaxLength()));
+            if (editor.keyTyped(typedChar, keyCode, activeText.getMaxLength())) activeText.setText(editor.getText());
             return;
         }
         if (activeList != null) {
-            if (keyCode == Keyboard.KEY_ESCAPE) { activeList = null; listDraft = ""; return; }
+            if (keyCode == Keyboard.KEY_ESCAPE) { activeList = null; listDraft = ""; editor.reset(""); return; }
             if (keyCode == Keyboard.KEY_RETURN) { addListEntry(activeList); return; }
-            listDraft = editString(listDraft, typedChar, keyCode, listMaxLength(activeList));
+            if (editor.keyTyped(typedChar, keyCode, listMaxLength(activeList))) listDraft = editor.getText();
             clearSuggestions();
             return;
         }
@@ -2157,11 +2217,13 @@ public final class ModernClickGui extends ClickGui {
         else if (setting instanceof ItemListSetting) ((ItemListSetting) setting).addItem(value);
         else if (setting instanceof BlockListSetting) ((BlockListSetting) setting).addBlock(value);
         listDraft = "";
+        editor.reset("");
         clearSuggestions();
     }
 
     private void addSuggestedEntry(Setting setting, String value) {
         listDraft = value == null ? "" : value;
+        editor.reset(listDraft);
         addListEntry(setting);
     }
 
@@ -3104,16 +3166,6 @@ public final class ModernClickGui extends ClickGui {
     private void markSearchEdited() {
         searchEditAnimation = 0f;
         moduleScroll = moduleScrollTarget = 0f;
-    }
-
-    private String editString(String current, char typed, int key, int max) {
-        if (key == Keyboard.KEY_BACK && !current.isEmpty()) return current.substring(0, current.length() - 1);
-        if (isCtrlKeyDown() && key == Keyboard.KEY_V) {
-            String next = current + getClipboardString();
-            return next.substring(0, Math.min(max, next.length()));
-        }
-        if (ChatAllowedCharacters.isAllowedCharacter(typed) && current.length() < max) return current + typed;
-        return current;
     }
 
     private String moduleDescription(Module module) {
