@@ -260,7 +260,7 @@ static void draw_field_glow(DrawList& dl, Rect r, float focus, float alpha)
     if (focus <= 0.004f) return;
 
     const Theme& t = g_theme;
-    dl.glow_rounded_rect(r, t.accentGlow.with_alpha(0.24f * focus * alpha), t.buttonRadius, 20.0f);
+    dl.glow_rounded_rect(r, t.accentGlow.with_alpha(0.16f * focus * alpha), t.buttonRadius, 20.0f);
 }
 
 static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
@@ -279,7 +279,7 @@ static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
     float h = hover.value();
     float f = focus.value();
 
-    Color bg     = t.buttonBg.lerp(t.buttonHover, h * 0.55f).lerp(t.accentDim, f * 0.5f);
+    Color bg     = t.buttonBg.lerp(t.buttonHover, h * 0.55f).lerp(t.accent, f * 0.05f);
     Color border = t.buttonBorder.lerp(t.accent, f);
 
     dl.fill_rounded_rect(r, bg.with_alpha(bg.a * alpha), t.buttonRadius);
