@@ -222,6 +222,37 @@ static const float kContentTop = 46.0f;
 
 
 
+// Both glyphs are built from the primitives the draw list already has: a dome is a rounded
+// rect with everything below its shoulder clipped away.
+static void draw_user_glyph(DrawList& dl, Rect box, Color c)
+{
+    float cx = box.x + box.w * 0.5f;
+
+    const float headSz = 5.0f;
+    dl.fill_rounded_rect({ cx - headSz * 0.5f, box.y + 2.5f, headSz, headSz }, c, headSz * 0.5f);
+
+    const float bodyW = 10.0f;
+    float bodyY = box.y + 9.0f;
+    dl.push_clip({ box.x, bodyY, box.w, 4.0f });
+    dl.fill_rounded_rect({ cx - bodyW * 0.5f, bodyY, bodyW, 8.0f }, c, 4.0f);
+    dl.pop_clip();
+}
+
+static void draw_lock_glyph(DrawList& dl, Rect box, Color c)
+{
+    float cx = box.x + box.w * 0.5f;
+
+    const float shackleW = 7.0f;
+    float shackleY = box.y + 1.5f;
+    dl.push_clip({ box.x, shackleY, box.w, 5.0f });
+    dl.stroke_rounded_rect({ cx - shackleW * 0.5f, shackleY, shackleW, 9.0f },
+                           c, shackleW * 0.5f, 2.0f);
+    dl.pop_clip();
+
+    const float bodyW = 10.0f;
+    dl.fill_rounded_rect({ cx - bodyW * 0.5f, box.y + 6.5f, bodyW, 7.0f }, c, 2.0f);
+}
+
 // Kept out of draw_text_field so every glow is laid down before any field fill: drawn inline,
 // the lower field would paint over the half of the upper field's glow that spills onto it.
 static void draw_field_glow(DrawList& dl, Rect r, float focus, float alpha)
@@ -254,16 +285,25 @@ static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
     dl.fill_rounded_rect(r, bg.with_alpha(bg.a * alpha), t.buttonRadius);
     dl.stroke_rounded_rect(r, border.with_alpha(border.a * alpha), t.buttonRadius, 1.0f);
 
-    const float padX = 12.0f;
+    const float glyphBox = 14.0f;
+    const float padL  = 12.0f + glyphBox + 10.0f;
+    const float padR  = 12.0f;
     const float dotSz = 5.0f;
     const float dotStep = dotSz + 4.0f;
+
+    Rect  glyphR = { r.x + 12.0f, r.y + (r.h - glyphBox) * 0.5f, glyphBox, glyphBox };
+    Color glyphC = t.textDisable.lerp(t.accent, std::max(f, h * 0.35f));
+    if (mask)
+        draw_lock_glyph(dl, glyphR, glyphC.with_alpha(glyphC.a * alpha));
+    else
+        draw_user_glyph(dl, glyphR, glyphC.with_alpha(glyphC.a * alpha));
 
     float contentW = mask
         ? static_cast<float>(text.size()) * dotStep
         : fn.measure_text_width(text.c_str());
 
-    float maxW  = r.w - padX * 2.0f;
-    float textX = r.x + padX - std::max(0.0f, contentW - maxW);
+    float maxW  = r.w - padL - padR;
+    float textX = r.x + padL - std::max(0.0f, contentW - maxW);
 
     dl.push_clip({ r.x + 2.0f, r.y, r.w - 4.0f, r.h });
 
@@ -276,7 +316,7 @@ static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
 
     if (text.empty() && !focused)
     {
-        dl.draw_text(placeholder, { r.x + padX, vcenter_text(fn, r.y, r.h) },
+        dl.draw_text(placeholder, { r.x + padL, vcenter_text(fn, r.y, r.h) },
                      t.textDisable.with_alpha(alpha), fn);
     }
     else if (mask)
