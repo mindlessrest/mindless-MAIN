@@ -789,7 +789,7 @@ void draw_screen(DrawList& dl, AppState& state, const InputState& input,
         Rect  mark  = { wr.right() - markW * 0.55f, wr.bottom() - markH * 0.6f, markW, markH };
 
         dl.push_clip(wr.inset(g_theme.windowRadius));
-        dl.draw_image(logo, mark, 0.035f * bgOpacity);
+        dl.draw_image(logo, mark, 0.10f * bgOpacity);
         dl.pop_clip();
     }
 
