@@ -566,7 +566,7 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
         dl.draw_text("Launch the game and it will show up here", { textX, line2 },
                      t.textDisable.with_alpha(alpha), cap);
 
-        draw_sweep_bar(dl, { listX + listW * 0.25f, ghost.bottom() + 20.0f, listW * 0.5f, 2.0f },
+        draw_sweep_bar(dl, { listX, ghost.bottom() + 20.0f, listW, 2.0f },
                        state.uiElapsed, t.trackBg, t.accent, 0.55f * alpha);
 
         draw_continue_button(dl, fn, btnR, state, input, dt, alpha);
