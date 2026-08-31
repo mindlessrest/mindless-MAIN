@@ -14,7 +14,7 @@ public class Manager extends Module {
     private ButtonSetting loadProfiles, openFolder, createProfile;
 
     public Manager() {
-        super("+ New Profile", category.profiles);
+        super("+ New Profile", "Create or reload Mindless profiles.", category.profiles);
         this.registerSetting(createProfileName = new TextSetting("Name", "", "Profile name...", 32, this::createProfile));
         this.registerSetting(createProfile = new ButtonSetting("Create", () -> createProfile()));
         this.registerSetting(loadProfiles = new ButtonSetting("Reload profiles", () -> {

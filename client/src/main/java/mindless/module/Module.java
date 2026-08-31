@@ -21,6 +21,7 @@ import java.util.List;
 public class Module {
     protected ArrayList<Setting> settings;
     private String moduleName;
+    private String moduleDescription;
     private Module.category moduleCategory;
     private volatile boolean enabled;
     private int keycode;
@@ -45,6 +46,26 @@ public class Module {
 
     public Module(String moduleName, Module.category moduleCategory, int keycode) {
         this.moduleName = moduleName;
+        this.moduleCategory = moduleCategory;
+        this.keycode = keycode;
+        this.enabled = false;
+        mc = Minecraft.getMinecraft();
+        this.settings = new ArrayList();
+    }
+
+    public Module(String moduleName, String moduleDescription, Module.category moduleCategory) {
+        this.moduleName = moduleName;
+        this.moduleDescription = moduleDescription;
+        this.moduleCategory = moduleCategory;
+        this.keycode = keycode;
+        this.enabled = false;
+        mc = Minecraft.getMinecraft();
+        this.settings = new ArrayList();
+    }
+
+    public Module(String moduleName, String moduleDescription, Module.category moduleCategory, int keycode) {
+        this.moduleName = moduleName;
+        this.moduleDescription = moduleDescription;
         this.moduleCategory = moduleCategory;
         this.keycode = keycode;
         this.enabled = false;
@@ -195,6 +216,7 @@ public class Module {
     public String getName() {
         return this.moduleName;
     }
+    public String getDescription() { return this.moduleDescription != null ? this.moduleDescription : ""; }
 
     public String getNameInHud() {
         if (this instanceof AntiKnockback) {
