@@ -201,23 +201,13 @@ static void draw_splash(DrawList& dl, AppState& state,
         state.transition_to(Screen::Login, 1.0f);
 }
 
-static void draw_title_bar(DrawList& dl, ScreenFonts fonts,
-                            const Rect& wr, const Image& logo, float alpha)
+static void draw_title_bar(DrawList& dl, ScreenFonts fonts, const Rect& wr, float alpha)
 {
-    const float pad    = 15.0f;
-    const float iconSz = 20.0f;
-    const float iconY  = wr.y + 13.0f;
+    const float pad   = 16.0f;
+    const float lineH = 20.0f;
+    const float top   = wr.y + 13.0f;
 
-    float textX = wr.x + pad;
-
-    if (logo.valid())
-    {
-        float logoW = iconSz * (static_cast<float>(logo.width) / static_cast<float>(logo.height));
-        dl.draw_image(logo, { wr.x + pad, iconY, logoW, iconSz }, alpha);
-        textX += logoW + 9.0f;
-    }
-
-    dl.draw_text("mindless", { textX, vcenter_text(fonts.normal, iconY, iconSz) },
+    dl.draw_text("mindless", { wr.x + pad, vcenter_text(fonts.normal, top, lineH) },
                  g_theme.textSecond.with_alpha(0.85f * alpha), fonts.normal);
 }
 
@@ -226,35 +216,9 @@ static const float kRowGap = 4.0f;
 static const float kListGap = 14.0f;
 static const int   kMaxVisibleRows = 4;
 
-static const float kHeadingTop  = 42.0f;
-static const float kHeadingRule = 10.0f;
-
-// Every screen is headed the same way: an accent tick in the left gutter, the title, and a rule
-// that dissolves as it runs right. The same tick marks the selected row further down.
-static float draw_heading(DrawList& dl, FontAtlas& titleFont, float x, float top,
-                          float width, std::string_view text, float alpha)
-{
-    const Theme& t  = g_theme;
-    float        lh = titleFont.lineHeight();
-
-    float tickH = titleFont.capHeight() + 2.0f;
-    dl.fill_rounded_rect({ x - 12.0f, top + (lh - tickH) * 0.5f, 2.0f, tickH },
-                         t.accent.with_alpha(0.9f * alpha), 1.0f);
-
-    dl.draw_text(text, { x, vcenter_text(titleFont, top, lh) }, t.text.with_alpha(alpha), titleFont);
-
-    Rect rule = { x - 12.0f, top + lh + kHeadingRule, width + 12.0f, 1.0f };
-    dl.fill_rounded_rect_gradient(rule, rule,
-                                  t.accent.with_alpha(0.30f * alpha),
-                                  t.accent.with_alpha(0.0f), 0.5f);
-
-    return rule.y;
-}
-
-static float list_top_offset(FontAtlas& titleFont)
-{
-    return kHeadingTop + titleFont.lineHeight() + kHeadingRule + 15.0f;
-}
+// Neither screen is titled. The window is named once in the title bar, and the fields and rows
+// below say what they are, so a heading would only repeat them and cost a third of the panel.
+static const float kContentTop = 46.0f;
 
 
 
@@ -416,15 +380,14 @@ static void draw_login_content(DrawList& dl, AppState& state,
     float fieldX = wr.x + pad;
     float fieldW = wr.w - pad * 2.0f;
 
-    float ruleY = draw_heading(dl, fonts.title, fieldX, wr.y + kHeadingTop, fieldW,
-                               "Sign in", alpha);
+    float contentTop = wr.y + kContentTop;
 
     Rect btnR = { fieldX, wr.bottom() - pad - t.buttonH, fieldW, t.buttonH };
 
     const float fieldH  = 38.0f;
     const float hintGap = 14.0f;
     float groupH = fieldH * 2.0f + 10.0f + hintGap + fn.lineHeight();
-    float groupY = ruleY + (btnR.y - ruleY - groupH) * 0.5f;
+    float groupY = contentTop + (btnR.y - contentTop - groupH) * 0.5f;
 
     Rect userR = { fieldX, groupY,                 fieldW, fieldH };
     Rect passR = { fieldX, userR.bottom() + 10.0f, fieldW, fieldH };
@@ -562,13 +525,10 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
 
     float pad = t.windowPadding;
 
-    float contentTop = wr.y + kHeadingTop;
     float listW   = wr.w - pad * 2.0f;
     float listX   = wr.x + pad;
 
-    draw_heading(dl, fonts.title, listX, contentTop, listW, "Select Minecraft", alpha);
-
-    float listTop = wr.y + list_top_offset(fonts.title);
+    float listTop = wr.y + kContentTop;
     float rowH    = kRowHeight;
     float rowGap  = kRowGap;
 
@@ -579,7 +539,12 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
 
     if (state.processes.empty())
     {
-        Rect ghost = { listX, listTop, listW, kRowHeight };
+        // Centred in the space the list would have used, so the panel does not read as a card
+        // stranded at the top of an empty page.
+        const float emptyH = kRowHeight + 20.0f + 2.0f;
+        float       emptyY = listArea.y + (listArea.h - emptyH) * 0.5f;
+
+        Rect ghost = { listX, emptyY, listW, kRowHeight };
         dl.fill_rounded_rect(ghost, Color(0x000000).with_alpha(0.16f * alpha), t.cardRadius);
         dl.stroke_rounded_rect(ghost, t.buttonBorder.with_alpha(0.5f * alpha), t.cardRadius, 1.0f);
 
@@ -601,7 +566,7 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
         dl.draw_text("Launch the game and it will show up here", { textX, line2 },
                      t.textDisable.with_alpha(alpha), cap);
 
-        draw_sweep_bar(dl, { listX, ghost.bottom() + 20.0f, listW, 2.0f },
+        draw_sweep_bar(dl, { listX + listW * 0.25f, ghost.bottom() + 20.0f, listW * 0.5f, 2.0f },
                        state.uiElapsed, t.trackBg, t.accent, 0.55f * alpha);
 
         draw_continue_button(dl, fn, btnR, state, input, dt, alpha);
@@ -827,7 +792,7 @@ void draw_screen(DrawList& dl, AppState& state, const InputState& input,
 
         Rect outWr = wr.translated(outOffset, 0.0f);
         dl.push_clip(wr);
-        draw_title_bar(dl, fonts, outWr, logo, outAlpha);
+        draw_title_bar(dl, fonts, outWr, outAlpha);
         switch (state.prevScreen)
         {
         case Screen::Login:
@@ -857,7 +822,7 @@ void draw_screen(DrawList& dl, AppState& state, const InputState& input,
 
         Rect inWr = wr.translated(inOffset, 0.0f);
         dl.push_clip(wr);
-        draw_title_bar(dl, fonts, inWr, logo, inAlpha);
+        draw_title_bar(dl, fonts, inWr, inAlpha);
         switch (state.screen)
         {
         case Screen::Login:
