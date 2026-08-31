@@ -20,11 +20,6 @@ public class ClickGuiTextField {
     private static final int SELECTION_COLOR = 0x804A90E2;
     private static final int CURSOR_COLOR = 0xFFD0D0D0;
 
-    private static final Field LINE_SCROLL_OFFSET_FIELD = ReflectionHelper.findField(
-        GuiTextField.class,
-        "lineScrollOffset",
-        "field_146225_q"
-    );
     private static final Field CURSOR_POSITION_FIELD = ReflectionHelper.findField(
         GuiTextField.class,
         "cursorPosition",
@@ -60,6 +55,19 @@ public class ClickGuiTextField {
     private long lastCursorTick;
     private boolean cursorVisible;
 
+    /**
+     * Index of the first character drawn.
+     *
+     * <p>GuiTextField keeps one of these too, and reading it was the bug. It derives its own from
+     * the vanilla font at the width the field was constructed with -- one hundred pixels, a number
+     * this class never uses -- while everything drawn here is measured with the ClickGui font at
+     * half scale across whatever the row actually spans. The two windows disagreed, so the caret
+     * would leave the drawn range and stay pinned at an edge, the text stopped following it, and
+     * anything past the right of the box was simply unreachable. Arrow keys, selection and paste
+     * were all working the whole time; none of their results could be seen.
+     */
+    private int scrollOffset;
+
     public ClickGuiTextField(String placeholder, int maxLength) {
         this(placeholder, maxLength, DEFAULT_TEXT_SCALE);
     }
@@ -88,11 +96,11 @@ public class ClickGuiTextField {
         MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
 
         String fullText = textField.getText();
-        int lineScrollOffset = Math.max(0, Math.min(getIntField(textField, LINE_SCROLL_OFFSET_FIELD, 0), fullText.length()));
-        String visibleText = getVisibleText(fullText, lineScrollOffset, width, renderer);
-        int cursorPosition = getIntField(textField, CURSOR_POSITION_FIELD, fullText.length());
+        int cursorPosition = Math.max(0, Math.min(getIntField(textField, CURSOR_POSITION_FIELD, fullText.length()), fullText.length()));
         int selectionEnd = getIntField(textField, SELECTION_END_FIELD, cursorPosition);
-        int visibleStart = lineScrollOffset;
+        updateScroll(fullText, cursorPosition, width, renderer);
+        String visibleText = getVisibleText(fullText, scrollOffset, width, renderer);
+        int visibleStart = scrollOffset;
         int visibleEnd = visibleStart + visibleText.length();
         float textY = centeredScaledTextY(top, height, renderer);
         int textColor = getBooleanField(textField, IS_ENABLED_FIELD, true)
@@ -148,6 +156,33 @@ public class ClickGuiTextField {
             cursorVisible = true;
             lastCursorTick = System.currentTimeMillis();
         }
+    }
+
+    /**
+     * Slides the window so the caret is always inside it, and no further than it has to.
+     *
+     * <p>The caret is allowed one pixel of its own at the right edge, or a caret sitting at the
+     * very end of a string that exactly fills the box lands on the boundary and is clipped.
+     */
+    private void updateScroll(String text, int cursor, float width, MindlessFontRenderer renderer) {
+        if (scrollOffset > text.length()) {
+            scrollOffset = text.length();
+        }
+        if (cursor < scrollOffset) {
+            scrollOffset = cursor;
+        }
+        while (scrollOffset < cursor && measure(text, scrollOffset, cursor, renderer) > width - 1.0f) {
+            scrollOffset++;
+        }
+        // Anything the window could show without pushing the caret out, it should: otherwise
+        // deleting from the end leaves the field scrolled with blank space against its right edge.
+        while (scrollOffset > 0 && measure(text, scrollOffset - 1, text.length(), renderer) <= width - 1.0f) {
+            scrollOffset--;
+        }
+    }
+
+    private float measure(String text, int from, int to, MindlessFontRenderer renderer) {
+        return renderer.getStringWidth(text.substring(from, to)) * textScale;
     }
 
     private String getVisibleText(String text, int startIndex, float width, MindlessFontRenderer renderer) {

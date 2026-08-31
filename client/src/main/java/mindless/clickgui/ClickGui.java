@@ -134,6 +134,9 @@ public class ClickGui extends GuiScreen {
     @Override
     public void initGui() {
         super.initGui();
+        // Without this a held key fires once. Every text field in here wants the same auto-repeat
+        // a text editor has -- backspace, the arrows, delete -- and LWJGL only sends it on ask.
+        Keyboard.enableRepeatEvents(true);
         double configuredScale = getConfiguredGuiScale();
         if (!isNotFirstOpen) {
             isNotFirstOpen = true;
@@ -564,6 +567,7 @@ public class ClickGui extends GuiScreen {
 
     @Override
     public void onGuiClosed() {
+        Keyboard.enableRepeatEvents(false);
         this.logoSmoothLength = null;
         if (this.sf != null) {
             this.sf.cancel(true);
