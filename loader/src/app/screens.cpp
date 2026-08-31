@@ -714,21 +714,18 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
 
         const auto& pe = state.processes[i];
 
-        if (selected)
-        {
-            float barH = row.h - 18.0f;
-            dl.fill_rounded_rect({ row.x + 1.0f, row.y + (row.h - barH) * 0.5f, 2.0f, barH },
-                                 t.accent.with_alpha(alpha), 1.0f);
-        }
-
         const float tileSz  = 32.0f;
         const float iconSz  = 22.0f;
         const float iconPad = 11.0f;
         float tileX = row.x + iconPad;
         float tileY = row.y + (row.h - tileSz) * 0.5f;
 
-        dl.fill_rounded_rect({ tileX, tileY, tileSz, tileSz },
-                             Color(0x000000).with_alpha(0.22f * alpha), 8.0f);
+        // A chip raised off the row rather than a hole punched into it. The old fill was black
+        // over an already dark row, so a monochrome mark had nothing to be seen against.
+        Rect  tile   = { tileX, tileY, tileSz, tileSz };
+        Color tileBg = t.buttonHover.lerp(t.buttonBorder, 0.35f);
+        dl.fill_rounded_rect(tile, tileBg.with_alpha(tileBg.a * alpha), 9.0f);
+        dl.stroke_rounded_rect(tile, Color(0xFFFFFF).with_alpha(0.05f * alpha), 9.0f, 1.0f);
 
         float iconX = tileX + (tileSz - iconSz) * 0.5f;
         float iconY = tileY + (tileSz - iconSz) * 0.5f;
