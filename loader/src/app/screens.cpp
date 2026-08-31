@@ -776,9 +776,17 @@ void draw_screen(DrawList& dl, AppState& state, const InputState& input,
                          g_theme.windowRadius, g_theme.glowSpread);
     dl.fill_rounded_rect(wr, g_theme.surface.with_alpha(bgOpacity), g_theme.windowRadius);
     dl.stroke_rounded_rect(wr, g_theme.surfaceBorder.with_alpha(bgOpacity), g_theme.windowRadius, 1.0f);
-    dl.fill_rect({ wr.x + g_theme.windowRadius * 0.5f, wr.y + 1.0f,
-                   wr.w - g_theme.windowRadius, 1.0f },
-                 Color(0xFFFFFF).with_alpha(0.04f * bgOpacity));
+    // Inset by the full radius and faded at both ends: a straight line any closer to the
+    // corner overhangs the curve at y+1 and leaves a bright nub outside the panel.
+    Rect  sheen  = { wr.x + g_theme.windowRadius, wr.y + 1.0f,
+                     wr.w - g_theme.windowRadius * 2.0f, 1.0f };
+    Color sheenA = Color(0xFFFFFF).with_alpha(0.0f);
+    Color sheenB = Color(0xFFFFFF).with_alpha(0.05f * bgOpacity);
+    float sheenH = sheen.w * 0.5f;
+    dl.fill_rounded_rect_gradient(sheen, { sheen.x, sheen.y, sheenH, sheen.h },
+                                  sheenA, sheenB, 0.5f);
+    dl.fill_rounded_rect_gradient(sheen, { sheen.x + sheenH, sheen.y, sheenH, sheen.h },
+                                  sheenB, sheenA, 0.5f);
 
     // The mark, blown up and cropped by the panel, gives the empty half of every screen
     // something to sit on. Clipped short of the corner radius so it never squares them off.
