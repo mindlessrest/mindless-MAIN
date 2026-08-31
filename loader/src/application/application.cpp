@@ -56,6 +56,9 @@ bool Application::init()
     if (!fontTitle_.load_from_memory(fontData, fontSize,
                                       t.fontSizeTitle, renderer_.device()))
         return false;
+    if (!fontCaption_.load_from_memory(fontData, fontSize,
+                                        t.fontSizeSmall, renderer_.device()))
+        return false;
 
     // Load logo PNG from embedded RCDATA
     auto [logoData, logoSize] = get_resource(IDR_LOGO_PNG, RT_RCDATA);
@@ -192,11 +195,13 @@ int Application::run()
             }
         }
 
-        if (state_.screen == Screen::ProcessSelect || state_.screen == Screen::Loading)
+        if (state_.screen == Screen::Login ||
+            state_.screen == Screen::ProcessSelect ||
+            state_.screen == Screen::Loading)
         {
             int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
             int desiredW = 460 + margin;
-            int desiredH = 300 + margin;
+            int desiredH = 330 + margin;
 
             RECT cur;
             GetWindowRect(window_.hwnd(), &cur);
@@ -221,7 +226,7 @@ int Application::run()
 
             int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
             int newW = static_cast<int>(lerp(120.0f, 460.0f, ease)) + margin;
-            int newH = static_cast<int>(lerp(120.0f, 300.0f, ease)) + margin;
+            int newH = static_cast<int>(lerp(120.0f, 330.0f, ease)) + margin;
             int newX = cx - newW / 2;
             int newY = cy - newH / 2;
 
@@ -285,7 +290,7 @@ void Application::draw_frame(float dt)
 
     drawList_.clear();
 
-    ScreenFonts fonts { fontNormal_, fontTitle_ };
+    ScreenFonts fonts { fontNormal_, fontTitle_, fontCaption_ };
 
     bool closeRequested = false;
     draw_screen(drawList_, state_, input, fonts, panel, logo_, dt, closeRequested, &window_, renderer_.device());

@@ -13,6 +13,7 @@ namespace mindless
 enum class Screen
 {
     Splash,
+    Login,
     ProcessSelect,
     Loading,
     Closing,
@@ -55,6 +56,8 @@ struct AppState
     float refreshAccum = 0.0f;
     static constexpr float RefreshInterval = 0.4f;
 
+    float uiElapsed = 0.0f;
+
     float closeTween   = 0.0f;
     int   closeOrigX   = 0;
     int   closeOrigY   = 0;
@@ -64,11 +67,13 @@ struct AppState
 
     float slideDirection = 1.0f;
 
-    // Cross-transition: outgoing screen slides out while incoming slides in
+    // Cross-transition: the outgoing screen clears out before the incoming one arrives, so the
+    // two are never legible on top of each other.
     Screen prevScreen     = Screen::Splash;
     float  slideOutT      = 1.0f;  // 1.0 = fully gone, drives outgoing screen
     float  slideInT       = 1.0f;  // 1.0 = fully arrived, drives incoming screen
-    static constexpr float SlideDuration = 0.22f;
+    static constexpr float SlideDuration = 0.34f;
+    static constexpr float SlideHandover = 0.44f;
 
     // Per-row hover tweens (0→1)
     Tween rowHover[kMaxProcessRows];
@@ -79,6 +84,19 @@ struct AppState
     // Back link hover tween
     Tween backHover;
     Tween retryHover;
+
+    std::string username;
+    std::string password;
+    int         focusField = 0;
+    bool        selectAll  = false;
+    float       caretPhase = 0.0f;
+    static constexpr size_t MaxFieldLength = 48;
+
+    Tween userFocus;
+    Tween passFocus;
+    Tween userHover;
+    Tween passHover;
+    Tween signInHover;
 
     // Chrome: minimize / close button hover tweens
     Tween chromeMinHover;
@@ -92,16 +110,28 @@ struct AppState
         retryHover.speed      = 14.0f;
         chromeMinHover.speed  = 14.0f;
         chromeCloseHover.speed= 14.0f;
+        userFocus.speed       = 16.0f;
+        passFocus.speed       = 16.0f;
+        userHover.speed       = 14.0f;
+        passHover.speed       = 14.0f;
+        signInHover.speed     = 14.0f;
     }
 
     void advance_tweens(float dt)
     {
+        uiElapsed += dt;
+
         for (auto& t : rowHover)  t.advance(dt);
         continueHover.advance(dt);
         backHover.advance(dt);
         retryHover.advance(dt);
         chromeMinHover.advance(dt);
         chromeCloseHover.advance(dt);
+        userFocus.advance(dt);
+        passFocus.advance(dt);
+        userHover.advance(dt);
+        passHover.advance(dt);
+        signInHover.advance(dt);
 
         if (slideInT  < 1.0f) slideInT  = std::min(1.0f, slideInT  + dt / SlideDuration);
         if (slideOutT < 1.0f) slideOutT = std::min(1.0f, slideOutT + dt / SlideDuration);
@@ -114,6 +144,21 @@ struct AppState
         slideDirection = dir;
         slideInT       = 0.0f;
         slideOutT      = 0.0f;
+    }
+
+    void focus_field(int index)
+    {
+        focusField = index;
+        selectAll  = false;
+        caretPhase = 0.0f;
+    }
+
+    void sign_in()
+    {
+        selectAll  = false;
+        caretPhase = 0.0f;
+        signInHover.snap(0.0f);
+        transition_to(Screen::ProcessSelect, 1.0f);
     }
 
     void release_process_icons()

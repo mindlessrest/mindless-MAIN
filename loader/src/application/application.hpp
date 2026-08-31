@@ -28,6 +28,7 @@ private:
     Renderer    renderer_;
     FontAtlas   fontNormal_;
     FontAtlas   fontTitle_;
+    FontAtlas   fontCaption_;
     Image       logo_;
     ui::DrawList drawList_;
     AppState    state_;

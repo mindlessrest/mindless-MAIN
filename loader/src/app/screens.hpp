@@ -18,6 +18,7 @@ struct ScreenFonts
 {
     FontAtlas& normal;
     FontAtlas& title;
+    FontAtlas& caption;
 };
 
 
