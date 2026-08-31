@@ -134,6 +134,7 @@ target_link_libraries(MindlessLoader
         dwmapi.lib
         dcomp.lib
         shell32.lib
+        crypt32.lib
 )
 
 # RC compiler needs to find resource.h from src/

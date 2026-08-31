@@ -173,8 +173,11 @@ struct AppState
     Tween userHover;
     Tween passHover;
     Tween signInHover;
+    Tween rememberHover;
+    Tween rememberCheck;
 
     // Auth state
+    bool        rememberMe     = true;
     bool        authInProgress = false;
     bool        authComplete   = false;
     std::string authError;
@@ -199,6 +202,9 @@ struct AppState
         userHover.speed       = 14.0f;
         passHover.speed       = 14.0f;
         signInHover.speed     = 14.0f;
+        rememberHover.speed   = 14.0f;
+        rememberCheck.speed   = 18.0f;
+        rememberCheck.snap(1.0f);
     }
 
     void advance_tweens(float dt)
@@ -216,6 +222,8 @@ struct AppState
         userHover.advance(dt);
         passHover.advance(dt);
         signInHover.advance(dt);
+        rememberHover.advance(dt);
+        rememberCheck.advance(dt);
 
         if (slideInT  < 1.0f) slideInT  = std::min(1.0f, slideInT  + dt / SlideDuration);
         if (slideOutT < 1.0f) slideOutT = std::min(1.0f, slideOutT + dt / SlideDuration);

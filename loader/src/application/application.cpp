@@ -3,6 +3,7 @@
 #include "app/process_list.hpp"
 #include "auth/xorstr.hpp"
 #include "auth/auth_shared.hpp"
+#include "auth/saved_credentials.hpp"
 #include "resource.h"
 #include "ui/theme.hpp"
 #include <authclient/authclient.hpp>
@@ -69,6 +70,23 @@ bool Application::init()
     auto [logoData, logoSize] = get_resource(IDR_LOGO_PNG, RT_RCDATA);
     if (logoData)
         logo_ = load_image_from_memory(logoData, logoSize, renderer_.device());
+
+    std::string savedUser, savedPass;
+    bool remember = false;
+    if (load_credentials(savedUser, savedPass, remember))
+    {
+        state_.username.text = savedUser;
+        state_.username.move_to(static_cast<int>(savedUser.size()), false);
+        state_.password.text = savedPass;
+        state_.password.move_to(static_cast<int>(savedPass.size()), false);
+        state_.rememberMe = remember;
+        state_.rememberCheck.snap(remember ? 1.0f : 0.0f);
+
+        if (!savedUser.empty() && !savedPass.empty() && remember)
+        {
+            state_.sign_in();
+        }
+    }
 
     state_.fadeIn.reset(0.0f);
     lastFrame_ = Clock::now();
@@ -254,6 +272,7 @@ int Application::run()
 
                     if (state_.authComplete && state_.authError.empty())
                     {
+                        save_credentials(state_.username.text, state_.password.text, state_.rememberMe);
                         state_.statusText = "Authenticated";
                         state_.transition_to(Screen::ProcessSelect, 1.0f);
                     }

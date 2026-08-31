@@ -437,6 +437,48 @@ static void set_clipboard_text(const std::string& text)
     CloseClipboard();
 }
 
+static bool draw_checkbox(DrawList& dl, FontAtlas& cap, Rect r, const char* label,
+                          bool checked, Tween& hover, Tween& checkAnim,
+                          const InputState& input, float dt, float alpha)
+{
+    const Theme& t = g_theme;
+    bool hovered = r.contains(input.mousePos);
+    hover.set(hovered ? 1.0f : 0.0f);
+    hover.advance(dt);
+    checkAnim.set(checked ? 1.0f : 0.0f);
+    checkAnim.advance(dt);
+
+    float boxSize = 14.0f;
+    Rect boxR = { r.x, r.y + (r.h - boxSize) * 0.5f, boxSize, boxSize };
+
+    float h = hover.value();
+    float c = checkAnim.value();
+
+    Color boxBg = t.buttonBg.lerp(t.buttonHover, h).lerp(t.accent, c);
+    Color boxBorder = t.buttonBorder.lerp(t.accent, c);
+
+    if (c > 0.01f)
+        dl.glow_rounded_rect(boxR, t.accent.with_alpha(0.25f * c * alpha), 3.0f, 6.0f);
+
+    dl.fill_rounded_rect(boxR, boxBg.with_alpha(alpha), 3.0f);
+    dl.stroke_rounded_rect(boxR, boxBorder.with_alpha(alpha), 3.0f, 1.0f);
+
+    if (c > 0.01f)
+    {
+        float cx = boxR.x + boxR.w * 0.5f;
+        float cy = boxR.y + boxR.h * 0.5f;
+        dl.fill_rounded_rect({ cx - 3.0f * c, cy - 3.0f * c, 6.0f * c, 6.0f * c },
+                             t.accentText.with_alpha(c * alpha), 1.5f);
+    }
+
+    float textX = boxR.right() + 7.0f;
+    float textY = vcenter_text(cap, r.y, r.h);
+    Color textColor = t.textSecond.lerp(t.text, h).with_alpha(alpha);
+    dl.draw_text(label, { textX, textY }, textColor, cap);
+
+    return hovered && input.lmbReleased;
+}
+
 static void draw_login_content(DrawList& dl, AppState& state,
                                 const InputState& input, ScreenFonts fonts,
                                 const Rect& wr, float alpha, float dt,
@@ -444,6 +486,7 @@ static void draw_login_content(DrawList& dl, AppState& state,
 {
     const Theme& t  = g_theme;
     FontAtlas&   fn = fonts.normal;
+    FontAtlas&   cap= fonts.caption;
 
     float pad    = t.windowPadding;
     float fieldX = wr.x + pad;
@@ -453,9 +496,11 @@ static void draw_login_content(DrawList& dl, AppState& state,
 
     Rect btnR = { fieldX, wr.bottom() - pad - t.buttonH, fieldW, t.buttonH };
 
-    const float fieldH  = 38.0f;
-    const float hintGap = 14.0f;
-    float groupH = fieldH * 2.0f + 10.0f + hintGap + fn.lineHeight();
+    const float fieldH   = 38.0f;
+    const float checkH   = 16.0f;
+    const float checkGap = 9.0f;
+    const float hintGap  = 8.0f;
+    float groupH = fieldH * 2.0f + 10.0f + checkGap + checkH + hintGap + cap.lineHeight();
     float groupY = contentTop + (btnR.y - contentTop - groupH) * 0.5f;
 
     Rect userR = { fieldX, groupY,                 fieldW, fieldH };
@@ -472,8 +517,16 @@ static void draw_login_content(DrawList& dl, AppState& state,
                         true, state.passHover, state.passFocus, input, dt, alpha, state.caretPhase))
         state.focus_field(1);
 
-    FontAtlas& cap = fonts.caption;
-    float hintY   = passR.bottom() + hintGap;
+    float checkY = passR.bottom() + checkGap;
+    Rect checkR  = { fieldX, checkY, 130.0f, checkH };
+
+    if (draw_checkbox(dl, cap, checkR, "Remember me", state.rememberMe,
+                      state.rememberHover, state.rememberCheck, input, dt, alpha))
+    {
+        state.rememberMe = !state.rememberMe;
+    }
+
+    float hintY   = checkR.bottom() + hintGap;
     float hintTop = vcenter_text(cap, hintY, cap.lineHeight());
 
     if (!state.authError.empty())
