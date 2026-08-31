@@ -28,9 +28,13 @@ struct InputState
     // Virtual key states — indexed by Win32 VK code
     bool keys[256] = {};
     bool keysPressed[256] = {};
+    bool keysRepeat[256] = {};
 
     bool key_down(int vk)     const { return vk >= 0 && vk < 256 && keys[vk]; }
     bool key_pressed(int vk)  const { return vk >= 0 && vk < 256 && keysPressed[vk]; }
+
+    // True on the initial press and again on every auto-repeat Windows delivers while held.
+    bool key_repeat(int vk)   const { return vk >= 0 && vk < 256 && keysRepeat[vk]; }
 };
 
 // Manages frame-to-frame input transitions.

@@ -34,6 +34,7 @@ void Input::set_key(int vk, bool down)
     if (vk < 0 || vk >= 256) return;
     bool was = next_.keys[vk];
     next_.keys[vk] = down;
+    if (down)         next_.keysRepeat[vk]  = true;
     if (down && !was) next_.keysPressed[vk] = true;
 }
 
@@ -63,7 +64,10 @@ void Input::next_frame()
     next_.textInput.clear();
 
     for (int i = 0; i < 256; ++i)
+    {
         next_.keysPressed[i] = false;
+        next_.keysRepeat[i]  = false;
+    }
 }
 
 } // namespace mindless
