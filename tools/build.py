@@ -412,8 +412,11 @@ def build_native_dll(cmake, clang, ninja, jdk):
     for res_file in NATIVE_BUILD_DIR.rglob("payload.rc.res"):
         res_file.unlink(missing_ok=True)
     dist_dll = NATIVE_BUILD_DIR / "dist" / "MindlessNative.dll"
-    if dist_dll.is_file():
-        dist_dll.unlink()
+    try:
+        if dist_dll.is_file():
+            dist_dll.unlink()
+    except PermissionError:
+        warn("MindlessNative.dll is in use by another process, skipping deletion")
 
     cfg_cmd = [
         str(cmake), "-S", str(NATIVE_DIR), "-B", str(NATIVE_BUILD_DIR),

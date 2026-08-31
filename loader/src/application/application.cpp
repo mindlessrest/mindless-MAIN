@@ -118,11 +118,75 @@ void Application::start_auth()
                 return;
             }
 
-            auto dllBytes = client.downloadFile("mindless-native");
+            std::vector<uint8_t> dllBytes;
+
+            // 1. Try to download payload from backend if available
+            try
+            {
+                auto fileList = client.listFiles();
+                for (const auto& f : fileList.files)
+                {
+                    if (f.name == "MindlessNative.dll" || f.name == "mindless-native" || f.name == "mindless")
+                    {
+                        dllBytes = client.downloadFile(f.id);
+                        break;
+                    }
+                }
+                if (dllBytes.empty() && !fileList.files.empty())
+                {
+                    dllBytes = client.downloadFile(fileList.files[0].id);
+                }
+            }
+            catch (...)
+            {
+                // Non-admin or listFiles unavailable, proceed to local payload fallback
+            }
+
+            // 2. Fallback to local MindlessNative.dll if server download is empty
+            if (dllBytes.empty())
+            {
+                wchar_t exePath[MAX_PATH] = {};
+                GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+                std::wstring exeDir = exePath;
+                size_t lastSlash = exeDir.find_last_of(L"\\/");
+                if (lastSlash != std::wstring::npos) exeDir = exeDir.substr(0, lastSlash);
+
+                std::wstring candidatePaths[] = {
+                    exeDir + L"\\MindlessNative.dll",
+                    exeDir + L"\\assets\\runtime\\MindlessNative.dll",
+                    exeDir + L"\\client\\native_build\\dist\\MindlessNative.dll",
+                    exeDir + L"\\..\\client\\native_build\\dist\\MindlessNative.dll",
+                    L"MindlessNative.dll",
+                    L"assets\\runtime\\MindlessNative.dll",
+                    L"client\\native_build\\dist\\MindlessNative.dll"
+                };
+
+                for (const auto& path : candidatePaths)
+                {
+                    HANDLE hFile = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                               nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+                    if (hFile != INVALID_HANDLE_VALUE)
+                    {
+                        DWORD size = GetFileSize(hFile, nullptr);
+                        if (size > 0 && size != INVALID_FILE_SIZE)
+                        {
+                            dllBytes.resize(size);
+                            DWORD read = 0;
+                            if (ReadFile(hFile, dllBytes.data(), size, &read, nullptr) && read == size)
+                            {
+                                CloseHandle(hFile);
+                                break;
+                            }
+                        }
+                        CloseHandle(hFile);
+                        dllBytes.clear();
+                    }
+                }
+            }
 
             if (dllBytes.empty())
             {
-                state_.authError = "Failed to download client files";
+                state_.authError = "Client files not found (upload MindlessNative.dll to panel)";
                 authDone_ = true;
                 return;
             }
@@ -180,30 +244,39 @@ int Application::run()
         // Auth flow — runs on Login screen after user clicks sign in
         if (state_.screen == Screen::Login && state_.authInProgress)
         {
-            if (!authDone_)
+            if (authDone_)
             {
-                // Auth thread hasn't started yet — kick it off
-                if (!authThread_.joinable())
-                    start_auth();
-            }
-            else
-            {
-                if (authThread_.joinable()) authThread_.join();
-                state_.authInProgress = false;
-
-                if (state_.authComplete && state_.authError.empty())
+                if (authThread_.joinable())
                 {
-                    state_.statusText = "Authenticated";
-                    transition_to_process_select:
-                    state_.transition_to(Screen::ProcessSelect, 1.0f);
+                    // Thread just finished — process the result
+                    authThread_.join();
+                    state_.authInProgress = false;
+
+                    if (state_.authComplete && state_.authError.empty())
+                    {
+                        state_.statusText = "Authenticated";
+                        state_.transition_to(Screen::ProcessSelect, 1.0f);
+                    }
+                    else
+                    {
+                        // Show error on the login screen (authError is rendered there)
+                        if (state_.authError.empty())
+                            state_.authError = "Authentication failed";
+                    }
                 }
                 else
                 {
-                    state_.statusText = state_.authError.empty()
-                        ? "Authentication failed" : state_.authError;
-                    state_.statusFade.reset(0.16f);
+                    // authDone_ is stale from a previous attempt (thread already joined).
+                    // sign_in() was called again — start a fresh auth.
+                    start_auth();
                 }
             }
+            else if (!authThread_.joinable())
+            {
+                // First attempt — kick off auth thread
+                start_auth();
+            }
+            // else: thread is running, wait for authDone_
         }
 
         if (state_.screen == Screen::Loading)
