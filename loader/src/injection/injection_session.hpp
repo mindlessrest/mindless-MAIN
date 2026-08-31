@@ -11,10 +11,7 @@ namespace mindless
 enum class InjectionPhase
 {
     Idle,
-    CheckingConnection,
-    VerifyingFiles,
     Injecting,
-    Bootstrapping,
     Complete,
     Failed,
 };
@@ -28,7 +25,7 @@ public:
     InjectionSession(const InjectionSession&) = delete;
     InjectionSession& operator=(const InjectionSession&) = delete;
 
-    bool start(uint32_t processId);
+    bool start(uint32_t processId, const void* dllData = nullptr, size_t dllSize = 0);
     void reset();
     void tick();
 
@@ -40,32 +37,20 @@ public:
 private:
     InjectionPhase phase_ = InjectionPhase::Idle;
     uint32_t targetProcessId_ = 0;
-    std::wstring directory_;
-    std::wstring dllPath_;
-    std::wstring logPath_;
-    std::string status_ = "Connecting to Minecraft";
+    const void* dllData_ = nullptr;
+    DWORD dllSize_ = 0;
+    std::string status_ = "Idle";
     std::string solution_;
-    static constexpr float BootstrapFloor = 0.45f;
-    float bootstrapProgress_ = BootstrapFloor;
-
-    HANDLE pipe_ = INVALID_HANDLE_VALUE;
-    bool pipeConnected_ = false;
-    std::string pipeBuf_;
 
     std::thread injectThread_;
     std::atomic<bool> injectDone_{false};
     bool injectSuccess_ = false;
     std::string injectError_;
 
-    bool prepare_runtime();
     bool validate_target() const;
     bool validate_session() const;
     bool inject_remote();
-    void start_injection();
     void fail(std::string status, std::string solution);
-    void cleanup_runtime();
-    void update_bootstrap();
-    void poll_pipe();
 };
 
 } // namespace mindless

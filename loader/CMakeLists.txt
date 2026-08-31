@@ -29,6 +29,33 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 find_package(Freetype REQUIRED)
 find_package(Stb REQUIRED)
 
+# Auth SDK dependencies (installed via vcpkg)
+find_package(CURL REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
+
+# Auth SDK — build as a static library from the external SDK source
+set(AUTHSDK_DIR "$ENV{USERPROFILE}/authsdk/cpp")
+add_library(authclient STATIC
+    "${AUTHSDK_DIR}/src/crypto.cpp"
+    "${AUTHSDK_DIR}/src/hwid.cpp"
+    "${AUTHSDK_DIR}/src/ipc.cpp"
+    "${AUTHSDK_DIR}/src/heartbeat.cpp"
+    "${AUTHSDK_DIR}/src/authclient.cpp"
+)
+target_include_directories(authclient PUBLIC "${AUTHSDK_DIR}/include")
+target_link_libraries(authclient PUBLIC
+    CURL::libcurl
+    nlohmann_json::nlohmann_json
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    wbemuuid ole32 oleaut32
+)
+set_target_properties(authclient PROPERTIES
+    CXX_STANDARD 17
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+)
+
 set(SOURCES
     src/main.cpp
     src/application/application.cpp
@@ -41,6 +68,7 @@ set(SOURCES
     src/window/window.cpp
     src/input/input.cpp
     src/injection/injection_session.cpp
+    src/injection/manual_map.cpp
 )
 
 # Generate the .rc with the absolute icon path baked in.
@@ -49,7 +77,6 @@ set(MANIFEST_PATH "${CMAKE_SOURCE_DIR}/src/app.manifest")
 set(FONT_PATH     "${CMAKE_SOURCE_DIR}/assets/fonts/inter.ttf")
 set(LOGO_PNG_PATH "${CMAKE_SOURCE_DIR}/assets/logo.png")
 set(LUNAR_PNG_PATH "${CMAKE_SOURCE_DIR}/assets/lunar.png")
-set(MINDLESS_NATIVE_PATH   "${CMAKE_SOURCE_DIR}/assets/runtime/MindlessNative.dll")
 configure_file(src/resources.rc.in "${CMAKE_CURRENT_BINARY_DIR}/resources_gen.rc" @ONLY)
 
 # Compile the .rc using rc.exe directly — bypasses cmake_llvm_rc which breaks
@@ -78,7 +105,6 @@ add_custom_command(
             "${CMAKE_SOURCE_DIR}/assets/logo.png"
             "${CMAKE_SOURCE_DIR}/assets/lunar.png"
             "${CMAKE_SOURCE_DIR}/assets/fonts/inter.ttf"
-            "${CMAKE_SOURCE_DIR}/assets/runtime/MindlessNative.dll"
     COMMENT "Compiling resources"
 )
 add_custom_target(MindlessResources DEPENDS "${RES_FILE}")
@@ -100,6 +126,7 @@ target_include_directories(MindlessLoader
 target_link_libraries(MindlessLoader
     PRIVATE
         Freetype::Freetype
+        authclient
         d3d11.lib
         dxgi.lib
         d3dcompiler.lib
@@ -129,7 +156,7 @@ target_precompile_headers(MindlessLoader PRIVATE
 )
 
 set_target_properties(MindlessLoader PROPERTIES
-    LINK_FLAGS "/MANIFEST:NO"
+    LINK_FLAGS "/MANIFEST:NO /INCREMENTAL:NO"
 )
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")

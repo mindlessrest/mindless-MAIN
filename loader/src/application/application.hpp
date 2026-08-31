@@ -7,6 +7,8 @@
 #include "app/app_state.hpp"
 #include "injection/injection_session.hpp"
 #include <chrono>
+#include <thread>
+#include <atomic>
 
 namespace mindless
 {
@@ -15,7 +17,7 @@ class Application
 {
 public:
     Application() = default;
-    ~Application() = default;
+    ~Application();
 
     Application(const Application&) = delete;
     Application& operator=(const Application&) = delete;
@@ -36,13 +38,18 @@ private:
     HICON       appIcon_ = nullptr;
     bool        notificationSent_ = false;
 
+    // Auth
+    std::thread authThread_;
+    std::atomic<bool> authDone_{false};
+    HANDLE authSection_ = nullptr;
+
     using Clock     = std::chrono::steady_clock;
     using TimePoint = Clock::time_point;
     TimePoint   lastFrame_;
 
     void draw_frame(float dt);
     void show_completion_toast();
+    void start_auth();
 };
 
 } // namespace mindless
-

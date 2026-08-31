@@ -66,8 +66,14 @@ loom {
     }
 }
 
+val authSdkJavaDir = file("${System.getProperty("user.home")}/authsdk/java/src/main/java")
+
 sourceSets.main {
     output.setResourcesDir(sourceSets.main.flatMap { it.java.classesDirectory })
+    if (authSdkJavaDir.exists()) {
+        java.srcDir(authSdkJavaDir)
+        java.exclude("dev/authsys/Example.java")
+    }
 }
 
 val lunarShim by sourceSets.creating {
@@ -117,6 +123,7 @@ dependencies {
     shadowImpl("org.java-websocket:Java-WebSocket:1.6.0")
     shadowImpl("org.slf4j:slf4j-api:2.0.13")
     shadowImpl("net.java.dev.jna:jna:5.14.0")
+    shadowImpl("com.squareup.okhttp3:okhttp:4.12.0")
     // Lunar may run on a JRE without javax.tools' system compiler. Keep script
     // compilation available inside the payload instead of requiring launcher Java configuration.
     shadowImpl("org.eclipse.jdt:ecj:3.24.0")

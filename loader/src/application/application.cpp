@@ -1,8 +1,12 @@
 #include "application.hpp"
 #include "app/screens.hpp"
 #include "app/process_list.hpp"
+#include "auth/xorstr.hpp"
+#include "auth/auth_shared.hpp"
 #include "resource.h"
 #include "ui/theme.hpp"
+#include <authclient/authclient.hpp>
+#include <authclient/hwid.hpp>
 #include <chrono>
 #include <cmath>
 #include <shellapi.h>
@@ -10,8 +14,6 @@
 namespace mindless
 {
 
-// Load a Win32 RCDATA resource as a read-only pointer + size.
-// Returns {nullptr, 0} on failure.
 static std::pair<const void*, size_t> get_resource(int id, const wchar_t* type)
 {
     HMODULE mod  = GetModuleHandleW(nullptr);
@@ -24,13 +26,18 @@ static std::pair<const void*, size_t> get_resource(int id, const wchar_t* type)
     return { LockResource(hgl), SizeofResource(mod, rsrc) };
 }
 
+Application::~Application()
+{
+    if (authThread_.joinable()) authThread_.join();
+    if (authSection_) CloseHandle(authSection_);
+}
+
 bool Application::init()
 {
     const int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
     if (!window_.create(L"Mindless", 120 + margin, 120 + margin))
         return false;
 
-    // Icon from embedded resource
     HICON icon = LoadIconW(GetModuleHandleW(nullptr),
                            MAKEINTRESOURCEW(IDI_APPICON));
     if (icon)
@@ -46,7 +53,6 @@ bool Application::init()
 
     const auto& t = ui::g_theme;
 
-    // Load fonts from embedded RCDATA
     auto [fontData, fontSize] = get_resource(IDR_FONT_NORMAL, RT_RCDATA);
     if (!fontData) return false;
 
@@ -60,7 +66,6 @@ bool Application::init()
                                         t.fontSizeSmall, renderer_.device()))
         return false;
 
-    // Load logo PNG from embedded RCDATA
     auto [logoData, logoSize] = get_resource(IDR_LOGO_PNG, RT_RCDATA);
     if (logoData)
         logo_ = load_image_from_memory(logoData, logoSize, renderer_.device());
@@ -76,6 +81,73 @@ bool Application::init()
     window_.show();
 
     return true;
+}
+
+void Application::start_auth()
+{
+    if (authThread_.joinable()) authThread_.join();
+    authDone_ = false;
+
+    std::string user = state_.username.text;
+    std::string pass = state_.password.text;
+
+    authThread_ = std::thread([this, user, pass] {
+        if (user.empty() || pass.empty())
+        {
+            state_.authError = "Please enter username and password";
+            authDone_ = true;
+            return;
+        }
+
+        try
+        {
+            const char* api = XORSTR("https://api.mindless.rest");
+            authclient::AuthClient client(api);
+
+            std::string hwid = authclient::getHWID();
+            client.setHWID(hwid);
+
+            auto login = client.login(user, pass);
+            client.setToken(login.token);
+
+            auto session = client.validateSession();
+            if (!session.valid)
+            {
+                state_.authError = "Session invalid after login";
+                authDone_ = true;
+                return;
+            }
+
+            auto dllBytes = client.downloadFile("mindless-native");
+
+            if (dllBytes.empty())
+            {
+                state_.authError = "Failed to download client files";
+                authDone_ = true;
+                return;
+            }
+
+            state_.authToken = login.token;
+            state_.authHwid  = hwid;
+            state_.dllBytes  = std::move(dllBytes);
+            state_.authComplete = true;
+        }
+        catch (const authclient::AuthException& e)
+        {
+            state_.authError = e.message().empty() ? e.code() : e.message();
+            char dbg[512];
+            snprintf(dbg, sizeof(dbg), "[MindlessLoader] Auth failed: %s (%s)\n", e.code().c_str(), e.message().c_str());
+            OutputDebugStringA(dbg);
+        }
+        catch (const std::exception& e)
+        {
+            state_.authError = e.what();
+            char dbg[512];
+            snprintf(dbg, sizeof(dbg), "[MindlessLoader] Exception: %s\n", e.what());
+            OutputDebugStringA(dbg);
+        }
+        authDone_ = true;
+    });
 }
 
 void Application::show_completion_toast()
@@ -105,13 +177,59 @@ int Application::run()
         lastFrame_ = now;
         dt = std::min(dt, 0.1f);
 
+        // Auth flow — runs on Login screen after user clicks sign in
+        if (state_.screen == Screen::Login && state_.authInProgress)
+        {
+            if (!authDone_)
+            {
+                // Auth thread hasn't started yet — kick it off
+                if (!authThread_.joinable())
+                    start_auth();
+            }
+            else
+            {
+                if (authThread_.joinable()) authThread_.join();
+                state_.authInProgress = false;
+
+                if (state_.authComplete && state_.authError.empty())
+                {
+                    state_.statusText = "Authenticated";
+                    transition_to_process_select:
+                    state_.transition_to(Screen::ProcessSelect, 1.0f);
+                }
+                else
+                {
+                    state_.statusText = state_.authError.empty()
+                        ? "Authentication failed" : state_.authError;
+                    state_.statusFade.reset(0.16f);
+                }
+            }
+        }
+
         if (state_.screen == Screen::Loading)
         {
             if (injection_.phase() == InjectionPhase::Idle &&
                 state_.selectedIdx >= 0 &&
                 state_.selectedIdx < static_cast<int>(state_.processes.size()))
             {
-                injection_.start(state_.processes[state_.selectedIdx].pid);
+                uint32_t pid = state_.processes[state_.selectedIdx].pid;
+
+                // Create shared memory section with auth data for the DLL
+                if (authSection_) { CloseHandle(authSection_); authSection_ = nullptr; }
+
+                AuthSharedData shared = {};
+                strncpy_s(shared.token, sizeof(shared.token),
+                          state_.authToken.c_str(), _TRUNCATE);
+                strncpy_s(shared.hwid, sizeof(shared.hwid),
+                          state_.authHwid.c_str(), _TRUNCATE);
+                {
+                    const char* api = XORSTR("https://api.mindless.rest");
+                    strncpy_s(shared.api_url, sizeof(shared.api_url), api, _TRUNCATE);
+                }
+                authSection_ = create_auth_section(pid, shared);
+                SecureZeroMemory(&shared, sizeof(shared));
+
+                injection_.start(pid, state_.dllBytes.data(), state_.dllBytes.size());
             }
 
             if (state_.retryRequested)
@@ -135,9 +253,6 @@ int Application::run()
 
             if (!state_.loadFailed)
             {
-                // Phases finish within a few frames of each other, so easing straight at the
-                // target makes the bar appear already part-filled the instant it shows up.
-                // Capping the rate keeps it starting from empty and visibly climbing.
                 float target = injection_.progress();
                 float step   = (target - state_.loadProgress) * (1.0f - std::exp(-6.0f * dt));
                 float limit  = dt * AppState::MaxProgressRate;
@@ -156,6 +271,14 @@ int Application::run()
                 state_.loadElapsed += dt;
                 if (state_.loadProgress >= 0.999f && state_.loadElapsed >= 0.45f)
                 {
+                    // Wipe DLL bytes from memory
+                    if (!state_.dllBytes.empty())
+                    {
+                        SecureZeroMemory(state_.dllBytes.data(), state_.dllBytes.size());
+                        state_.dllBytes.clear();
+                        state_.dllBytes.shrink_to_fit();
+                    }
+
                     state_.screen = Screen::Closing;
                     state_.prevScreen  = Screen::Loading;
                     state_.slideInT    = 1.0f;
@@ -172,8 +295,6 @@ int Application::run()
             {
                 state_.refreshAccum = 0.0f;
 
-                // Icon extraction and texture upload are far too expensive to repeat on a
-                // timer, so compare the pid list first and only rebuild when it moved.
                 std::vector<uint32_t> pids = enumerate_target_pids();
                 bool changed = pids.size() != state_.processes.size();
                 for (size_t i = 0; !changed && i < pids.size(); ++i)

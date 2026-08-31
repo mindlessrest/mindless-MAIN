@@ -102,6 +102,8 @@ public final class NativeBootstrap {
         ProgressPipe.report(1.0f, "Ready");
         ProgressPipe.close();
         log("Mindless bootstrap complete");
+
+        startAuthHeartbeat();
     }
 
     private static boolean driveModInitOnClientThreadWithFallback(Minecraft minecraft) throws Exception {
@@ -285,6 +287,37 @@ public final class NativeBootstrap {
             }
         } catch (Throwable ignored) {
             // last-resort logging path: swallow to avoid masking the original error
+        }
+    }
+
+    private static void startAuthHeartbeat() {
+        String token  = System.getProperty("mindless.auth.token");
+        String apiUrl = System.getProperty("mindless.auth.apiUrl");
+        String hwid   = System.getProperty("mindless.auth.hwid");
+        if (token == null || token.isEmpty() || apiUrl == null || apiUrl.isEmpty()) {
+            log("Auth heartbeat skipped — no token or API URL available");
+            return;
+        }
+        try {
+            dev.authsys.AuthClient client = new dev.authsys.AuthClient(apiUrl);
+            client.setToken(token);
+            if (hwid != null && !hwid.isEmpty()) {
+                client.setHwid(hwid);
+            }
+            dev.authsys.HeartbeatConfig config = new dev.authsys.HeartbeatConfig(60, 3, 10);
+            dev.authsys.Heartbeat heartbeat = new dev.authsys.Heartbeat(client, config);
+            heartbeat.setOnInvalid(reason -> {
+                log("Auth heartbeat invalid: " + reason);
+                try {
+                    mindless.Mindless.uninject();
+                } catch (Throwable ignored) {}
+                mindless.runtime.TransformerHooks.untransformNative();
+            });
+            heartbeat.setOnSuccess(() -> {});
+            heartbeat.start();
+            log("Auth heartbeat started (60s interval)");
+        } catch (Throwable e) {
+            log("Failed to start auth heartbeat: " + e.getMessage());
         }
     }
 

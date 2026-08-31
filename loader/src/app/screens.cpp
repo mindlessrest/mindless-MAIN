@@ -207,7 +207,7 @@ static void draw_title_bar(DrawList& dl, ScreenFonts fonts, const Rect& wr, floa
     const float lineH = 20.0f;
     const float top   = wr.y + 13.0f;
 
-    dl.draw_text("mindless", { wr.x + pad, vcenter_text(fonts.normal, top, lineH) },
+    dl.draw_text("Mindless", { wr.x + pad, vcenter_text(fonts.normal, top, lineH) },
                  g_theme.textSecond.with_alpha(0.85f * alpha), fonts.normal);
 }
 
@@ -476,21 +476,31 @@ static void draw_login_content(DrawList& dl, AppState& state,
     float hintY   = passR.bottom() + hintGap;
     float hintTop = vcenter_text(cap, hintY, cap.lineHeight());
 
-    const char* hintLeft  = "Tab to switch";
-    const char* hintRight = "Enter to sign in";
-    float leftW  = cap.measure_text_width(hintLeft);
-    float rightW = cap.measure_text_width(hintRight);
-    float dotGap = 9.0f;
-    float hintW  = leftW + dotGap * 2.0f + 3.0f + rightW;
-    float hintX  = wr.x + (wr.w - hintW) * 0.5f;
+    if (!state.authError.empty())
+    {
+        float errW = cap.measure_text_width(state.authError.c_str());
+        float errX = wr.x + (wr.w - errW) * 0.5f;
+        dl.draw_text(state.authError, { errX, hintTop }, t.danger.with_alpha(alpha), cap);
+    }
+    else
+    {
+        const char* hintLeft  = "Tab to switch";
+        const char* hintRight = "Enter to sign in";
+        float leftW  = cap.measure_text_width(hintLeft);
+        float rightW = cap.measure_text_width(hintRight);
+        float dotGap = 9.0f;
+        float hintW  = leftW + dotGap * 2.0f + 3.0f + rightW;
+        float hintX  = wr.x + (wr.w - hintW) * 0.5f;
 
-    Color hintColor = t.textDisable.with_alpha(alpha);
-    dl.draw_text(hintLeft, { hintX, hintTop }, hintColor, cap);
-    dl.fill_rounded_rect({ hintX + leftW + dotGap, hintY + cap.lineHeight() * 0.5f - 1.5f, 3.0f, 3.0f },
-                         hintColor, 1.5f);
-    dl.draw_text(hintRight, { hintX + leftW + dotGap * 2.0f + 3.0f, hintTop }, hintColor, cap);
+        Color hintColor = t.textDisable.with_alpha(alpha);
+        dl.draw_text(hintLeft, { hintX, hintTop }, hintColor, cap);
+        dl.fill_rounded_rect({ hintX + leftW + dotGap, hintY + cap.lineHeight() * 0.5f - 1.5f, 3.0f, 3.0f },
+                             hintColor, 1.5f);
+        dl.draw_text(hintRight, { hintX + leftW + dotGap * 2.0f + 3.0f, hintTop }, hintColor, cap);
+    }
 
-    bool submit = draw_button(dl, fn, btnR, "Sign in", input, state.signInHover, dt, alpha, true);
+    std::string_view btnText = state.authInProgress ? "Signing in..." : "Sign in";
+    bool submit = draw_button(dl, fn, btnR, btnText, input, state.signInHover, dt, alpha, true);
 
     if (dt > 0.0f)
     {
@@ -589,7 +599,7 @@ static void draw_login_content(DrawList& dl, AppState& state,
         submit = submit || input.key_pressed(VK_RETURN);
     }
 
-    if (submit)
+    if (submit && !state.authInProgress)
     {
         state.release_process_icons();
         state.processes    = enumerate_targets(device);

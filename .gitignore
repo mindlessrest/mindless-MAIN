@@ -31,6 +31,8 @@ loader/.ninja_deps
 loader/.ninja_log
 loader/build.ninja
 loader/build_log*.txt
+loader/vcpkg_installed/
+vcpkg_installed/
 
 # Compiled binaries (anywhere)
 *.exe

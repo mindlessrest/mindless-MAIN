@@ -360,6 +360,8 @@ def update_preset(clang, lld, ninja, vcpkg):
             cv["CMAKE_LINKER"]         = str(lld).replace("\\", "/")
             cv["CMAKE_MAKE_PROGRAM"]   = str(ninja).replace("\\", "/")
             cv["CMAKE_TOOLCHAIN_FILE"] = toolchain
+            cv["VCPKG_INSTALLED_DIR"]  = str(LOADER_DIR / "vcpkg_installed").replace("\\", "/")
+            cv["VCPKG_TARGET_TRIPLET"] = "x64-windows-static"
     with open(PRESET_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
         f.write("\n")

@@ -20,22 +20,8 @@
 JavaVM   *g_vm     = NULL;
 jvmtiEnv *g_jvmti  = NULL;
 HMODULE   g_module = NULL;
-HANDLE    g_progress_pipe = INVALID_HANDLE_VALUE;
-
 static void send_progress(float progress, const char *status) {
-    char message[512];
-    DWORD written;
-    if (g_progress_pipe == INVALID_HANDLE_VALUE) {
-        g_progress_pipe = CreateFileW(L"\\\\.\\pipe\\MindlessProgress",
-                GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-    }
-    if (g_progress_pipe != INVALID_HANDLE_VALUE) {
-        int len = _snprintf_s(message, sizeof(message), _TRUNCATE,
-                "PROGRESS:%f:%s\n", progress, status ? status : "");
-        if (len > 0) {
-            WriteFile(g_progress_pipe, message, (DWORD)len, &written, NULL);
-        }
-    }
+    (void)progress; (void)status;
 }
 
 #define MINDLESS_FORGE_PAYLOAD_RESOURCE_ID 421
@@ -57,25 +43,10 @@ static volatile LONG g_hook_ever_published = 0;
 static jclass load_class_via_loader(JNIEnv *env, jobject class_loader,
         jmethodID load_class, const char *dotted_name);
 
-static int module_directory(wchar_t *output, size_t capacity) {
-    DWORD length;
-    wchar_t *separator;
-    if (output == NULL || capacity == 0 || g_module == NULL) return 0;
-    length = GetModuleFileNameW(g_module, output, (DWORD)capacity);
-    if (length == 0 || length >= capacity) return 0;
-    separator = wcsrchr(output, L'\\');
-    if (separator == NULL) return 0;
-    *separator = L'\0';
-    return 1;
-}
-
 void vape_log(const wchar_t *format, ...) {
     wchar_t message[2048];
     wchar_t line[2304];
-    wchar_t directory[MAX_PATH];
-    wchar_t log_path[MAX_PATH];
     SYSTEMTIME now;
-    FILE *file = NULL;
     va_list arguments;
 
     va_start(arguments, format);
@@ -88,14 +59,6 @@ void vape_log(const wchar_t *format, ...) {
             now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
             now.wSecond, now.wMilliseconds, message);
     OutputDebugStringW(line);
-
-    if (!module_directory(directory, sizeof(directory) / sizeof(directory[0]))) return;
-    _snwprintf_s(log_path, sizeof(log_path) / sizeof(log_path[0]), _TRUNCATE,
-            L"%ls\\mindless-native.log", directory);
-    if (_wfopen_s(&file, log_path, L"a, ccs=UTF-8") == 0 && file != NULL) {
-        fputws(line, file);
-        fclose(file);
-    }
 }
 
 static void log_throwable_line(JNIEnv *env, const wchar_t *prefix, jobject throwable) {
@@ -210,7 +173,7 @@ void vape_log_pending_exception(JNIEnv *env, const wchar_t *context) {
         ++depth;
     }
     if (current != NULL && depth > 0) (*env)->DeleteLocalRef(env, current);
-    vape_log(L"  (java-side trace also written to %%TEMP%%\\MindlessNative\\mindless-native-java.log)");
+    vape_log(L"  (java-side trace written to OutputDebugString)");
 }
 
 jint mindless_initialize_jvmti(JavaVM *vm) {
@@ -226,93 +189,251 @@ jint mindless_initialize_jvmti(JavaVM *vm) {
     return JNI_OK;
 }
 
-static jstring new_wide_string(JNIEnv *env, const wchar_t *value) {
-    if (value == NULL) return NULL;
-    return (*env)->NewString(env, (const jchar *)value, (jsize)wcslen(value));
-}
-
-static int materialize_embedded_payload(int resource_id,
-        const wchar_t *profile_name, wchar_t *jar_path, size_t jar_capacity) {
+static int load_payload_from_memory(JNIEnv *env, jobject loader,
+        int resource_id) {
     HRSRC resource;
     HGLOBAL loaded_resource;
-    const unsigned char *bytes;
-    DWORD size;
-    DWORD temp_length;
-    wchar_t temp_root[MAX_PATH];
-    wchar_t temp_directory[MAX_PATH];
-    HANDLE file = INVALID_HANDLE_VALUE;
-    DWORD offset = 0;
-    int result = 0;
+    const unsigned char *jar_data;
+    DWORD jar_size;
+
+    jclass bais_cls, zis_cls, ze_cls, baos_cls, map_cls;
+    jmethodID bais_init, zis_init, zis_next, zis_close_entry, zis_read, zis_close;
+    jmethodID ze_name, ze_is_dir;
+    jmethodID baos_init, baos_write, baos_to_array;
+    jmethodID map_init, map_put;
+
+    jbyteArray jar_bytes, read_buf;
+    jobject bais, zis, entries_map;
+    jobject entry;
+
+    jbyteArray store_bytes_ref = NULL;
+    jbyteArray conn_bytes_ref = NULL;
+    jbyteArray handler_bytes_ref = NULL;
+
+    jclass store_cls, conn_cls, handler_cls;
+    jmethodID store_initialize, handler_ctor;
+    jobject handler_obj, url_obj;
+    jclass url_cls, ucl_cls;
+    jmethodID url_init, add_url;
+    jstring proto, host, path;
 
     resource = FindResourceW(g_module,
-            MAKEINTRESOURCEW(resource_id),
-            MAKEINTRESOURCEW(10));
+            MAKEINTRESOURCEW(resource_id), MAKEINTRESOURCEW(10));
     if (resource == NULL) {
-        vape_log(L"embedded payload JAR resource %d is missing",
-                resource_id);
+        vape_log(L"embedded payload JAR resource %d is missing", resource_id);
         return 0;
     }
-    size = SizeofResource(g_module, resource);
+    jar_size = SizeofResource(g_module, resource);
     loaded_resource = LoadResource(g_module, resource);
-    bytes = loaded_resource == NULL ? NULL
+    jar_data = loaded_resource == NULL ? NULL
             : (const unsigned char *)LockResource(loaded_resource);
-    if (bytes == NULL || size < 4 || bytes[0] != 'P' || bytes[1] != 'K') {
+    if (jar_data == NULL || jar_size < 4 || jar_data[0] != 'P' || jar_data[1] != 'K') {
         vape_log(L"embedded payload JAR resource is invalid");
         return 0;
     }
-    temp_length = GetTempPathW(
-            (DWORD)(sizeof(temp_root) / sizeof(temp_root[0])), temp_root);
-    if (temp_length == 0
-            || temp_length >= (DWORD)(sizeof(temp_root) / sizeof(temp_root[0]))) {
-        vape_log(L"GetTempPathW failed: %lu", GetLastError());
-        return 0;
-    }
-    if (_snwprintf_s(temp_directory,
-            sizeof(temp_directory) / sizeof(temp_directory[0]),
-            _TRUNCATE, L"%lsMindlessNative", temp_root) < 0) {
-        vape_log(L"temporary directory path too long");
-        return 0;
-    }
-    if (!CreateDirectoryW(temp_directory, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
-        vape_log(L"CreateDirectoryW failed: %lu", GetLastError());
-        return 0;
-    }
-    if (_snwprintf_s(jar_path, jar_capacity, _TRUNCATE,
-            L"%ls\\mindless-%ls-payload-%lu.jar", temp_directory,
-            profile_name, GetCurrentProcessId()) < 0) {
-        vape_log(L"temporary payload path too long");
-        return 0;
-    }
-    file = CreateFileW(jar_path, GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS,
-            FILE_ATTRIBUTE_TEMPORARY, NULL);
-    if (file == INVALID_HANDLE_VALUE) {
-        vape_log(L"CreateFileW for payload failed: %lu", GetLastError());
-        return 0;
-    }
-    while (offset < size) {
-        DWORD written = 0;
-        DWORD remaining = size - offset;
-        if (!WriteFile(file, bytes + offset, remaining, &written, NULL) || written == 0) {
-            vape_log(L"WriteFile for payload failed: %lu", GetLastError());
-            goto cleanup;
-        }
-        offset += written;
-    }
-    if (!FlushFileBuffers(file)) {
-        vape_log(L"FlushFileBuffers for payload failed: %lu", GetLastError());
-        goto cleanup;
-    }
-    result = 1;
 
-cleanup:
-    CloseHandle(file);
-    if (!result) {
-        DeleteFileW(jar_path);
-    } else {
-        vape_log(L"materialized payload: %ls (%lu bytes)", jar_path, size);
+    /* Resolve Java classes for ZIP parsing */
+    bais_cls = (*env)->FindClass(env, "java/io/ByteArrayInputStream");
+    zis_cls  = (*env)->FindClass(env, "java/util/zip/ZipInputStream");
+    ze_cls   = (*env)->FindClass(env, "java/util/zip/ZipEntry");
+    baos_cls = (*env)->FindClass(env, "java/io/ByteArrayOutputStream");
+    map_cls  = (*env)->FindClass(env, "java/util/HashMap");
+    if (!bais_cls || !zis_cls || !ze_cls || !baos_cls || !map_cls) {
+        vape_log_pending_exception(env, L"resolve ZIP/IO classes for memory payload");
+        return 0;
     }
-    return result;
+
+    bais_init       = (*env)->GetMethodID(env, bais_cls, "<init>", "([B)V");
+    zis_init        = (*env)->GetMethodID(env, zis_cls, "<init>", "(Ljava/io/InputStream;)V");
+    zis_next        = (*env)->GetMethodID(env, zis_cls, "getNextEntry", "()Ljava/util/zip/ZipEntry;");
+    zis_close_entry = (*env)->GetMethodID(env, zis_cls, "closeEntry", "()V");
+    zis_read        = (*env)->GetMethodID(env, zis_cls, "read", "([B)I");
+    zis_close       = (*env)->GetMethodID(env, zis_cls, "close", "()V");
+    ze_name         = (*env)->GetMethodID(env, ze_cls, "getName", "()Ljava/lang/String;");
+    ze_is_dir       = (*env)->GetMethodID(env, ze_cls, "isDirectory", "()Z");
+    baos_init       = (*env)->GetMethodID(env, baos_cls, "<init>", "()V");
+    baos_write      = (*env)->GetMethodID(env, baos_cls, "write", "([BII)V");
+    baos_to_array   = (*env)->GetMethodID(env, baos_cls, "toByteArray", "()[B");
+    map_init        = (*env)->GetMethodID(env, map_cls, "<init>", "()V");
+    map_put         = (*env)->GetMethodID(env, map_cls, "put",
+            "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+
+    /* Create JNI byte[] from the raw JAR data */
+    jar_bytes = (*env)->NewByteArray(env, (jsize)jar_size);
+    if (jar_bytes == NULL) { vape_log(L"OOM creating JAR byte array"); return 0; }
+    (*env)->SetByteArrayRegion(env, jar_bytes, 0, (jsize)jar_size,
+            (const jbyte *)jar_data);
+
+    /* Open a ZipInputStream over the byte array */
+    bais = (*env)->NewObject(env, bais_cls, bais_init, jar_bytes);
+    zis  = (*env)->NewObject(env, zis_cls, zis_init, bais);
+    entries_map = (*env)->NewObject(env, map_cls, map_init);
+    read_buf = (*env)->NewByteArray(env, 8192);
+    if (!bais || !zis || !entries_map || !read_buf) {
+        vape_log(L"OOM setting up ZIP reader");
+        return 0;
+    }
+
+    /* Iterate ZIP entries, decompress via Java, collect into HashMap */
+    while ((entry = (*env)->CallObjectMethod(env, zis, zis_next)) != NULL) {
+        jstring name_str;
+        jobject baos_obj;
+        jbyteArray entry_data;
+        const char *name_chars;
+        jint n;
+        if ((*env)->ExceptionCheck(env)) {
+            vape_log_pending_exception(env, L"ZipInputStream.getNextEntry");
+            break;
+        }
+        if ((*env)->CallBooleanMethod(env, entry, ze_is_dir)) {
+            (*env)->CallVoidMethod(env, zis, zis_close_entry);
+            (*env)->DeleteLocalRef(env, entry);
+            continue;
+        }
+
+        name_str = (jstring)(*env)->CallObjectMethod(env, entry, ze_name);
+
+        /* Read decompressed entry bytes via ByteArrayOutputStream */
+        baos_obj = (*env)->NewObject(env, baos_cls, baos_init);
+        while ((n = (*env)->CallIntMethod(env, zis, zis_read, read_buf)) >= 0) {
+            if ((*env)->ExceptionCheck(env)) break;
+            (*env)->CallVoidMethod(env, baos_obj, baos_write, read_buf, (jint)0, n);
+        }
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+            (*env)->DeleteLocalRef(env, baos_obj);
+            (*env)->DeleteLocalRef(env, name_str);
+            (*env)->DeleteLocalRef(env, entry);
+            continue;
+        }
+        entry_data = (jbyteArray)(*env)->CallObjectMethod(env, baos_obj, baos_to_array);
+
+        /* Store in HashMap */
+        {
+            jobject prev = (*env)->CallObjectMethod(env, entries_map, map_put,
+                    name_str, entry_data);
+            if (prev) (*env)->DeleteLocalRef(env, prev);
+        }
+
+        /* Track the three helper classes we need to define first */
+        name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
+        if (name_chars) {
+            if (strcmp(name_chars, "mindless/runtime/MemoryResourceStore.class") == 0)
+                store_bytes_ref = (jbyteArray)(*env)->NewGlobalRef(env, entry_data);
+            else if (strcmp(name_chars, "mindless/runtime/MemoryURLConnection.class") == 0)
+                conn_bytes_ref = (jbyteArray)(*env)->NewGlobalRef(env, entry_data);
+            else if (strcmp(name_chars, "mindless/runtime/MemoryURLStreamHandler.class") == 0)
+                handler_bytes_ref = (jbyteArray)(*env)->NewGlobalRef(env, entry_data);
+            (*env)->ReleaseStringUTFChars(env, name_str, name_chars);
+        }
+
+        (*env)->DeleteLocalRef(env, baos_obj);
+        (*env)->DeleteLocalRef(env, entry_data);
+        (*env)->DeleteLocalRef(env, name_str);
+        (*env)->DeleteLocalRef(env, entry);
+        (*env)->CallVoidMethod(env, zis, zis_close_entry);
+    }
+    (*env)->CallVoidMethod(env, zis, zis_close);
+
+    if (!store_bytes_ref || !conn_bytes_ref || !handler_bytes_ref) {
+        vape_log(L"memory classloader helper classes not found in payload JAR");
+        if (store_bytes_ref) (*env)->DeleteGlobalRef(env, store_bytes_ref);
+        if (conn_bytes_ref)  (*env)->DeleteGlobalRef(env, conn_bytes_ref);
+        if (handler_bytes_ref) (*env)->DeleteGlobalRef(env, handler_bytes_ref);
+        return 0;
+    }
+
+    /* DefineClass the three helpers into the game's ClassLoader */
+    {
+        jsize len = (*env)->GetArrayLength(env, store_bytes_ref);
+        jbyte *buf = (*env)->GetByteArrayElements(env, store_bytes_ref, NULL);
+        store_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryResourceStore",
+                loader, buf, len);
+        (*env)->ReleaseByteArrayElements(env, store_bytes_ref, buf, JNI_ABORT);
+        (*env)->DeleteGlobalRef(env, store_bytes_ref);
+        if (!store_cls || (*env)->ExceptionCheck(env)) {
+            vape_log_pending_exception(env, L"DefineClass MemoryResourceStore");
+            (*env)->DeleteGlobalRef(env, conn_bytes_ref);
+            (*env)->DeleteGlobalRef(env, handler_bytes_ref);
+            return 0;
+        }
+    }
+    {
+        jsize len = (*env)->GetArrayLength(env, conn_bytes_ref);
+        jbyte *buf = (*env)->GetByteArrayElements(env, conn_bytes_ref, NULL);
+        conn_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryURLConnection",
+                loader, buf, len);
+        (*env)->ReleaseByteArrayElements(env, conn_bytes_ref, buf, JNI_ABORT);
+        (*env)->DeleteGlobalRef(env, conn_bytes_ref);
+        if (!conn_cls || (*env)->ExceptionCheck(env)) {
+            vape_log_pending_exception(env, L"DefineClass MemoryURLConnection");
+            (*env)->DeleteGlobalRef(env, handler_bytes_ref);
+            return 0;
+        }
+    }
+    {
+        jsize len = (*env)->GetArrayLength(env, handler_bytes_ref);
+        jbyte *buf = (*env)->GetByteArrayElements(env, handler_bytes_ref, NULL);
+        handler_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryURLStreamHandler",
+                loader, buf, len);
+        (*env)->ReleaseByteArrayElements(env, handler_bytes_ref, buf, JNI_ABORT);
+        (*env)->DeleteGlobalRef(env, handler_bytes_ref);
+        if (!handler_cls || (*env)->ExceptionCheck(env)) {
+            vape_log_pending_exception(env, L"DefineClass MemoryURLStreamHandler");
+            return 0;
+        }
+    }
+
+    /* Populate MemoryResourceStore with all JAR entries */
+    store_initialize = (*env)->GetStaticMethodID(env, store_cls, "initialize",
+            "(Ljava/util/Map;)V");
+    if (!store_initialize) {
+        vape_log_pending_exception(env, L"resolve MemoryResourceStore.initialize");
+        return 0;
+    }
+    (*env)->CallStaticVoidMethod(env, store_cls, store_initialize, entries_map);
+    if ((*env)->ExceptionCheck(env)) {
+        vape_log_pending_exception(env, L"MemoryResourceStore.initialize");
+        return 0;
+    }
+
+    /* Create URL with memory:// protocol backed by MemoryURLStreamHandler */
+    handler_ctor = (*env)->GetMethodID(env, handler_cls, "<init>", "()V");
+    handler_obj = (*env)->NewObject(env, handler_cls, handler_ctor);
+    if (!handler_obj || (*env)->ExceptionCheck(env)) {
+        vape_log_pending_exception(env, L"create MemoryURLStreamHandler instance");
+        return 0;
+    }
+
+    url_cls = (*env)->FindClass(env, "java/net/URL");
+    url_init = (*env)->GetMethodID(env, url_cls, "<init>",
+            "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;"
+            "Ljava/net/URLStreamHandler;)V");
+    proto = (*env)->NewStringUTF(env, "memory");
+    host  = (*env)->NewStringUTF(env, "");
+    path  = (*env)->NewStringUTF(env, "/");
+    url_obj = (*env)->NewObject(env, url_cls, url_init,
+            proto, host, (jint)-1, path, handler_obj);
+    if (!url_obj || (*env)->ExceptionCheck(env)) {
+        vape_log_pending_exception(env, L"create memory:// URL");
+        return 0;
+    }
+
+    /* Add the memory URL to the game's URLClassLoader search path */
+    ucl_cls = (*env)->FindClass(env, "java/net/URLClassLoader");
+    add_url = (*env)->GetMethodID(env, ucl_cls, "addURL", "(Ljava/net/URL;)V");
+    if (!add_url) {
+        vape_log_pending_exception(env, L"resolve URLClassLoader.addURL");
+        return 0;
+    }
+    (*env)->CallVoidMethod(env, loader, add_url, url_obj);
+    if ((*env)->ExceptionCheck(env)) {
+        vape_log_pending_exception(env, L"URLClassLoader.addURL(memory)");
+        return 0;
+    }
+
+    vape_log(L"payload loaded from memory (%lu bytes)", (unsigned long)jar_size);
+    return 1;
 }
 
 static jobject find_client_class_loader(JNIEnv *env) {
@@ -585,57 +706,6 @@ static int set_runtime_properties(JNIEnv *env,
                     embedded_forge ? "true" : "false");
 }
 
-/*
- * LaunchClassLoader (Forge 1.8.9) extends URLClassLoader, so addURL is enough.
- * But its addURL override also caches the URL for its transformer chain — we
- * still call the URLClassLoader.addURL directly to guarantee resolution.
- */
-static int append_payload_to_loader(JNIEnv *env, jobject loader,
-        const wchar_t *jar_path) {
-    jclass url_loader_class = (*env)->FindClass(env, "java/net/URLClassLoader");
-    jclass url_class = (*env)->FindClass(env, "java/net/URL");
-    jclass file_class = (*env)->FindClass(env, "java/io/File");
-    jclass uri_class = (*env)->FindClass(env, "java/net/URI");
-    jmethodID add_url;
-    jmethodID file_init;
-    jmethodID to_uri;
-    jmethodID to_url;
-    jstring path;
-    jobject file, uri, url;
-
-    if (url_loader_class == NULL || url_class == NULL
-            || file_class == NULL || uri_class == NULL) {
-        vape_log_pending_exception(env, L"resolve URLClassLoader helpers");
-        return 0;
-    }
-    if (!(*env)->IsInstanceOf(env, loader, url_loader_class)) {
-        vape_log(L"context ClassLoader is not URLClassLoader");
-        return 0;
-    }
-    add_url    = (*env)->GetMethodID(env, url_loader_class, "addURL", "(Ljava/net/URL;)V");
-    file_init  = (*env)->GetMethodID(env, file_class, "<init>", "(Ljava/lang/String;)V");
-    to_uri     = (*env)->GetMethodID(env, file_class, "toURI", "()Ljava/net/URI;");
-    to_url     = (*env)->GetMethodID(env, uri_class, "toURL", "()Ljava/net/URL;");
-    if (add_url == NULL || file_init == NULL || to_uri == NULL || to_url == NULL) {
-        vape_log_pending_exception(env, L"resolve URL construction methods");
-        return 0;
-    }
-    path = new_wide_string(env, jar_path);
-    file = path == NULL ? NULL : (*env)->NewObject(env, file_class, file_init, path);
-    uri  = file == NULL ? NULL : (*env)->CallObjectMethod(env, file, to_uri);
-    url  = uri  == NULL ? NULL : (*env)->CallObjectMethod(env, uri, to_url);
-    if (url == NULL || (*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"build payload URL");
-        return 0;
-    }
-    (*env)->CallVoidMethod(env, loader, add_url, url);
-    if ((*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"URLClassLoader.addURL");
-        return 0;
-    }
-    return 1;
-}
-
 static int set_current_context_class_loader(JNIEnv *env, jobject loader) {
     jclass thread_class = (*env)->FindClass(env, "java/lang/Thread");
     jmethodID current_thread;
@@ -681,219 +751,6 @@ static jclass load_bootstrap_class(JNIEnv *env, jobject loader) {
         vape_log_pending_exception(env, L"load mindless.runtime.NativeBootstrap");
         return NULL;
     }
-    return result;
-}
-
-/* Parent-first class loading can otherwise reuse an older Mindless JAR that was
- * already present in the process. Require NativeBootstrap to come from the
- * payload materialized by this exact injection attempt. */
-static int verify_bootstrap_code_source(JNIEnv *env, jobject expected_loader,
-        jclass bootstrap, const wchar_t *expected_jar_path) {
-    jobject actual_loader = NULL;
-    jclass class_class = NULL;
-    jclass protection_domain_class = NULL;
-    jclass code_source_class = NULL;
-    jclass url_class = NULL;
-    jclass jar_url_connection_class = NULL;
-    jclass file_class = NULL;
-    jmethodID get_protection_domain = NULL;
-    jmethodID get_code_source = NULL;
-    jmethodID get_location = NULL;
-    jmethodID open_connection = NULL;
-    jmethodID get_jar_file_url = NULL;
-    jmethodID to_external_form = NULL;
-    jmethodID to_uri = NULL;
-    jmethodID file_from_uri = NULL;
-    jmethodID file_from_string = NULL;
-    jmethodID get_canonical_path = NULL;
-    jobject protection_domain = NULL;
-    jobject code_source = NULL;
-    jobject location = NULL;
-    jobject normalized_location = NULL;
-    jobject connection = NULL;
-    jobject nested_location = NULL;
-    jobject uri = NULL;
-    jobject actual_file = NULL;
-    jobject expected_file = NULL;
-    jstring expected_path = NULL;
-    jstring location_text = NULL;
-    jstring actual_canonical = NULL;
-    jstring expected_canonical = NULL;
-    wchar_t *actual_chars = NULL;
-    wchar_t *expected_chars = NULL;
-    jsize actual_length = 0;
-    jsize expected_length = 0;
-    int result = 0;
-    int unwrap_depth;
-
-    if ((*g_jvmti)->GetClassLoader(g_jvmti, bootstrap, &actual_loader)
-            != JVMTI_ERROR_NONE || actual_loader == NULL
-            || !(*env)->IsSameObject(env, actual_loader, expected_loader)) {
-        vape_log(L"NativeBootstrap was not defined by the selected game ClassLoader");
-        goto cleanup;
-    }
-
-    class_class = (*env)->FindClass(env, "java/lang/Class");
-    protection_domain_class = (*env)->FindClass(env,
-            "java/security/ProtectionDomain");
-    code_source_class = (*env)->FindClass(env, "java/security/CodeSource");
-    url_class = (*env)->FindClass(env, "java/net/URL");
-    jar_url_connection_class = (*env)->FindClass(env,
-            "java/net/JarURLConnection");
-    file_class = (*env)->FindClass(env, "java/io/File");
-    if (class_class == NULL || protection_domain_class == NULL
-            || code_source_class == NULL || url_class == NULL
-            || jar_url_connection_class == NULL
-            || file_class == NULL) {
-        vape_log_pending_exception(env, L"resolve payload CodeSource classes");
-        goto cleanup;
-    }
-
-    get_protection_domain = (*env)->GetMethodID(env, class_class,
-            "getProtectionDomain", "()Ljava/security/ProtectionDomain;");
-    get_code_source = (*env)->GetMethodID(env, protection_domain_class,
-            "getCodeSource", "()Ljava/security/CodeSource;");
-    get_location = (*env)->GetMethodID(env, code_source_class,
-            "getLocation", "()Ljava/net/URL;");
-    open_connection = (*env)->GetMethodID(env, url_class,
-            "openConnection", "()Ljava/net/URLConnection;");
-    get_jar_file_url = (*env)->GetMethodID(env, jar_url_connection_class,
-            "getJarFileURL", "()Ljava/net/URL;");
-    to_external_form = (*env)->GetMethodID(env, url_class,
-            "toExternalForm", "()Ljava/lang/String;");
-    to_uri = (*env)->GetMethodID(env, url_class,
-            "toURI", "()Ljava/net/URI;");
-    file_from_uri = (*env)->GetMethodID(env, file_class,
-            "<init>", "(Ljava/net/URI;)V");
-    file_from_string = (*env)->GetMethodID(env, file_class,
-            "<init>", "(Ljava/lang/String;)V");
-    get_canonical_path = (*env)->GetMethodID(env, file_class,
-            "getCanonicalPath", "()Ljava/lang/String;");
-    if (get_protection_domain == NULL || get_code_source == NULL
-            || get_location == NULL || open_connection == NULL
-            || get_jar_file_url == NULL || to_external_form == NULL
-            || to_uri == NULL
-            || file_from_uri == NULL || file_from_string == NULL
-            || get_canonical_path == NULL) {
-        vape_log_pending_exception(env, L"resolve payload CodeSource methods");
-        goto cleanup;
-    }
-
-    protection_domain = (*env)->CallObjectMethod(env, bootstrap,
-            get_protection_domain);
-    code_source = protection_domain == NULL ? NULL : (*env)->CallObjectMethod(
-            env, protection_domain, get_code_source);
-    location = code_source == NULL ? NULL : (*env)->CallObjectMethod(
-            env, code_source, get_location);
-    location_text = location == NULL ? NULL : (jstring)(*env)->CallObjectMethod(
-            env, location, to_external_form);
-    if (location == NULL || location_text == NULL || (*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"read NativeBootstrap CodeSource");
-        goto cleanup;
-    }
-    log_java_string(env, L"NativeBootstrap raw CodeSource", location_text);
-
-    /* LaunchClassLoader commonly records the class-entry URL as the
-     * CodeSource (jar:file:/payload.jar!/mindless/...). Such a jar: URI
-     * is opaque, so File(URI) rejects it as non-hierarchical. Peel every
-     * standard JarURLConnection layer until the underlying file: URL remains. */
-    normalized_location = (*env)->NewLocalRef(env, location);
-    for (unwrap_depth = 0; unwrap_depth < 4 && normalized_location != NULL;
-            ++unwrap_depth) {
-        connection = (*env)->CallObjectMethod(env, normalized_location,
-                open_connection);
-        if (connection == NULL || (*env)->ExceptionCheck(env)) {
-            vape_log_pending_exception(env, L"open NativeBootstrap CodeSource URL");
-            goto cleanup;
-        }
-        if (!(*env)->IsInstanceOf(env, connection, jar_url_connection_class)) {
-            (*env)->DeleteLocalRef(env, connection);
-            connection = NULL;
-            break;
-        }
-        nested_location = (*env)->CallObjectMethod(env, connection,
-                get_jar_file_url);
-        (*env)->DeleteLocalRef(env, connection);
-        connection = NULL;
-        if (nested_location == NULL || (*env)->ExceptionCheck(env)) {
-            vape_log_pending_exception(env, L"unwrap NativeBootstrap JAR URL");
-            goto cleanup;
-        }
-        (*env)->DeleteLocalRef(env, normalized_location);
-        normalized_location = nested_location;
-        nested_location = NULL;
-    }
-    uri = normalized_location == NULL ? NULL : (*env)->CallObjectMethod(
-            env, normalized_location, to_uri);
-    if (uri == NULL || (*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"convert NativeBootstrap CodeSource to URI");
-        goto cleanup;
-    }
-
-    expected_path = new_wide_string(env, expected_jar_path);
-    actual_file = (*env)->NewObject(env, file_class, file_from_uri, uri);
-    expected_file = expected_path == NULL ? NULL : (*env)->NewObject(
-            env, file_class, file_from_string, expected_path);
-    actual_canonical = actual_file == NULL ? NULL : (jstring)(*env)->CallObjectMethod(
-            env, actual_file, get_canonical_path);
-    expected_canonical = expected_file == NULL ? NULL : (jstring)(*env)->CallObjectMethod(
-            env, expected_file, get_canonical_path);
-    if (actual_canonical == NULL || expected_canonical == NULL
-            || (*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"canonicalize NativeBootstrap CodeSource");
-        goto cleanup;
-    }
-
-    actual_length = (*env)->GetStringLength(env, actual_canonical);
-    expected_length = (*env)->GetStringLength(env, expected_canonical);
-    actual_chars = (wchar_t *)calloc((size_t)actual_length + 1, sizeof(wchar_t));
-    expected_chars = (wchar_t *)calloc((size_t)expected_length + 1, sizeof(wchar_t));
-    if (actual_chars == NULL || expected_chars == NULL) {
-        vape_log(L"could not allocate CodeSource path comparison");
-        goto cleanup;
-    }
-    (*env)->GetStringRegion(env, actual_canonical, 0, actual_length,
-            (jchar *)actual_chars);
-    (*env)->GetStringRegion(env, expected_canonical, 0, expected_length,
-            (jchar *)expected_chars);
-    if ((*env)->ExceptionCheck(env)) {
-        vape_log_pending_exception(env, L"read canonical CodeSource paths");
-        goto cleanup;
-    }
-    if (_wcsicmp(actual_chars, expected_chars) != 0) {
-        vape_log(L"NativeBootstrap CodeSource mismatch: expected %ls, got %ls",
-                expected_chars, actual_chars);
-        goto cleanup;
-    }
-    vape_log(L"verified NativeBootstrap CodeSource: %ls", actual_chars);
-    result = 1;
-
-cleanup:
-    free(expected_chars);
-    free(actual_chars);
-    if (expected_canonical != NULL) (*env)->DeleteLocalRef(env, expected_canonical);
-    if (actual_canonical != NULL) (*env)->DeleteLocalRef(env, actual_canonical);
-    if (expected_file != NULL) (*env)->DeleteLocalRef(env, expected_file);
-    if (actual_file != NULL) (*env)->DeleteLocalRef(env, actual_file);
-    if (expected_path != NULL) (*env)->DeleteLocalRef(env, expected_path);
-    if (uri != NULL) (*env)->DeleteLocalRef(env, uri);
-    if (nested_location != NULL) (*env)->DeleteLocalRef(env, nested_location);
-    if (connection != NULL) (*env)->DeleteLocalRef(env, connection);
-    if (normalized_location != NULL) (*env)->DeleteLocalRef(env,
-            normalized_location);
-    if (location_text != NULL) (*env)->DeleteLocalRef(env, location_text);
-    if (location != NULL) (*env)->DeleteLocalRef(env, location);
-    if (code_source != NULL) (*env)->DeleteLocalRef(env, code_source);
-    if (protection_domain != NULL) (*env)->DeleteLocalRef(env, protection_domain);
-    if (file_class != NULL) (*env)->DeleteLocalRef(env, file_class);
-    if (jar_url_connection_class != NULL) (*env)->DeleteLocalRef(env,
-            jar_url_connection_class);
-    if (url_class != NULL) (*env)->DeleteLocalRef(env, url_class);
-    if (code_source_class != NULL) (*env)->DeleteLocalRef(env, code_source_class);
-    if (protection_domain_class != NULL) (*env)->DeleteLocalRef(env,
-            protection_domain_class);
-    if (class_class != NULL) (*env)->DeleteLocalRef(env, class_class);
-    if (actual_loader != NULL) (*env)->DeleteLocalRef(env, actual_loader);
     return result;
 }
 
@@ -1574,10 +1431,8 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     jsize vm_count = 0;
     jobject loader = NULL;
     jclass bootstrap_class = NULL;
-    wchar_t jar_path[MAX_PATH];
     mindless_runtime_namespace runtime_namespace = MINDLESS_NAMESPACE_UNKNOWN;
     int payload_resource_id = 0;
-    const wchar_t *payload_profile = NULL;
     int embedded_forge = 0;
     int attached = 0;
     int module_pinned = 0;
@@ -1633,6 +1488,61 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     }
     attached = 1;
     send_progress(0.45f, "Attached to Java VM");
+
+    /* Read auth data from the shared memory section the loader created */
+    {
+        wchar_t section_name[128];
+        HANDLE mapping;
+        _snwprintf_s(section_name, sizeof(section_name) / sizeof(section_name[0]),
+                _TRUNCATE, L"Local\\MindlessAuth_%lu",
+                (unsigned long)GetCurrentProcessId());
+        mapping = OpenFileMappingW(FILE_MAP_READ, FALSE, section_name);
+        if (mapping != NULL) {
+            struct { char token[512]; char api_url[256]; char hwid[256]; } *auth_data;
+            auth_data = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0,
+                    sizeof(*auth_data));
+            if (auth_data != NULL) {
+                jclass sys = (*env)->FindClass(env, "java/lang/System");
+                jmethodID setProp = sys == NULL ? NULL
+                        : (*env)->GetStaticMethodID(env, sys, "setProperty",
+                                "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+                if (setProp != NULL) {
+                    jstring k, v; jobject prev;
+                    if (auth_data->token[0]) {
+                        k = (*env)->NewStringUTF(env, "mindless.auth.token");
+                        v = (*env)->NewStringUTF(env, auth_data->token);
+                        prev = (*env)->CallStaticObjectMethod(env, sys, setProp, k, v);
+                        if (prev) (*env)->DeleteLocalRef(env, prev);
+                        (*env)->DeleteLocalRef(env, k);
+                        (*env)->DeleteLocalRef(env, v);
+                    }
+                    if (auth_data->api_url[0]) {
+                        k = (*env)->NewStringUTF(env, "mindless.auth.apiUrl");
+                        v = (*env)->NewStringUTF(env, auth_data->api_url);
+                        prev = (*env)->CallStaticObjectMethod(env, sys, setProp, k, v);
+                        if (prev) (*env)->DeleteLocalRef(env, prev);
+                        (*env)->DeleteLocalRef(env, k);
+                        (*env)->DeleteLocalRef(env, v);
+                    }
+                    if (auth_data->hwid[0]) {
+                        k = (*env)->NewStringUTF(env, "mindless.auth.hwid");
+                        v = (*env)->NewStringUTF(env, auth_data->hwid);
+                        prev = (*env)->CallStaticObjectMethod(env, sys, setProp, k, v);
+                        if (prev) (*env)->DeleteLocalRef(env, prev);
+                        (*env)->DeleteLocalRef(env, k);
+                        (*env)->DeleteLocalRef(env, v);
+                    }
+                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                }
+                UnmapViewOfFile(auth_data);
+            }
+            CloseHandle(mapping);
+            vape_log(L"auth data received from loader");
+        } else {
+            vape_log(L"no auth shared section found (standalone injection?)");
+        }
+    }
+
     if (mindless_initialize_jvmti(vm) != JNI_OK) {
         exit_code = 6;
         goto cleanup;
@@ -1680,24 +1590,15 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     send_progress(0.57f, "Runtime properties configured");
     if (runtime_namespace == MINDLESS_NAMESPACE_MCP) {
         payload_resource_id = MINDLESS_LUNAR_PAYLOAD_RESOURCE_ID;
-        payload_profile = L"lunar-mcp";
     } else {
         payload_resource_id = MINDLESS_FORGE_PAYLOAD_RESOURCE_ID;
-        payload_profile = L"forge-srg";
     }
-    send_progress(0.59f, "Selecting payload profile");
-    send_progress(0.61f, "Extracting payload");
-    if (!materialize_embedded_payload(payload_resource_id, payload_profile,
-            jar_path, sizeof(jar_path) / sizeof(jar_path[0]))) {
+    send_progress(0.59f, "Loading payload");
+    if (!load_payload_from_memory(env, loader, payload_resource_id)) {
         exit_code = 7;
         goto cleanup;
     }
-    send_progress(0.63f, "Payload extracted");
-    if (!append_payload_to_loader(env, loader, jar_path)) {
-        exit_code = 9;
-        goto cleanup;
-    }
-    send_progress(0.65f, "Payload attached to class loader");
+    send_progress(0.65f, "Payload loaded");
     /* Validate after appending: resource 422 supplies these classes for a
      * direct Lunar/OptiFine launch, while Forge/SRG still resolves its own. */
     if (!validate_required_forge_api(env, loader)) {
@@ -1719,18 +1620,13 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         exit_code = 11;
         goto cleanup;
     }
-    send_progress(0.72f, "Verifying payload integrity");
-    if (!verify_bootstrap_code_source(env, loader, bootstrap_class, jar_path)) {
-        exit_code = 19;
-        goto cleanup;
-    }
     if (!pin_native_module()) {
         exit_code = 12;
         goto cleanup;
     }
     module_pinned = 1;
     send_progress(0.73f, "Native module pinned");
-    vape_log(L"NativeBootstrap linked from %ls", jar_path);
+    vape_log(L"NativeBootstrap linked from in-memory payload");
     if (!apply_transformers(env, loader)) {
         vape_log(L"apply_transformers failed; Mindless will not start with missing hooks");
         exit_code = 14;
@@ -1743,24 +1639,9 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     }
     send_progress(1.0f, "Ready");
     vape_log(L"NativeBootstrap.start completed; Mindless is active");
-    /* Try to delete payload from disk. URLClassLoader holds the jar open via a
-     * ZipFile handle, so DeleteFile will fail — but the FILE_DISPOSITION_INFO
-     * trick marks it for deletion when the last handle closes (process exit). */
-    {
-        HANDLE h = CreateFileW(jar_path, DELETE, FILE_SHARE_READ | FILE_SHARE_DELETE,
-                NULL, OPEN_EXISTING, FILE_FLAG_DELETE_ON_CLOSE, NULL);
-        if (h != INVALID_HANDLE_VALUE) {
-            CloseHandle(h);
-            vape_log(L"payload jar marked for deletion on process exit");
-        }
-    }
     exit_code = 0;
 
 cleanup:
-    if (g_progress_pipe != INVALID_HANDLE_VALUE) {
-        CloseHandle(g_progress_pipe);
-        g_progress_pipe = INVALID_HANDLE_VALUE;
-    }
     if (exit_code != 0
             && InterlockedCompareExchange(&g_hook_registered, 0, 0) != 0) {
         if (!disable_class_file_load_hook()) {

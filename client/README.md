@@ -13,11 +13,11 @@
 
 ## Information
 
-Mindless Client is a fork of [Raven bS](https://codeberg.org/strangerrrrs/raven-bS), built on its strong foundation of user privacy and its commitment to providing everyone with access to a polished, high-quality utility mod. We believe that privacy should never be traded for using a client, which is why Mindless Client is designed to respect your data and anonymity. It offers a clean, feature-rich experience without invasive tracking.
+Mindless Client is a privacy-first Minecraft 1.8.9 Forge utility client. We believe that privacy should never be traded for using a client, which is why Mindless Client is designed to respect your data and anonymity. It offers a clean, feature-rich experience without invasive tracking.
 
 ## Credits
 
-Mindless Client is based on the official [Raven bS project](https://codeberg.org/strangerrrrs/raven-bS). You can also join the [Raven bS Discord server](https://discord.com/invite/ZWttByQD5N). Full credit goes to the original Raven bS developers and contributors for the foundation this fork builds upon.
+Full credit goes to the original developers and contributors whose work this project builds upon.
 
 ## Installation
 
@@ -29,7 +29,7 @@ Mindless Client is based on the official [Raven bS project](https://codeberg.org
 ## Mod Information
 
 - **Zero analytical data collected** - No launch times, no gameplay time, no user IGNs, and no personal information is ever tracked or transmitted.
-- **Ingame Scripting API** - A feature-rich ingame Java scripting API. ([Examples](https://github.com/PugrillaDev/Raven-Scripts))
+- **Ingame Scripting API** - A feature-rich ingame Java scripting API.
 
 ## Building
 

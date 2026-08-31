@@ -174,6 +174,14 @@ struct AppState
     Tween passHover;
     Tween signInHover;
 
+    // Auth state
+    bool        authInProgress = false;
+    bool        authComplete   = false;
+    std::string authError;
+    std::string authToken;
+    std::string authHwid;
+    std::vector<uint8_t> dllBytes;
+
     // Chrome: minimize / close button hover tweens
     Tween chromeMinHover;
     Tween chromeCloseHover;
@@ -234,7 +242,9 @@ struct AppState
     {
         caretPhase = 0.0f;
         signInHover.snap(0.0f);
-        transition_to(Screen::ProcessSelect, 1.0f);
+        authInProgress = true;
+        authComplete   = false;
+        authError.clear();
     }
 
     void release_process_icons()
