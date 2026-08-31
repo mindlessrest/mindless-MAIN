@@ -253,6 +253,31 @@ static void draw_lock_glyph(DrawList& dl, Rect box, Color c)
     dl.fill_rounded_rect({ cx - bodyW * 0.5f, box.y + 6.5f, bodyW, 7.0f }, c, 2.0f);
 }
 
+// Masked fields advance by a fixed dot pitch rather than by glyph, so both measurements go
+// through here and the caret lands in the same place either way.
+static float field_advance(FontAtlas& fn, const std::string& text, int from, int to,
+                           bool mask, float dotStep)
+{
+    if (to <= from) return 0.0f;
+    if (mask) return static_cast<float>(to - from) * dotStep;
+    return fn.measure_text_width(text.substr(static_cast<size_t>(from),
+                                             static_cast<size_t>(to - from)).c_str());
+}
+
+// The caret goes to whichever gap is nearest, so clicking the right half of a character puts it
+// after that character rather than before it.
+static int field_index_at(FontAtlas& fn, const std::string& text, bool mask, float dotStep, float x)
+{
+    int n = static_cast<int>(text.size());
+    for (int i = 0; i < n; ++i)
+    {
+        float a = field_advance(fn, text, 0, i, mask, dotStep);
+        float b = field_advance(fn, text, 0, i + 1, mask, dotStep);
+        if (x < (a + b) * 0.5f) return i;
+    }
+    return n;
+}
+
 // Kept out of draw_text_field so every glow is laid down before any field fill: drawn inline,
 // the lower field would paint over the half of the upper field's glow that spills onto it.
 static void draw_field_glow(DrawList& dl, Rect r, float focus, float alpha)
@@ -264,8 +289,8 @@ static void draw_field_glow(DrawList& dl, Rect r, float focus, float alpha)
 }
 
 static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
-                             std::string_view placeholder, const std::string& text,
-                             bool focused, bool mask, bool selected, Tween& hover, Tween& focus,
+                             std::string_view placeholder, AppState::TextField& field,
+                             bool focused, bool mask, Tween& hover, Tween& focus,
                              const InputState& input, float dt, float alpha, float caretPhase)
 {
     const Theme& t = g_theme;
@@ -298,23 +323,31 @@ static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
     else
         draw_user_glyph(dl, glyphR, glyphC.with_alpha(glyphC.a * alpha));
 
-    float contentW = mask
-        ? static_cast<float>(text.size()) * dotStep
-        : fn.measure_text_width(text.c_str());
+    float viewW    = r.w - padL - padR;
+    float contentW = field_advance(fn, field.text, 0, field.length(), mask, dotStep);
+    float caretX   = field_advance(fn, field.text, 0, field.caret, mask, dotStep);
 
-    float maxW  = r.w - padL - padR;
-    float textX = r.x + padL - std::max(0.0f, contentW - maxW);
+    // Follow the caret, then give back any slack at the right, or deleting from the end leaves
+    // the field scrolled with blank space against its own edge.
+    if (caretX - field.scroll > viewW - 1.0f) field.scroll = caretX - viewW + 1.0f;
+    if (caretX - field.scroll < 0.0f)         field.scroll = caretX;
+    if (contentW - field.scroll < viewW)      field.scroll = std::max(0.0f, contentW - viewW);
+    if (contentW <= viewW)                    field.scroll = 0.0f;
 
-    dl.push_clip({ r.x + 2.0f, r.y, r.w - 4.0f, r.h });
+    float textX = r.x + padL - field.scroll;
 
-    if (selected && !text.empty())
+    dl.push_clip({ r.x + padL - 2.0f, r.y, viewW + 4.0f, r.h });
+
+    if (field.has_selection())
     {
+        float a = field_advance(fn, field.text, 0, field.sel_begin(), mask, dotStep);
+        float b = field_advance(fn, field.text, 0, field.sel_end(),   mask, dotStep);
         float selH = fn.capHeight() + 9.0f;
-        dl.fill_rounded_rect({ textX - 3.0f, r.y + (r.h - selH) * 0.5f, contentW + 6.0f, selH },
+        dl.fill_rounded_rect({ textX + a, r.y + (r.h - selH) * 0.5f, b - a, selH },
                              t.accent.with_alpha(0.24f * alpha), 3.0f);
     }
 
-    if (text.empty() && !focused)
+    if (field.text.empty() && !focused)
     {
         dl.draw_text(placeholder, { r.x + padL, vcenter_text(fn, r.y, r.h) },
                      t.textDisable.with_alpha(alpha), fn);
@@ -322,23 +355,31 @@ static bool draw_text_field(DrawList& dl, FontAtlas& fn, Rect r,
     else if (mask)
     {
         float dotY = r.y + (r.h - dotSz) * 0.5f;
-        for (size_t i = 0; i < text.size(); ++i)
+        for (int i = 0; i < field.length(); ++i)
             dl.fill_rounded_rect({ textX + static_cast<float>(i) * dotStep, dotY, dotSz, dotSz },
                                  t.text.with_alpha(0.85f * alpha), dotSz * 0.5f);
     }
     else
     {
-        dl.draw_text(text, { textX, vcenter_text(fn, r.y, r.h) }, t.text.with_alpha(alpha), fn);
+        dl.draw_text(field.text, { textX, vcenter_text(fn, r.y, r.h) },
+                     t.text.with_alpha(alpha), fn);
     }
 
-    if (focused && !selected && std::fmod(caretPhase, 1.06f) < 0.58f)
+    if (focused && std::fmod(caretPhase, 1.06f) < 0.58f)
     {
         float caretH = fn.capHeight() + 4.0f;
-        dl.fill_rect({ textX + contentW + 1.0f, r.y + (r.h - caretH) * 0.5f, 1.0f, caretH },
+        dl.fill_rect({ textX + caretX, r.y + (r.h - caretH) * 0.5f, 1.0f, caretH },
                      t.text.with_alpha(0.9f * alpha));
     }
 
     dl.pop_clip();
+
+    if (hovered && input.lmbPressed)
+    {
+        field.move_to(field_index_at(fn, field.text, mask, dotStep,
+                                     input.mousePos.x - (r.x + padL) + field.scroll),
+                      input.key_down(VK_SHIFT));
+    }
 
     return hovered && input.lmbReleased;
 }
@@ -396,23 +437,6 @@ static void set_clipboard_text(const std::string& text)
     CloseClipboard();
 }
 
-// The atlas is byte-indexed over printable ASCII, so a pasted tab, newline or accent would
-// render as a hole. Dropping them keeps what is shown equal to what was stored.
-static void append_typed(std::string& field, std::string_view chars)
-{
-    for (char c : chars)
-    {
-        if (field.size() >= AppState::MaxFieldLength)
-            break;
-
-        unsigned char u = static_cast<unsigned char>(c);
-        if (u < 32 || u > 126)
-            continue;
-
-        field.push_back(c);
-    }
-}
-
 static void draw_login_content(DrawList& dl, AppState& state,
                                 const InputState& input, ScreenFonts fonts,
                                 const Rect& wr, float alpha, float dt,
@@ -441,13 +465,11 @@ static void draw_login_content(DrawList& dl, AppState& state,
     draw_field_glow(dl, passR, state.passFocus.value(), alpha);
 
     if (draw_text_field(dl, fn, userR, "Username", state.username, state.focusField == 0,
-                        false, state.selectAll && state.focusField == 0,
-                        state.userHover, state.userFocus, input, dt, alpha, state.caretPhase))
+                        false, state.userHover, state.userFocus, input, dt, alpha, state.caretPhase))
         state.focus_field(0);
 
     if (draw_text_field(dl, fn, passR, "Password", state.password, state.focusField == 1,
-                        true, state.selectAll && state.focusField == 1,
-                        state.passHover, state.passFocus, input, dt, alpha, state.caretPhase))
+                        true, state.passHover, state.passFocus, input, dt, alpha, state.caretPhase))
         state.focus_field(1);
 
     FontAtlas& cap = fonts.caption;
@@ -474,62 +496,95 @@ static void draw_login_content(DrawList& dl, AppState& state,
     {
         state.caretPhase += dt;
 
-        std::string& field = state.focusField == 0 ? state.username : state.password;
+        AppState::TextField& field = state.active_field();
 
         bool ctrl   = input.key_down(VK_CONTROL);
+        bool shift  = input.key_down(VK_SHIFT);
         bool masked = state.focusField == 1;
 
         if (ctrl && input.key_pressed('A'))
-            state.selectAll = !field.empty();
+            field.select_all();
 
         // Nothing reads a masked field back out, so the password never reaches the clipboard.
         bool cut = ctrl && input.key_pressed('X');
-        if (!masked && state.selectAll && !field.empty() && (cut || input.key_pressed('C')))
+        if (!masked && field.has_selection() && (cut || input.key_pressed('C')))
         {
-            set_clipboard_text(field);
+            set_clipboard_text(field.selected());
             if (cut)
             {
-                field.clear();
-                state.selectAll  = false;
+                field.erase_selection();
                 state.caretPhase = 0.0f;
             }
         }
 
         if (ctrl && input.key_pressed('V'))
         {
-            if (state.selectAll)
-            {
-                field.clear();
-                state.selectAll = false;
-            }
-            append_typed(field, clipboard_text());
+            field.insert(clipboard_text());
             state.caretPhase = 0.0f;
         }
 
-        if (!input.textInput.empty() && state.selectAll)
+        // An unshifted arrow against a selection collapses it to the corresponding end rather
+        // than stepping one further, which is what every other text box does.
+        if (input.key_repeat(VK_LEFT))
         {
-            field.clear();
-            state.selectAll = false;
+            if (field.has_selection() && !shift) field.move_to(field.sel_begin(), false);
+            else field.move_to(ctrl ? field.word_left() : field.caret - 1, shift);
+            state.caretPhase = 0.0f;
+        }
+        if (input.key_repeat(VK_RIGHT))
+        {
+            if (field.has_selection() && !shift) field.move_to(field.sel_end(), false);
+            else field.move_to(ctrl ? field.word_right() : field.caret + 1, shift);
+            state.caretPhase = 0.0f;
+        }
+        if (input.key_pressed(VK_HOME))
+        {
+            field.move_to(0, shift);
+            state.caretPhase = 0.0f;
+        }
+        if (input.key_pressed(VK_END))
+        {
+            field.move_to(field.length(), shift);
+            state.caretPhase = 0.0f;
         }
 
-        append_typed(field, input.textInput);
+        field.insert(input.textInput);
 
-        if (input.key_repeat(VK_BACK) && !field.empty())
+        if (input.key_repeat(VK_BACK))
         {
-            if (state.selectAll)
+            if (field.has_selection())
             {
-                field.clear();
-                state.selectAll = false;
+                field.erase_selection();
             }
-            else
+            else if (field.caret > 0)
             {
-                field.pop_back();
+                int to = ctrl ? field.word_left() : field.caret - 1;
+                field.text.erase(field.text.begin() + to, field.text.begin() + field.caret);
+                field.move_to(to, false);
+            }
+            state.caretPhase = 0.0f;
+        }
+
+        if (input.key_repeat(VK_DELETE))
+        {
+            if (field.has_selection())
+            {
+                field.erase_selection();
+            }
+            else if (field.caret < field.length())
+            {
+                int to = ctrl ? field.word_right() : field.caret + 1;
+                field.text.erase(field.text.begin() + field.caret, field.text.begin() + to);
             }
             state.caretPhase = 0.0f;
         }
 
         if (input.key_pressed(VK_TAB))
+        {
             state.focus_field(state.focusField ^ 1);
+            AppState::TextField& next = state.active_field();
+            next.move_to(next.length(), false);
+        }
 
         submit = submit || input.key_pressed(VK_RETURN);
     }

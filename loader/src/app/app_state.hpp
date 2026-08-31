@@ -2,6 +2,7 @@
 #include "app/process_list.hpp"
 #include "core/anim.hpp"
 #include <string>
+#include <string_view>
 #include <vector>
 #include <cstdio>
 #include <cmath>
@@ -85,12 +86,87 @@ struct AppState
     Tween backHover;
     Tween retryHover;
 
-    std::string username;
-    std::string password;
-    int         focusField = 0;
-    bool        selectAll  = false;
-    float       caretPhase = 0.0f;
-    static constexpr size_t MaxFieldLength = 48;
+    static constexpr int MaxFieldLength = 48;
+
+    // Caret and anchor are indices into text; a selection is whatever lies between them, so the
+    // anchor staying put while the caret moves is all shift-selection needs to be.
+    struct TextField
+    {
+        std::string text;
+        int         caret  = 0;
+        int         anchor = 0;
+        float       scroll = 0.0f;
+
+        int  length()        const { return static_cast<int>(text.size()); }
+        bool has_selection() const { return caret != anchor; }
+        int  sel_begin()     const { return caret < anchor ? caret : anchor; }
+        int  sel_end()       const { return caret < anchor ? anchor : caret; }
+
+        void move_to(int index, bool keepAnchor)
+        {
+            caret = index < 0 ? 0 : (index > length() ? length() : index);
+            if (!keepAnchor) anchor = caret;
+        }
+
+        void select_all() { anchor = 0; caret = length(); }
+
+        void erase_selection()
+        {
+            if (!has_selection()) return;
+            int b = sel_begin();
+            text.erase(static_cast<size_t>(b), static_cast<size_t>(sel_end() - b));
+            caret = anchor = b;
+        }
+
+        std::string selected() const
+        {
+            if (!has_selection()) return {};
+            int b = sel_begin();
+            return text.substr(static_cast<size_t>(b), static_cast<size_t>(sel_end() - b));
+        }
+
+        // The atlas is byte-indexed over printable ASCII, so anything else would render as a
+        // hole. Dropping it keeps what is shown equal to what is stored.
+        void insert(std::string_view chars)
+        {
+            // Guarded, or holding a modifier that produces no character would wipe a selection.
+            if (chars.empty()) return;
+
+            erase_selection();
+            for (char c : chars)
+            {
+                if (length() >= MaxFieldLength) break;
+                unsigned char u = static_cast<unsigned char>(c);
+                if (u < 32 || u > 126) continue;
+                text.insert(text.begin() + caret, c);
+                ++caret;
+            }
+            anchor = caret;
+        }
+
+        // Word motion stops where a run of non-spaces begins, which is where every text box the
+        // user has already used puts it.
+        int word_left() const
+        {
+            int i = caret;
+            while (i > 0 && text[static_cast<size_t>(i - 1)] == ' ') --i;
+            while (i > 0 && text[static_cast<size_t>(i - 1)] != ' ') --i;
+            return i;
+        }
+
+        int word_right() const
+        {
+            int i = caret, n = length();
+            while (i < n && text[static_cast<size_t>(i)] != ' ') ++i;
+            while (i < n && text[static_cast<size_t>(i)] == ' ') ++i;
+            return i;
+        }
+    };
+
+    TextField username;
+    TextField password;
+    int       focusField = 0;
+    float     caretPhase = 0.0f;
 
     Tween userFocus;
     Tween passFocus;
@@ -146,16 +222,16 @@ struct AppState
         slideOutT      = 0.0f;
     }
 
+    TextField& active_field() { return focusField == 0 ? username : password; }
+
     void focus_field(int index)
     {
         focusField = index;
-        selectAll  = false;
         caretPhase = 0.0f;
     }
 
     void sign_in()
     {
-        selectAll  = false;
         caretPhase = 0.0f;
         signInHover.snap(0.0f);
         transition_to(Screen::ProcessSelect, 1.0f);
