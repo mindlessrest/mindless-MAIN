@@ -308,11 +308,13 @@ bool manual_map_inject(HANDLE process, uint32_t processId,
     // Decrypt the XOR-encrypted resource into a local buffer
     std::vector<BYTE> decrypted(dllSize);
     std::memcpy(decrypted.data(), dllData, dllSize);
-    xor_transform(decrypted.data(), dllSize);
+    //xor_transform(decrypted.data(), dllSize); uhhh??
 
     auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(decrypted.data());
-    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return false;
-    if (static_cast<size_t>(dos->e_lfanew) + sizeof(IMAGE_NT_HEADERS) > dllSize) return false;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) 
+        return false;
+    if (static_cast<size_t>(dos->e_lfanew) + sizeof(IMAGE_NT_HEADERS) > dllSize) 
+        return false;
 
     auto* ntHeaders = reinterpret_cast<const IMAGE_NT_HEADERS*>(
         decrypted.data() + dos->e_lfanew);
