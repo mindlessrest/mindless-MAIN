@@ -37,8 +37,9 @@ Application::~Application()
 
 bool Application::init()
 {
-    protection::init();
-    if (!protection::check_all()) return false;
+    // broken
+    //protection::init();
+    //if (!protection::check_all()) return false;
 
     const int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
     if (!window_.create(L"Mindless", 120 + margin, 120 + margin))
@@ -299,10 +300,11 @@ int Application::run()
                         authClient_->setToken(state_.authToken);
                         if (!state_.authHwid.empty())
                             authClient_->setHWID(state_.authHwid);
-                        protection::set_auth_client(authClient_.get());
-                        protection::check_all();
-                        protection::start_watchdog();
-                        protection::erase_pe_headers();
+                        // protection crashes soft?
+                        //protection::set_auth_client(authClient_.get());
+                        //protection::check_all();
+                        //protection::start_watchdog();
+                        //protection::erase_pe_headers();
 
                         save_credentials(state_.username.text, state_.password.text, state_.rememberMe);
                         state_.statusText = "Authenticated";

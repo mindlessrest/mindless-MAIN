@@ -22,7 +22,7 @@ OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
 # Lives beside this script rather than in the repository root: it is a cache of detected
 # compiler and JDK paths that build.py owns outright, and nothing else ever reads it.
 TOOL_CACHE_FILE = Path(__file__).resolve().parent / ".build_tools_cache.json"
-CPU_COUNT = os.cpu_count() or 4
+CPU_COUNT = max(1, (os.cpu_count() or 4) // 2)
 
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
@@ -358,6 +358,7 @@ def update_preset(clang, lld, ninja, vcpkg, hikari=None):
         sys.exit(1)
     with open(source, "r", encoding="utf-8-sig") as f:
         data = json.load(f)
+    old_text = json.dumps(data, sort_keys=True)
     toolchain = str(vcpkg / "scripts" / "buildsystems" / "vcpkg.cmake").replace("\\", "/")
     for preset in data.get("configurePresets", []):
         if preset.get("name") == "windows-clang":
@@ -379,12 +380,24 @@ def update_preset(clang, lld, ninja, vcpkg, hikari=None):
             cv["VCPKG_INSTALLED_DIR"]  = str(LOADER_DIR / "vcpkg_installed").replace("\\", "/")
             cv["VCPKG_TARGET_TRIPLET"] = "x64-windows-static"
             if hikari:
-                hikari_flags = "-mllvm -enable-bcfobf -mllvm -enable-splitobf -mllvm -enable-subobf -mllvm -enable-flaobf"
+                hikari_flags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-subobf -mllvm -sub_prob=30 -mllvm -enable-indibran -mllvm -enable-strcry"
                 cv["CMAKE_C_FLAGS_RELEASE"]   = hikari_flags
                 cv["CMAKE_CXX_FLAGS_RELEASE"] = hikari_flags
+            else:
+                cv.pop("CMAKE_C_FLAGS_RELEASE", None)
+                cv.pop("CMAKE_CXX_FLAGS_RELEASE", None)
     with open(PRESET_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
         f.write("\n")
+    new_text = json.dumps(data, sort_keys=True)
+    # If the preset changed (e.g. Hikari flags were added or removed), the
+    # existing CMakeCache will have stale compiler/flag values baked in.
+    # Delete it so the next build_loader call is forced to reconfigure.
+    if old_text != new_text:
+        cmake_cache = BUILD_DIR / "CMakeCache.txt"
+        if cmake_cache.is_file():
+            cmake_cache.unlink()
+            info("CMakeCache.txt deleted (preset changed — forcing reconfigure)")
 
 
 def detect_voyager():
@@ -456,12 +469,17 @@ def build_client(jdk17):
     return True
 
 
-def build_native_dll(cmake, clang, ninja, jdk, hikari=None):
+def build_native_dll(cmake, clang, ninja, jdk, hikari=None, prod=False):
     section("MindlessNative.dll - build")
 
-    # Use obfuscated JARs if available, fall back to plain
-    forge_jar = FORGE_JAR_OBF if FORGE_JAR_OBF.is_file() else FORGE_JAR
-    lunar_jar = LUNAR_JAR_OBF if LUNAR_JAR_OBF.is_file() else LUNAR_JAR
+    # Only use obfuscated JARs in --prod mode; never silently pick them up
+    # from a previous prod run when building normally.
+    if prod:
+        forge_jar = FORGE_JAR_OBF if FORGE_JAR_OBF.is_file() else FORGE_JAR
+        lunar_jar = LUNAR_JAR_OBF if LUNAR_JAR_OBF.is_file() else LUNAR_JAR
+    else:
+        forge_jar = FORGE_JAR
+        lunar_jar = LUNAR_JAR
 
     if not forge_jar.is_file():
         err(f"Forge JAR missing: {forge_jar}")
@@ -503,7 +521,7 @@ def build_native_dll(cmake, clang, ninja, jdk, hikari=None):
 
     hikari_cflags = ""
     if hikari and native_clang != clang:
-        hikari_cflags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-bcfobf -mllvm -enable-subobf -mllvm -enable-splitobf -mllvm -enable-indibran -mllvm -enable-strcry -mllvm -enable-constenc"
+        hikari_cflags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-subobf -mllvm -sub_prob=30 -mllvm -enable-indibran -mllvm -enable-strcry"
 
     cfg_cmd = [
         str(cmake), "-S", str(NATIVE_DIR), "-B", str(NATIVE_BUILD_DIR),
@@ -617,8 +635,11 @@ def main():
     print(f"{BOLD}  Mindless United - build{RESET}")
     print(f"{BOLD}{'='*50}{RESET}")
 
-    build_loader_flag = "--loader" in sys.argv or "--all" in sys.argv or len(sys.argv) == 1
-    build_client_flag = "--client" in sys.argv or "--all" in sys.argv or len(sys.argv) == 1
+    known_flags = {"--loader", "--client", "--all", "--no-cache", "--prod"}
+    has_target = any(a in {"--loader", "--client", "--all"} for a in sys.argv[1:])
+    default_all = len(sys.argv) == 1 or (not has_target)
+    build_loader_flag = "--loader" in sys.argv or "--all" in sys.argv or default_all
+    build_client_flag = "--client" in sys.argv or "--all" in sys.argv or default_all
     no_cache_flag = "--no-cache" in sys.argv
     prod_flag = "--prod" in sys.argv
 
@@ -748,7 +769,7 @@ def main():
                     obfuscate_jar(jdk17, LUNAR_JAR, LUNAR_JAR_OBF, "Lunar JAR")
 
         if jdk_any and llvm and cmake and ninja:
-            if not build_native_dll(cmake, clang, ninja, jdk_any, hikari=voyager):
+            if not build_native_dll(cmake, clang, ninja, jdk_any, hikari=voyager, prod=prod_flag):
                 print(f"\n{BOLD}{RED}Build failed.{RESET}")
                 sys.exit(1)
         else:
