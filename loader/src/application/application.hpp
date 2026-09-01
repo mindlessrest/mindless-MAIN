@@ -6,9 +6,11 @@
 #include "ui/draw_list.hpp"
 #include "app/app_state.hpp"
 #include "injection/injection_session.hpp"
+#include <authclient/authclient.hpp>
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <memory>
 
 namespace mindless
 {
@@ -42,6 +44,16 @@ private:
     std::thread authThread_;
     std::atomic<bool> authDone_{false};
     HANDLE authSection_ = nullptr;
+
+    // DLL download (deferred to injection time)
+    std::thread downloadThread_;
+    std::atomic<bool> downloadDone_{false};
+    bool downloadStarted_ = false;
+
+    void start_download();
+
+    // Persistent auth client for protection webhook reporting
+    std::unique_ptr<authclient::AuthClient> authClient_;
 
     using Clock     = std::chrono::steady_clock;
     using TimePoint = Clock::time_point;

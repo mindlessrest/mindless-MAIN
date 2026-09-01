@@ -58,6 +58,37 @@ private:
     mutable char buf_[N]{};
 };
 
+template<size_t N>
+class XorWString
+{
+public:
+    constexpr XorWString(const wchar_t (&str)[N], uint64_t seed)
+        : seed_(seed)
+    {
+        for (size_t i = 0; i < N; ++i)
+            data_[i] = str[i] ^ static_cast<wchar_t>(xorstr_key(seed, i) & 0xFFFF);
+    }
+
+    const wchar_t* decrypt() const
+    {
+        for (size_t i = 0; i < N; ++i)
+            buf_[i] = data_[i] ^ static_cast<wchar_t>(xorstr_key(seed_, i) & 0xFFFF);
+        return buf_;
+    }
+
+    void clear() const
+    {
+        volatile wchar_t* p = buf_;
+        for (size_t i = 0; i < N; ++i)
+            p[i] = 0;
+    }
+
+private:
+    wchar_t data_[N]{};
+    uint64_t seed_;
+    mutable wchar_t buf_[N]{};
+};
+
 } // namespace detail
 
 } // namespace mindless
@@ -67,4 +98,11 @@ private:
         s, ::mindless::detail::xorstr_seed() ^ __LINE__);            \
     static const auto _inst = _xor;                                  \
     return _inst.decrypt();                                          \
+}())
+
+#define XORSTRW(s) ([]() -> const wchar_t* {                                        \
+    constexpr auto _xor = ::mindless::detail::XorWString<sizeof(s)/sizeof(s[0])>(    \
+        s, ::mindless::detail::xorstr_seed() ^ __LINE__);                            \
+    static const auto _inst = _xor;                                                  \
+    return _inst.decrypt();                                                          \
 }())

@@ -69,6 +69,7 @@ set(SOURCES
     src/input/input.cpp
     src/injection/injection_session.cpp
     src/injection/manual_map.cpp
+    src/protection/protection.cpp
 )
 
 # Generate the .rc with the absolute icon path baked in.

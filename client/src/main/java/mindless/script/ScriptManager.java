@@ -37,7 +37,19 @@ public class ScriptManager {
     public File directory;
     public List<String> imports = Arrays.asList(Color.class.getName(), Collections.class.getName(), List.class.getName(), ArrayList.class.getName(), Arrays.class.getName(), Map.class.getName(), Set.class.getName(), HashMap.class.getName(), HashSet.class.getName(), ConcurrentHashMap.class.getName(), LinkedHashMap.class.getName(), LinkedHashSet.class.getName(), Iterator.class.getName(), Comparator.class.getName(), AtomicInteger.class.getName(), AtomicLong.class.getName(), AtomicBoolean.class.getName(), Random.class.getName(), Matcher.class.getName());
     public String COMPILED_DIR = Utils.getCompilerDirectory();
-    public String jarPath = ((String[])ScriptManager.class.getProtectionDomain().getCodeSource().getLocation().getPath().split("\\.jar!"))[0].substring(5) + ".jar";
+    public String jarPath = resolveJarPath();
+
+    private static String resolveJarPath() {
+        try {
+            java.security.CodeSource cs = ScriptManager.class.getProtectionDomain().getCodeSource();
+            if (cs == null || cs.getLocation() == null) return null;
+            String path = cs.getLocation().getPath();
+            if (path == null || !path.contains(".jar")) return null;
+            return path.split("\\.jar!")[0].substring(5) + ".jar";
+        } catch (Exception e) {
+            return null;
+        }
+    }
     private Map<String, String> loadedHashes = new HashMap<>();
 
     public ScriptManager() {

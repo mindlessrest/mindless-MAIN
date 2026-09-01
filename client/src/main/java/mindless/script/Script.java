@@ -91,7 +91,7 @@ public class Script {
                 compilationOptions.add(cp);
                 System.out.println("[Scripts] ECJ classpath entries: " + cp.split(File.pathSeparator).length);
             }
-            else if (!ScriptManager.isDeobfuscatedEnvironment()) {
+            else if (!ScriptManager.isDeobfuscatedEnvironment() && Mindless.scriptManager.jarPath != null) {
                 compilationOptions.add("-classpath");
                 String s = Mindless.scriptManager.jarPath;
                 try {

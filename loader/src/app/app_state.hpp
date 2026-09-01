@@ -32,7 +32,7 @@ struct AppState
     float       loadProgress = 0.0f;
     float       loadElapsed  = 0.0f;
     float       spinElapsed  = 0.0f;
-    std::string statusText   = "Connecting to Minecraft";
+    std::string statusText   = "Preparing";
     std::string solutionText;
     bool        loadFailed = false;
     bool        retryRequested = false;

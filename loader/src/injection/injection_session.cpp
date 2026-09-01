@@ -1,5 +1,6 @@
 #include "injection_session.hpp"
 #include "manual_map.hpp"
+#include "auth/xorstr.hpp"
 #include <TlHelp32.h>
 #include <cwchar>
 
@@ -13,7 +14,7 @@ bool target_is_x64(HANDLE process)
 {
     using is_wow64_process2_fn = BOOL(WINAPI*)(HANDLE, USHORT*, USHORT*);
     auto isWow64Process2 = (is_wow64_process2_fn)GetProcAddress(
-        GetModuleHandleW(L"kernel32.dll"), "IsWow64Process2");
+        GetModuleHandleW(XORSTRW(L"kernel32.dll")), XORSTR("IsWow64Process2"));
     if (isWow64Process2)
     {
         USHORT processMachine = IMAGE_FILE_MACHINE_UNKNOWN;
@@ -175,7 +176,7 @@ bool InjectionSession::validate_session() const
     if (!queried) return false;
     const wchar_t* name = std::wcsrchr(path, L'\\');
     name = name ? name + 1 : path;
-    return _wcsicmp(name, L"javaw.exe") == 0 || _wcsicmp(name, L"java.exe") == 0;
+    return _wcsicmp(name, XORSTRW(L"javaw.exe")) == 0 || _wcsicmp(name, XORSTRW(L"java.exe")) == 0;
 }
 
 void InjectionSession::fail(std::string status, std::string solution)

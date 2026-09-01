@@ -55,6 +55,12 @@ public final class NativeBootstrap {
             }
         }
         STATE.set(BootstrapState.STARTING);
+
+        if (!EnvironmentGuard.check()) {
+            log("Environment guard blocked startup");
+            return;
+        }
+
         ProgressPipe.connect();
         ProgressPipe.report(0.55f, "Starting Mindless");
         try {
@@ -321,7 +327,7 @@ public final class NativeBootstrap {
         }
     }
 
-    private static void log(String message) {
+    static void log(String message) {
         System.out.println("[MindlessNative] " + message);
         System.out.flush();
     }

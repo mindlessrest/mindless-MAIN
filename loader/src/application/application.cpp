@@ -4,6 +4,7 @@
 #include "auth/xorstr.hpp"
 #include "auth/auth_shared.hpp"
 #include "auth/saved_credentials.hpp"
+#include "protection/protection.hpp"
 #include "resource.h"
 #include "ui/theme.hpp"
 #include <authclient/authclient.hpp>
@@ -30,11 +31,15 @@ static std::pair<const void*, size_t> get_resource(int id, const wchar_t* type)
 Application::~Application()
 {
     if (authThread_.joinable()) authThread_.join();
+    if (downloadThread_.joinable()) downloadThread_.join();
     if (authSection_) CloseHandle(authSection_);
 }
 
 bool Application::init()
 {
+    protection::init();
+    if (!protection::check_all()) return false;
+
     const int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
     if (!window_.create(L"Mindless", 120 + margin, 120 + margin))
         return false;
@@ -136,82 +141,8 @@ void Application::start_auth()
                 return;
             }
 
-            std::vector<uint8_t> dllBytes;
-
-            // 1. Try to download payload from backend if available
-            try
-            {
-                auto fileList = client.listFiles();
-                for (const auto& f : fileList.files)
-                {
-                    if (f.name == "MindlessNative.dll" || f.name == "mindless-native" || f.name == "mindless")
-                    {
-                        dllBytes = client.downloadFile(f.id);
-                        break;
-                    }
-                }
-                if (dllBytes.empty() && !fileList.files.empty())
-                {
-                    dllBytes = client.downloadFile(fileList.files[0].id);
-                }
-            }
-            catch (...)
-            {
-                // Non-admin or listFiles unavailable, proceed to local payload fallback
-            }
-
-            // 2. Fallback to local MindlessNative.dll if server download is empty
-            if (dllBytes.empty())
-            {
-                wchar_t exePath[MAX_PATH] = {};
-                GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-                std::wstring exeDir = exePath;
-                size_t lastSlash = exeDir.find_last_of(L"\\/");
-                if (lastSlash != std::wstring::npos) exeDir = exeDir.substr(0, lastSlash);
-
-                std::wstring candidatePaths[] = {
-                    exeDir + L"\\MindlessNative.dll",
-                    exeDir + L"\\assets\\runtime\\MindlessNative.dll",
-                    exeDir + L"\\client\\native_build\\dist\\MindlessNative.dll",
-                    exeDir + L"\\..\\client\\native_build\\dist\\MindlessNative.dll",
-                    L"MindlessNative.dll",
-                    L"assets\\runtime\\MindlessNative.dll",
-                    L"client\\native_build\\dist\\MindlessNative.dll"
-                };
-
-                for (const auto& path : candidatePaths)
-                {
-                    HANDLE hFile = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
-                                               nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-                    if (hFile != INVALID_HANDLE_VALUE)
-                    {
-                        DWORD size = GetFileSize(hFile, nullptr);
-                        if (size > 0 && size != INVALID_FILE_SIZE)
-                        {
-                            dllBytes.resize(size);
-                            DWORD read = 0;
-                            if (ReadFile(hFile, dllBytes.data(), size, &read, nullptr) && read == size)
-                            {
-                                CloseHandle(hFile);
-                                break;
-                            }
-                        }
-                        CloseHandle(hFile);
-                        dllBytes.clear();
-                    }
-                }
-            }
-
-            if (dllBytes.empty())
-            {
-                state_.authError = "Client files not found (upload MindlessNative.dll to panel)";
-                authDone_ = true;
-                return;
-            }
-
             state_.authToken = login.token;
             state_.authHwid  = hwid;
-            state_.dllBytes  = std::move(dllBytes);
             state_.authComplete = true;
         }
         catch (const authclient::AuthException& e)
@@ -229,6 +160,96 @@ void Application::start_auth()
             OutputDebugStringA(dbg);
         }
         authDone_ = true;
+    });
+}
+
+void Application::start_download()
+{
+    if (downloadThread_.joinable()) downloadThread_.join();
+    downloadDone_ = false;
+    downloadStarted_ = true;
+
+    downloadThread_ = std::thread([this] {
+        try
+        {
+            OutputDebugStringA("[Mindless] Download: creating client\n");
+            const char* api = XORSTR("https://api.mindless.rest");
+            authclient::AuthClient client(api);
+            client.setToken(state_.authToken);
+            std::string hwid = state_.authHwid;
+            if (!hwid.empty()) client.setHWID(hwid);
+
+            OutputDebugStringA("[Mindless] Download: listing files\n");
+            auto fileList = client.listFiles();
+
+            std::string fileId;
+            for (const auto& f : fileList.files)
+            {
+                if (f.name == "mindless-native" || f.name == "MindlessNative.dll" || f.name == "mindless")
+                {
+                    fileId = f.id;
+                    break;
+                }
+            }
+            if (fileId.empty() && !fileList.files.empty())
+            {
+                for (const auto& f : fileList.files)
+                {
+                    if (f.name != "loader") { fileId = f.id; break; }
+                }
+            }
+            if (fileId.empty())
+            {
+                OutputDebugStringA("[Mindless] Download: no matching file found\n");
+                state_.statusText = "Payload not found";
+                state_.solutionText = "Upload MindlessNative.dll to the panel.";
+                state_.loadFailed = true;
+                downloadDone_ = true;
+                return;
+            }
+
+            char dbg2[256];
+            snprintf(dbg2, sizeof(dbg2), "[Mindless] Download: file id = %s\n", fileId.c_str());
+            OutputDebugStringA(dbg2);
+
+            OutputDebugStringA("[Mindless] Download: calling downloadFile\n");
+            auto dllBytes = client.downloadFile(fileId);
+
+            char dbg[128];
+            snprintf(dbg, sizeof(dbg), "[Mindless] Download: got %zu bytes\n", dllBytes.size());
+            OutputDebugStringA(dbg);
+
+            if (dllBytes.empty())
+            {
+                state_.statusText = "Payload not found";
+                state_.solutionText = "Upload MindlessNative.dll to the panel.";
+                state_.loadFailed = true;
+            }
+            else
+            {
+                state_.dllBytes = std::move(dllBytes);
+            }
+        }
+        catch (const authclient::AuthException& e)
+        {
+            char dbg[512];
+            snprintf(dbg, sizeof(dbg), "[Mindless] Download AuthException: %s (%s)\n",
+                     e.code().c_str(), e.message().c_str());
+            OutputDebugStringA(dbg);
+            state_.statusText = "Download failed";
+            state_.solutionText = e.message().empty() ? e.code() : e.message();
+            state_.loadFailed = true;
+        }
+        catch (const std::exception& e)
+        {
+            char dbg[512];
+            snprintf(dbg, sizeof(dbg), "[Mindless] Download exception: %s\n", e.what());
+            OutputDebugStringA(dbg);
+            state_.statusText = "Download failed";
+            state_.solutionText = e.what();
+            state_.loadFailed = true;
+        }
+        downloadDone_ = true;
     });
 }
 
@@ -272,6 +293,17 @@ int Application::run()
 
                     if (state_.authComplete && state_.authError.empty())
                     {
+                        // Create persistent auth client for protection reports
+                        authClient_ = std::make_unique<authclient::AuthClient>(
+                            XORSTR("https://api.mindless.rest"));
+                        authClient_->setToken(state_.authToken);
+                        if (!state_.authHwid.empty())
+                            authClient_->setHWID(state_.authHwid);
+                        protection::set_auth_client(authClient_.get());
+                        protection::check_all();
+                        protection::start_watchdog();
+                        protection::erase_pe_headers();
+
                         save_credentials(state_.username.text, state_.password.text, state_.rememberMe);
                         state_.statusText = "Authenticated";
                         state_.transition_to(Screen::ProcessSelect, 1.0f);
@@ -300,13 +332,27 @@ int Application::run()
 
         if (state_.screen == Screen::Loading)
         {
+            // Step 1: kick off DLL download if we don't have it yet
+            if (!downloadStarted_ && state_.dllBytes.empty() && !state_.loadFailed)
+            {
+                state_.statusText = "Downloading";
+                start_download();
+            }
+
+            // Step 2: once download is done, start injection
+            if (downloadStarted_ && downloadDone_ && !state_.loadFailed)
+            {
+                if (downloadThread_.joinable()) downloadThread_.join();
+                downloadStarted_ = false;
+            }
+
             if (injection_.phase() == InjectionPhase::Idle &&
+                !state_.dllBytes.empty() &&
                 state_.selectedIdx >= 0 &&
                 state_.selectedIdx < static_cast<int>(state_.processes.size()))
             {
                 uint32_t pid = state_.processes[state_.selectedIdx].pid;
 
-                // Create shared memory section with auth data for the DLL
                 if (authSection_) { CloseHandle(authSection_); authSection_ = nullptr; }
 
                 AuthSharedData shared = {};
@@ -327,27 +373,56 @@ int Application::run()
             if (state_.retryRequested)
             {
                 state_.retryRequested = false;
+                if (downloadThread_.joinable()) downloadThread_.join();
+                downloadStarted_ = false;
+                downloadDone_ = false;
+                state_.dllBytes.clear();
                 injection_.reset();
                 state_.begin_loading();
                 notificationSent_ = false;
             }
 
-            injection_.tick();
             state_.spinElapsed += dt;
-            if (state_.statusText != injection_.status())
-            {
-                state_.statusText = injection_.status();
-                state_.statusFade.reset(0.16f);
-            }
             state_.statusFade.tick(dt);
-            state_.solutionText = injection_.solution();
-            state_.loadFailed = injection_.phase() == InjectionPhase::Failed;
+
+            bool downloading = downloadStarted_ && !downloadDone_;
+            float target = 0.0f;
+
+            if (downloading)
+            {
+                // Preparing: 0% → 50% (slow asymptotic crawl so it never stalls visually)
+                if (state_.statusText != "Preparing")
+                {
+                    state_.statusText = "Preparing";
+                    state_.statusFade.reset(0.16f);
+                }
+                target = 0.45f;
+            }
+            else
+            {
+                injection_.tick();
+                if (state_.statusText != injection_.status())
+                {
+                    state_.statusText = injection_.status();
+                    state_.statusFade.reset(0.16f);
+                }
+                state_.solutionText = injection_.solution();
+                if (injection_.phase() == InjectionPhase::Failed)
+                    state_.loadFailed = true;
+
+                // Injecting: 50% → 85%, Complete: 85% → 100%
+                if (injection_.phase() == InjectionPhase::Injecting)
+                    target = 0.50f + injection_.progress() * 0.35f;
+                else if (injection_.phase() == InjectionPhase::Complete)
+                    target = 1.0f;
+                else
+                    target = state_.loadProgress;
+            }
 
             if (!state_.loadFailed)
             {
-                float target = injection_.progress();
-                float step   = (target - state_.loadProgress) * (1.0f - std::exp(-6.0f * dt));
-                float limit  = dt * AppState::MaxProgressRate;
+                float step  = (target - state_.loadProgress) * (1.0f - std::exp(-4.0f * dt));
+                float limit = dt * AppState::MaxProgressRate;
                 state_.loadProgress += clamp(step, -limit, limit);
             }
 
