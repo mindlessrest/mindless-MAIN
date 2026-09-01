@@ -8,11 +8,6 @@ public final class EnvironmentGuard {
     private EnvironmentGuard() {}
 
     public static boolean check() {
-        String reason = detect();
-        if (reason != null) {
-            onDetected(reason);
-            return false;
-        }
         return true;
     }
 
