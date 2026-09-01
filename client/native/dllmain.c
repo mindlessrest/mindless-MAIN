@@ -313,44 +313,62 @@ name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
         if (handler_bytes_ref) (*env)->DeleteGlobalRef(env, handler_bytes_ref);
         return 0;
     }
-{
-        jsize len = (*env)->GetArrayLength(env, store_bytes_ref);
-        jbyte *buf = (*env)->GetByteArrayElements(env, store_bytes_ref, NULL);
-        store_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryResourceStore",
-                loader, buf, len);
-        (*env)->ReleaseByteArrayElements(env, store_bytes_ref, buf, JNI_ABORT);
+    {
+        jclass loader_class = (*env)->FindClass(env, "java/lang/ClassLoader");
+        jmethodID load_class_id = loader_class == NULL ? NULL : (*env)->GetMethodID(env, loader_class,
+                "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+
+        store_cls = (load_class_id != NULL) ? load_class_via_loader(env, loader, load_class_id, "mindless.runtime.MemoryResourceStore") : NULL;
+        if (store_cls == NULL) {
+            jsize len = (*env)->GetArrayLength(env, store_bytes_ref);
+            jbyte *buf = (*env)->GetByteArrayElements(env, store_bytes_ref, NULL);
+            store_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryResourceStore",
+                    loader, buf, len);
+            (*env)->ReleaseByteArrayElements(env, store_bytes_ref, buf, JNI_ABORT);
+            if (!store_cls || (*env)->ExceptionCheck(env)) {
+                vape_log_pending_exception(env, L"DefineClass MemoryResourceStore");
+                (*env)->DeleteGlobalRef(env, store_bytes_ref);
+                (*env)->DeleteGlobalRef(env, conn_bytes_ref);
+                (*env)->DeleteGlobalRef(env, handler_bytes_ref);
+                if (loader_class != NULL) (*env)->DeleteLocalRef(env, loader_class);
+                return 0;
+            }
+        }
         (*env)->DeleteGlobalRef(env, store_bytes_ref);
-        if (!store_cls || (*env)->ExceptionCheck(env)) {
-            vape_log_pending_exception(env, L"DefineClass MemoryResourceStore");
-            (*env)->DeleteGlobalRef(env, conn_bytes_ref);
-            (*env)->DeleteGlobalRef(env, handler_bytes_ref);
-            return 0;
+
+        conn_cls = (load_class_id != NULL) ? load_class_via_loader(env, loader, load_class_id, "mindless.runtime.MemoryURLConnection") : NULL;
+        if (conn_cls == NULL) {
+            jsize len = (*env)->GetArrayLength(env, conn_bytes_ref);
+            jbyte *buf = (*env)->GetByteArrayElements(env, conn_bytes_ref, NULL);
+            conn_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryURLConnection",
+                    loader, buf, len);
+            (*env)->ReleaseByteArrayElements(env, conn_bytes_ref, buf, JNI_ABORT);
+            if (!conn_cls || (*env)->ExceptionCheck(env)) {
+                vape_log_pending_exception(env, L"DefineClass MemoryURLConnection");
+                (*env)->DeleteGlobalRef(env, conn_bytes_ref);
+                (*env)->DeleteGlobalRef(env, handler_bytes_ref);
+                if (loader_class != NULL) (*env)->DeleteLocalRef(env, loader_class);
+                return 0;
+            }
         }
-    }
-    {
-        jsize len = (*env)->GetArrayLength(env, conn_bytes_ref);
-        jbyte *buf = (*env)->GetByteArrayElements(env, conn_bytes_ref, NULL);
-        conn_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryURLConnection",
-                loader, buf, len);
-        (*env)->ReleaseByteArrayElements(env, conn_bytes_ref, buf, JNI_ABORT);
         (*env)->DeleteGlobalRef(env, conn_bytes_ref);
-        if (!conn_cls || (*env)->ExceptionCheck(env)) {
-            vape_log_pending_exception(env, L"DefineClass MemoryURLConnection");
-            (*env)->DeleteGlobalRef(env, handler_bytes_ref);
-            return 0;
+
+        handler_cls = (load_class_id != NULL) ? load_class_via_loader(env, loader, load_class_id, "mindless.runtime.MemoryURLStreamHandler") : NULL;
+        if (handler_cls == NULL) {
+            jsize len = (*env)->GetArrayLength(env, handler_bytes_ref);
+            jbyte *buf = (*env)->GetByteArrayElements(env, handler_bytes_ref, NULL);
+            handler_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryURLStreamHandler",
+                    loader, buf, len);
+            (*env)->ReleaseByteArrayElements(env, handler_bytes_ref, buf, JNI_ABORT);
+            if (!handler_cls || (*env)->ExceptionCheck(env)) {
+                vape_log_pending_exception(env, L"DefineClass MemoryURLStreamHandler");
+                (*env)->DeleteGlobalRef(env, handler_bytes_ref);
+                if (loader_class != NULL) (*env)->DeleteLocalRef(env, loader_class);
+                return 0;
+            }
         }
-    }
-    {
-        jsize len = (*env)->GetArrayLength(env, handler_bytes_ref);
-        jbyte *buf = (*env)->GetByteArrayElements(env, handler_bytes_ref, NULL);
-        handler_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryURLStreamHandler",
-                loader, buf, len);
-        (*env)->ReleaseByteArrayElements(env, handler_bytes_ref, buf, JNI_ABORT);
         (*env)->DeleteGlobalRef(env, handler_bytes_ref);
-        if (!handler_cls || (*env)->ExceptionCheck(env)) {
-            vape_log_pending_exception(env, L"DefineClass MemoryURLStreamHandler");
-            return 0;
-        }
+        if (loader_class != NULL) (*env)->DeleteLocalRef(env, loader_class);
     }
 store_initialize = (*env)->GetStaticMethodID(env, store_cls, "initialize",
             "(Ljava/util/Map;)V");
