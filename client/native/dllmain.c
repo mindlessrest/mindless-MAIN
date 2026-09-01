@@ -1586,27 +1586,10 @@ cleanup:
 }
 
 JNIEXPORT jboolean JNICALL Java_mindless_runtime_TransformerHooks_untransformNative0(JNIEnv *env, jclass clazz) {
+    (void)env;
     (void)clazz;
-    int ok;
-    vape_log(L"JNI untransformNative0 called — disabling hook and restoring original target bytes");
-    disable_class_file_load_hook();
-    if (env == NULL) return JNI_FALSE;
-    ok = restore_loaded_registered_targets(env, g_game_loader);
-    if (g_game_loader != NULL) {
-        (*env)->DeleteGlobalRef(env, g_game_loader);
-        g_game_loader = NULL;
-    }
-    if (g_hooks_class != NULL) {
-        (*env)->DeleteGlobalRef(env, g_hooks_class);
-        g_hooks_class = NULL;
-        g_hooks_transform = NULL;
-    }
-    vape_log(L"target restoration complete; scheduling DLL unload");
-    if (g_module != NULL) {
-        HANDLE thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)FreeLibraryAndExitThread, g_module, 0, NULL);
-        if (thread != NULL) CloseHandle(thread);
-    }
-    return ok ? JNI_TRUE : JNI_FALSE;
+    vape_log(L"JNI untransformNative0 called (no-op; unloading disabled)");
+    return JNI_TRUE;
 }
 
 JNIEXPORT jboolean JNICALL Java_mindless_runtime_TransformerHooks_retransformNative0(JNIEnv *env, jclass clazz) {

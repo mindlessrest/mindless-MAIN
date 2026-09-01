@@ -16,11 +16,7 @@ public static void log(String message) {
     }
 
     public static boolean untransformNative() {
-        try {
-            return untransformNative0();
-        } catch (Throwable ignored) {
-            return false;
-        }
+        return false;
     }
 
     public static boolean retransformNative() {
