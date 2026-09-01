@@ -26,10 +26,17 @@ CPU_COUNT = os.cpu_count() or 4
 
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
+FORGE_JAR_OBF   = CLIENT_DIR / "build" / "libs" / "mindless-obf.jar"
+LUNAR_JAR_OBF   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge-obf.jar"
 NATIVE_BUILD_DIR = CLIENT_DIR / "native_build"
 NATIVE_DLL_OUT   = NATIVE_BUILD_DIR / "dist" / "MindlessNative.dll"
 
 LOADER_RUNTIME   = LOADER_DIR / "assets" / "runtime" / "MindlessNative.dll"
+OBF_JAR          = ROOT / "tools" / "obf" / "build" / "libs" / "mindless-obf.jar"
+OBF_DIR          = ROOT / "tools" / "obf"
+
+# Voyager LLVM obfuscator path (set via VOYAGER_PATH env or default)
+VOYAGER_DEFAULT  = r"D:\Hikari-LLVM19\build\bin"
 
 VS_ROOTS = [
     r"C:\Program Files\Microsoft Visual Studio",
@@ -341,7 +348,7 @@ def run(cmd, cwd, env=None):
     return result.returncode == 0
 
 
-def update_preset(clang, lld, ninja, vcpkg):
+def update_preset(clang, lld, ninja, vcpkg, hikari=None):
     # The preset carries absolute toolchain paths, so it is not tracked -- it used to flip back
     # and forth in every commit as each contributor rebuilt. A fresh clone seeds it from the
     # template instead, and every path below is overwritten anyway.
@@ -355,16 +362,75 @@ def update_preset(clang, lld, ninja, vcpkg):
     for preset in data.get("configurePresets", []):
         if preset.get("name") == "windows-clang":
             cv = preset.setdefault("cacheVariables", {})
-            cv["CMAKE_C_COMPILER"]     = str(clang).replace("\\", "/")
-            cv["CMAKE_CXX_COMPILER"]   = str(clang).replace("\\", "/")
-            cv["CMAKE_LINKER"]         = str(lld).replace("\\", "/")
+            loader_clang = clang
+            loader_lld = lld
+            if hikari:
+                hc = hikari / "clang-cl.exe"
+                hl = hikari / "lld-link.exe"
+                if hc.is_file():
+                    loader_clang = hc
+                if hl.is_file():
+                    loader_lld = hl
+            cv["CMAKE_C_COMPILER"]     = str(loader_clang).replace("\\", "/")
+            cv["CMAKE_CXX_COMPILER"]   = str(loader_clang).replace("\\", "/")
+            cv["CMAKE_LINKER"]         = str(loader_lld).replace("\\", "/")
             cv["CMAKE_MAKE_PROGRAM"]   = str(ninja).replace("\\", "/")
             cv["CMAKE_TOOLCHAIN_FILE"] = toolchain
             cv["VCPKG_INSTALLED_DIR"]  = str(LOADER_DIR / "vcpkg_installed").replace("\\", "/")
             cv["VCPKG_TARGET_TRIPLET"] = "x64-windows-static"
+            if hikari:
+                hikari_flags = "-mllvm -enable-bcfobf -mllvm -enable-splitobf -mllvm -enable-subobf -mllvm -enable-flaobf"
+                cv["CMAKE_C_FLAGS_RELEASE"]   = hikari_flags
+                cv["CMAKE_CXX_FLAGS_RELEASE"] = hikari_flags
     with open(PRESET_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
         f.write("\n")
+
+
+def detect_voyager():
+    env_path = os.environ.get("VOYAGER_PATH")
+    if env_path:
+        p = Path(env_path)
+        if (p / "clang-cl.exe").is_file():
+            return p
+    p = Path(VOYAGER_DEFAULT)
+    if (p / "clang-cl.exe").is_file():
+        return p
+    return None
+
+
+def build_obf_jar(jdk):
+    """Build the MindlessObf tool if the jar doesn't exist."""
+    if OBF_JAR.is_file():
+        return True
+    section("Building MindlessObf")
+    gradlew = CLIENT_DIR / "gradlew.bat"
+    env = {}
+    if jdk:
+        env["JAVA_HOME"] = str(jdk)
+    cmd = [str(gradlew), "jar"]
+    if not run(cmd, OBF_DIR, env):
+        err("MindlessObf build failed")
+        return False
+    ok("MindlessObf built")
+    return True
+
+
+def obfuscate_jar(jdk, input_jar, output_jar, label):
+    """Run MindlessObf on a JAR."""
+    if not OBF_JAR.is_file():
+        warn(f"MindlessObf jar not found, skipping {label} obfuscation")
+        return False
+    java = jdk / "bin" / "java.exe" if jdk else Path("java.exe")
+    cmd = [str(java), "-jar", str(OBF_JAR), str(input_jar), str(output_jar)]
+    info(f"Obfuscating {label}...")
+    if not run(cmd, ROOT):
+        err(f"{label} obfuscation failed")
+        return False
+    if output_jar.is_file():
+        size_kb = output_jar.stat().st_size // 1024
+        ok(f"{label} obfuscated ({size_kb} KB)")
+    return True
 
 
 def build_client(jdk17):
@@ -390,17 +456,34 @@ def build_client(jdk17):
     return True
 
 
-def build_native_dll(cmake, clang, ninja, jdk):
+def build_native_dll(cmake, clang, ninja, jdk, hikari=None):
     section("MindlessNative.dll - build")
 
-    if not FORGE_JAR.is_file():
-        err(f"Forge JAR missing: {FORGE_JAR}")
+    # Use obfuscated JARs if available, fall back to plain
+    forge_jar = FORGE_JAR_OBF if FORGE_JAR_OBF.is_file() else FORGE_JAR
+    lunar_jar = LUNAR_JAR_OBF if LUNAR_JAR_OBF.is_file() else LUNAR_JAR
+
+    if not forge_jar.is_file():
+        err(f"Forge JAR missing: {forge_jar}")
         err("Run client build first.")
         return False
-    if not LUNAR_JAR.is_file():
-        err(f"Lunar JAR missing: {LUNAR_JAR}")
+    if not lunar_jar.is_file():
+        err(f"Lunar JAR missing: {lunar_jar}")
         err("Run client build first.")
         return False
+
+    if forge_jar == FORGE_JAR_OBF:
+        ok(f"Using obfuscated Forge JAR")
+    if lunar_jar == LUNAR_JAR_OBF:
+        ok(f"Using obfuscated Lunar JAR")
+
+    # Use Hikari for the native DLL if available
+    native_clang = clang
+    if hikari:
+        hikari_clang = hikari / "clang.exe"
+        if hikari_clang.is_file():
+            native_clang = hikari_clang
+            ok(f"Hikari clang  : {native_clang}")
 
     NATIVE_BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -418,16 +501,22 @@ def build_native_dll(cmake, clang, ninja, jdk):
     except PermissionError:
         warn("MindlessNative.dll is in use by another process, skipping deletion")
 
+    hikari_cflags = ""
+    if hikari and native_clang != clang:
+        hikari_cflags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-bcfobf -mllvm -enable-subobf -mllvm -enable-splitobf -mllvm -enable-indibran -mllvm -enable-strcry -mllvm -enable-constenc"
+
     cfg_cmd = [
         str(cmake), "-S", str(NATIVE_DIR), "-B", str(NATIVE_BUILD_DIR),
         "-G", "Ninja",
-        f"-DCMAKE_C_COMPILER={str(clang).replace(chr(92), '/')}",
+        f"-DCMAKE_C_COMPILER={str(native_clang).replace(chr(92), '/')}",
         f"-DCMAKE_MAKE_PROGRAM={str(ninja).replace(chr(92), '/')}",
         f"-DMINDLESS_JAVA_HOME={str(jdk).replace(chr(92), '/')}",
-        f"-DMINDLESS_FORGE_PAYLOAD_JAR={str(FORGE_JAR).replace(chr(92), '/')}",
-        f"-DMINDLESS_LUNAR_PAYLOAD_JAR={str(LUNAR_JAR).replace(chr(92), '/')}",
+        f"-DMINDLESS_FORGE_PAYLOAD_JAR={str(forge_jar).replace(chr(92), '/')}",
+        f"-DMINDLESS_LUNAR_PAYLOAD_JAR={str(lunar_jar).replace(chr(92), '/')}",
     ]
-    extra_env = {"PATH": str(clang.parent) + os.pathsep + os.environ.get("PATH", "")}
+    if hikari_cflags:
+        cfg_cmd.append(f"-DCMAKE_C_FLAGS_RELEASE={hikari_cflags}")
+    extra_env = {"PATH": str(native_clang.parent) + os.pathsep + os.environ.get("PATH", "")}
 
     # Re-running `cmake configure` unconditionally regenerates build.ninja on
     # every invocation. Even when the regenerated file is logically the same,
@@ -531,6 +620,7 @@ def main():
     build_loader_flag = "--loader" in sys.argv or "--all" in sys.argv or len(sys.argv) == 1
     build_client_flag = "--client" in sys.argv or "--all" in sys.argv or len(sys.argv) == 1
     no_cache_flag = "--no-cache" in sys.argv
+    prod_flag = "--prod" in sys.argv
 
     section("Detecting tools")
 
@@ -620,6 +710,16 @@ def main():
     else:
         warn("No JDK found - MindlessNative.dll build will fail")
 
+    # Voyager (LLVM obfuscator) — only used in --prod mode
+    voyager = None
+    if prod_flag:
+        voyager = detect_voyager()
+        if voyager:
+            ok(f"Voyager       : {voyager}")
+        else:
+            warn("Voyager not found — native code won't be obfuscated")
+            warn("Set VOYAGER_PATH or install at D:\\Hikari-LLVM19\\build\\bin")
+
     save_tool_cache({
         "clang": clang, "lld": lld, "ninja": ninja, "vcpkg": vcpkg, "cmake": cmake,
         "jdk17": jdk17, "jdk_any": jdk_any,
@@ -636,8 +736,19 @@ def main():
             print(f"\n{BOLD}{RED}Build failed.{RESET}")
             sys.exit(1)
 
+        # Obfuscate JARs in --prod mode
+        if prod_flag:
+            section("JAR obfuscation")
+            if not build_obf_jar(jdk17):
+                warn("Skipping JAR obfuscation — MindlessObf build failed")
+            else:
+                if FORGE_JAR.is_file():
+                    obfuscate_jar(jdk17, FORGE_JAR, FORGE_JAR_OBF, "Forge JAR")
+                if LUNAR_JAR.is_file():
+                    obfuscate_jar(jdk17, LUNAR_JAR, LUNAR_JAR_OBF, "Lunar JAR")
+
         if jdk_any and llvm and cmake and ninja:
-            if not build_native_dll(cmake, clang, ninja, jdk_any):
+            if not build_native_dll(cmake, clang, ninja, jdk_any, hikari=voyager):
                 print(f"\n{BOLD}{RED}Build failed.{RESET}")
                 sys.exit(1)
         else:
@@ -645,14 +756,25 @@ def main():
 
     if build_loader_flag and llvm and ninja and vcpkg and cmake:
         section("Updating CMakePresets.json")
-        update_preset(clang, lld, ninja, vcpkg)
+        update_preset(clang, lld, ninja, vcpkg, hikari=voyager)
         ok("preset updated")
+
+        if voyager:
+            extra_env["PATH"] = str(voyager) + os.pathsep + extra_env.get("PATH", os.environ.get("PATH", ""))
+
         if not build_loader(cmake, extra_env):
             success = False
 
     print()
     if success:
         print(f"{BOLD}{GREEN}All done.{RESET}")
+        if prod_flag:
+            print(f"  {GREEN}[PROD BUILD]{RESET}", end="")
+            if voyager:
+                print(f" Voyager obfuscation applied", end="")
+            if FORGE_JAR_OBF.is_file():
+                print(f" + JAR obfuscation", end="")
+            print()
         if OUTPUT_EXE.is_file():
             size_mb = OUTPUT_EXE.stat().st_size / (1024 * 1024)
             print(f"  {GREEN}MindlessLoader.exe{RESET}  {size_mb:.1f} MB  ->  {OUTPUT_EXE}")
