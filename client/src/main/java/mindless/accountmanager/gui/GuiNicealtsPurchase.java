@@ -23,8 +23,6 @@ public class GuiNicealtsPurchase extends GuiScreen {
     private volatile String resultMsg  = null;
     private volatile boolean resultErr = false;
     private final AtomicBoolean purchasing = new AtomicBoolean(false);
-
-    // product_id -> display name, price
     private static final int[]    PIDS   = {1,                    2,                  3,               5,                6};
     private static final String[] NAMES  = {"Hypixel Unbanned 1-7","Hypixel Bedwars 8+","Hypixel Ranked","DonutSMP Unbanned","Banned"};
     private static final String[] PRICES = {"10c",                 "12c",              "20c",           "5c",              "2c"};
@@ -81,8 +79,6 @@ public class GuiNicealtsPurchase extends GuiScreen {
                 String body = "{\"api_key\":\"" + AltShopHttp.escapeJson(apiKey) + "\","
                         + "\"product_id\":\"" + pid + "\"}";
                 String resp = AltShopHttp.post("https://app.nicealts.com/api/purchase", body);
-
-                // parse token from items array: [{mctoken: ... | refreshtoken: ...}]
                 String mcToken = null, refreshToken = null;
                 int as = resp.indexOf("["), ae = resp.lastIndexOf("]");
                 if (as != -1 && ae != -1) {

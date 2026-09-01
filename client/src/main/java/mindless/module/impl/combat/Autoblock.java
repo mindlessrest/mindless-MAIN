@@ -57,13 +57,9 @@ public class Autoblock extends Module {
     private final ButtonSetting preventDelayAttacks;
     private final ButtonSetting blockAgainImmediately;
     private final ButtonSetting forceBlockAnimation;
-
-    // Predict mode settings
     private final SliderSetting predictEarlyWindow;
     private final ButtonSetting predictIncludePing;
     private final SliderSetting predictHoldAfter;
-
-    // Manual mode settings
     private final SliderSetting manualChance;
 
     private boolean isBlocking;
@@ -81,8 +77,6 @@ public class Autoblock extends Module {
     private LagRequest outboundLag;
 
     private int tickCounter;
-
-    // Predict mode state
     private static final int DAMAGE_INTERVAL_CAPACITY = 8;
     private static final int PREDICTION_SAMPLE_COUNT = 3;
     private static final long MIN_DAMAGE_INTERVAL_MS = 250L;
@@ -95,8 +89,6 @@ public class Autoblock extends Module {
     private boolean predictBlocking;
     private boolean predictHoldStarted;
     private long predictHoldUntil;
-
-    // Manual mode state
     private long manualReleaseTime;
 
     public Autoblock() {
@@ -194,8 +186,6 @@ public class Autoblock extends Module {
             }
             e.setCanceled(true);
         }
-
-        // Manual mode: block on left click
         if (e.button == 0 && e.buttonstate && (int) mode.getInput() == MODE_MANUAL) {
             if (currentTarget != null && Utils.holdingSword()) {
                 double chance = manualChance.getInput();
@@ -327,8 +317,6 @@ public class Autoblock extends Module {
             unblockedAfterLeavingRange = true;
             return;
         }
-
-        // Record damage for predict mode
         if (hurtAgain && currentMode == MODE_PREDICT) {
             recordDamageInterval();
             setPredictBlocking(false);
@@ -356,8 +344,6 @@ public class Autoblock extends Module {
             stopBlocking(true);
             manualBlock = false;
         }
-
-        // Mode-specific logic
         if (currentMode == MODE_PREDICT) {
             tickPredict(conditionsMet);
             return;
@@ -367,9 +353,6 @@ public class Autoblock extends Module {
             tickManual(conditionsMet);
             return;
         }
-
-
-        // Vanilla and Lag modes
         if (isLagging) {
             int lagMaxTicks = msToTicks(lagMaxDuration.getInput());
             boolean lagExpired = lagMaxTicks > 0 && lagStartTick >= 0 && currentTick - lagStartTick >= lagMaxTicks;
@@ -405,8 +388,6 @@ public class Autoblock extends Module {
         }
     }
 
-    // --- Predict mode ---
-
     private void tickPredict(boolean conditionsMet) {
         if (!conditionsMet) {
             setPredictBlocking(false);
@@ -421,9 +402,6 @@ public class Autoblock extends Module {
             long avgInterval = getAverageDamageInterval();
             long earlyWindow = getEarlyWindowMs();
             long holdWindow = (long) predictHoldAfter.getInput() * 50L;
-
-            // Advance expected time forward if it's in the past (attacker was late or
-            // we missed the recording), so we always predict the NEXT hit, not a stale one.
             long expectedDamage = lastDamageTimeMs + avgInterval;
             while (expectedDamage + holdWindow < now) {
                 expectedDamage += avgInterval;
@@ -438,8 +416,6 @@ public class Autoblock extends Module {
                 releaseAfterHold();
             }
         } else {
-            // Reactive fallback: block when hurt resistant time is about to allow
-            // the next hit (dropping toward 10), unblock after holding.
             int earlyTicks = getEarlyWindowTicks();
             if (hurtResistantTime > 0 && hurtResistantTime <= 10 + earlyTicks) {
                 if (!isBlocking) startBlocking(tickCounter);
@@ -536,14 +512,11 @@ public class Autoblock extends Module {
         manualReleaseTime = 0L;
     }
 
-    // --- Manual mode ---
-
     private void tickManual(boolean conditionsMet) {
         if (!conditionsMet) {
             stopBlocking(true);
             return;
         }
-        // Release after 50ms
         if (isBlocking && manualReleaseTime > 0 && System.currentTimeMillis() >= manualReleaseTime) {
             stopBlocking(true);
             manualReleaseTime = 0L;
@@ -563,8 +536,6 @@ public class Autoblock extends Module {
                         net.minecraft.network.play.client.C07PacketPlayerDigging.Action.RELEASE_USE_ITEM,
                         net.minecraft.util.BlockPos.ORIGIN, net.minecraft.util.EnumFacing.DOWN));
     }
-
-    // --- Common ---
 
     private boolean checkConditions(boolean lmbDown, boolean rmbDown) {
         if (requireLmb.isToggled() && !lmbDown) return false;

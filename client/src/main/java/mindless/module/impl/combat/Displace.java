@@ -92,9 +92,7 @@ public class Displace extends Module {
     private final ButtonSetting onlyKnockbackItems;
     private final ButtonSetting weaponOnly;
     private final ButtonSetting autoSwap;
-
-    /** The slot held before a swap took the hand, or -1 when nothing has been taken. */
-    private int swapPreviousSlot = -1;
+private int swapPreviousSlot = -1;
 
     private boolean displaceThisTick = false;
     private boolean active = false;
@@ -114,8 +112,7 @@ public class Displace extends Module {
     private int tickCounter;
     private final Map<Integer, Integer> targetWindowStartTicks = new HashMap<>();
     private final Map<Integer, DisplacementLock> targetDisplacementLocks = new HashMap<>();
-    /** Scratch positions and list for the void sweep; see getVoidPathBlockedDistance. */
-    private final BlockPos.MutableBlockPos voidMinCorner = new BlockPos.MutableBlockPos();
+private final BlockPos.MutableBlockPos voidMinCorner = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos voidMaxCorner = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos voidScanPos = new BlockPos.MutableBlockPos();
 
@@ -246,22 +243,7 @@ public class Displace extends Module {
     private boolean isVoidMode() {
         return mode.getInput() == 1.0D;
     }
-
-    /**
-     * Puts a knockback item in hand for the moment a target can be pushed into a void, and gives
-     * the hand back afterwards.
-     *
-     * <p>A sword kills; a knockback stick moves people. Fighting over a ledge those are two
-     * different jobs seconds apart, and doing the swap by hand means either missing the window or
-     * spending the fight on the wrong item. The swap is deliberately tied to a void opportunity
-     * actually existing rather than to being near a ledge -- the module has already worked out
-     * whether there is a direction that would send this target off, and that is a far better
-     * answer than a distance check.
-     *
-     * <p>A stick is preferred over anything else with the same enchantment level, because that is
-     * what the item is for: it does nothing on hit but move them.
-     */
-    private void equipKnockbackItem() {
+private void equipKnockbackItem() {
         if (!autoSwap.isToggled() || !Utils.nullCheck() || mc.currentScreen != null) {
             return;
         }
@@ -281,8 +263,6 @@ public class Displace extends Module {
             if (knockback <= 0) {
                 continue;
             }
-
-            // Level dominates; a stick breaks the tie.
             int score = knockback * 2 + (stack.getItem() == Items.stick ? 1 : 0);
             if (score > bestScore) {
                 bestScore = score;
@@ -299,9 +279,7 @@ public class Displace extends Module {
         }
         mc.thePlayer.inventory.currentItem = bestSlot;
     }
-
-    /** Returns the hand to whatever it was on before the swap. */
-    private void restoreSwappedItem() {
+private void restoreSwappedItem() {
         int slot = swapPreviousSlot;
         swapPreviousSlot = -1;
 
@@ -579,27 +557,7 @@ public class Displace extends Module {
         voidNeighborhoods.put(columnKey, neighborhood);
         return neighborhood;
     }
-
-    /**
-     * Whether terrain intersects the box, stopping at the first block that does.
-     *
-     * <p>This replaces {@code World.getCollidingBoundingBoxes}, which builds a fresh list of every
-     * colliding box in range and was only ever asked whether that list was empty. The sweep runs
-     * forty-eight coarse yaws plus refinement, roughly fifty-seven candidates, each stepping a
-     * quarter block out to the scan radius -- about fourteen hundred of those calls per attack. At
-     * fighting click rates that is fifteen to twenty thousand list allocations a second, which a
-     * flight recording caught as by far the most expensive thing the client was doing.
-     *
-     * <p>Same block range and same per-block test as vanilla, but it returns the moment anything
-     * collides and reuses one list, so a blocked step usually costs a single block lookup and an
-     * open one allocates nothing at all.
-     *
-     * <p>One deliberate difference: vanilla's version also collects entity boxes, so another
-     * player standing near the path counted as blocking it. Terrain is what decides whether there
-     * is a gap to knock someone into, and a bystander moving through should not change the yaw
-     * that gets picked.
-     */
-    private boolean isTerrainBlocking(AxisAlignedBB box) {
+private boolean isTerrainBlocking(AxisAlignedBB box) {
         int minX = MathHelper.floor_double(box.minX);
         int maxX = MathHelper.floor_double(box.maxX + 1.0D);
         int minY = MathHelper.floor_double(box.minY);
@@ -630,12 +588,6 @@ public class Displace extends Module {
     private double getVoidPathBlockedDistance(EntityPlayer target, AxisAlignedBB collisionBox,
                                               double forwardX, double forwardZ,
                                               double fromForward, double toForward) {
-        // Two mutable positions reused for the whole sweep.
-        //
-        // This is the hottest loop in the client when Find void is on: a flight recording put
-        // 2,439 samples in this module against 6 in KillAura, and 426 of 451 samples inside event
-        // dispatch landed in this method. It runs for every candidate yaw at a quarter-block step,
-        // and it was allocating two BlockPos per step purely to ask whether a chunk was loaded.
         for (double forward = fromForward + VOID_COLLISION_STEP;
              forward <= toForward + VOID_SCORE_EPSILON;
              forward += VOID_COLLISION_STEP) {
@@ -1958,8 +1910,6 @@ public class Displace extends Module {
             float offset = (float) yawOffset.getInput();
             displaceYaw = displaceLeft ? playerYaw - offset : playerYaw + offset;
         }
-
-        // Swapped only now, with a target in range and somewhere to send it.
         if (voidOpportunity) {
             equipKnockbackItem();
         }

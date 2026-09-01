@@ -8,18 +8,12 @@ import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.clickgui.components.impl.ModuleComponent;
 import mindless.clickgui.components.impl.SliderComponent;
 import mindless.module.Module;
-import mindless.module.impl.client.CommandLine;
 import mindless.module.impl.client.Gui;
 import mindless.module.setting.impl.SliderSetting;
-import mindless.utility.CommandHandler;
 import mindless.utility.Timer;
-import mindless.utility.Utils;
-import mindless.utility.font.FontManager;
-import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.gui.ScaledResolution;
@@ -32,7 +26,6 @@ import net.minecraftforge.common.MinecraftForge;
 import mindless.utility.gui.MindlessButton;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
-import org.lwjgl.opengl.GL11;
 
 import java.awt.*;
 import java.io.IOException;
@@ -159,7 +152,6 @@ public class ClickGui extends GuiScreen {
         reloadModulesForCurrentMode();
         (this.commandLineInput = new GuiTextField(1, this.mc.fontRendererObj, 22, this.height - 100, 150, 20)).setMaxStringLength(256);
         this.buttonList.add(this.commandLineSend = new MindlessButton(2, 22, this.height - 70, 150, 20, "Send"));
-        this.commandLineSend.visible = CommandLine.opened;
         this.previousScale = configuredScale;
     }
 
@@ -175,7 +167,6 @@ public class ClickGui extends GuiScreen {
         }
         (this.commandLineInput = new GuiTextField(1, this.mc.fontRendererObj, 22, this.height - 100, 150, 20)).setMaxStringLength(256);
         this.buttonList.add(this.commandLineSend = new MindlessButton(2, 22, this.height - 70, 150, 20, "Send"));
-        this.commandLineSend.visible = CommandLine.opened;
     }
 
     /** Categories in render order: least recently interacted first (so most recent drawn on top). */
@@ -265,35 +256,6 @@ public class ClickGui extends GuiScreen {
         }
 
 
-        if (CommandLine.opened) {
-            if (!this.commandLineSend.visible) {
-                this.commandLineSend.visible = true;
-            }
-
-            r = CommandLine.animate.isToggled() ? CommandLine.animation.getValueInt(0, 200, 2) : 200;
-            if (CommandLine.closed) {
-                r = 200 - r;
-                if (r == 0) {
-                    CommandLine.closed = false;
-                    CommandLine.opened = false;
-                    this.commandLineSend.visible = false;
-                }
-            }
-            drawRect(0, 0, r, this.height, -1089466352);
-            this.drawHorizontalLine(0, r - 1, (this.height - 345), -1);
-            this.drawHorizontalLine(0, r - 1, (this.height - 115), -1);
-            drawRect(r - 1, 0, r, this.height, -1);
-            CommandHandler.renderCommandOutput(this.fontRendererObj, this.height, r, this.sr.getScaleFactor());
-            int x2 = r - 178;
-            this.commandLineInput.xPosition = x2;
-            this.commandLineSend.xPosition = x2;
-            this.commandLineInput.drawTextBox();
-            super.drawScreen(logicalMouseX, logicalMouseY, p);
-        }
-        else if (CommandLine.closed) {
-            CommandLine.closed = false;
-        }
-
         GlStateManager.popMatrix();
     }
 
@@ -334,11 +296,6 @@ public class ClickGui extends GuiScreen {
                     break;
                 }
             }
-        }
-
-        if (CommandLine.opened) {
-            this.commandLineInput.mouseClicked(mouseX, mouseY, mouseButton);
-            super.mouseClicked(mouseX, mouseY, mouseButton);
         }
 
         if (mouseButton == 0 || mouseButton == 1) {
@@ -460,22 +417,10 @@ public class ClickGui extends GuiScreen {
                 }
             }
         }
-        if (CommandLine.opened) {
-            String cm = this.commandLineInput.getText();
-            if (k == 28 && !cm.isEmpty()) {
-                CommandHandler.runCommand(this.commandLineInput.getText());
-                this.commandLineInput.setText("");
-                return;
-            }
-            this.commandLineInput.textboxKeyTyped(t, k);
-        }
     }
 
     private boolean adjustHoveredSlider(int keyCode) {
         if (keyCode != Keyboard.KEY_LEFT && keyCode != Keyboard.KEY_RIGHT) {
-            return false;
-        }
-        if (CommandLine.opened && this.commandLineInput.isFocused()) {
             return false;
         }
 
@@ -525,10 +470,9 @@ public class ClickGui extends GuiScreen {
         int heldKey = this.heldArrowDirection > 0 ? Keyboard.KEY_RIGHT : Keyboard.KEY_LEFT;
         SliderComponent hoveredSlider = getHoveredSlider(mouseX, mouseY);
         if (!Keyboard.isKeyDown(heldKey)
-            || binding()
-            || (CommandLine.opened && this.commandLineInput.isFocused())
-            || hoveredSlider == null
-            || hoveredSlider.sliderSetting != this.heldArrowSlider) {
+                || binding()
+                || hoveredSlider == null
+                || hoveredSlider.sliderSetting != this.heldArrowSlider) {
             clearHeldSliderAdjustment();
             return;
         }
@@ -541,9 +485,9 @@ public class ClickGui extends GuiScreen {
 
         long acceleratingDuration = heldDuration - ARROW_HOLD_DELAY_MS;
         long repeatDelay = Math.max(
-            ARROW_MIN_REPEAT_MS,
-            Math.round(ARROW_INITIAL_REPEAT_MS
-                * Math.pow(0.5D, acceleratingDuration / ARROW_ACCELERATION_HALF_LIFE_MS))
+                ARROW_MIN_REPEAT_MS,
+                Math.round(ARROW_INITIAL_REPEAT_MS
+                        * Math.pow(0.5D, acceleratingDuration / ARROW_ACCELERATION_HALF_LIFE_MS))
         );
         if (now - this.lastArrowAdjustmentAt >= repeatDelay) {
             hoveredSlider.adjustValue(this.heldArrowDirection);
@@ -556,13 +500,6 @@ public class ClickGui extends GuiScreen {
         this.heldArrowDirection = 0;
         this.arrowHoldStartedAt = 0L;
         this.lastArrowAdjustmentAt = 0L;
-    }
-
-    public void actionPerformed(GuiButton b) {
-        if (b == this.commandLineSend) {
-            CommandHandler.runCommand(this.commandLineInput.getText());
-            this.commandLineInput.setText("");
-        }
     }
 
     @Override
@@ -749,4 +686,3 @@ public class ClickGui extends GuiScreen {
         return Gui.getClickGuiScale();
     }
 }
-

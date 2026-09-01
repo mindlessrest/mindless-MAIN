@@ -15,10 +15,6 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
-
-/**
- * @author pablolnmak
- */
 @SideOnly(Side.CLIENT)
 @Mixin(RenderGlobal.class)
 public class MixinRenderGlobal {

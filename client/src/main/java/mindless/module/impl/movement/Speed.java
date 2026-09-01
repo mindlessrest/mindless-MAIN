@@ -163,8 +163,6 @@ public class Speed extends Module {
             }
             return;
         }
-
-        // Ground mode
         if (mc.thePlayer.onGround && (!jumpMoving.isToggled() || Utils.isMoving())) {
             if (mc.thePlayer.moveForward <= -0.5 && mc.thePlayer.moveStrafing == 0
                     && KillAura.target == null && !Utils.noSlowingBackWithBow()
@@ -193,17 +191,7 @@ public class Speed extends Module {
             hopping = false;
         }
     }
-
-    /**
-     * Grim mode: strafe optimization within vanilla physics bounds.
-     *
-     * Stays within Grim's prediction by only using legal vanilla mechanics:
-     * - Sprint + jump for maximum ground→air speed
-     * - Optimal strafe angles for speed preservation through turns
-     * - Maintains sprint flag through air
-     * - No illegal speed additions — just optimized input timing
-     */
-    private void tickGrim(PreMotionEvent e) {
+private void tickGrim(PreMotionEvent e) {
         if (((mc.thePlayer.isInWater() || mc.thePlayer.isInLava()) && liquidDisable.isToggled())
                 || (mc.thePlayer.isSneaking() && sneakDisable.isToggled())) return;
         if (!Utils.isMoving()) {

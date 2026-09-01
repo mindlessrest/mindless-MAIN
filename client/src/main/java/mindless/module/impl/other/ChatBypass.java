@@ -14,12 +14,10 @@ import java.util.List;
 public class ChatBypass extends Module {
     private ButtonSetting filterKnownWords;
     private List<String> filteredWords = Arrays.asList(
-            // blocked words
             "kill", "retard", "anal", "beaner", "bestiality", "blowjob", "cameltoe", "chink", "clit", "cock", "coon", "cunnilingus", "cunt", "dick", "dildo", "dilf", "dyke", "ejaculate", "ejaculati" /*ing & ion*/,
             "fag", "foreskin", "gilf", "hentai", "jerkoff", "jizz", "kike", "kill yourself", "kill urself", "kys", "loli", "masturbate", "masturbati" /*ing & ion*/, "milf", "nazi", "nigga", "nigger",
             "orgy", "pedo", "penis", "porn", "pussy", "rape", "raping", "redtube", "retard", "schlong", "shemale", "sex", "swastika", "tits", "titties", "trannie", "tranny", "vagina", "whore", "xhamster",
             "xvideos", "end",
-            // censored words
             "arse", "ass", "bastard", "bitch", "boob", "douche", "fuck", "hitler", "shit", "twat", "wank"
     );
 
@@ -102,8 +100,6 @@ public class ChatBypass extends Module {
                 .replace("A", replace_A).replace("E", replace_E).replace("I", replace_I)
                 .replace("O", replace_O).replace("U", replace_U).replace("Y", replace_Y);
     }
-
-    // assumes its already a command (starts with /)
     private boolean isValidCommand(String msg) {
         for (String cmd : allowedCommands) {
             String _cmd = "/" + cmd + " ";

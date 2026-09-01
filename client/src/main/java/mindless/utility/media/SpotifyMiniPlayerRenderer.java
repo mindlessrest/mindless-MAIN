@@ -36,17 +36,8 @@ public final class SpotifyMiniPlayerRenderer {
     private static final float IDLE_WIDTH = 186.0F;
     private static final float IDLE_HEIGHT = 48.0F;
     private static final float ENTRY_OFFSET = 18.0F;
-    // SMTC reports Spotify position with ~200-400ms latency vs audio.
-    // On high-latency outputs (Bluetooth, USB DAC) the user hears audio
-    // 150-300ms after the SMTC position advances, making lyrics appear early.
-    // A small negative lead delays the visual to better match perceived audio.
-    // Users can fine-tune with the "Lyrics sync" slider.
     private static final long LYRIC_RENDER_LEAD_MS = -200L;
     private static final long LYRIC_SEEK_RESET_MS = 2400L;
-    // Increased from 320 to 700: SMTC can report positions 300-500ms behind
-    // the running interpolated clock when Spotify updates infrequently. A tight
-    // tolerance caused false-positive rewind detections that reset the scroll
-    // animation every few seconds, producing a visible flash/flicker.
     private static final long LYRIC_REWIND_TOLERANCE_MS = 700L;
     private static final long LYRIC_TRANSITION_MS = 420L;
     private static final int SAVED_GL_STATE = GL11.GL_ENABLE_BIT
@@ -76,14 +67,10 @@ public final class SpotifyMiniPlayerRenderer {
     private static volatile TimedLyrics asyncWrappedSource;
     private static Future<?> asyncWrappedTask;
     private static String cachedAdaptiveFontKey = "";
-    /** Line advance the lyrics block used last frame, so the panel can size itself for a wrap. */
-    private static float lastLyricLineAdvance;
-    /** The wrapped layout the reserved line count was measured from. */
-    private static List<WrappedLyric> overflowSource;
-    /** Lines past the first that the current track's longest lyric needs. */
-    private static float overflowLines;
-    /** Lines past the first that a lyric may push the panel taller for. */
-    private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
+private static float lastLyricLineAdvance;
+private static List<WrappedLyric> overflowSource;
+private static float overflowLines;
+private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
     private static MindlessFontRenderer cachedAdaptiveLyricFont;
     private static volatile String asyncAdaptiveFontKey;
     private static volatile MindlessFontRenderer asyncAdaptiveLyricFont;
@@ -138,9 +125,6 @@ public final class SpotifyMiniPlayerRenderer {
     private static void renderIsolated(boolean previewMode) {
         final int previousFramebuffer = GL11.glGetInteger(
                 EXTFramebufferObject.GL_FRAMEBUFFER_BINDING_EXT);
-        // GL_ALL_ATTRIB_BITS forces old drivers to snapshot a large amount of
-        // unrelated world state every HUD frame. Save only the state touched
-        // by this renderer while still restoring Lunar's exact viewport.
         GL11.glPushAttrib(SAVED_GL_STATE);
         GL11.glPushMatrix();
         try {
@@ -149,11 +133,6 @@ public final class SpotifyMiniPlayerRenderer {
         finally {
             GL11.glPopMatrix();
             RenderUtils.popAttrib();
-
-            // The old 1.8 render stack mixes cached GlStateManager calls with
-            // direct OpenGL calls. Restore the actual fixed-function baseline
-            // as well as the saved attributes so the next HUD/world pass can
-            // never inherit the player's animated colors.
             GL20.glUseProgram(0);
             GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
             EXTFramebufferObject.glBindFramebufferEXT(
@@ -191,9 +170,6 @@ public final class SpotifyMiniPlayerRenderer {
         SystemMediaInfo mediaInfo = previewMode ? createPreviewInfo() : mediaClient.getCurrentInfo();
         boolean hideWhenPaused = !previewMode && SpotifyMiniPlayer.hideWhenPaused != null && SpotifyMiniPlayer.hideWhenPaused.isToggled();
         boolean mediaVisible = mediaInfo.isAvailable() && (!mediaInfo.isPaused() || !hideWhenPaused);
-        // Only show the idle card when a media session IS detected (isAvailable=true) but
-        // not currently visible (e.g. paused). When nothing is detected at all, hide
-        // completely — don't show a "No media found" placeholder.
         boolean showIdleCard = previewMode || (mediaInfo.isAvailable() && !mediaVisible
                 && SpotifyMiniPlayer.showIdleCard != null && SpotifyMiniPlayer.showIdleCard.isToggled());
         boolean shouldShow = previewMode || mediaVisible || showIdleCard;
@@ -240,18 +216,12 @@ public final class SpotifyMiniPlayerRenderer {
         TimedLyrics timedLyrics = mediaVisible ? mediaClient.getTimedLyrics() : TimedLyrics.empty();
         long livePositionMs = mediaInfo.getLivePositionMs();
         boolean renderLyrics = showLyrics && timedLyrics.isAvailable() && !timedLyrics.getLines().isEmpty();
-        // Keep the lyrics area reserved while a fetch is in flight. Dropping it the instant the
-        // lyrics went unavailable made the panel shrink and grow again on every track change,
-        // which is most of what read as flicker.
         boolean lyricsArea = showLyrics && (renderLyrics || timedLyrics.isLoading());
         LyricsTimeline lyricsTimeline = renderLyrics ? buildLyricsTimeline(mediaInfo, timedLyrics, livePositionMs) : null;
         MindlessFontRenderer lyricFont = uiFont;
         float lowScaleBreathingRoom = lowScaleLayout ? 8.0F : 0.0F;
         float width = getPanelWidth(mediaVisible, showAlbumArt) * uiScale + lowScaleBreathingRoom;
         float lyricOverflow = lyricsArea ? lyricOverflowHeight(timedLyrics) : 0.0F;
-        // The visualiser is a section of this panel, not something drawn over it, so the panel is
-        // made taller by exactly what the section needs. Everything below works from the same two
-        // numbers, which is what keeps the lyrics and the album art from running underneath it.
         boolean showVisualizer = mediaVisible && AudioVisualizer.wantsMiniPlayerSection();
         float visualizerSection = showVisualizer
                 ? AudioVisualizer.miniPlayerSectionHeight(uiScale) : 0.0F;
@@ -309,9 +279,6 @@ public final class SpotifyMiniPlayerRenderer {
             }
         }
         float titleY = contentTop + Math.max(0.0F, Math.min(4.5F * uiScale, (contentHeight - totalTextHeight) * 0.24F));
-        // Held back to the size it would have been without the extra lyric line. Letting the
-        // art follow the taller panel would widen it, narrow the text column, and risk wrapping
-        // the lyric again -- the feedback lyricOverflowHeight exists to avoid.
         float artBottom = (showProgress ? progressBarY : y + height - padding)
                 - lyricOverflow - visualizerReserve;
         float artSize = showAlbumArt ? Math.max(28.0F * uiScale, artBottom - titleY) : 0.0F;
@@ -374,18 +341,6 @@ public final class SpotifyMiniPlayerRenderer {
         }
 
         if (showVisualizer) {
-            // Aligned to the text column and drawn without any panel of its own.
-            //
-            // Full width put the bars underneath the album art, so the strip ran across the
-            // artwork instead of belonging to the track it describes. Starting at textX means it
-            // lines up with the title, the artist and the lyrics -- the column it is actually part
-            // of -- and it can no longer touch the art whatever size the art happens to be.
-            //
-            // No card either. This already sits inside a glass panel, so a bordered rounded box
-            // around the bars was a box drawn on a box; the bars stand on their own baseline
-            // instead, which is what the separator above the lyrics and the progress bar below
-            // already do. The panel settings still apply in standalone mode, where there is
-            // nothing behind the bars to read them against.
             float visualizerBottom = (showProgress
                     ? progressBarY - Math.max(4.0F, 4.75F * uiScale)
                     : y + height - padding);
@@ -480,9 +435,6 @@ public final class SpotifyMiniPlayerRenderer {
         BlurUtils.prepareBlur(x, y, width, height);
         RoundedUtils.drawRound(x, y, width, height, radius,
                 new Color(0, 0, 0, blurMaskAlpha));
-        // Only composite the player rectangle. The blurred scene itself is
-        // shared with chat/scoreboard for this frame, while avoiding a second
-        // full-screen blend just for this small HUD element.
         BlurUtils.blurEndRegion(1, 1.4F, 0.72F, x, y, width, height);
 
         RoundedUtils.drawRoundShadow(x, y, width, height, radius, 4.5F,
@@ -582,8 +534,6 @@ public final class SpotifyMiniPlayerRenderer {
         int focusIndex = activeIndex < 0 ? 0 : activeIndex;
         WrappedLyric focus = lyrics.get(focusIndex);
         float totalHeight = lyrics.get(lyrics.size() - 1).bottom;
-
-        // Center active lyric in the viewport; prev/next lines visible at edges
         float targetOffset;
         if (fullLyricsView) {
             targetOffset = focus.top - viewportHeight * 0.34F;
@@ -595,10 +545,6 @@ public final class SpotifyMiniPlayerRenderer {
             targetOffset = focus.top;
         }
         targetOffset = Math.max(0.0F, Math.min(Math.max(0.0F, totalHeight - viewportHeight), targetOffset));
-        // The line being sung is the one that has to be readable in full. Centring gets that
-        // right on its own, but clamping to the ends of the song does not, and neither does a
-        // block tall enough to be worth scrolling within -- either can leave it half out of the
-        // viewport, which is the line getting cut off.
         if (focus.height <= viewportHeight) {
             targetOffset = Math.min(focus.top,
                     Math.max(focus.top + focus.height - viewportHeight, targetOffset));
@@ -607,11 +553,8 @@ public final class SpotifyMiniPlayerRenderer {
 
         long now = animationTimeMs();
         float scrollOffset = getLyricScrollOffset(now);
-        // Show one line before and after active so prev/next peek into view
         int firstIndex = fullLyricsView ? 0 : Math.max(0, activeIndex - 1);
         int lastIndex  = fullLyricsView ? lyrics.size() - 1 : Math.min(lyrics.size() - 1, activeIndex + 1);
-        // A hair taller than the viewport: cutting exactly on the boundary shaved the tails off
-        // the g's and y's on the bottom line. There is a gap to the progress bar below to spend.
         RenderUtils.scissorPushGui(textX - 2.0F, lyricY - 1.0F, textWidth + 4.0F, viewportHeight + 2.0F);
         try {
             for (int i = firstIndex; i <= lastIndex; i++) {
@@ -655,8 +598,6 @@ public final class SpotifyMiniPlayerRenderer {
 
         long elapsed = Math.max(0L, animationTimeMs() - marqueeStartedAt);
         long holdMs = 3000L;
-        // Keep moving after the end first becomes visible. Reset only once the
-        // title's trailing edge reaches the viewport's starting (left) edge.
         float maxOffset = titleWidth + 2.0F;
         float pixelsPerSecond = 18.0F;
         long scrollMs = Math.max(1L, Math.round(maxOffset / pixelsPerSecond * 1000.0F));
@@ -732,9 +673,6 @@ public final class SpotifyMiniPlayerRenderer {
 
     private static void drawGradientLyricString(MindlessFontRenderer font, String text, float x,
                                                 float y, int alpha, double phaseOffset) {
-        // One font pass keeps karaoke animation cheap. The previous per-letter
-        // draw calls repeatedly pushed matrices and rebound state, which could
-        // make the entire player feel as though it rendered at a low frame rate.
         font.drawGlyphString(text, x, y,
                 (character, glyphOffset, glyphWidth, formattingColor) ->
                         Utils.mergeAlpha(HUD.getHudColor(
@@ -764,8 +702,6 @@ public final class SpotifyMiniPlayerRenderer {
         if (!blendEnabled) {
             GlStateManager.disableBlend();
         }
-        // The circle color was set through raw OpenGL, so invalidate
-        // GlStateManager's cached value before restoring white.
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         GlStateManager.resetColor();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
@@ -815,12 +751,6 @@ public final class SpotifyMiniPlayerRenderer {
                 }
             });
         }
-
-        // Hold the previous layout while the new one is computed instead of returning nothing.
-        // Returning an empty list here blanks the lyrics for however many frames the wrap takes,
-        // which is a visible flash. A stale layout for a frame or two is far less noticeable --
-        // and during an actual track change the manager reports "loading", so the lyrics block
-        // is not drawn at all and no stale text can appear.
         if (layoutKey.equals(cachedLyricsLayoutKey) && !cachedWrappedLyrics.isEmpty()) {
             return cachedWrappedLyrics;
         }
@@ -1056,33 +986,11 @@ public final class SpotifyMiniPlayerRenderer {
         }
         return showAlbumArt ? PLAYER_WIDTH_WITH_ART : PLAYER_WIDTH_NO_ART;
     }
-
-    /**
-     * Extra height the lyrics block is given, measured over the whole track.
-     *
-     * It reserves one line by default, and plenty of lyrics do not fit the column in one --
-     * "'Cause they see we are living, ghetto fabulous" wraps to two -- so the second line fell
-     * outside the viewport and was clipped through the middle.
-     *
-     * The measurement is the longest line in the song, not the line being sung. Sizing to the
-     * current one means the panel grows and shrinks every time the lyric changes, which is once
-     * every few seconds, and the whole player breathes in and out for the length of the track.
-     * Whatever a lyric costs, the room for it was already there.
-     *
-     * The wrap is read from the previous frame's layout on purpose. Working it out up front
-     * would mean knowing the text width, which depends on the album art, which depends on the
-     * height this is being used to decide -- a taller panel means bigger art, a narrower column,
-     * and possibly another line, round and round. A frame-old line count has none of that, and
-     * settles in one frame.
-     */
-    private static float lyricOverflowHeight(TimedLyrics timedLyrics) {
+private static float lyricOverflowHeight(TimedLyrics timedLyrics) {
         if (lastLyricLineAdvance <= 0.0F || cachedLyricsSource != timedLyrics) return 0.0F;
 
         List<WrappedLyric> lyrics = cachedWrappedLyrics;
         if (lyrics.isEmpty()) return 0.0F;
-
-        // Measured once per layout. The list is replaced wholesale when anything it depends on
-        // changes, so its identity is enough to know the answer still holds.
         if (lyrics != overflowSource) {
             int most = 1;
             for (WrappedLyric lyric : lyrics) most = Math.max(most, lyric.lines.size());
@@ -1405,9 +1313,7 @@ public final class SpotifyMiniPlayerRenderer {
     private static MindlessFontRenderer cachedUiFont;
     private static String cachedLyricFontKey = "";
     private static MindlessFontRenderer cachedLyricFont;
-
-    /** The widget's own text: title, artist, badges, the note glyph on a missing cover. */
-    private static MindlessFontRenderer getUiFontRenderer(float textScale) {
+private static MindlessFontRenderer getUiFontRenderer(float textScale) {
         String fontName = SpotifyMiniPlayer.widgetFontName();
         float baseScale = HUD.getSelectedFontScale();
         float effectiveScale = baseScale * Math.max(0.6F, textScale);
@@ -1419,16 +1325,7 @@ public final class SpotifyMiniPlayerRenderer {
         cachedUiFont = FontManager.getHudRenderer(fontName, effectiveScale);
         return cachedUiFont;
     }
-
-    /**
-     * The lyric lines, which carry a face of their own.
-     *
-     * <p>Its own cache slot rather than sharing the widget's: the two are asked for in the same
-     * frame, so one slot between them would miss on every call once the faces differ. This one is
-     * also read from the adaptive-fit task on a background thread, which is the other reason to
-     * keep it off the slot the render thread is turning over.
-     */
-    private static MindlessFontRenderer getLyricFontRenderer(float textScale) {
+private static MindlessFontRenderer getLyricFontRenderer(float textScale) {
         String fontName = SpotifyMiniPlayer.lyricsFontName();
         float baseScale = HUD.getSelectedFontScale();
         float effectiveScale = baseScale * Math.max(0.6F, textScale);
@@ -1446,9 +1343,7 @@ public final class SpotifyMiniPlayerRenderer {
     private static void drawMiniText(MindlessFontRenderer font, String text, float x, float y, int color, boolean shadow) {
         font.drawString(text, x, y, color, shadow);
     }
-
-    /** Monotonic clock for visual interpolation; immune to wall-clock jumps. */
-    private static long animationTimeMs() {
+private static long animationTimeMs() {
         return System.nanoTime() / 1_000_000L;
     }
 

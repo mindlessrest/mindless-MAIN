@@ -9,26 +9,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-/**
- * Pulls the next game event off the scoreboard and puts it somewhere you will look.
- *
- * <p>Hypixel already counts down to the diamond and emerald upgrades, sudden death and game end
- * -- on the sidebar, in small text, in the corner, behind whatever else is going on. The
- * information is fine; where it lives is the problem.
- *
- * <p>Read from the sidebar rather than timed from the game start. A timer of our own drifts,
- * breaks on a rejoin, and has to know the mode; the scoreboard is the server's own count and is
- * right by construction. The cost is that it only works in English, which is also true of the
- * mod this came from.
- */
 public class EventTimers extends BedwarsHud {
-    /** "Diamond II in 3:45", "Sudden Death in 0:30", and the rest of the family. */
-    private static final Pattern EVENT_LINE =
+private static final Pattern EVENT_LINE =
             Pattern.compile("^(.+?)\\s+in\\s+(\\d{1,2}:\\d{2})$");
-
-    /** Under this many seconds the countdown turns red: enough time to react, not much more. */
-    private static final int URGENT_SECONDS = 30;
+private static final int URGENT_SECONDS = 30;
 
     private final ButtonSetting dynamicColour;
 
@@ -64,14 +48,10 @@ public class EventTimers extends BedwarsHud {
             this.remaining = matcher.group(2);
             return;
         }
-
-        // No event line at all: the game is over, or between phases.
         this.event = "";
         this.remaining = "";
     }
-
-    /** Seconds left, or -1 when the countdown cannot be read. */
-    private int secondsLeft() {
+private int secondsLeft() {
         int colon = remaining.indexOf(':');
         if (colon <= 0) return -1;
         try {

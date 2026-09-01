@@ -44,24 +44,15 @@ public class TargetHUD extends Module {
     private SliderSetting ringColorMode;
     private SliderSetting headStyle;
     private final ColorSetting[] ringColors = new ColorSetting[RING_COUNT];
-
-    /** The leading ring plus its trail. Index 0 is the ring on the beat; the rest lag behind it. */
-    private static final int RING_COUNT = 6;
+private static final int RING_COUNT = 6;
     private static final String[] RING_COLOR_MODES = new String[] { "Theme", "Array list", "Custom" };
     private static final String[] HEAD_STYLES = new String[] { "3D", "Flat" };
     private static final int HEAD_STYLE_3D = 0;
     private static final int RING_MODE_THEME = 0;
     private static final int RING_MODE_ARRAY_LIST = 1;
     private static final int RING_MODE_CUSTOM = 2;
-    /**
-     * How far apart the trail rings sit in the array list gradient.
-     *
-     * <p>Large enough that six rings span a visible part of the sweep rather than all landing on
-     * effectively the same colour, and not so large that the trail stops looking like one object.
-     */
-    private static final double RING_GRADIENT_SPREAD = 26.0;
-    /** Defaults form a cool sweep, so Custom starts as something rather than six identical rings. */
-    private static final int[] DEFAULT_RING_COLORS = {
+private static final double RING_GRADIENT_SPREAD = 26.0;
+private static final int[] DEFAULT_RING_COLORS = {
         0xFFFFFF, 0xC8E4FF, 0x9CC9FF, 0x74A8FF, 0x5A86F0, 0x4666D8
     };
 
@@ -122,15 +113,7 @@ public class TargetHUD extends Module {
             }
         }
     }
-
-    /**
-     * The colour of one ring, counting outward from the leading one.
-     *
-     * <p>Array list mode reads the same gradient the module list is drawn in, one step further
-     * along it per ring, so the trail shows the sweep travelling rather than six copies of
-     * whatever the gradient happened to be on this frame.
-     */
-    private int ringColor(int ringIndex) {
+private int ringColor(int ringIndex) {
         int colorMode = ringColorMode == null ? RING_MODE_THEME : (int) ringColorMode.getInput();
 
         if (colorMode == RING_MODE_ARRAY_LIST) {
@@ -476,34 +459,10 @@ public class TargetHUD extends Module {
             }
         } catch (Exception ignored) {}
     }
-
-
-    // ------------------------------------------------------------------------------- 3D head
-
-    /**
-     * The head as a cube rather than a square of the skin.
-     *
-     * <p>Projected here rather than handed to OpenGL as a rotation. The HUD is drawn under an
-     * orthographic projection with the Y axis pointing down, which flips the handedness and with
-     * it the winding of every face -- so backface culling, the usual way to get a solid to draw
-     * correctly without a depth buffer, comes out inside-out. Rotating the eight corners in Java
-     * gives the face normals directly: a face is drawn when its normal still points at the viewer,
-     * which is the same result culling would give and does not care which way the projection
-     * happens to be wound.
-     *
-     * <p>The hat is a second, slightly larger cube drawn over the first. It is a separate pass
-     * because it is transparent almost everywhere, and with no depth buffer involved the later
-     * draw simply lands on top -- which is exactly the layering wanted.
-     */
-    private void drawHeadCube(float x, float y, float width, float height, int alpha) {
+private void drawHeadCube(float x, float y, float width, float height, int alpha) {
         float centerX = x + width * 0.5f;
         float centerY = y + height * 0.5f;
-        // Small enough that the corners of a turned cube still sit inside the square the flat head
-        // occupied, hat layer included.
         float size = Math.min(width, height) * 0.66f;
-
-        // A slow sway rather than a fixed pose. Static three-quarter views read as a picture of a
-        // head; a little movement reads as a model of one.
         double seconds = (System.currentTimeMillis() % 6000L) / 6000.0;
         float yaw = (float) Math.toRadians(-26.0 + Math.sin(seconds * Math.PI * 2.0) * 8.0);
         float pitch = (float) Math.toRadians(14.0);
@@ -511,30 +470,18 @@ public class TargetHUD extends Module {
         drawSkinCube(centerX, centerY, size, yaw, pitch, alpha, 0.0f);
         drawSkinCube(centerX, centerY, size * 1.09f, yaw, pitch, alpha, 32.0f);
     }
-
-    /** Face corners in model space, counter-clockwise from the top-left of the face texture. */
-    private static final float[][][] HEAD_FACES = {
-        // +Z front
+private static final float[][][] HEAD_FACES = {
         {{-.5f, .5f, .5f}, {.5f, .5f, .5f}, {.5f, -.5f, .5f}, {-.5f, -.5f, .5f}},
-        // -Z back
         {{.5f, .5f, -.5f}, {-.5f, .5f, -.5f}, {-.5f, -.5f, -.5f}, {.5f, -.5f, -.5f}},
-        // -X, the side that faces the viewer's left when the face is toward them
         {{-.5f, .5f, -.5f}, {-.5f, .5f, .5f}, {-.5f, -.5f, .5f}, {-.5f, -.5f, -.5f}},
-        // +X
         {{.5f, .5f, .5f}, {.5f, .5f, -.5f}, {.5f, -.5f, -.5f}, {.5f, -.5f, .5f}},
-        // +Y top
         {{-.5f, .5f, -.5f}, {.5f, .5f, -.5f}, {.5f, .5f, .5f}, {-.5f, .5f, .5f}},
-        // -Y bottom
         {{-.5f, -.5f, .5f}, {.5f, -.5f, .5f}, {.5f, -.5f, -.5f}, {-.5f, -.5f, -.5f}}
     };
-
-    /** Outward normal per face, in the same order. */
-    private static final float[][] HEAD_NORMALS = {
+private static final float[][] HEAD_NORMALS = {
         {0f, 0f, 1f}, {0f, 0f, -1f}, {-1f, 0f, 0f}, {1f, 0f, 0f}, {0f, 1f, 0f}, {0f, -1f, 0f}
     };
-
-    /** Texture rectangle per face, in skin pixels: u, v, width, height. */
-    private static final float[][] HEAD_UVS = {
+private static final float[][] HEAD_UVS = {
         {8f, 8f, 8f, 8f}, {24f, 8f, 8f, 8f}, {0f, 8f, 8f, 8f},
         {16f, 8f, 8f, 8f}, {8f, 0f, 8f, 8f}, {16f, 0f, 8f, 8f}
     };
@@ -552,7 +499,6 @@ public class TargetHUD extends Module {
         GL11.glBegin(GL11.GL_QUADS);
         for (int face = 0; face < HEAD_FACES.length; face++) {
             float[] normal = rotate(HEAD_NORMALS[face], cosYaw, sinYaw, cosPitch, sinPitch);
-            // Facing away: whatever is behind the cube cannot be seen through it.
             if (normal[2] <= 0.0f) {
                 continue;
             }
@@ -564,7 +510,6 @@ public class TargetHUD extends Module {
                 float u = uv[0] + textureUOffset + (corner == 1 || corner == 2 ? uv[2] : 0.0f);
                 float v = uv[1] + (corner == 2 || corner == 3 ? uv[3] : 0.0f);
                 GL11.glTexCoord2f(u / SKIN_TEXTURE_SIZE, v / SKIN_TEXTURE_SIZE);
-                // Y is negated because the HUD grows downward and the model does not.
                 GL11.glVertex2f(centerX + rotated[0] * size, centerY - rotated[1] * size);
             }
         }

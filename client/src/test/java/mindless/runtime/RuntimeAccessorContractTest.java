@@ -11,8 +11,6 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertTrue;
-
-/** Prevents code used by native injection from reintroducing Mixin-only casts. */
 public class RuntimeAccessorContractTest {
     @Test
     public void productionCodeDoesNotCastToMixinAccessors() throws Exception {

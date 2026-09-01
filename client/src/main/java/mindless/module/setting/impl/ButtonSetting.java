@@ -86,7 +86,6 @@ public class ButtonSetting extends Setting {
 
     @Override
     public void resetToDefault() {
-        // A button that runs something has no value to restore, and toggling it would run it.
         if (!isMethodButton) {
             isEnabled = capturedDefault;
         }

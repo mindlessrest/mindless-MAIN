@@ -16,25 +16,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-/**
- * Finds your bed and tells you when someone is walking towards it.
- *
- * <p>The bed is the game. Losing it while you are three islands away, with nobody having said a
- * word, is how most games are actually lost -- so this locates it once at spawn and then watches
- * who gets close.
- *
- * <p>The find is deliberately delayed. At the moment the game starts the island is often not
- * loaded yet, and a scan against empty chunks finds nothing and gives up. Waiting a few seconds
- * costs nothing and is the difference between finding the bed and reporting that you have none.
- */
 public class BedTracker extends BedwarsHud {
-    /** Half-width of the scan box. A bedwars island fits inside this comfortably. */
-    private static final int SCAN_RADIUS = 25;
-    /** Time after the trigger line before the world is worth scanning. */
-    private static final long SCAN_DELAY_MS = 6000L;
-    /** Nobody is near your bed in the first seconds of a game; alerting then is just noise. */
-    private static final long SETTLE_MS = 6000L;
+private static final int SCAN_RADIUS = 25;
+private static final long SCAN_DELAY_MS = 6000L;
+private static final long SETTLE_MS = 6000L;
 
     private final SliderSetting frequency;
     private final SliderSetting distance;
@@ -70,21 +55,16 @@ public class BedTracker extends BedwarsHud {
         urchinChecked.clear();
     }
 
-    // ------------------------------------------------------------------ chat triggers
-
     @SubscribeEvent
     public void onChat(ClientChatReceivedEvent event) {
         if (!this.isEnabled() || event.message == null) return;
         String message = Utils.stripColor(event.message.getUnformattedText());
-        // Player chat carries a colon and can contain anything; only server lines are trusted.
         if (message.contains(":")) return;
 
         if (message.contains("The game starts in 1 second")) {
             schedule(SCAN_DELAY_MS);
         }
         else if (message.startsWith("You will respawn in")) {
-            // Respawning puts you back on your island, which is a chance to find a bed the
-            // opening scan missed.
             schedule(SCAN_DELAY_MS + 3000L);
         }
         else if (message.contains("Your team swapped and you are now")) {
@@ -122,8 +102,6 @@ public class BedTracker extends BedwarsHud {
         scanAt = now + delay;
         settledAt = now + delay + SETTLE_MS;
     }
-
-    // ------------------------------------------------------------------ tracking
 
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
@@ -168,8 +146,6 @@ public class BedTracker extends BedwarsHud {
         for (EntityPlayer player : mc.theWorld.playerEntities) {
             if (player == mc.thePlayer || Utils.isTeammate(player)) continue;
             if (player.capabilities.isFlying) continue;
-            // Freshly spawned entities are still being placed by the server and read as being
-            // wherever the packet put them first, which is often your island.
             if (player.ticksExisted < 100) continue;
 
             int away = (int) player.getDistance(bed.getX() + 0.5, bed.getY(), bed.getZ() + 0.5);
@@ -208,15 +184,7 @@ public class BedTracker extends BedwarsHud {
         if (bed == null || mc.thePlayer == null) return 0;
         return (int) mc.thePlayer.getDistance(bed.getX() + 0.5, bed.getY(), bed.getZ() + 0.5);
     }
-
-    /**
-     * Whether the bed is somewhere the client can no longer see.
-     *
-     * <p>Both halves matter. The server can drop the chunk, and the client can be further away
-     * than its own render distance -- in either case the blocks are gone locally, so an ESP or a
-     * distance readout is reporting a memory rather than the world.
-     */
-    private boolean isOutOfRange() {
+private boolean isOutOfRange() {
         if (bed == null || !Utils.nullCheck()) return true;
         if (!mc.theWorld.getChunkProvider().chunkExists(bed.getX() >> 4, bed.getZ() >> 4)) return true;
         double dx = mc.thePlayer.posX - bed.getX();
@@ -231,8 +199,6 @@ public class BedTracker extends BedwarsHud {
         if (away <= 40) return "&e";
         return "&a";
     }
-
-    // ------------------------------------------------------------------ hud
 
     @Override
     protected boolean shouldDraw() {

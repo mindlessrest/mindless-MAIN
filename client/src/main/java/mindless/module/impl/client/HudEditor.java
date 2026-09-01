@@ -31,8 +31,7 @@ public final class HudEditor {
     }
 
     public static final class Screen extends GuiScreen {
-        /** Corner and edge grips, clockwise from the top-left. */
-        private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W = 7;
+private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W = 7;
 
         private static final float HANDLE_HALF = 3.0f;
         private static final float GRAB_HALF = 6.0f;
@@ -76,8 +75,6 @@ public final class HudEditor {
 
             for (Element element : elements) {
                 element.render();
-                // Clamping fights the resize anchor, which is deliberately allowed to run past
-                // the edge while the grip is being dragged.
                 if (element != resizing) element.ensureOnScreen(width, height);
             }
             if (resizing != null) anchorResized();
@@ -99,7 +96,6 @@ public final class HudEditor {
         @Override
         protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
             if (mouseButton == 0) {
-                // Grips win over the body, so grabbing a corner never starts a move instead.
                 int handle = hovered != null ? hovered.handleAt(mouseX, mouseY) : -1;
                 if (handle >= 0) {
                     beginResize(hovered, handle);
@@ -140,15 +136,7 @@ public final class HudEditor {
         public boolean doesGuiPauseGame() {
             return false;
         }
-
-        // -------------------------------------------------------------- resizing
-
-        /**
-         * These overlays size themselves from their own contents, so there is nothing to stretch
-         * independently in each axis. Every grip drives the same scale; what the grip chooses is
-         * which point stays still, so the overlay grows away from wherever it is not being held.
-         */
-        private void beginResize(Element element, int handle) {
+private void beginResize(Element element, int handle) {
             SliderSetting slider = element.scaleSetting();
             if (slider == null) return;
 
@@ -225,8 +213,6 @@ public final class HudEditor {
                         hot ? new Color(255, 255, 255) : new Color(222, 225, 234));
             }
         }
-
-        // -------------------------------------------------------------- elements
 
         private void buildElements() {
             elements.clear();
@@ -330,8 +316,6 @@ public final class HudEditor {
                 elements.add(new Element("Audio Visualizer") {
                     @Override
                     void render() {
-                        // Only draggable as its own overlay. Inside the mini player it is a
-                        // section of that panel and moves with it.
                         if (!visualizer.isEnabled()
                                 || visualizer.placement() != mindless.module.impl.render.AudioVisualizer.PLACEMENT_STANDALONE) {
                             setBounds(null);
@@ -356,8 +340,6 @@ public final class HudEditor {
                     }
                 });
             }
-
-            // The bedwars overlays all share one panel, so they all drag the same way.
             for (final mindless.module.impl.bedwars.BedwarsHud panel : new mindless.module.impl.bedwars.BedwarsHud[] {
                     ModuleManager.bedTracker, ModuleManager.resourceTracker, ModuleManager.eventTimers }) {
                 if (panel == null) continue;
@@ -581,12 +563,7 @@ public final class HudEditor {
             GlStateManager.popMatrix();
             return new float[] { left, top, right, bottom };
         }
-
-        /**
-         * Body hits win over grips, so a grip belonging to one overlay can never take priority
-         * over another overlay lying directly under the cursor.
-         */
-        private Element findTopmost(float mouseX, float mouseY) {
+private Element findTopmost(float mouseX, float mouseY) {
             for (int i = elements.size() - 1; i >= 0; i--) {
                 Element element = elements.get(i);
                 if (element.contains(mouseX, mouseY)) return element;
@@ -633,9 +610,7 @@ public final class HudEditor {
             abstract void render();
             abstract void moveTo(float left, float top);
             abstract void reset();
-
-            /** The slider a resize drives, or null when the overlay has no scale of its own. */
-            SliderSetting scaleSetting() {
+SliderSetting scaleSetting() {
                 return null;
             }
 

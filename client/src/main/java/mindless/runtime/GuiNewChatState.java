@@ -16,24 +16,12 @@ public final class GuiNewChatState {
     public static float panelRadius() {
         return BASE_PANEL_RADIUS * mindless.module.impl.theme.ThemeManager.roundingScale();
     }
-
-    /** The chat panel's own radius, which the Chat module may override. */
-    public static float chatPanelRadius() {
+public static float chatPanelRadius() {
         float configured = mindless.module.impl.render.ChatModule.cornerRadius();
         return configured < 0.0f ? panelRadius()
                 : configured * mindless.module.impl.theme.ThemeManager.roundingScale();
     }
-
-    /**
-     * Who sent a chat line, or null when it did not come from a player.
-     *
-     * <p>Read from the insertion the server attaches to the sender's part of the message -- the
-     * text that gets put in the input box when the name is shift-clicked. That is set for player
-     * messages and nothing else, which makes it a better answer than pattern-matching the text:
-     * a message that merely mentions a name is not from them, and the format varies per server
-     * while the insertion does not.
-     */
-    public static String senderOf(net.minecraft.util.IChatComponent component) {
+public static String senderOf(net.minecraft.util.IChatComponent component) {
         if (component == null) {
             return null;
         }
@@ -68,15 +56,7 @@ public final class GuiNewChatState {
 
         return null;
     }
-
-    /**
-     * The sender's face, drawn at the start of their line.
-     *
-     * <p>Both skin layers, because a hat is most of what makes a face recognisable at eight
-     * pixels. Nothing is drawn for a name the client has never seen -- an offline player, or a
-     * message from the server itself -- rather than a placeholder, so the column stays quiet.
-     */
-    public static void drawPlayerHead(String name, float x, float y, float size, int alpha) {
+public static void drawPlayerHead(String name, float x, float y, float size, int alpha) {
         if (name == null || name.isEmpty() || size <= 0.0f) {
             return;
         }
@@ -94,7 +74,6 @@ public final class GuiNewChatState {
         mc.getTextureManager().bindTexture(info.getLocationSkin());
         net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f,
                 Math.max(0, Math.min(255, alpha)) / 255.0f);
-        // Eight-pixel faces on a sixty-four pixel sheet: the head at (8,8) and the hat over it.
         net.minecraft.client.gui.Gui.drawScaledCustomSizeModalRect(
                 (int) x, (int) y, 8.0f, 8.0f, 8, 8, (int) size, (int) size, 64.0f, 64.0f);
         net.minecraft.client.gui.Gui.drawScaledCustomSizeModalRect(
@@ -136,11 +115,6 @@ public final class GuiNewChatState {
     public static void drawGlass(float x, float y, float w, float h, boolean includeInput,
                                    int screenWidth, int screenHeight) {
         if (w <= 0.0f || h <= 0.0f) return;
-
-        // Only the part of the shared mask this panel writes into needs wiping, so the clear is a
-        // rectangle rather than the whole screen. It has to cover the input box as well as the
-        // chat body -- both are drawn into the mask below, and the input box reaches further
-        // across than the chat does.
         float maskLeft = x - 2.0f;
         float maskTop = y - 2.0f;
         float maskRight = x + w + 2.0f;

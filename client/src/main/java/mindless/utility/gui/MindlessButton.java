@@ -4,21 +4,6 @@ import mindless.utility.RenderUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiButton;
-
-/**
- * The client's own button widget.
- *
- * Every screen in here used to use Forge's {@code GuiButtonExt}. That class is compiled against
- * Forge's <em>patched</em> {@code GuiButton}, which carries an extra {@code packedFGColour} field,
- * and its {@code drawButton} reads that field on every frame. Lunar runs unpatched vanilla
- * classes, so the field does not exist at runtime and the read throws {@link NoSuchFieldError} the
- * first time the screen paints. The class itself resolves fine -- the build bundles
- * {@code net/minecraftforge/**} -- so nothing fails until the button is actually drawn, which is
- * why every "edit position" button opened its screen, showed one frame, and then took the game
- * down with it.
- *
- * This extends vanilla {@link GuiButton} and paints itself, touching nothing Forge added.
- */
 public class MindlessButton extends GuiButton {
     private static final int FILL = 0xE0181B1C;
     private static final int FILL_HOVER = 0xEC262A2B;
@@ -49,15 +34,10 @@ public class MindlessButton extends GuiButton {
 
         RoundedUtils.drawRound(this.xPosition, this.yPosition, this.width, this.height, RADIUS,
                 !this.enabled ? FILL_DISABLED : this.hovered ? FILL_HOVER : FILL);
-
-        // The rounded-rect shader pops a GL attribute stack, which leaves GlStateManager's cache
-        // describing state the driver no longer has. Anything drawn after it inherits the
-        // mismatch, so put the cache back in step before the accent bar and the label.
         RenderUtils.syncGlState();
         RenderUtils.resetColor();
 
         if (lit) {
-            // Inset past the corner radius so the bar stays inside the rounded outline.
             int inset = Math.round(RADIUS);
             drawRect(this.xPosition + inset, this.yPosition + this.height - 1,
                     this.xPosition + this.width - inset, this.yPosition + this.height, ACCENT);

@@ -36,24 +36,9 @@ public abstract class TransformerGuiIngame {
 
     @CShadow
     public abstract FontRenderer getFontRenderer();
-
-    /**
-     * Opens the HUD frame so the blur can be shared between panels.
-     *
-     * <p>This only existed on {@code GuiIngameForge} and on the mixin copy of this class. Lunar
-     * has no {@code GuiIngameForge}, so on Lunar the frame counter never moved off zero, every
-     * cache keyed on it treated itself as invalid, and each panel rebuilt the entire blur
-     * downsample chain from scratch. That is most of a HUD's worth of full-screen shader work
-     * repeated per panel, per frame.
-     */
-    @CInline
+@CInline
     @CInject(method = "renderGameOverlay", target = @CTarget("HEAD"))
     private void mindless$beginHudBlurFrame(float partialTicks, InjectionCallback callbackInfo) {
-        // Once a frame, before anything draws over the world: put GlStateManager's cache back in
-        // agreement with the driver. The world pass is full of raw GL, ours and everyone else's,
-        // and the cache is what decides whether a reset is worth forwarding -- so a colour or a
-        // blend mode left behind out there is not merely still set, it is invisible to the calls
-        // meant to clear it, and the whole HUD inherits it.
         RenderUtils.syncGlStateFromDriver();
         HudRenderBounds.clearScoreboard();
         BlurUtils.beginFrame();
@@ -87,11 +72,7 @@ public abstract class TransformerGuiIngame {
         }
 
         FontRenderer font = getFontRenderer();
-        // The scoreboard's own Font setting, which until now was read only by the mixin copy of
-        // this screen -- the copy Forge loads and this client does not.
         MindlessFontRenderer customFont = mindless.module.impl.render.ScoreboardModule.getCustomFont();
-        // Minecraft's font is drawn at nine pixels and shrunk to fit; a chosen face is rasterised
-        // at the size it will occupy, so scaling it down again would only blur it.
         float fontScale = customFont != null ? 1.0f : GuiIngameState.SCOREBOARD_SCALE;
         String displayTitle = objective.getDisplayName();
         int contentWidth = HudTextRenderer.width(customFont, font, displayTitle);

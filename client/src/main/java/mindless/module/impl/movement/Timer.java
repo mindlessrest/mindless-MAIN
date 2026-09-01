@@ -24,7 +24,6 @@ public class Timer extends Module {
 
     @Override
     public void onEnable() {
-        // If we start in local-freeze mode (speed == 0), keep world timer normal.
         if (Utils.nullCheck() && speed.getInput() <= 0.0D) {
             Utils.resetTimer();
         }
@@ -45,8 +44,6 @@ public class Timer extends Module {
         if (configuredSpeed > 0.0F) {
             AccessorBridge.Minecraft_getTimer(mc).timerSpeed = configuredSpeed;
         } else {
-            // 0-speed mode uses local update skipping in MixinEntityPlayerSP.
-            // Keep global timer at normal speed so world/entities continue updating.
             Utils.resetTimer();
         }
     }

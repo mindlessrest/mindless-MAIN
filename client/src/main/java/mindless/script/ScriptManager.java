@@ -55,18 +55,8 @@ public class ScriptManager {
     public ScriptManager() {
         directory = Utils.getScriptDirectory();
     }
-
-    /** Path to dumped MC classes jar for ECJ classpath */
-    public File mcClassesJar;
-
-    /**
-     * The Minecraft LaunchWrapper class loader, or null when it is unavailable.
-     *
-     * Lunar/Genesis ships a {@code net.minecraft.launchwrapper.Launch} that has no
-     * {@code classLoader} field, so touching it directly raises NoSuchFieldError at link time
-     * rather than a catchable ClassNotFoundException. Everything goes through here instead.
-     */
-    public static ClassLoader launchClassLoader() {
+public File mcClassesJar;
+public static ClassLoader launchClassLoader() {
         try {
             Class<?> launch = Class.forName("net.minecraft.launchwrapper.Launch", false,
                     ScriptManager.class.getClassLoader());
@@ -76,14 +66,7 @@ public class ScriptManager {
         }
         return null;
     }
-
-    /**
-     * Whether we are in a deobfuscated (dev) environment, per LaunchWrapper's blackboard.
-     * Read reflectively for the same reason as {@link #launchClassLoader()}: on Lunar the
-     * Launch class exists but carries neither field, so a direct read is a hard link error.
-     * Defaults to false (obfuscated/production) when the blackboard cannot be reached.
-     */
-    public static boolean isDeobfuscatedEnvironment() {
+public static boolean isDeobfuscatedEnvironment() {
         try {
             Class<?> launch = Class.forName("net.minecraft.launchwrapper.Launch", false,
                     ScriptManager.class.getClassLoader());
@@ -95,27 +78,13 @@ public class ScriptManager {
         } catch (Throwable ignored) {}
         return false;
     }
-
-    /** Loader that scripts are defined against: LaunchWrapper's when present, ours otherwise. */
-    public static ClassLoader scriptParentClassLoader() {
+public static ClassLoader scriptParentClassLoader() {
         ClassLoader launch = launchClassLoader();
         return launch != null ? launch : ScriptManager.class.getClassLoader();
     }
-
-    /** 0 = resource stream, 1 = LaunchClassLoader.getClassBytes, 2 = synthesised stub. */
-    private int lastResolveSource = 0;
-
-    /**
-     * Best-effort class bytes for {@code className}, for feeding to ECJ as a classpath entry.
-     * When no real class file can be found the class is synthesised from its runtime
-     * {@link Class} -- superclass, interfaces, fields and method signatures, no bodies. That is
-     * everything the compiler needs to resolve references against it. Types named by a
-     * synthesised stub are added to {@code referencedOut} so the caller can queue them.
-     */
-    private byte[] resolveClassBytes(String className, java.util.Set<String> referencedOut) {
+private int lastResolveSource = 0;
+private byte[] resolveClassBytes(String className, java.util.Set<String> referencedOut) {
         String resourcePath = className.replace('.', '/') + ".class";
-
-        // 1. Ordinary resource lookup, across every loader that might hold it.
         java.util.List<ClassLoader> loaders = new java.util.ArrayList<>();
         loaders.add(ScriptManager.class.getClassLoader());
         loaders.add(Thread.currentThread().getContextClassLoader());
@@ -134,8 +103,6 @@ public class ScriptManager {
                 }
             } catch (Throwable ignored) {}
         }
-
-        // 2. LaunchClassLoader exposes transformed bytes that are not resources.
         if (launch != null) {
             try {
                 java.lang.reflect.Method getClassBytes =
@@ -147,8 +114,6 @@ public class ScriptManager {
                 }
             } catch (Throwable ignored) {}
         }
-
-        // 3. Synthesise from the loaded Class. This is the path that carries Lunar.
         for (ClassLoader cl : loaders) {
             if (cl == null) continue;
             try {
@@ -163,9 +128,7 @@ public class ScriptManager {
 
         return null;
     }
-
-    /** Signature-only class file built from reflection. Mirrors LaunchClassProvider's approach. */
-    private static byte[] synthesizeClassStub(Class<?> klass, java.util.Set<String> referencedOut) {
+private static byte[] synthesizeClassStub(Class<?> klass, java.util.Set<String> referencedOut) {
         try {
             org.objectweb.asm.ClassWriter writer = new org.objectweb.asm.ClassWriter(0);
 
@@ -210,9 +173,7 @@ public class ScriptManager {
             return null;
         }
     }
-
-    /** Queues Minecraft/Forge types a stub mentions, so they get dumped too. */
-    private static void collectType(Class<?> type, java.util.Set<String> out) {
+private static void collectType(Class<?> type, java.util.Set<String> out) {
         if (type == null || out == null) return;
         while (type.isArray()) type = type.getComponentType();
         if (type.isPrimitive()) return;
@@ -239,12 +200,7 @@ public class ScriptManager {
         for (Class<?> p : params) sb.append(typeDescriptor(p));
         return sb.append(')').append(typeDescriptor(ret)).toString();
     }
-
-    /**
-     * A cached jar is only reusable if it actually carries the core Minecraft types. Size alone
-     * cannot tell a complete dump from one where every net.minecraft lookup silently missed.
-     */
-    private static boolean isUsableMcClassesJar(File jar) {
+private static boolean isUsableMcClassesJar(File jar) {
         if (jar == null || !jar.exists() || jar.length() < 1024) return false;
         try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jar)) {
             return zf.getEntry("net/minecraft/util/Vec3.class") != null
@@ -262,9 +218,7 @@ public class ScriptManager {
         while ((n = is.read(buf)) != -1) bos.write(buf, 0, n);
         return bos.toByteArray();
     }
-
-    /** Simple constant pool scanner — extracts class name references starting with net/minecraft or net/minecraftforge */
-    private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<String> out) {
+private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<String> out) {
         try {
             java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(classBytes));
             int magic = dis.readInt();
@@ -332,9 +286,6 @@ public class ScriptManager {
             return systemCompiler;
         }
         System.out.println("[Scripts] No system compiler (running on JRE/modular runtime).");
-
-        // Only try external tools.jar if current runtime is Java 8 (major version 52).
-        // On JDK 9+, tools.jar from an external JDK 8 can't resolve the runtime classpath.
         int javaVersion = getJavaMajorVersion();
         if (javaVersion <= 8) {
             System.out.println("[Scripts] Java 8 runtime detected. Searching for external JDK tools.jar...");
@@ -390,10 +341,8 @@ public class ScriptManager {
         for (String root : searchRoots) {
             if (root == null || root.isEmpty()) continue;
             java.io.File rootDir = new java.io.File(root);
-            // If root itself is a JDK (e.g. JAVA_HOME)
             JavaCompiler c = tryLoadFromJdk(rootDir);
             if (c != null) return c;
-            // Search subdirectories (e.g. C:\Program Files\Java\jdk1.8.0_xxx)
             if (rootDir.isDirectory()) {
                 java.io.File[] children = rootDir.listFiles();
                 if (children != null) {
@@ -409,23 +358,18 @@ public class ScriptManager {
     }
 
     private static JavaCompiler tryLoadFromJdk(java.io.File jdkDir) {
-        // JDK 8: tools.jar
         java.io.File toolsJar = new java.io.File(jdkDir, "lib" + java.io.File.separator + "tools.jar");
         if (toolsJar.exists()) {
             JavaCompiler c = loadCompilerFromToolsJar(toolsJar);
             if (c != null) return c;
         }
-        // JDK 9+: javac in jmods or as a module — try loading via process fork
         java.io.File javacBin = new java.io.File(jdkDir, "bin" + java.io.File.separator + "javac.exe");
         if (!javacBin.exists()) {
             javacBin = new java.io.File(jdkDir, "bin" + java.io.File.separator + "javac");
         }
         if (javacBin.exists()) {
-            // For JDK 9+, attempt to load compiler via the jmod-based approach
             java.io.File compilerModule = new java.io.File(jdkDir, "lib" + java.io.File.separator + "jrt-fs.jar");
             if (compilerModule.exists()) {
-                // Modern JDK detected — the bundled ECJ is more reliable here, so return null
-                // to fall through to ECJ which already works for source-level 8
                 return null;
             }
         }
@@ -588,8 +532,6 @@ public class ScriptManager {
     private boolean loadJarScript(File jarFile) {
         String scriptName = jarFile.getName().replace(".jar", "");
         if (scriptName.isEmpty() || scriptName.startsWith("_")) return false;
-
-        //System.out.println("[Scripts] Loading pre-compiled script jar: " + scriptName);
         try {
             java.net.URL jarUrl = jarFile.toURI().toURL();
             java.net.URLClassLoader jarLoader = new java.net.URLClassLoader(
@@ -624,7 +566,6 @@ public class ScriptManager {
             Mindless.scriptManager.scripts.put(script, module);
             ScriptDefaults.reloadModules();
             Mindless.scriptManager.invoke("onLoad", module);
-           // System.out.println("[Scripts] Loaded jar script: " + scriptName);
             return true;
         } catch (Throwable t) {
             System.err.println("[Scripts] Failed to load jar script " + scriptName + ": " + t.getMessage());

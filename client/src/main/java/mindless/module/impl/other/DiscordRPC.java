@@ -17,26 +17,9 @@ import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 
 
 public class DiscordRPC extends Module {
-    /** Art uploaded to the Discord application under this name. Always present. */
-    private static final String DEFAULT_IMAGE = "large_image";
-    /**
-     * How often the scoreboard is rescanned.
-     *
-     * <p>Was a full second, which was most of the delay before a presence caught up: a game could
-     * have started and the sidebar rewritten a second earlier and nothing had looked yet. The scan
-     * is fifteen lines and a couple of patterns, so five ticks costs nothing worth counting.
-     */
-    private static final int SCRAPE_INTERVAL_TICKS = 4;
-    /**
-     * How often the presence is rebuilt.
-     *
-     * <p>Three hooks call into the update, so without this the templates were being expanded
-     * something like sixty times a second to produce a string almost always identical to the last
-     * one. Discord's own limit is far lower and the transport enforces it, so this only governs
-     * how quickly a change is noticed -- and half a second of not looking was half a second added
-     * to every update for no gain.
-     */
-    private static final long BUILD_INTERVAL_MS = 150L;
+private static final String DEFAULT_IMAGE = "large_image";
+private static final int SCRAPE_INTERVAL_TICKS = 4;
+private static final long BUILD_INTERVAL_MS = 150L;
 
     public static ButtonSetting showServer;
 
@@ -130,8 +113,6 @@ public class DiscordRPC extends Module {
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
-
-        // The scrape walks the whole sidebar, so it runs on a timer rather than every tick.
         if (scrapeHypixel() && ++tickCounter % SCRAPE_INTERVAL_TICKS == 0) {
             HypixelPresence.tick(useLocraw.isToggled());
         }
@@ -150,52 +131,26 @@ public class DiscordRPC extends Module {
         HypixelPresence.reset();
         HypixelPresence.resetParty();
     }
-
-    /**
-     * Chat is watched for party messages and for the locraw reply.
-     *
-     * <p>Cancelled messages are still delivered, since a chat filter elsewhere hiding a party
-     * message would otherwise leave the count wrong for the rest of the session.
-     */
-    @SubscribeEvent(priority = EventPriority.HIGHEST, receiveCanceled = true)
+@SubscribeEvent(priority = EventPriority.HIGHEST, receiveCanceled = true)
     public void onChat(ClientChatReceivedEvent event) {
         if (event.type != 0 || event.message == null || !scrapeHypixel()) {
             return;
         }
         if (HypixelPresence.onChat(event.message.getFormattedText(), event.message.getUnformattedText())) {
-            // Our own locraw reply. We asked for it, so the player should not have to read it.
             event.setCanceled(true);
-            // It carries the game, the mode and the map all at once, which is the single biggest
-            // change the presence ever sees. Waiting out the rebuild throttle after it is pure
-            // delay, so the next tick is allowed through immediately.
             lastBuildAt = 0L;
         }
     }
-
-    /**
-     * Whether to read the scoreboard as a Hypixel one.
-     *
-     * <p>Force Hypixel exists for proxies. Detection reads the server address, and failing that
-     * the brand the server introduced itself with; a proxy replaces the address with its own and
-     * some replace the brand too, at which point nothing is left to detect and the only honest
-     * answer is to let the player say so.
-     */
-    private boolean scrapeHypixel() {
+private boolean scrapeHypixel() {
         if (!hypixelStats.isToggled()) {
             return false;
         }
-        // Force Hypixel answers "is this server Hypixel", not "am I on a server". Without this it
-        // answered both, so at the main menu the scrape ran against a world that was not there:
-        // no scoreboard meant no game name and no connection meant no player count, and the two
-        // holes rendered as "Lobby" and "0 players".
         if (mc.theWorld == null || mc.thePlayer == null || mc.isSingleplayer()) {
             return false;
         }
         return forceHypixel.isToggled() || Utils.isHypixel();
     }
-
-    /** Live state next to the module name, so a presence that is not showing says why. */
-    @Override
+@Override
     public String getInfo() {
         if (rpc == null) {
             return "";
@@ -219,9 +174,7 @@ public class DiscordRPC extends Module {
         }
         return mode.isEmpty() ? game : game + " - " + mode;
     }
-
-    /** Everything the diagnostic command reports. Keep it cheap; it runs on demand only. */
-    public mindless.utility.DiscordRPC getTransport() {
+public mindless.utility.DiscordRPC getTransport() {
         return rpc;
     }
 
@@ -236,9 +189,7 @@ public class DiscordRPC extends Module {
     public boolean wantsSoloTeamsLeft() {
         return soloTeamsLeft.isToggled();
     }
-
-    /** Whether the Hypixel scrape is actually running, world requirement and all. */
-    public boolean isScrapingHypixel() {
+public boolean isScrapingHypixel() {
         return scrapeHypixel();
     }
 
@@ -265,10 +216,6 @@ public class DiscordRPC extends Module {
         else {
             buildGenericPresence(presence);
         }
-
-        // Handed over unconditionally. The transport decides what is worth sending and keeps this
-        // as the target until it lands, so a send lost to a missing Discord or a spent rate limit
-        // budget is retried rather than skipped because we already recorded it as sent.
         rpc.update(presence);
     }
 
@@ -303,25 +250,14 @@ public class DiscordRPC extends Module {
         if (!stateLine.isEmpty()) {
             presence.state(stateLine);
         }
-
-        // A missing art key shows as a blank square rather than falling back, so the per-game key
-        // is only used when the player has said their Discord application actually has that art.
         String icon = gameIcons.isToggled() ? HypixelPresence.iconKey() : "";
         presence.largeImage(icon.isEmpty() ? DEFAULT_IMAGE : icon,
                 imageLine.isEmpty() ? "Mindless" : imageLine);
-
-        // Discord draws this as "(1 of 2)" beside the state, and the number it counts against has
-        // to be the team, not a setting. A fixed cap made Solo read "1 of 10", which is wrong
-        // twice: there is no party of one, and there is no tenth slot. Doubles is two, 3v3v3v3 is
-        // three, 4v4 is four, and a mode with no team to speak of gets no party field at all.
         int teamSize = HypixelPresence.getTeamSize();
         if (showParty.isToggled() && teamSize > 1) {
             presence.party(Math.min(HypixelPresence.getPartyMembers(), teamSize), teamSize);
         }
         else if (soloTeamsLeft.isToggled() && teamSize == 0) {
-            // A solo game has no teammates, so the bracket counts the lobby down instead: you are
-            // one of however many teams are still alive. It shrinks as the game is won, which is
-            // the only number in a solo worth putting there.
             int remaining = HypixelPresence.getTeamsRemaining();
             if (remaining > 1) {
                 presence.party(1, remaining);

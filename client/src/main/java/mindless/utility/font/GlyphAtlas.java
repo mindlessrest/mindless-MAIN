@@ -8,45 +8,14 @@ import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-
-/**
- * One texture per font rather than one per glyph.
- *
- * <p>A texture bind is a state change, and a state change ends whatever batch the driver was
- * building. Giving every glyph its own texture therefore forces one draw per character no matter
- * how the geometry is submitted -- a line of forty characters cannot be fewer than forty draws.
- * Packing the whole glyph set into a single texture removes that constraint: every quad in a
- * string shares one bind, so the string is one draw.
- *
- * <p>Packing is a shelf: glyphs are laid left to right in rows, a new row starting below the
- * tallest glyph of the previous one. Fancier packers exist, but glyphs from a single font are
- * close enough in height that shelves waste very little, and the whole thing runs once when the
- * font is built.
- *
- * <p>Every glyph reserves two transparent pixels to its right and below. Without them a linear
- * filter sampling the edge of one glyph reaches half a texel into the next and drags a sliver of
- * its neighbour along -- the artefact per-glyph textures avoided with GL_CLAMP_TO_EDGE, which an
- * atlas cannot use because the clamp applies to the page and not to each glyph inside it.
- */
 public final class GlyphAtlas {
     private static final int GL_CLAMP_TO_EDGE = 0x812F;
     private static final int PADDING = 2;
     private static final int MIN_PAGE_SIZE = 64;
-    /**
-     * Deliberately short of what a large boosted font would take if given the room.
-     *
-     * <p>Sides are powers of two, so a set needing a little over a million pixels would otherwise
-     * be handed a 2048 square: four million pixels, sixteen megabytes, most of it empty. Capping
-     * the side and letting the set spill onto a second page holds the same glyphs in a fraction of
-     * that, and the second bind costs nothing in practice -- glyphs are packed in code point
-     * order, so everything an ordinary line of text needs is on the first page.
-     */
-    private static final int MAX_PAGE_SIZE = 1024;
+private static final int MAX_PAGE_SIZE = 1024;
     private static final int BYTES_PER_PIXEL = 4;
     private static final int CHANNEL_MASK = 0xFF;
-
-    /** Where one glyph ended up: which page holds it, and the rectangle it occupies there. */
-    public static final class Region {
+public static final class Region {
         public final int textureId;
         public final float u0;
         public final float v0;
@@ -67,18 +36,11 @@ public final class GlyphAtlas {
     private final List<Page> pages = new ArrayList<Page>();
     private final int[] slot = new int[2];
     private boolean finished;
-
-    /** @param pageSize width and height, as returned by {@link #chooseSize(List)} */
-    public GlyphAtlas(int[] pageSize) {
+public GlyphAtlas(int[] pageSize) {
         this.pageWidth = clampSide(pageSize[0]);
         this.pageHeight = clampSide(pageSize[1]);
     }
-
-    /**
-     * Places one rasterised glyph and returns where it landed, or null if it cannot be placed at
-     * all -- which only happens for an image larger than a whole page.
-     */
-    public Region add(BufferedImage image) {
+public Region add(BufferedImage image) {
         int width = image.getWidth();
         int height = image.getHeight();
         if (width <= 0 || height <= 0 || width > pageWidth || height > pageHeight) {
@@ -94,9 +56,6 @@ public final class GlyphAtlas {
 
         Page page = new Page(pageWidth, pageHeight);
         pages.add(page);
-        // A page opened after the atlas was finished has missed its upload, so it takes it now --
-        // empty. Everything placed on it from here writes its own rectangle straight to GL, the
-        // same path the late glyph that caused this page to exist is about to take.
         if (finished) {
             page.upload();
         }
@@ -106,13 +65,7 @@ public final class GlyphAtlas {
 
         return page.write(image, slot[0], slot[1]);
     }
-
-    /**
-     * Uploads everything staged so far and releases the staging buffers. Glyphs added afterwards
-     * -- the rare characters that are only rasterised when something actually asks for them --
-     * upload their own rectangle directly.
-     */
-    public void finish() {
+public void finish() {
         for (int i = 0; i < pages.size(); i++) {
             pages.get(i).upload();
         }
@@ -125,22 +78,7 @@ public final class GlyphAtlas {
         }
         pages.clear();
     }
-
-    /**
-     * A page shape that holds the given glyph rectangles without waste worth caring about.
-     *
-     * <p>Width and height are chosen separately. Both are rounded up to a power of two, which is
-     * safe on every driver, but a square page has to round both axes at once -- a set needing a
-     * little over half a page then ends up in a full one. Choosing the height on its own confines
-     * that rounding to a single axis, which is most of an atlas worth of memory back.
-     *
-     * <p>Shelf packing leaves gaps, so the raw area is optimistic; the slack below covers it.
-     * Undershooting is not a failure -- a second page is allocated -- but a second page means a
-     * second bind, which is the thing this class exists to avoid.
-     *
-     * @return width and height, in that order
-     */
-    public static int[] chooseSize(List<int[]> glyphSizes) {
+public static int[] chooseSize(List<int[]> glyphSizes) {
         long area = 0;
         int widest = 1;
         int tallest = 1;
@@ -185,10 +123,6 @@ public final class GlyphAtlas {
             this.width = width;
             this.height = height;
             this.staging = BufferUtils.createByteBuffer(width * height * BYTES_PER_PIXEL);
-            // The name is reserved before there is anything to put in it, because every region
-            // handed out below records which texture holds it and regions are handed out during
-            // packing -- long before the page has storage. Waiting until upload would stamp every
-            // glyph in the set with a texture id of zero, and zero means "nothing to draw".
             this.textureId = GL11.glGenTextures();
         }
 

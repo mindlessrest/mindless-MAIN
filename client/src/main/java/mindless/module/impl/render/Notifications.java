@@ -41,10 +41,6 @@ public class Notifications extends Module {
     public static volatile boolean pendingStartupAlert = false;
     private static final long STARTUP_SUPPRESS_MS = 4000L;
     private long startupFiredAt = 0L;
-
-    // Width is measured per card rather than fixed. A single width has to fit the longest module
-    // name, so every card was padded out to that -- which is what made a two-word alert look like
-    // a mostly empty bar.
     private static final float W_MIN   = 132.0f;
     private static final float W_MAX   = 240.0f;
     private static final float H       = 32.0f;
@@ -59,8 +55,7 @@ public class Notifications extends Module {
     private static final float PAD_R   = 12.0f;
     private static final float ICON    = 18.0f;
     private static final float ICON_GAP = 9.0f;
-    /** Space held between the longest text line and the countdown, so they never crowd. */
-    private static final float CLOCK_GAP = 16.0f;
+private static final float CLOCK_GAP = 16.0f;
 
     private static final Color ON  = new Color(72, 209, 138);
     private static final Color OFF = new Color(232, 88, 88);
@@ -172,32 +167,24 @@ public class Notifications extends Module {
         float startY = baseY - cards.size() * (H + GAP);
         cards.add(new Card(title, enabled, now, dur, startY));
     }
-
-    /** Width that fits this card's own text, so short names get a short card. */
-    private static float cardWidth(MindlessFontRenderer font, String title, String status, String clock) {
+private static float cardWidth(MindlessFontRenderer font, String title, String status, String clock) {
         float text = Math.max(font.getStringWidth(title), font.getStringWidth(status));
         float w = PAD_L + ICON + ICON_GAP + text + CLOCK_GAP + font.getStringWidth(clock) + PAD_R;
         return Math.max(W_MIN, Math.min(W_MAX, w));
     }
-
-    /** Suppresses one automatic alert caused by a script-controlled module toggle. */
-    public static void suppressScriptChange(String moduleName) {
+public static void suppressScriptChange(String moduleName) {
         if (moduleName == null) return;
         synchronized (SUPPRESSED_SCRIPT_CHANGES) {
             SUPPRESSED_SCRIPT_CHANGES.add(moduleName);
         }
     }
-
-    /** Adds an intentional script notification without changing module state. */
-    public static void notifyScript(String title, boolean enabled) {
+public static void notifyScript(String title, boolean enabled) {
         Notifications notifications = instance;
         if (notifications == null || !notifications.isEnabled() || title == null || title.isEmpty()) return;
         long now = System.currentTimeMillis();
         notifications.push(title, enabled, (long) (notifications.duration.getInput() * 1000.0), now);
     }
-
-    /** Pushes a notification with custom status text. */
-    public static void notify(String title, String status, boolean positive) {
+public static void notify(String title, String status, boolean positive) {
         Notifications notifications = instance;
         if (notifications == null || !notifications.isEnabled() || title == null || title.isEmpty()) return;
         long now = System.currentTimeMillis();
@@ -220,8 +207,6 @@ public class Notifications extends Module {
         float baseY = sr.getScaledHeight() - MARGIN - H;
         float rightEdge = sr.getScaledWidth() - MARGIN;
         long now = System.currentTimeMillis();
-
-        // Assign target Y slots bottom-up
         for (int i = cards.size() - 1; i >= 0; i--) {
             int slot = cards.size() - 1 - i;
             cards.get(i).targetY = baseY - slot * (H + GAP);
@@ -233,11 +218,7 @@ public class Notifications extends Module {
 
         for (Card c : cards) {
             long age = now - c.birthMs;
-
-            // Smooth slide toward target
             c.y += (c.targetY - c.y) * 0.28f;
-
-            // Alpha
             if (age < FADE) {
                 c.alpha = (float) age / FADE;
             } else if (age > c.durationMs) {
@@ -250,9 +231,6 @@ public class Notifications extends Module {
             int a = (int)(255 * c.alpha);
             drawCard(c, rightEdge, c.y, font, c.alpha, a, gradL, gradR, now);
         }
-
-        // Cards draw at the very end of the frame, so anything left dirty here lands on the next
-        // frame's hotbar rather than on the card itself. Hand back a known-clean state.
         RenderUtils.syncGlState();
     }
 
@@ -275,27 +253,16 @@ public class Notifications extends Module {
         RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
         BlurUtils.blurEndRegion(3, 3.0f, 0.85f, x - 2.0f, y - 2.0f, w + 4.0f, H + 4.0f);
         RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, (int)(120 * alpha)));
-        // A faint top-down sheen. Cheaper than a border and it stops the card reading as a plain
-        // flat slab, which was most of what made it feel unfinished.
         RoundedUtils.drawGradientVertical(x, y, w, H, radius,
                 new Color(255, 255, 255, (int)(17 * alpha)),
                 new Color(255, 255, 255, (int)(3 * alpha)));
 
         drawBadge(x + PAD_L, y + (H - ICON) * 0.5f, accent, c.enabled, progress, alpha);
-
-        // The card is drawn through the Kawase blur and the SDF rounded-rect shaders, and
-        // neither unbinds its program on the way out. Any shader still bound here would be
-        // applied to every glyph quad, which garbles the text. Drop back to fixed-function
-        // and a known colour before drawing.
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.enableTexture2D();
         GlStateManager.enableBlend();
         GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-
-        // Text. Snap to whole pixels — the card slides in on a fractional X and the vertical
-        // centering lands on a half pixel, which samples the glyph atlas between texels and
-        // renders the text doubled/smeared. Rounding both axes keeps glyphs on the grid.
         float fontH = font.getFontHeight();
         float block = fontH * 2 + 1.0f;
         float textX = Math.round(x + PAD_L + ICON + ICON_GAP);
@@ -305,19 +272,10 @@ public class Notifications extends Module {
         font.drawString(status, textX, Math.round(textY + fontH + 1.0f),
                 new Color(accent.getRed(), accent.getGreen(), accent.getBlue(),
                         (int)(200 * alpha)).getRGB(), false);
-
-        // Countdown, right-aligned against the title so it reads as one row rather than floating.
         font.drawString(clock, Math.round(x + w - PAD_R - font.getStringWidth(clock)), textY,
                 new Color(150, 150, 162, (int)(170 * alpha)).getRGB(), false);
     }
-
-    /**
-     * The state badge: a ring that drains as the card ages, wrapped around a tick or a cross.
-     *
-     * This replaces two flat PNGs. They could not carry the countdown, could not follow the
-     * card's colour, and at 14 pixels a bitmap on a scaled GUI lands between texels and blurs.
-     */
-    private void drawBadge(float x, float y, Color accent, boolean enabled, float progress, float alpha) {
+private void drawBadge(float x, float y, Color accent, boolean enabled, float progress, float alpha) {
         float cx = x + ICON * 0.5f;
         float cy = y + ICON * 0.5f;
         float ring = ICON * 0.5f - 1.0f;
@@ -334,30 +292,14 @@ public class Notifications extends Module {
 
         float s = 2.5f;
         if (enabled) {
-            // One mitred polyline, not two strokes butted together. Two overlapping strokes
-            // double-blend down the join and need a cap disc to hide the notch, and at five
-            // pixels across that cap is most of the tick.
             polyline(new float[] { cx - s, cx - s * 0.28f, cx + s * 1.02f },
                      new float[] { cy + 0.1f, cy + s * 0.72f, cy - s * 0.78f }, 1.7f, line);
         } else {
             cross(cx, cy, s * 1.08f, 1.35f, line);
         }
     }
-
-    /**
-     * The cross, as one closed outline rather than two crossing strokes.
-     *
-     * Two strokes overlap where they meet, and everything here draws at less than full alpha, so
-     * that square in the middle blended twice. At full opacity it hid, but as a card faded the
-     * denser centre separated from the four arms and the glyph came apart into pieces. A single
-     * twelve sided outline has no overlap anywhere in it, so it fades as one shape.
-     *
-     * Longer arms and a thinner stroke than the two-stroke version, which sat noticeably shorter
-     * and heavier than the tick it alternates with.
-     */
-    private static void cross(float cx, float cy, float arm, float thickness, int color) {
+private static void cross(float cx, float cy, float arm, float thickness, int color) {
         float t = thickness * 0.5f;
-        // A plus sign's outline, then turned forty five degrees.
         float[][] plus = {
                 { t, t }, { t, arm }, { -t, arm }, { -t, t },
                 { -arm, t }, { -arm, -t }, { -t, -t }, { -t, -arm },
@@ -372,14 +314,7 @@ public class Notifications extends Module {
         }
         polygon(cx, cy, xs, ys, color);
     }
-
-    /**
-     * A closed polygon filled from a point it is star-shaped about, with a feathered rim.
-     *
-     * The rim is offset along the mitre of each vertex's two edge normals, so it follows the
-     * outline out of the concave corners as well as around the points.
-     */
-    private static void polygon(float centerX, float centerY, float[] xs, float[] ys, int color) {
+private static void polygon(float centerX, float centerY, float[] xs, float[] ys, int color) {
         int n = xs.length;
         int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
         int a = (color >>> 24) & 0xFF;
@@ -405,7 +340,6 @@ public class Notifications extends Module {
             float len = (float) Math.sqrt(vx * vx + vy * vy);
             if (len < 1.0e-5f) { vx = bx; vy = by; len = 1.0f; }
             vx /= len; vy /= len;
-            // Point it away from the middle; the edge normals alone have no agreed side.
             if (vx * (xs[i] - centerX) + vy * (ys[i] - centerY) < 0.0f) { vx = -vx; vy = -vy; }
             float d = Math.abs(vx * bx + vy * by);
             float scale = d > 0.35f ? 1.0f / d : 1.0f / 0.35f;
@@ -433,24 +367,10 @@ public class Notifications extends Module {
         float len = (float) Math.sqrt(dx * dx + (y2 - y1) * (y2 - y1));
         return len < 1.0e-5f ? 0.0f : dx / len;
     }
-
-    /**
-     * A polyline stroked at a fixed width, mitred at the joins and feathered along both sides.
-     *
-     * The previous stroke drew a core quad, two fringe quads and a cap disc at each end, all
-     * overlapping. Everything here is drawn at less than full alpha, so each overlap blended
-     * twice and the glyph came out blotchy with a heavy blob at the elbow. This emits three
-     * non-overlapping strips instead -- core, and one fringe down each side -- so every pixel is
-     * covered exactly once.
-     */
-    private static void polyline(float[] xs, float[] ys, float thickness, int color) {
+private static void polyline(float[] xs, float[] ys, float thickness, int color) {
         int n = xs.length;
         if (n < 2) return;
         float half = thickness * 0.5f;
-
-        // Offset direction at each point: the segment normal at the ends, and the mitre of the
-        // two adjoining normals in between, lengthened so the join keeps its width through
-        // the corner.
         float[] mx = new float[n], my = new float[n];
         for (int i = 0; i < n; i++) {
             float ax = 0, ay = 0, bx = 0, by = 0;
@@ -469,7 +389,6 @@ public class Notifications extends Module {
             float len = (float) Math.sqrt(vx * vx + vy * vy);
             if (len < 1.0e-5f) { vx = ax; vy = ay; len = 1.0f; }
             vx /= len; vy /= len;
-            // Mitre length. Clamped so a sharp corner cannot shoot off into a spike.
             float scale = 1.0f;
             if (i > 0 && i < n - 1) {
                 float d = vx * bx + vy * by;
@@ -483,9 +402,7 @@ public class Notifications extends Module {
         strip(xs, ys, mx, my, half + FEATHER, half, 0.0f, 1.0f, color);
         strip(xs, ys, mx, my, -half, -half - FEATHER, 1.0f, 0.0f, color);
     }
-
-    /** Triangle strip between two parallel offsets of a polyline, with an alpha at each. */
-    private static void strip(float[] xs, float[] ys, float[] mx, float[] my,
+private static void strip(float[] xs, float[] ys, float[] mx, float[] my,
                               float offsetA, float offsetB, float alphaA, float alphaB, int color) {
         int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
         int alpha = (color >>> 24) & 0xFF;
@@ -504,23 +421,7 @@ public class Notifications extends Module {
         return new Color(base.getRed(), base.getGreen(), base.getBlue(),
                 Math.max(0, Math.min(255, alpha))).getRGB();
     }
-
-    /** Begins an untextured, smooth-shaded 2D batch with the inherited GL state corrected. */
-    private static WorldRenderer begin2D(int mode) {
-        // Three pieces of inherited state have to be corrected here, and every one of them is
-        // invisible until geometry like this is drawn through it.
-        //
-        // shadeModel is the important one. The gradient helpers in RenderUtils set GL_SMOOTH,
-        // draw, and set GL_FLAT back, and syncGlState leaves GL_FLAT too. Under GL_FLAT a
-        // triangle takes one vertex's colour for all of it, so the alpha ramps that feather
-        // every edge below collapsed into solid blocks -- the anti-aliasing was being written
-        // and then thrown away by the rasteriser.
-        //
-        // The alpha test is Minecraft's usual GL_GREATER 0.1, which chops the tail off a fade
-        // and turns the soft edge back into a hard one.
-        //
-        // Culling depends on winding, and winding here depends on which way a stroke runs, so a
-        // shape could vanish entirely based on the direction it was drawn in.
+private static WorldRenderer begin2D(int mode) {
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
@@ -542,23 +443,9 @@ public class Notifications extends Module {
         GlStateManager.enableAlpha();
         GlStateManager.enableTexture2D();
     }
-
-    /**
-     * Width of the translucent fringe added to every edge, in GUI pixels.
-     *
-     * None of this geometry gets anti-aliased by the pipeline -- the badge was raw triangles with
-     * hard edges, which is why the ring and the tick came out stepped. Every shape below is drawn
-     * with a band of its own colour fading to zero alpha along the boundary. That is
-     * anti-aliasing done by hand, and it costs one extra strip per edge.
-     */
-    private static final float FEATHER = 0.55f;
+private static final float FEATHER = 0.55f;
     private static final int CIRCLE_STEPS = 48;
-
-    /**
-     * One radial band as a triangle strip: alpha {@code a0} at radius {@code r0} fading to
-     * {@code a1} at {@code r1}. Discs, rings and their fringes are all this same shape.
-     */
-    private static void band(float cx, float cy, float r0, float a0, float r1, float a1,
+private static void band(float cx, float cy, float r0, float a0, float r1, float a1,
                              float startDeg, float sweepDeg, int color) {
         if (sweepDeg <= 0.0f) return;
         int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
@@ -582,12 +469,7 @@ public class Notifications extends Module {
         band(cx, cy, 0.0f, 1.0f, radius, 1.0f, 0.0f, 360.0f, color);
         band(cx, cy, radius, 1.0f, radius + FEATHER, 0.0f, 0.0f, 360.0f, color);
     }
-
-    /**
-     * A ring segment. Angles are degrees, zero at the top, sweeping clockwise so the countdown
-     * unwinds the way a clock hand would.
-     */
-    private static void arc(float cx, float cy, float radius, float thickness,
+private static void arc(float cx, float cy, float radius, float thickness,
                             float startDeg, float sweepDeg, int color) {
         if (sweepDeg <= 0.0f || radius <= 0.0f) return;
         float inner = radius - thickness * 0.5f;

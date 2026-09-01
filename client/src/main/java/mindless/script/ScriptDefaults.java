@@ -973,8 +973,6 @@ public class ScriptDefaults {
             getScript(this.superName).registerSetting(new KeySetting(name, defaultKey));
         }
 
-        // main slider constructors
-
         public void registerSlider(String group, String name, String suffix, double defaultValue, double minimum, double maximum, double interval) {
             getScript(this.superName).registerSetting(new SliderSetting(getGroupForString(group), name, suffix, defaultValue, minimum, maximum, interval));
         }
@@ -982,8 +980,6 @@ public class ScriptDefaults {
         public void registerSlider(String group, String name, String suffix, int defaultValue, String[] stringArray) {
             getScript(this.superName).registerSetting(new SliderSetting(getGroupForString(group), name, suffix, defaultValue, stringArray));
         }
-
-        // rest
 
         public void registerSlider(String name, double defaultValue, double minimum, double maximum, double interval) {
             this.registerSlider("", name, "", defaultValue, minimum, maximum, interval);
@@ -1462,26 +1458,18 @@ public class ScriptDefaults {
         private static Module getModule() {
             return ModuleManager.getModule("Notifications");
         }
-
-        /** Enables automatic module alerts. */
-        public static void enable() {
+public static void enable() {
             Module module = getModule();
             if (module != null) module.enable();
         }
-
-        /** Disables automatic and manual notification rendering. */
-        public static void disable() {
+public static void disable() {
             Module module = getModule();
             if (module != null) module.disable();
         }
-
-        /** Shows an intentional enabled-style script alert. */
-        public static void notify(String title) {
+public static void notify(String title) {
             notify(title, true);
         }
-
-        /** Shows an intentional script alert with enabled/disabled styling. */
-        public static void notify(String title, boolean enabled) {
+public static void notify(String title, boolean enabled) {
             Notifications.notifyScript(title, enabled);
         }
     }

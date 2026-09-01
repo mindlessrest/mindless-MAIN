@@ -39,36 +39,18 @@ public class SessionInfo extends Module {
     private static final int COL_CLOCK = new Color(148, 151, 163).getRGB();
     private static final int COL_UP    = new Color(122, 214, 168).getRGB();
     private static final int COL_DOWN  = new Color(224, 122, 122).getRGB();
-    // A zero has nothing to say yet, and four coloured zeros at the start of a session read as
-    // a warning rather than an empty scoreboard.
     private static final int COL_ZERO  = new Color(118, 121, 132).getRGB();
-
-    /** Ranks, guild tags and the like, so a name can be read off the front of a line. */
-    private static final Pattern RANK_TAG = Pattern.compile("\\[[^\\]]*\\]\\s*");
+private static final Pattern RANK_TAG = Pattern.compile("\\[[^\\]]*\\]\\s*");
     private static final Pattern KILLED_BY = Pattern.compile("\\bby ([A-Za-z0-9_]{1,16})\\b");
     private static final Pattern DUEL_WINNER = Pattern.compile("^Winner: ([A-Za-z0-9_]{1,16})\\b");
     private static final Pattern NICKED_AS = Pattern.compile("nicked as ([A-Za-z0-9_]{1,16})");
-
-    /**
-     * A death line is a username followed directly by the verb that killed them. Anchoring on
-     * that shape is the whole point: searching the line for death words instead meant anything
-     * carrying "by <name>" could score a kill, and bed destruction -- "Red Bed was destroyed by
-     * <you>" -- did exactly that, once per bed.
-     */
-    private static final Pattern DEATH_LINE = Pattern.compile(
+private static final Pattern DEATH_LINE = Pattern.compile(
             "^([A-Za-z0-9_]{1,16}) (was|fell|died|hit|burned|drowned|suffocated"
             + "|blew|walked|went|withered|starved)\\b");
-
-    /** Objectives, not deaths, and several of them name a player after "by". */
-    private static final String[] NOT_A_DEATH = {
+private static final String[] NOT_A_DEATH = {
             "DESTRUCTION", "destroyed", "collected", "purchased", "joined", "disconnected"
     };
-
-    /**
-     * Hypixel announces a result over several lines, and older parsing counted each of them. One
-     * result per window is enough; games never end twice this close together.
-     */
-    private static final long RESULT_COOLDOWN_MS = 20_000L;
+private static final long RESULT_COOLDOWN_MS = 20_000L;
 
     private static final String[] MODES = { "Modern", "Classic" };
 
@@ -130,8 +112,6 @@ public class SessionInfo extends Module {
         return scale;
     }
 
-    // ------------------------------------------------------------------ position
-
     public float getPosX() {
         syncPositionToResolution();
         return posX;
@@ -192,23 +172,17 @@ public class SessionInfo extends Module {
         relativePosX = absoluteX / Math.max(1, resolution.getScaledWidth());
         relativePosY = absoluteY / Math.max(1, resolution.getScaledHeight());
     }
-
-    /** Draws the panel where it already sits and reports its bounds, for the HUD editor. */
-    public float[] renderPreview() {
+public float[] renderPreview() {
         return (int) mode.getInput() == 0 ? drawModern() : draw();
     }
-
-    /** Draws the panel at a requested top-left and reports its bounds, for the HUD editor. */
-    public float[] renderDesignerPreview(float absoluteLeft, float absoluteTop) {
+public float[] renderDesignerPreview(float absoluteLeft, float absoluteTop) {
         ScaledResolution resolution = ScaledResolutionCache.get();
         boolean modern = (int) mode.getInput() == 0;
         if (modern) {
-            // Modern anchors on the right edge; convert left-edge drag coordinate.
             float s = (float) scale.getInput();
             MindlessFontRenderer font = HUD.getHudFontRenderer();
             MindlessFontRenderer bigFont = valueFont();
             if (font == null || bigFont == null) return null;
-            // Estimate width for positioning
             float[] prev = drawModern();
             if (prev == null) return null;
             float w = prev[2] - prev[0];
@@ -220,15 +194,7 @@ public class SessionInfo extends Module {
         setAbsolutePosition(absoluteLeft + size[0], absoluteTop, resolution);
         return draw();
     }
-
-    // ------------------------------------------------------------------ tracking
-
-    /**
-     * Hypixel names the victim at the front of a death line and the killer after "by". Reading
-     * both out of that one structure is what keeps a kill from also registering as a death, and
-     * a final kill from registering twice.
-     */
-    @SubscribeEvent
+@SubscribeEvent
     public void onChat(ClientChatReceivedEvent event) {
         if (event.type == 2 || mc.thePlayer == null) return;
 
@@ -237,8 +203,6 @@ public class SessionInfo extends Module {
 
         String line = RANK_TAG.matcher(raw).replaceAll("").trim();
         if (line.isEmpty()) return;
-
-        // The same line arriving twice in a frame or two is a repeat, not a second event.
         long now = System.currentTimeMillis();
         if (line.equals(lastLine) && now - lastLineMs < 500L) return;
         lastLine = line;
@@ -305,9 +269,7 @@ public class SessionInfo extends Module {
             recordResult(false);
         }
     }
-
-    /** The account name, or the nick when one is active. */
-    private boolean isMe(String name) {
+private boolean isMe(String name) {
         if (name == null || mc.thePlayer == null) return false;
         if (name.equalsIgnoreCase(mc.thePlayer.getName())) return true;
         return !nickName.isEmpty() && name.equalsIgnoreCase(nickName);
@@ -320,8 +282,6 @@ public class SessionInfo extends Module {
         if (won) wins++;
         else losses++;
     }
-
-    // ------------------------------------------------------------------ rendering
 
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
@@ -406,9 +366,7 @@ public class SessionInfo extends Module {
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         return new float[] { left, top, left + totalW, top + totalH };
     }
-
-    /** A real larger face for the numbers, rather than scaling the small one up and blurring it. */
-    private static MindlessFontRenderer valueFont() {
+private static MindlessFontRenderer valueFont() {
         return FontManager.getHudRenderer(ModuleFont.nameOf(font),
                 Math.min(2.0f, HUD.getSelectedFontScale() * 1.6f));
     }
@@ -485,9 +443,7 @@ public class SessionInfo extends Module {
 
         return new float[] { (content + PAD_X * 2.0f) * s, height * s };
     }
-
-    /** Draws the panel and returns its bounds as {left, top, right, bottom}. */
-    private float[] draw() {
+private float[] draw() {
         MindlessFontRenderer small = HUD.getHudFontRenderer();
         MindlessFontRenderer big = valueFont();
         if (small == null || big == null) return null;
@@ -502,40 +458,17 @@ public class SessionInfo extends Module {
         float top = posY;
 
         float radius = 9.0f * mindless.module.impl.theme.ThemeManager.roundingScale();
-
-        // A blurred panel with no edge treatment has nothing separating it from the world; it
-        // reads as a smudge rather than a card, and over bright terrain the sides all but
-        // disappear. The shadow gives it somewhere to sit and the hairline below gives it an edge.
-        //
-        // The shadow goes first because everything from prepareBlur onwards is stencilled to the
-        // panel shape and would paint over it.
         RoundedUtils.drawRoundShadow(left, top, w, h, radius, 5.0f,
                 new Color(0, 0, 0, 130).getRGB());
 
         BlurUtils.prepareBlur(left, top, w, h);
         RoundedUtils.drawRound(left, top, w, h, radius, 0xFF000000);
-        // Region-limited: the full-screen variant composites the whole framebuffer twice for a
-        // panel this size.
         BlurUtils.blurEndRegion(2, 2.4f, 0.85f, left - 2.0f, top - 2.0f, w + 4.0f, h + 4.0f);
         RoundedUtils.drawRound(left, top, w, h, radius, new Color(0, 0, 0, 130));
-        // Same sheen as the alert cards, so the two overlays read as one family instead of a
-        // shaded box next to a flat one.
         RoundedUtils.drawGradientVertical(left, top, w, h, radius,
                 new Color(255, 255, 255, 20), new Color(255, 255, 255, 4));
-
-        // A real ring, drawn last.
-        //
-        // This used to be a translucent rounded rect a pixel proud of the panel, which is only an
-        // outline for as long as something else paints over its middle -- here, the blur. Any
-        // frame where the blur did not composite, the whole white rectangle showed instead of its
-        // edge, which is the box turning white at random. The outline shader takes a fill and a
-        // rim separately and needs nothing painted over it, so there is no frame in which it can
-        // come out wrong.
         RoundedUtils.drawRoundOutline(left, top, w, h, radius, 1.0f,
                 new Color(0, 0, 0, 0), new Color(255, 255, 255, 30));
-
-        // The rounded-rect and blur shaders leave a program bound; glyph quads drawn through it
-        // come out garbled.
         GL20.glUseProgram(0);
         GlStateManager.enableTexture2D();
         GlStateManager.enableBlend();

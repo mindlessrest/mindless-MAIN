@@ -6,15 +6,6 @@ import net.minecraft.util.Session;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.concurrent.atomic.AtomicReference;
-
-/**
- * Keeps an in-memory session override for the Minecraft#getSession hook.
- *
- * <p>The override is the authoritative path because some Lunar builds keep
- * Minecraft.session final. A best-effort reflective write is also performed
- * for vanilla/Forge code which reads the field directly. No session is ever
- * serialized by this class.</p>
- */
 public final class AltSessionController {
     private static final AtomicReference<Session> OVERRIDE = new AtomicReference<>();
     private static final AtomicReference<Session> ORIGINAL = new AtomicReference<>();
@@ -29,22 +20,14 @@ public final class AltSessionController {
     public interface ApplyCallback {
         void complete(boolean success, String message);
     }
-
-    /**
-     * Called from a RETURN hook in Minecraft#getSession.
-     */
-    public static Session resolveSession(Session vanillaSession) {
+public static Session resolveSession(Session vanillaSession) {
         if (vanillaSession != null && OVERRIDE.get() == null) {
             ORIGINAL.compareAndSet(null, vanillaSession);
         }
         Session replacement = OVERRIDE.get();
         return replacement == null ? vanillaSession : replacement;
     }
-
-    /**
-     * Exposed for a HEAD hook or compatibility diagnostics.
-     */
-    public static Session getOverride() {
+public static Session getOverride() {
         return OVERRIDE.get();
     }
 
@@ -58,7 +41,6 @@ public final class AltSessionController {
             try {
                 raw = minecraft.getSession();
             } catch (Throwable ignored) {
-                // The caller will receive a controlled failure if restore is requested.
             }
         }
         if (raw != null && raw != OVERRIDE.get()) {
@@ -129,7 +111,6 @@ public final class AltSessionController {
                 minecraft.addScheduledTask(action);
             }
         } catch (Throwable ignored) {
-            // A stopped client cannot safely accept a session change.
         }
     }
 
@@ -144,8 +125,6 @@ public final class AltSessionController {
                 properties.getClass().getMethod("clear").invoke(properties);
             }
         } catch (Throwable ignored) {
-            // Cosmetic profile data may remain cached, but auth still uses the
-            // getSession override and must not fail because of that cache.
         }
     }
 
@@ -157,7 +136,6 @@ public final class AltSessionController {
         try {
             minecraft.theWorld.sendQuittingDisconnectingPacket();
         } catch (Throwable ignored) {
-            // loadWorld(null) is still required to prevent an in-place account swap.
         }
         minecraft.loadWorld(null);
     }
@@ -277,7 +255,6 @@ public final class AltSessionController {
             modifiers.setAccessible(true);
             modifiers.setInt(field, field.getModifiers() & ~Modifier.FINAL);
         } catch (Throwable ignored) {
-            // Modern JVMs may block this; the getSession hook remains authoritative.
         }
     }
 

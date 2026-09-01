@@ -16222,8 +16222,6 @@ contrast
 contrastive
 contrasty
 contravallation
-contravene
-contravention
 contrayerva
 contrecoup
 contredanse
@@ -17251,8 +17249,6 @@ crater
 craunch
 cravat
 crave
-craven
-cravens
 craver
 craving
 craw
@@ -31703,7 +31699,6 @@ gravel
 gravelblind
 gravelly
 gravely
-graven
 graver
 graves
 gravesend
@@ -38329,7 +38324,6 @@ intrastate
 intratelluric
 intrauterine
 intravasation
-intravenous
 intreat
 intrench
 intrepid
@@ -60921,11 +60915,6 @@ raveaux
 ravel
 ravelin
 ravelment
-raven
-ravenna
-ravenous
-ravenravening
-ravens
 raver
 ravi
 ravid

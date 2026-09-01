@@ -9,16 +9,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
-
-/**
- * Loader-independent Forge 1.8.9 EventBus used by the Lunar MCP payload.
- *
- * Forge's stock EventBus asks Loader.instance() for an owning mod every time a
- * listener is registered.  A plain Lunar + OptiFine process has no initialized
- * FML loader, even though Mindless only needs the event contract.  This binary-
- * compatible implementation keeps that contract without starting a second mod
- * loader inside Lunar.
- */
 public class EventBus implements IEventExceptionHandler {
     private final CopyOnWriteArrayList<Handler> handlers =
             new CopyOnWriteArrayList<Handler>();

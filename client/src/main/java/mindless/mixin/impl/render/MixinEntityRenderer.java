@@ -226,12 +226,6 @@ public class MixinEntityRenderer implements ISaturationRenderer {
             rh.swappedForMouseOver = false;
         }
     }
-
-    // updateLightmap never calls TextureUtil.uploadTexture directly; it calls
-    // lightmapTexture.updateDynamicTexture(), which is the real upload trigger and
-    // runs after all 256 entries of lightmapColors ([I field_78504_Q, backing the
-    // DynamicTexture's data array) are written. Injecting BEFORE it lets handlers
-    // mutate the shared array in place before it is uploaded.
     @Inject(method = "updateLightmap", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/texture/DynamicTexture;updateDynamicTexture()V", shift = At.Shift.BEFORE))
     private void onUpdateLightmap(float partialTicks, CallbackInfo ci) {
         IAccessorEntityRenderer accessor = (IAccessorEntityRenderer) (Object) this;

@@ -10,8 +10,6 @@ import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingSetAttackTargetEvent;
-
-/** Supplies Forge's attack-target event in the direct Lunar runtime. */
 @CTransformer(EntityLiving.class)
 public class TransformerEntityLiving {
     @CInline

@@ -15,12 +15,6 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
-
-/**
- * Forge 1.8.9 constructs each subscribed event type while registering a
- * listener. A missing public no-argument constructor makes that handler vanish
- * from the bus after only a log warning.
- */
 public class EventHandlerContractTest {
     @Test
     public void everyMindlessSubscriberUsesRegistrableEventTypes() throws Exception {

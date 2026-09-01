@@ -189,10 +189,6 @@ public class AutoBlockin extends Module {
         else plannedSlot = (weakSlot != -1 ? weakSlot : strongSlot);
 
         if (!placing) enablePlacing();
-
-        // Suppress attack/use so autoblock/right-click doesn't fire during blockin.
-        // Do NOT clear the aim here — holding LMB while activating is normal during
-        // combat and should not abort the placement cycle.
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindAttack.getKeyCode(), false);
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
         equipPlannedSlot();

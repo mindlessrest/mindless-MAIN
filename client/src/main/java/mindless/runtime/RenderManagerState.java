@@ -1,8 +1,6 @@
 package mindless.runtime;
 
 import net.minecraft.client.entity.EntityPlayerSP;
-
-/** Per-render state kept outside RenderManager so retransformation changes no schema. */
 public final class RenderManagerState {
     private static final ThreadLocal<Float> CACHED_PITCH = new ThreadLocal<>();
     private static final ThreadLocal<Float> CACHED_PREV_PITCH = new ThreadLocal<>();

@@ -89,18 +89,11 @@ public abstract class MixinGuiNewChat {
         }
         double newestEase = mindless$easeOutCubic(newestProgress);
         double animatedRows = Math.max(0.0, visibleLines - 1.0 + newestEase);
-
-        // One row's height, which the panel and the message positions both have to agree on. A
-        // taller face or extra spacing pushes the lines apart and the panel has to grow with them,
-        // or the oldest messages end up outside their own background.
         MindlessFontRenderer chatFont = ChatModule.getCustomFont();
         float rowHeight = (chatFont != null ? chatFont.getLineHeight() : 9.0f) + ChatModule.lineSpacing();
         if (rowHeight < 1.0f) rowHeight = 1.0f;
         float headSize = ChatModule.playerHeads() ? ChatModule.headSize() : 0.0f;
         float textIndent = headSize > 0.0f ? headSize + 2.0f : 0.0f;
-
-        // Match the scoreboard panel: 5px content padding, the same blur,
-        // translucent fill, rounded shadow and inset-from-edge placement.
         float bgX = 3.0f;
         float bgW = chatWidth * scale + 10.0f + textIndent * scale;
         float bgH = (float) (animatedRows * rowHeight * scale + 10.0f);
@@ -141,7 +134,6 @@ public abstract class MixinGuiNewChat {
 
             if (headSize > 0.0f) {
                 String sender = GuiNewChatState.senderOf(chatLine.getChatComponent());
-                // Nudged down so the face sits on the text's optical centre rather than its box.
                 GuiNewChatState.drawPlayerHead(sender, x, y - 1.0f, headSize, alpha);
                 GlStateManager.enableBlend();
                 GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
@@ -164,20 +156,10 @@ public abstract class MixinGuiNewChat {
                 mc.fontRendererObj.drawStringWithShadow(text, textX, y, textColor);
             }
             else {
-                // The float overload, since the animation slides lines in on fractional offsets.
                 mc.fontRendererObj.drawString(text, textX, y, textColor, false);
             }
         }
         GlStateManager.disableBlend();
-
-        // Only while the chat has actually been scrolled back, and clear of the text.
-        //
-        // Vanilla translates the whole thing three pixels left before drawing this, so the bar
-        // lands outside the message column. That translate was lost when this rendering was
-        // rewritten, leaving it at local x 0..3 -- directly on top of the first characters of
-        // every line, which is the stray coloured stripe down the side of the chat box. Drawing
-        // it whenever the backlog overflowed meant it appeared the moment chat was opened, with
-        // nothing to scroll, and in vanilla red-and-blue that matched nothing else on screen.
         if (chatOpen && isScrolled && rendered > 0) {
             int fontHeight = Math.max(1, Math.round(rowHeight));
             int totalHeight = totalLines * fontHeight + totalLines;
@@ -202,9 +184,6 @@ public abstract class MixinGuiNewChat {
                 mindless$messageBirths.put(line, now);
             }
         }
-
-        // Avoid allocating a temporary identity set every rendered frame.
-        // Old animation entries only need occasional cleanup.
         if (now - mindless$lastAnimationCleanup >= 1000L) {
             mindless$messageBirths.keySet().retainAll(drawnChatLines);
             mindless$lastAnimationCleanup = now;

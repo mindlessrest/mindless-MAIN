@@ -38,16 +38,6 @@ import java.util.function.Supplier;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
-
-/**
- * Contract test for the bytecode emitted by the runtime transformer pipeline.
- *
- * <p>The native agent retransforms classes that are already loaded. JVMTI
- * permits method-body changes in that situation, but it rejects structural
- * changes such as adding/removing members or changing inheritance. This test
- * feeds the same SRG bytecode used by the 1.8.9 Forge runtime through every
- * registered transformer and verifies that each result obeys that contract.</p>
- */
 public class TransformerCompatibilityTest {
     private static final String LOOM_VERSION_DIR = "1.8.9";
     private static final String FORGE_VERSION = System.getProperty(
@@ -864,13 +854,7 @@ public class TransformerCompatibilityTest {
         }
         return null;
     }
-
-    /**
-     * Supplies Minecraft/Forge classes from the SRG jars before consulting the
-     * ordinary test classpath. The ordering matters: SrgMapper's InfoFiller
-     * must inspect members in the same namespace as the target bytecode.
-     */
-    private static final class SrgFirstClassProvider implements IClassProvider {
+private static final class SrgFirstClassProvider implements IClassProvider {
         private final JarFile[] srgJars;
         private final LaunchClassProvider classpathFallback;
         private final Map<String, byte[]> cache = new HashMap<>();

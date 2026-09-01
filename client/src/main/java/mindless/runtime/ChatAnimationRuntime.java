@@ -10,11 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
-
-/** External state for GuiNewChat, whose schema cannot change after injection. */
 public final class ChatAnimationRuntime {
-    /** Match the original mod's relaxed, continuous chat insertion timing. */
-    private static final long DURATION_NS = 320_000_000L;
+private static final long DURATION_NS = 320_000_000L;
     private static final long CLEANUP_NS = 1_000_000_000L;
     private static final Map<GuiNewChat, State> STATES = new WeakHashMap<>();
 
@@ -56,13 +53,7 @@ public final class ChatAnimationRuntime {
         final Map<LineKey, Long> births = new HashMap<>();
         long lastCleanup;
     }
-
-    /**
-     * Lunar may recreate ChatLine wrappers between rendered frames.  The
-     * vanilla update counter plus formatted contents identify the logical
-     * line without restarting its animation when only the wrapper changes.
-     */
-    private static final class LineKey {
+private static final class LineKey {
         final int updateCounter;
         final String text;
 

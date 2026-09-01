@@ -27,17 +27,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-/**
- * Runtime replacement for Sponge Mixin. Registers ClassTransform transformers
- * that reproduce every Mindless mixin, then re-transforms the target classes via
- * a native JVMTI ClassFileLoadHook installed by MindlessNative.dll.
- *
- * IMPORTANT: JVMTI RetransformClasses cannot add methods, fields, or
- * interfaces to already-loaded classes. Accessor mixins (@Accessor / @Invoker)
- * therefore cannot be reproduced by porting them; callers must go through
- * {@link AccessorBridge} instead.
- */
 public final class MindlessTransformerManager {
     enum RuntimeNamespace {
         MCP,
@@ -65,30 +54,11 @@ public final class MindlessTransformerManager {
     private final Map<String, String> transformFailures =
             Collections.synchronizedMap(new LinkedHashMap<String, String>());
     private final TransformVerifier verifier;
-
-    /**
-     * Whether a questionable class is refused rather than reported.
-     *
-     * <p>Off by default. On, for working out which class is really at fault when the JVM starts
-     * rejecting things: {@code -Dmindless.strictTransformVerify=true}.
-     */
-    private static final boolean STRICT_VERIFY =
+private static final boolean STRICT_VERIFY =
             Boolean.getBoolean("mindless.strictTransformVerify");
-
-    /**
-     * Targets the client cannot run without.
-     *
-     * <p>Minecraft carries the tick and input bridge: without it no module ever updates, no
-     * keybind is read and no event is posted, so a client that started anyway would look exactly
-     * like one that had not. Every other target is one feature. Losing a feature to a host update
-     * is worth reporting; losing the whole client to it is not, which is what an all-or-nothing
-     * startup did.
-     */
-    private static final Set<String> REQUIRED_TARGETS = Collections.unmodifiableSet(
+private static final Set<String> REQUIRED_TARGETS = Collections.unmodifiableSet(
             new LinkedHashSet<>(java.util.Arrays.asList("net.minecraft.client.Minecraft")));
-
-    /** File log survives the DLL unload and MC process; grep here to diagnose. */
-    static void fileLog(String message) {
+static void fileLog(String message) {
         try {
             File dir = new File(System.getProperty("java.io.tmpdir"), "MindlessNative");
             dir.mkdirs();
@@ -116,18 +86,10 @@ public final class MindlessTransformerManager {
     private MindlessTransformerManager() {
         this(new LaunchClassProvider(MindlessTransformerManager.class.getClassLoader()));
     }
-
-    /**
-     * Test seam for supplying bytecode in the same namespace as the classes
-     * being transformed. Production always enters through {@link #get()} and
-     * therefore keeps using {@link LaunchClassProvider}.
-     */
-    MindlessTransformerManager(IClassProvider provider) {
+MindlessTransformerManager(IClassProvider provider) {
         this(provider, detectRuntimeNamespace(provider), detectRuntimeProfile(provider));
     }
-
-    /** Explicit namespace seam used by the Forge and Lunar compatibility tests. */
-    MindlessTransformerManager(IClassProvider provider, RuntimeNamespace runtimeNamespace) {
+MindlessTransformerManager(IClassProvider provider, RuntimeNamespace runtimeNamespace) {
         this(provider, runtimeNamespace, RuntimeProfile.GENERIC);
     }
 
@@ -140,10 +102,6 @@ public final class MindlessTransformerManager {
         this.runtimeNamespace = runtimeNamespace;
         this.runtimeProfile = runtimeProfile;
         ClassLoader loader = MindlessTransformerManager.class.getClassLoader();
-
-        // Forge production bytecode needs the bundled MCP -> SRG table.
-        // Lunar's baked 1.8.9 classes already expose MCP/named members, so the
-        // correct Lunar mapping operation is identity/pass-through.
         AMapper selectedMapper = null;
         if (runtimeNamespace == RuntimeNamespace.SRG) {
             InputStream mappingsStream = loader.getResourceAsStream("mindless-mappings.srg");
@@ -170,19 +128,7 @@ public final class MindlessTransformerManager {
         this.delegate = selectedMapper != null
                 ? new TransformerManager(provider, selectedMapper)
                 : new TransformerManager(provider);
-        // Use THROW so failures inside transform() propagate as exceptions
-        // caught by our transform(...) wrapper, giving us a real stack trace
-        // instead of the silent "CANCEL" fallback.
         this.delegate.setFailStrategy(FailStrategy.THROW);
-
-        // CRITICAL: swap the internal ClassTree for a non-transforming one.
-        // When ASM asks getCommonSuperClass(A, B) mid-transform, the default
-        // ClassTree re-runs the transformer pipeline for A/B — that reentrant
-        // call NPEs because the CInject/CRedirect handlers hold state that
-        // is only valid for the top-level target. A ClassTree constructed
-        // WITHOUT a TransformerManager reference just walks raw bytecode
-        // from the class provider (returning the stub or real bytes) without
-        // re-applying any @CInject.
         try {
             java.lang.reflect.Field treeField = TransformerManager.class.getDeclaredField("classTree");
             treeField.setAccessible(true);
@@ -216,14 +162,10 @@ public final class MindlessTransformerManager {
             throw new IllegalArgumentException(
                     "Unsupported mindless.runtimeProfile value: " + override);
         }
-
-        // Test fixtures and non-native launches do not receive the native
-        // property. Detect Lunar from a stable class baked into its platform.
         try {
             byte[] marker = provider.getClass("com.lunarclient.ApiUtils");
             if (marker != null && marker.length > 0) return RuntimeProfile.LUNAR;
         } catch (Throwable ignored) {
-            // Not Lunar.
         }
         return RuntimeProfile.GENERIC;
     }
@@ -292,13 +234,7 @@ public final class MindlessTransformerManager {
     public Set<String> targetInternalNames() {
         return Collections.unmodifiableSet(targetInternalNames);
     }
-
-    /**
-     * Called by TransformerHooks from the JVMTI ClassFileLoadHook. The name is
-     * in internal form (e.g. "net/minecraft/client/renderer/EntityRenderer").
-     * Returns the transformed bytecode or null when the class is not managed.
-     */
-    /** Tracks class names currently being transformed on THIS thread.
+/** Tracks class names currently being transformed on THIS thread.
      * ClassTransform reenters transform(...) via ClassTree.getTreePart when
      * ASM needs to resolve super classes for frame computation. That
      * reentrant call re-runs every @CInject handler with a mid-state
@@ -330,9 +266,6 @@ public final class MindlessTransformerManager {
             dumpClassBytes(canonicalName, originalBytes);
             byte[] result;
             synchronized (delegateTransformLock) {
-                // ClassTransform keeps mutable handler state while applying a
-                // transformer. JVMTI class-load hooks may arrive concurrently
-                // from the client, Netty, and other loader threads.
                 result = delegate.transform(canonicalName, originalBytes);
             }
             if (result != null && result != originalBytes) {
@@ -346,17 +279,6 @@ public final class MindlessTransformerManager {
                             + schemaChange + ")");
                     return null;
                 }
-                // Reported, not enforced. This reads the code rather than its shape, which is
-                // the only way to see the class of breakage a host update causes -- but it can
-                // only be as right as its view of the class hierarchy, and that view comes from a
-                // loader that materialises the game's classes through a transformer chain and
-                // hands back reflective approximations of them. Treating its objections as
-                // grounds for refusal turned a client that mostly worked into one that would not
-                // start: it declared Minecraft unverifiable and startup stopped there.
-                //
-                // The JVM remains the authority. It gets the bytes, and a class it rejects is now
-                // skipped by the agent rather than taken as a failed launch, so a genuine problem
-                // costs that class and this log line explains it.
                 String suspect = verifier.verify(originalBytes, result);
                 if (suspect != null) {
                     String note = "[MindlessTransformer-WARN] " + canonicalName
@@ -376,7 +298,6 @@ public final class MindlessTransformerManager {
                     fileLog("[MindlessTransformer] " + canonicalName + " -> NO CHANGE (transformer likely inert)");
                     return null;
                 }
-                // same length but potentially different content
                 boolean identical = java.util.Arrays.equals(result, originalBytes);
                 if (identical) {
                     transformFailures.put(canonicalName, "transformer returned identical bytecode");
@@ -392,7 +313,6 @@ public final class MindlessTransformerManager {
             transformFailures.put(canonicalName, failure.toString());
             java.io.StringWriter sw = new java.io.StringWriter();
             failure.printStackTrace(new java.io.PrintWriter(sw));
-            // Walk cause chain in case the real reason is buried under wrappers
             Throwable cur = failure.getCause();
             int depth = 0;
             while (cur != null && depth < 6) {
@@ -410,20 +330,7 @@ public final class MindlessTransformerManager {
             inFlight.remove(canonicalName);
         }
     }
-
-    /**
-     * Reports what did not apply, and stops startup only when it has to.
-     *
-     * <p>A successful {@code RetransformClasses} is not evidence that anything was hooked: JVMTI
-     * also answers success when the hook returns null and the original bytes are kept. This is
-     * where that difference is turned into something readable -- one line per target that did not
-     * take, naming the class and the reason, which on a host update is the renamed method itself.
-     *
-     * <p>Only a {@link #REQUIRED_TARGETS required} target stops the client. This used to throw for
-     * any failure at all, and combined with the agent abandoning startup on a partial batch it
-     * meant one class the host had refactored kept the client from ever initialising.
-     */
-    void assertNoTransformFailures() {
+void assertNoTransformFailures() {
         Map<String, String> failures;
         synchronized (transformFailures) {
             if (transformFailures.isEmpty()) return;
@@ -444,13 +351,6 @@ public final class MindlessTransformerManager {
         }
 
         if (!required.isEmpty()) {
-            // Said as loudly as a log line can be, and then startup continues.
-            //
-            // Refusing to start on this was worse than what it was guarding against. A client
-            // that starts with Minecraft unhooked does nothing, which is bad; a client that
-            // refuses to start does nothing either, and gives the user no way to see the rest of
-            // the report or to use whatever else still works. The JVM is the authority on whether
-            // bytecode is usable, and the agent already skips what it rejects.
             String message = "Required transformer targets did not apply to this game build: "
                     + required + " -- the client will start but its hooks into those classes are "
                     + "missing";
@@ -462,14 +362,7 @@ public final class MindlessTransformerManager {
     private static String stripRegistrationPrefix(String key) {
         return key.startsWith("registration:") ? key.substring("registration:".length()) : key;
     }
-
-    /**
-     * HotSpot retransformation may alter method bodies but may not add/remove
-     * fields or methods, change inheritance, or change member modifiers. Keep
-     * this preflight next to the transform boundary so a future transformer
-     * cannot silently produce JVMTI error 63/64 again.
-     */
-    static String findRetransformSchemaChange(byte[] originalBytes, byte[] transformedBytes) {
+static String findRetransformSchemaChange(byte[] originalBytes, byte[] transformedBytes) {
         try {
             ClassNode before = ASMUtils.fromBytes(originalBytes);
             ClassNode after = ASMUtils.fromBytes(transformedBytes);
@@ -489,15 +382,7 @@ public final class MindlessTransformerManager {
             return "schema preflight failed: " + failure;
         }
     }
-
-    /**
-     * ClassTransform copies an override method's visibility from the template.
-     * Lunar exposes a few vanilla methods more broadly than Forge does, so a
-     * single template visibility cannot match both runtimes. Restore only the
-     * original visibility; changes to static/final/native/abstract and other
-     * structural flags must remain visible to the schema check and be rejected.
-     */
-    static byte[] restoreOriginalVisibility(byte[] originalBytes,
+static byte[] restoreOriginalVisibility(byte[] originalBytes,
                                             byte[] transformedBytes) {
         ClassReader originalReader = new ClassReader(originalBytes);
         ClassReader transformedReader = new ClassReader(transformedBytes);
@@ -536,14 +421,7 @@ public final class MindlessTransformerManager {
     private static int restoreAccess(int transformed, int original, int mask) {
         return (transformed & ~mask) | (original & mask);
     }
-
-    /**
-     * Java reflection cannot express a non-virtual super call. The
-     * EntityPlayerSP override therefore carries a harmless static marker while
-     * it is processed by ClassTransform; replace that marker only after the
-     * final target method name (MCP or SRG) is known.
-     */
-    byte[] rewriteRequiredSpecialCalls(String canonicalName, byte[] classBytes) {
+byte[] rewriteRequiredSpecialCalls(String canonicalName, byte[] classBytes) {
         if (!entityPlayerSpCanonicalName.equals(canonicalName)) return classBytes;
 
         ClassReader reader = new ClassReader(classBytes);
@@ -586,15 +464,7 @@ public final class MindlessTransformerManager {
         node.accept(writer);
         return writer.toByteArray();
     }
-
-    /**
-     * ClassTransform may remove an {@code @CInline} helper while leaving an
-     * invocation to it in a copied handler. The class still has a legal JVMTI
-     * schema, but the JVM throws {@link NoSuchMethodError} only when that path
-     * first executes. Resolve every call whose symbolic owner is the
-     * transformed class before returning its bytecode to the native agent.
-     */
-    String findDanglingSelfMethodReference(byte[] transformedBytes) {
+String findDanglingSelfMethodReference(byte[] transformedBytes) {
         return findDanglingSelfMethodReference(transformedBytes, null);
     }
 
@@ -725,27 +595,19 @@ public final class MindlessTransformerManager {
     private static final String SUPER_CALL_MARKER_NAME =
             "callSuperOnLivingUpdateMarker";
 
-    // Note: `inFlight` is thread-local and the set removes the name in the
-    // finally block above; that is what makes reentrant calls from ASM's
-    // getCommonSuperClass short-circuit safely without leaving stale entries.
-
     private void registerAll() {
-        // Try to register the Optifine CustomSky transformer conditionally.
-        // It only makes sense if net.optifine.CustomSky is present at runtime.
         boolean customSkyPresent = false;
         try {
             Class.forName("net.optifine.CustomSky", false,
                     MindlessTransformerManager.class.getClassLoader());
             customSkyPresent = true;
         } catch (Throwable ignored) {
-            // OptiFine not present — skip.
         }
         if (customSkyPresent) {
             registerTransformer("mindless.transformer.impl.render.TransformerCustomSky");
         }
 
         String[] transformers = {
-                // client
                 "mindless.transformer.impl.client.TransformerMinecraft",
                 "mindless.transformer.impl.client.TransformerBlock",
                 "mindless.transformer.impl.client.TransformerGameSettings",
@@ -755,18 +617,15 @@ public final class MindlessTransformerManager {
                 "mindless.transformer.impl.client.TransformerPlayerControllerMP",
                 "mindless.transformer.impl.client.TransformerWorld",
                 "mindless.transformer.impl.client.TransformerWorldInfo",
-                // entity
                 "mindless.transformer.impl.entity.TransformerEntity",
                 "mindless.transformer.impl.entity.TransformerEntityLiving",
                 "mindless.transformer.impl.entity.TransformerEntityLivingBase",
                 "mindless.transformer.impl.entity.TransformerEntityLivingBaseAnimations",
                 "mindless.transformer.impl.entity.TransformerEntityPlayer",
                 "mindless.transformer.impl.entity.TransformerEntityPlayerSP",
-                // network
                 "mindless.transformer.impl.network.TransformerModList",
                 "mindless.transformer.impl.network.TransformerNetHandlerPlayClient",
                 "mindless.transformer.impl.network.TransformerNetworkManager",
-                // render
                 "mindless.transformer.impl.render.TransformerEntityRenderer",
                 "mindless.transformer.impl.render.TransformerFontRenderer",
                 "mindless.transformer.impl.render.TransformerGuiChat",
@@ -798,20 +657,7 @@ public final class MindlessTransformerManager {
         fileLog("[MindlessTransformer] registered " + targetInternalNames.size()
                 + " transformers successfully for profile " + runtimeProfile);
     }
-
-    /**
-     * Says up front which declared targets this game build no longer has.
-     *
-     * <p>Runs before any weaving so the report survives whatever the weaving does next. Nothing is
-     * refused on the strength of it: a target the audit cannot find is usually a target the weaver
-     * will also fail to find, and the weaver's failure is already handled per class. What this
-     * adds is the name of the member that moved, which is the only part a bare
-     * "transformation failed" never tells you and the only part that says what to change.
-     *
-     * <p>Skipped in the obfuscated namespace, where the transformers are written in named form and
-     * the mapper rewrites them on the way in; comparing the two directly would flag every member.
-     */
-    private void auditDeclaredTargets(java.util.List<String> transformerClassNames) {
+private void auditDeclaredTargets(java.util.List<String> transformerClassNames) {
         if (runtimeNamespace != RuntimeNamespace.MCP) {
             fileLog("[MindlessTransformer] target audit skipped: obfuscated runtime namespace");
             return;
@@ -849,9 +695,6 @@ public final class MindlessTransformerManager {
     private void registerTransformer(String transformerClassName) {
         try {
             delegate.addTransformer(transformerClassName);
-            // ClassTransform owns the authoritative, already-mapped target
-            // set. Deriving from it keeps the native JVMTI filter in the same
-            // namespace as the transformer delegate.
             for (String target : delegate.getTransformedClasses()) {
                 targetInternalNames.add(target.replace('.', '/'));
             }

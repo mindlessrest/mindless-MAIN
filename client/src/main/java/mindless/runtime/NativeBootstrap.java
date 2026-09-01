@@ -13,16 +13,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-
-/**
- * Entry point invoked by MindlessNative.dll after the injection JAR is added
- * to the LaunchClassLoader. Bypasses the Forge @Mod lifecycle: registers the
- * mixin configuration and drives Mindless.init(null) manually.
- *
- * Any failure inside Mindless initialization is expanded (unwrap InvocationTarget /
- * causes) and dumped both to System.err and to a text file next to the DLL log,
- * so the trace survives the DLL unload that happens on bootstrap failure.
- */
 public final class NativeBootstrap {
     private enum BootstrapState {
         NOT_STARTED,
@@ -89,7 +79,6 @@ public final class NativeBootstrap {
             if (minecraft != null && minecraft.isCallingFromMinecraftThread()) {
                 driveModInit();
             } else if (minecraft != null) {
-                // Try scheduling on client thread first, fall back to direct if it times out
                 log("Attempting client-thread init (5s timeout, then direct)");
                 if (!driveModInitOnClientThreadWithFallback(minecraft)) {
                     return;
@@ -138,7 +127,6 @@ public final class NativeBootstrap {
                 log("Client thread not processing tasks — initializing directly");
                 driveModInit();
             } else {
-                // Task started running, wait for it
                 log("Task started on client thread, waiting...");
                 scheduled.get(30L, TimeUnit.SECONDS);
             }
@@ -189,9 +177,6 @@ public final class NativeBootstrap {
         } catch (TimeoutException timeout) {
             log("driveModInitOnClientThread: TIMED OUT waiting for client thread");
             if (runPermission.compareAndSet(true, false)) {
-                // Timeout won before the Runnable entered Mindless.init. Cancel the
-                // queue entry; even if FutureTask is between dispatch steps, the
-                // gate makes its body a no-op.
                 scheduled.cancel(false);
                 throw new IllegalStateException(
                         "Timed out before Mindless initialization began on the client thread",
@@ -292,7 +277,6 @@ public final class NativeBootstrap {
                 writer.println(text);
             }
         } catch (Throwable ignored) {
-            // last-resort logging path: swallow to avoid masking the original error
         }
     }
 

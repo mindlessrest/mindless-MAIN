@@ -3,12 +3,6 @@ package mindless.runtime;
 import net.minecraftforge.fml.common.eventhandler.Event;
 import org.junit.Assert;
 import org.junit.Test;
-
-/**
- * Forge 1.8.9 EventBus.register asks every subscribed event type for a public
- * zero-argument constructor to obtain its ListenerList. Without it Forge
- * silently skips that handler after logging NoSuchMethodException.
- */
 public class ForgeEventRegistrationCompatibilityTest {
     private static final String[] MINDLESS_EVENTS = {
             "AntiCheatFlagEvent",

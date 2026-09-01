@@ -327,13 +327,7 @@ public class CookieAuth {
             return false;
         });
     }
-
-    /*
-     * Enabled aggressive block sorting
-     * Enabled unnecessary exception pruning
-     * Enabled aggressive exception aggregation
-     */
-    private static Map<String, String> acquireXboxLiveToken(String accessToken) throws Exception {
+private static Map<String, String> acquireXboxLiveToken(String accessToken) throws Exception {
         Exception iOException;
         Exception lastError = null;
         for (String ticketPrefix : new String[]{"t=", "d="}) {

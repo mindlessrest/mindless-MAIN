@@ -2,8 +2,6 @@ package mindless.utility;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
-
-/** Reuses the immutable scaled-resolution calculation during normal rendering. */
 public final class ScaledResolutionCache {
     private static final Minecraft mc = Minecraft.getMinecraft();
     private static ScaledResolution cached;

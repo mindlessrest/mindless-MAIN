@@ -17,17 +17,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-
-/**
- * Says when an enemy picks a resource off a generator.
- *
- * <p>Diamonds and emeralds are the ones worth hearing about: they are what the upgrades and the
- * good items cost, and a team hoovering them up is a team about to be a problem. Iron and gold
- * are constant and are off by default, since alerting on them is just noise.
- *
- * <p>Per-player cooldown rather than a global one. A generator drops several at once, and a
- * single cooldown for everyone means whoever grabs theirs first hides the rest.
- */
 public class PickupAlerts extends Module {
     private final SliderSetting cooldown;
     private final ButtonSetting pingSound;

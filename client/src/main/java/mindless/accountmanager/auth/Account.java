@@ -13,9 +13,7 @@ public class Account {
     private String uuid;
     private long unban;
     private AccountType type;
-
-    /** Transient — not persisted. Tracks live login state in the GUI. */
-    public transient AccountAuthStatus authStatus = AccountAuthStatus.NOT_AUTHED;
+public transient AccountAuthStatus authStatus = AccountAuthStatus.NOT_AUTHED;
 
     public Account(String refreshToken, String accessToken, String username, String uuid) {
         this(refreshToken, accessToken, username, uuid, 0L, AccountType.PREMIUM);
@@ -104,7 +102,6 @@ public class Account {
                 type = AccountType.valueOf(jsonObject.get("type").getAsString());
             }
             catch (IllegalArgumentException illegalArgumentException) {
-                // empty catch block
             }
         }
         return new Account(Optional.ofNullable(jsonObject.get("refreshToken")).map(JsonElement::getAsString).orElse(""), Optional.ofNullable(jsonObject.get("accessToken")).map(JsonElement::getAsString).orElse(""), Optional.ofNullable(jsonObject.get("username")).map(JsonElement::getAsString).orElse(""), Optional.ofNullable(jsonObject.get("uuid")).map(JsonElement::getAsString).orElse(""), Optional.ofNullable(jsonObject.get("unban")).map(JsonElement::getAsLong).orElse(0L), type);

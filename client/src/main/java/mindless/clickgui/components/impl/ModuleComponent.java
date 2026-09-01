@@ -40,8 +40,7 @@ public class ModuleComponent extends Component {
     private float animationTargetY = 16f;
 
     private static final IntBuffer SCISSOR_BOX = BufferUtils.createIntBuffer(16);
-    /** Fixed x indent for settings under groups (visual only, not animated). */
-    private static final float GROUP_CHILD_INDENT = 6f;
+private static final float GROUP_CHILD_INDENT = 6f;
 
     private static final int ORIGINAL_HOVER_ALPHA = 85;
 
@@ -212,9 +211,7 @@ public class ModuleComponent extends Component {
         this.animationStartY = height;
         this.animationTargetY = height;
     }
-
-    /** Set when a setting's visibility changed; the rebuild happens once, here. */
-    public boolean settingsDirty;
+public boolean settingsDirty;
 
     public void updateAnimationState() {
         if (settingsDirty) {
@@ -256,8 +253,6 @@ public class ModuleComponent extends Component {
                 float groupHeaderY = y;
                 y += getBaseComponentHeightF(co);
                 idx++;
-
-                // Position children at FULL heights so the scissor reveals them top-to-bottom
                 float childY = y;
                 float totalChildrenFullHeight = 0f;
                 while (idx < this.settings.size()) {
@@ -283,8 +278,6 @@ public class ModuleComponent extends Component {
                     }
                     idx++;
                 }
-
-                // Items AFTER the group advance by the animated (collapsed) amount
                 y = groupHeaderY + getBaseComponentHeightF(group) + totalChildrenFullHeight * progress;
             } else {
                 co.updateHeight(y);
@@ -348,7 +341,6 @@ public class ModuleComponent extends Component {
         MindlessFontRenderer titleRenderer = Gui.getClickGuiHeaderFontRenderer();
 
         if (hasModuleHeader()) {
-            // One muted status badge is quieter and cheaper than a layered light.
             float statusLeft = this.categoryComponent.getX() + 5.0f;
             float statusTop = rowTop + 5.0f;
             int statusColor = this.mod.isEnabled() ? STATUS_ENABLED : STATUS_DISABLED;
@@ -389,9 +381,7 @@ public class ModuleComponent extends Component {
             popScissor();
         }
     }
-
-    /** Float height used for all layout/scroll decisions. */
-    @Override
+@Override
     public float getHeightF() {
         if (smoothTimer != null) {
             return smoothingY;
@@ -405,9 +395,7 @@ public class ModuleComponent extends Component {
         }
         return h;
     }
-
-    /** Compat wrapper. */
-    @Override
+@Override
     public int getHeight() {
         return Math.round(getHeightF());
     }
@@ -432,12 +420,7 @@ public class ModuleComponent extends Component {
         renderer.drawString(name, 0.0f, 0.0f, color, false);
         GL11.glPopMatrix();
     }
-
-    /**
-     * Scroll-extent height: full target height when opening (so scroll bounds grow
-     * immediately), current animated height when closing.
-     */
-    public float getScrollExtentHeightF() {
+public float getScrollExtentHeightF() {
         if (isOpened || (smoothTimer != null && animationTargetY > 16f)) {
             float h = getCollapsedHeight();
             for (Component c : settings) {
@@ -487,7 +470,6 @@ public class ModuleComponent extends Component {
             float currentHeight = smoothTimer != null ? smoothingY : (isOpened ? getHeightF() : 16f);
             this.animationStartY = currentHeight;
             this.isOpened = !this.isOpened;
-            // Compute full open height without smoothTimer interference
             float targetHeight;
             if (this.isOpened) {
                 float h = getCollapsedHeight();
@@ -607,9 +589,7 @@ public class ModuleComponent extends Component {
             }
         }
     }
-
-    /** Base height for a component in pixels (float). */
-    private float getBaseComponentHeightF(Component component) {
+private float getBaseComponentHeightF(Component component) {
         if (component instanceof SliderComponent) {
             return 16f;
         }
@@ -633,17 +613,7 @@ public class ModuleComponent extends Component {
         float progress = group != null ? group.getAnimationProgress() : 1f;
         return base * progress;
     }
-
-    /**
-     * Renders settings with category-style scissor reveal for groups.
-     * Children are laid out at full positions; one scissor per group grows from
-     * the header downward, revealing children top-to-bottom (identical to
-     * module expand/collapse).
-     * Two-pass render: first headers and non-group items, then group children
-     * (so closing animation is visible—children drawn on top).
-     */
-    private void renderSettingsWithGroupScissorReveal() {
-        // Pass 1: render headers and non-group items
+private void renderSettingsWithGroupScissorReveal() {
         int i = 0;
         while (i < settings.size()) {
             Component c = settings.get(i);
@@ -662,7 +632,6 @@ public class ModuleComponent extends Component {
                 i++;
             }
         }
-        // Pass 2: render group children with scissor (on top, so closing animation visible)
         i = 0;
         while (i < settings.size()) {
             Component c = settings.get(i);
@@ -717,18 +686,8 @@ public class ModuleComponent extends Component {
     private static final int MAX_SCISSOR_DEPTH = 4;
     private final int[][] scissorStack = new int[MAX_SCISSOR_DEPTH][5];
     private int scissorDepth = 0;
-
-    /**
-     * Saves the current scissor state onto a stack, then applies a new scissor
-     * rectangle intersected with the existing one if scissor was already enabled.
-     * Supports nesting (module scissor + group scissor).
-     */
-    private void pushScissor(int x, int y, int w, int h) {
+private void pushScissor(int x, int y, int w, int h) {
         boolean wasEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
-        // Nothing checked the depth here at all. A render that throws between a push and its pop
-        // leaves the stack one deeper than it should be, and four of those turn every later push
-        // into an out-of-bounds throw -- which aborts the menu's draw partway through and leaves
-        // the clip switched on over whatever came next.
         if (scissorDepth >= MAX_SCISSOR_DEPTH) {
             return;
         }

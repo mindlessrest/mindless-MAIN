@@ -6,8 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class GuiIngameState {
-    /** Compact, borderless scoreboard proportions shared by Forge and injection. */
-    public static final float SCOREBOARD_SCALE = 0.90f;
+public static final float SCOREBOARD_SCALE = 0.90f;
     private static final float BASE_PANEL_RADIUS = 8.0f;
 
     public static float panelRadius() {

@@ -240,9 +240,7 @@ public class SliderComponent extends Component {
             Mindless.clickGui.requestScaleRefresh();
         }
     }
-
-    /** Same rounding as the setting itself, and for the same reason it does not use BigDecimal. */
-    private static double roundToInterval(double value, int places) {
+private static double roundToInterval(double value, int places) {
         return SliderSetting.roundToInterval(value, places);
     }
 
@@ -323,8 +321,6 @@ public class SliderComponent extends Component {
         String prefix = this.sliderSetting.getName() + ": ";
         Minecraft mc = Minecraft.getMinecraft();
         mc.fontRendererObj.drawStringWithShadow(prefix, labelX, labelY, -1);
-
-        // Use the fixed clickgui-sized preview path for both GUI and HUD selectors.
         MindlessFontRenderer previewRenderer = FontManager.getClickGuiSettingRenderer(valueText);
         float valueX = labelX + mc.fontRendererObj.getStringWidth(prefix);
         float valueY = labelY - (previewRenderer.getFontHeight() - mc.fontRendererObj.FONT_HEIGHT) / 2.0f;

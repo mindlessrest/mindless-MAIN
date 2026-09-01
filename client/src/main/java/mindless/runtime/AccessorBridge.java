@@ -34,17 +34,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-
-/**
- * Replaces every {@code (IAccessorX) obj} cast that Mindless used to depend on
- * mixin-generated interfaces. Runtime injection cannot add interfaces to
- * already-loaded classes, so all accessors go through direct reflection.
- *
- * Every field/method lookup takes the MCP (deobf) name FIRST followed by the
- * SRG (obf runtime) name — production Forge 1.8.9 keeps SRG names in the
- * final loaded classes, dev-remap runs keep MCP. Trying both makes the
- * bridge work in every environment. Lookups are cached at first hit.
- */
 public final class AccessorBridge {
     private AccessorBridge() {}
 
@@ -96,8 +85,6 @@ public final class AccessorBridge {
                 ? cause.getCause() : cause;
         return new RuntimeException("AccessorBridge." + context + " failed: " + root, root);
     }
-
-    // ---------- Entity ----------
     public static int Entity_getFire(Entity e) {
         try { return field(Entity.class, "fire", "field_70151_c").getInt(e); }
         catch (Exception t) { throw wrap("Entity_getFire", t); }
@@ -110,14 +97,10 @@ public final class AccessorBridge {
         try { return field(Entity.class, "isInWeb", "field_70134_J").getBoolean(e); }
         catch (Exception t) { throw wrap("Entity_getIsInWeb", t); }
     }
-
-    // ---------- EntityArrow ----------
     public static boolean EntityArrow_getInGround(EntityArrow a) {
         try { return field(EntityArrow.class, "inGround", "field_70254_i").getBoolean(a); }
         catch (Exception t) { throw wrap("EntityArrow_getInGround", t); }
     }
-
-    // ---------- EntityLivingBase ----------
     public static int EntityLivingBase_getJumpTicks(EntityLivingBase e) {
         try { return field(EntityLivingBase.class, "jumpTicks", "field_70773_bE").getInt(e); }
         catch (Exception t) { throw wrap("EntityLivingBase_getJumpTicks", t); }
@@ -126,14 +109,10 @@ public final class AccessorBridge {
         try { field(EntityLivingBase.class, "jumpTicks", "field_70773_bE").setInt(e, ticks); }
         catch (Exception t) { throw wrap("EntityLivingBase_setJumpTicks", t); }
     }
-
-    // ---------- EntityPlayer ----------
     public static void EntityPlayer_setItemInUseCount(EntityPlayer p, int count) {
         try { field(EntityPlayer.class, "itemInUseCount", "field_71072_f").setInt(p, count); }
         catch (Exception t) { throw wrap("EntityPlayer_setItemInUseCount", t); }
     }
-
-    // ---------- EntityPlayerSP ----------
     public static double EntityPlayerSP_getLastReportedPosX(EntityPlayerSP p) {
         try { return field(EntityPlayerSP.class, "lastReportedPosX", "field_175172_bI").getDouble(p); }
         catch (Exception t) { throw wrap("EntityPlayerSP_getLastReportedPosX", t); }
@@ -154,8 +133,6 @@ public final class AccessorBridge {
         try { return field(EntityPlayerSP.class, "lastReportedPitch", "field_175165_bM").getFloat(p); }
         catch (Exception t) { throw wrap("EntityPlayerSP_getLastReportedPitch", t); }
     }
-
-    // ---------- EntityRenderer ----------
     public static void EntityRenderer_callSetupCameraTransform(EntityRenderer r, float partial, int pass) {
         try {
             method(EntityRenderer.class,
@@ -198,8 +175,6 @@ public final class AccessorBridge {
         try { field(EntityRenderer.class, "pointedEntity", "field_78528_u").set(r, entity); }
         catch (Exception t) { throw wrap("EntityRenderer_setPointedEntity", t); }
     }
-
-    // ---------- GuiIngame ----------
     public static String GuiIngame_getRecordPlaying(GuiIngame g) {
         try { return (String) field(GuiIngame.class, "recordPlaying", "field_73838_g").get(g); }
         catch (Exception t) { throw wrap("GuiIngame_getRecordPlaying", t); }
@@ -212,8 +187,6 @@ public final class AccessorBridge {
         try { return (String) field(GuiIngame.class, "displayedSubTitle", "field_175200_y").get(g); }
         catch (Exception t) { throw wrap("GuiIngame_getDisplayedSubTitle", t); }
     }
-
-    // ---------- GuiPlayerTabOverlay ----------
     public static IChatComponent GuiPlayerTabOverlay_getHeader(GuiPlayerTabOverlay g) {
         try { return (IChatComponent) field(GuiPlayerTabOverlay.class, "header", "field_175256_i").get(g); }
         catch (Exception t) { throw wrap("GuiPlayerTabOverlay_getHeader", t); }
@@ -222,8 +195,6 @@ public final class AccessorBridge {
         try { return (IChatComponent) field(GuiPlayerTabOverlay.class, "footer", "field_175255_h").get(g); }
         catch (Exception t) { throw wrap("GuiPlayerTabOverlay_getFooter", t); }
     }
-
-    // ---------- GuiScreen ----------
     public static void GuiScreen_callMouseClicked(GuiScreen s, int x, int y, int button) {
         try {
             method(GuiScreen.class,
@@ -231,21 +202,15 @@ public final class AccessorBridge {
                     int.class, int.class, int.class).invoke(s, x, y, button);
         } catch (Exception t) { throw wrap("GuiScreen_callMouseClicked", t); }
     }
-
-    // ---------- GuiScreenBook ----------
     @SuppressWarnings("unchecked")
     public static List<IChatComponent> GuiScreenBook_getBookContents(GuiScreenBook b) {
         try { return (List<IChatComponent>) field(GuiScreenBook.class, "field_175386_A").get(b); }
         catch (Exception t) { throw wrap("GuiScreenBook_getBookContents", t); }
     }
-
-    // ---------- ItemFood ----------
     public static boolean ItemFood_getAlwaysEdible(ItemFood f) {
         try { return field(ItemFood.class, "alwaysEdible", "field_77852_bZ").getBoolean(f); }
         catch (Exception t) { throw wrap("ItemFood_getAlwaysEdible", t); }
     }
-
-    // ---------- Minecraft ----------
     public static Timer Minecraft_getTimer(Minecraft mc) {
         try { return (Timer) field(Minecraft.class, "timer", "field_71428_T").get(mc); }
         catch (Exception t) { throw wrap("Minecraft_getTimer", t); }
@@ -272,8 +237,6 @@ public final class AccessorBridge {
             method(Minecraft.class, new String[]{"clickMouse", "func_147116_af"}).invoke(mc);
         } catch (Exception t) { throw wrap("Minecraft_callClickMouse", t); }
     }
-
-    // ---------- NetworkManager ----------
     public static Channel NetworkManager_getChannel(NetworkManager nm) {
         try { return (Channel) field(NetworkManager.class, "channel", "field_150746_k").get(nm); }
         catch (Exception t) { throw wrap("NetworkManager_getChannel", t); }
@@ -282,8 +245,6 @@ public final class AccessorBridge {
         try { return (net.minecraft.network.INetHandler) field(NetworkManager.class, "packetListener", "field_150744_m").get(nm); }
         catch (Exception t) { throw wrap("NetworkManager_getPacketListener", t); }
     }
-
-    // ---------- PlayerControllerMP ----------
     public static float PlayerControllerMP_getCurBlockDamageMP(PlayerControllerMP c) {
         try { return field(PlayerControllerMP.class, "curBlockDamageMP", "field_78770_f").getFloat(c); }
         catch (Exception t) { throw wrap("PlayerControllerMP_getCurBlockDamageMP", t); }
@@ -310,8 +271,6 @@ public final class AccessorBridge {
                     new String[]{"syncCurrentPlayItem", "func_78750_j"}).invoke(c);
         } catch (Exception t) { throw wrap("PlayerControllerMP_callSyncCurrentPlayItem", t); }
     }
-
-    // ---------- ItemRenderer ----------
     public static float ItemRenderer_getEquippedProgress(Object renderer) {
         try { return field(renderer.getClass().getName().contains("ItemRenderer")
                 ? renderer.getClass() : Class.forName("net.minecraft.client.renderer.ItemRenderer"),
@@ -346,14 +305,10 @@ public final class AccessorBridge {
         try { method(ItemRenderer.class, new String[]{"doBlockTransformations", "func_178103_d"}).invoke(r); }
         catch (Exception t) { throw wrap("ItemRenderer_callDoBlockTransformations", t); }
     }
-
-    // ---------- EntityPlayer ----------
     public static int EntityPlayer_getItemInUseCount(EntityPlayer p) {
         try { return field(EntityPlayer.class, "itemInUseCount", "field_71072_f").getInt(p); }
         catch (Exception t) { throw wrap("EntityPlayer_getItemInUseCount", t); }
     }
-
-    // ---------- RenderManager ----------
     public static double RenderManager_getRenderPosX(RenderManager rm) {
         try { return field(RenderManager.class, "renderPosX", "field_78725_b").getDouble(rm); }
         catch (Exception t) { throw wrap("RenderManager_getRenderPosX", t); }
@@ -366,8 +321,6 @@ public final class AccessorBridge {
         try { return field(RenderManager.class, "renderPosZ", "field_78723_d").getDouble(rm); }
         catch (Exception t) { throw wrap("RenderManager_getRenderPosZ", t); }
     }
-
-    // ---------- S14PacketEntity ----------
     public static int S14PacketEntity_getEntityId(S14PacketEntity p) {
         try { return field(S14PacketEntity.class, "entityId", "field_149074_a").getInt(p); }
         catch (Exception t) { throw wrap("S14PacketEntity_getEntityId", t); }
@@ -384,8 +337,6 @@ public final class AccessorBridge {
         try { return field(S14PacketEntity.class, "posZ", "field_149070_d").getByte(p); }
         catch (Exception t) { throw wrap("S14PacketEntity_getDeltaZ", t); }
     }
-
-    // ---------- MouseHelper ----------
     public static int MouseHelper_getDeltaX(MouseHelper m) {
         try { return field(MouseHelper.class, "deltaX", "field_74377_a").getInt(m); }
         catch (Exception t) { throw wrap("MouseHelper_getDeltaX", t); }
@@ -394,20 +345,14 @@ public final class AccessorBridge {
         try { return field(MouseHelper.class, "deltaY", "field_74375_b").getInt(m); }
         catch (Exception t) { throw wrap("MouseHelper_getDeltaY", t); }
     }
-
-    // ---------- RendererLivingEntity ----------
     public static void RendererLivingEntity_callUnsetBrightness(RendererLivingEntity<?> r) {
         try { method(RendererLivingEntity.class, new String[]{"unsetBrightness", "func_77039_h"}).invoke(r); }
         catch (Exception t) { throw wrap("RendererLivingEntity_callUnsetBrightness", t); }
     }
-
-    // ---------- RenderEntityItem ----------
     public static boolean RenderEntityItem_shouldSpreadItems(RenderEntityItem r) {
         try { return (boolean) method(RenderEntityItem.class, new String[]{"shouldSpreadItems", "func_177077_a"}).invoke(r); }
         catch (Exception t) { throw wrap("RenderEntityItem_shouldSpreadItems", t); }
     }
-
-    // ---------- ShaderGroup ----------
     @SuppressWarnings("unchecked")
     public static java.util.List<Shader> ShaderGroup_getListShaders(ShaderGroup g) {
         try { return (java.util.List<Shader>) field(ShaderGroup.class, "listShaders", "field_148031_a").get(g); }

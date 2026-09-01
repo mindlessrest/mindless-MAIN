@@ -35,8 +35,6 @@ import org.lwjgl.input.Keyboard;
 
 public class GuiAccountManager extends GuiScreen {
     protected final GuiScreen previousScreen;
-
-    // ── Buttons ────────────────────────────────────────────────────────────────
     private GuiButton loginButton        = null;
     private GuiButton deleteButton       = null;
     private GuiButton cancelButton       = null;
@@ -47,8 +45,6 @@ public class GuiAccountManager extends GuiScreen {
     private GuiButton pasteTokenButton   = null;
     private GuiButton nicealtsButton     = null;
     private GuiButton localtsButton      = null;
-
-    // ── State ──────────────────────────────────────────────────────────────────
     private GuiAccountList guiAccountList = null;
     public static Notification notification = null;
 
@@ -57,13 +53,9 @@ public class GuiAccountManager extends GuiScreen {
     private ExecutorService executor = null;
     private CompletableFuture<Void> task = null;
     private volatile boolean checkingInvalid = false;
-
-    // ── Search ─────────────────────────────────────────────────────────────────
     private GuiTextField searchField;
     private final List<Account> filteredList = new ArrayList<>();
     private String lastSearch = "";
-
-    // ── Palette ────────────────────────────────────────────────────────────────
     static final int C_BG       = 0xF0080A0C;
     static final int C_PANEL    = 0xEE0D1012;
     static final int C_ROW      = 0xE0181B1C;
@@ -77,8 +69,6 @@ public class GuiAccountManager extends GuiScreen {
     static final int C_BORDER   = 0x34D2D2CC;
     static final int C_DANGER   = 0xFFDB6864;
     static final int C_SUCCESS  = 0xFF6EBF7A;
-
-    // ── Layout ─────────────────────────────────────────────────────────────────
     private static final int HEADER_H   = 32;
     private static final int SEARCH_TOP = HEADER_H + 6;
     private static final int SEARCH_H   = 20;
@@ -93,10 +83,6 @@ public class GuiAccountManager extends GuiScreen {
         this.previousScreen = previousScreen;
         GuiAccountManager.notification = notification;
     }
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // Init
-    // ══════════════════════════════════════════════════════════════════════════
 
     @Override
     public void initGui() {
@@ -169,10 +155,6 @@ public class GuiAccountManager extends GuiScreen {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // Filter / update
-    // ══════════════════════════════════════════════════════════════════════════
-
     private void updateFilter() {
         String q = searchField != null ? searchField.getText().toLowerCase().trim() : "";
         Account wasSelected = (selectedAccount >= 0 && selectedAccount < filteredList.size())
@@ -213,19 +195,11 @@ public class GuiAccountManager extends GuiScreen {
         if (restoreButton  != null) restoreButton.enabled = !SessionManager.isUsingLaunchSession() && !busy;
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // Render
-    // ══════════════════════════════════════════════════════════════════════════
-
     @Override
     public void drawScreen(int mx, int my, float pt) {
         MindlessFontRenderer sfReg  = new MinecraftFontAdapter(fontRendererObj);
         MindlessFontRenderer sfBold = new MinecraftFontAdapter(fontRendererObj);
-
-        // Full-screen background
         drawRect(0, 0, width, height, C_BG);
-
-        // ── Header ───────────────────────────────────────────────────────────
         RoundedUtils.drawRound(0, 0, width, HEADER_H, 0f, C_PANEL);
         drawRect(0, HEADER_H - 1, width, HEADER_H, C_BORDER);
 
@@ -237,8 +211,6 @@ public class GuiAccountManager extends GuiScreen {
         }
         String countStr = AccountManager.accounts.size() + " accounts";
         sfReg.drawString(countStr, width - sfReg.getStringWidth(countStr) - 8f, 12f, C_DIM, false);
-
-        // ── Search field background ───────────────────────────────────────────
         int sfW = Math.min(340, width - 20);
         int sfX = width / 2 - sfW / 2;
         RoundedUtils.drawRound(sfX, SEARCH_TOP, sfW, SEARCH_H, 4f, C_ROW);
@@ -247,19 +219,11 @@ public class GuiAccountManager extends GuiScreen {
         if (searchField.getText().isEmpty() && !searchField.isFocused()) {
             sfReg.drawString("Search accounts...", sfX + 9f, SEARCH_TOP + 5f, C_DIM, false);
         }
-
-        // ── Account list ─────────────────────────────────────────────────────
         if (guiAccountList != null) guiAccountList.drawScreen(mx, my, pt);
-
-        // ── Footer background ─────────────────────────────────────────────────
         int footerTop = height - FOOTER_H;
         drawRect(0, footerTop, width, footerTop + 1, C_BORDER);
         drawRect(0, footerTop, width, height, C_PANEL);
-
-        // ── Buttons ──────────────────────────────────────────────────────────
         drawStyledButtons(mx, my, sfReg);
-
-        // ── Toast ─────────────────────────────────────────────────────────────
         if (notification != null && !notification.isExpired()) {
             String msg = notification.getMessage();
             int msgW = fontRendererObj.getStringWidth(msg);
@@ -270,8 +234,6 @@ public class GuiAccountManager extends GuiScreen {
             drawRect(px, py, px + pw, py + 1, C_ACCENT);
             drawCenteredString(fontRendererObj, msg, width / 2, py + 4, C_TEXT);
         }
-
-        // ── Restore button on top ─────────────────────────────────────────────
         if (restoreButton != null) {
             drawStyledButton(restoreButton, mx, my, sfReg, C_ROW, C_ROW_HOV, C_TEXT);
         }
@@ -299,10 +261,6 @@ public class GuiAccountManager extends GuiScreen {
         fr.drawString(b.displayString, b.xPosition + b.width / 2f - tw / 2f,
                 b.yPosition + b.height / 2f - fr.getFontHeight() / 2f, fg, false);
     }
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // Input
-    // ══════════════════════════════════════════════════════════════════════════
 
     @Override
     public void handleMouseInput() throws IOException {
@@ -351,10 +309,6 @@ public class GuiAccountManager extends GuiScreen {
             GuiScreen.setClipboardString(filteredList.get(selectedAccount).getUsername());
         }
     }
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // Actions
-    // ══════════════════════════════════════════════════════════════════════════
 
     @Override
     protected void actionPerformed(GuiButton button) {
@@ -473,10 +427,6 @@ public class GuiAccountManager extends GuiScreen {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // Account list
-    // ══════════════════════════════════════════════════════════════════════════
-
     class GuiAccountList extends GuiSlot {
         private static final int SLOT_H  = 36;
         private static final int HEAD_SZ = 28;
@@ -556,8 +506,6 @@ public class GuiAccountManager extends GuiScreen {
                 default: break;
             }
             if (statusTxt != null) sfReg.drawString(statusTxt, tx, y + 18f, statusColor, false);
-
-            // Ban indicator
             long now = System.currentTimeMillis(), unban = account.getUnban();
             String banTxt;
             int banColor;

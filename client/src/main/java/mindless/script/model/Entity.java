@@ -433,16 +433,7 @@ public class Entity {
     public void setYaw(float yaw) {
         entity.rotationYaw = yaw;
     }
-
-    /**
-     * The rotation the renderer interpolates from.
-     *
-     * <p>Rendering lerps between the previous tick's rotation and this one, so setting only the
-     * current one makes the head swing to it over the frames that follow instead of being there.
-     * Setting both is how you place a rotation rather than animate towards it -- which is the
-     * whole point when the value being written is already the smoothed one.
-     */
-    public void setPrevYaw(float yaw) {
+public void setPrevYaw(float yaw) {
         entity.prevRotationYaw = yaw;
     }
 

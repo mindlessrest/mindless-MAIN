@@ -6,26 +6,11 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.Locale;
-
-/**
- * Resolves the physical archive behind a class {@link java.security.CodeSource}.
- *
- * <p>A CodeSource normally uses a hierarchical {@code file:/...} URL, but
- * custom game class loaders may report an opaque {@code jar:file:/...!/entry}
- * URL (or even the legacy opaque {@code file:C:/...} form). Passing either
- * opaque URI directly to {@link File#File(URI)} throws
- * {@code IllegalArgumentException: URI is not hierarchical}.</p>
- */
 public final class CodeSourcePath {
     private static final int MAX_ARCHIVE_NESTING = 8;
 
     private CodeSourcePath() {}
-
-    /**
-     * Returns a canonical filesystem path for a CodeSource location.
-     * Archive wrappers and their {@code !/entry} suffixes are removed first.
-     */
-    public static String canonicalPath(URL location) throws IOException {
+public static String canonicalPath(URL location) throws IOException {
         if (location == null) {
             throw new IOException("CodeSource location is null");
         }
@@ -72,9 +57,6 @@ public final class CodeSourcePath {
                         invalidFileUri);
             }
         }
-
-        // URI#getSchemeSpecificPart returns the decoded form, unlike the raw
-        // variant used while recursively parsing nested archive URIs.
         String path = current.getSchemeSpecificPart();
         if (path == null || path.isEmpty()) {
             throw new IOException("Opaque file CodeSource has no path: " + original);

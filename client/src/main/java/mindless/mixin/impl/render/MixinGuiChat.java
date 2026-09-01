@@ -49,25 +49,18 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
 
     @Inject(method = "drawScreen", at = @At("HEAD"))
     private void mindless$beforeDrawScreen(int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
-        // GuiTextField can have its rectangular background re-enabled by other
-        // UI/coremods. Keep it off so it cannot cover our rounded panel.
         inputField.setEnableBackgroundDrawing(false);
 
         int left = 3;
         int top = this.height - 15;
         int right = this.width - 3;
         int bottom = this.height - 2;
-
-        // Its blur mask is batched into GuiNewChat's existing blur pass.
-        // Drawing the matching glow and glass fill here keeps the input visually
-        // identical without adding another full-screen blur operation.
         GuiNewChatState.drawSurface(left, top, right - left, bottom - top);
     }
 
     @Redirect(method = "drawScreen", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/gui/Gui;drawRect(IIIII)V"))
     private void mindless$removeVanillaInputBackground(int left, int top, int right, int bottom, int color) {
-        // Replaced by the matching rounded glass input panel above.
     }
 
     @Inject(method = "keyTyped", at = @At("RETURN"))

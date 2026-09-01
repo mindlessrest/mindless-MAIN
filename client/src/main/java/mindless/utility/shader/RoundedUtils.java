@@ -22,19 +22,7 @@ public class RoundedUtils {
     private static final ShaderUtils roundedRectRiseShader = new ShaderUtils("roundedRectRise");
     private static final ShaderUtils roundedCornersShader = new ShaderUtils("roundedRectCorners");
     private static final ShaderUtils roundedGradientCornersShader = new ShaderUtils("roundedRectGradientCorners");
-
-
-    /**
-     * A rounded rect with an independent radius per corner, in the order top-left, top-right,
-     * bottom-right, bottom-left. Zero is a square corner.
-     *
-     * <p>What this exists for is a shape attached to an edge: an accent bar against the side of a
-     * row, or a swatch that fills the top of a card. Drawing those with a uniform radius either
-     * rounds the attached side -- which reads as a floating capsule rather than something anchored
-     * -- or forces a second rect to be painted over the corners that should have been square, and
-     * that patch never quite matches the antialiased edge it is covering.
-     */
-    public static void drawRoundCorners(float x, float y, float width, float height,
+public static void drawRoundCorners(float x, float y, float width, float height,
                                         float topLeft, float topRight,
                                         float bottomRight, float bottomLeft, int color) {
         RenderUtils.resetColor();
@@ -56,9 +44,7 @@ public class RoundedUtils {
         glDepthMask(true);
         glPopAttrib();
     }
-
-    /** {@link #drawRoundCorners} carrying the same four-corner colour ramp as {@link #drawGradientRound}. */
-    public static void drawGradientRoundCorners(float x, float y, float width, float height,
+public static void drawGradientRoundCorners(float x, float y, float width, float height,
                                                 float topLeft, float topRight,
                                                 float bottomRight, float bottomLeft,
                                                 int blColor, int tlColor, int brColor, int trColor) {
@@ -79,9 +65,7 @@ public class RoundedUtils {
         roundedGradientCornersShader.unload();
         GlStateManager.disableBlend();
     }
-
-    /** Corner radii travel in physical pixels, the same space {@link #setupRoundedRectUniforms} uses. */
-    private static void setupCornerRadii(ShaderUtils shader, float topLeft, float topRight,
+private static void setupCornerRadii(ShaderUtils shader, float topLeft, float topRight,
                                          float bottomRight, float bottomLeft) {
         float scale = ScaledResolutionCache.get().getScaleFactor();
         shader.setUniformf("radii", topLeft * scale, topRight * scale,
@@ -99,9 +83,7 @@ public class RoundedUtils {
     public static void drawGradientVertical(float x, float y, float width, float height, float radius, Color top, Color bottom) {
         drawGradientRound(x, y, width, height, radius, bottom, top, bottom, top);
     }
-
-    /** A restrained liquid-glass rim with a translucent inner tint. */
-    public static void drawLiquidGlass(float x, float y, float width, float height,
+public static void drawLiquidGlass(float x, float y, float width, float height,
                                        float radius, int fillColor) {
         Color top = new Color(220, 235, 255, 14);
         Color bottom = new Color(0, 0, 0, 8);
@@ -151,9 +133,6 @@ public class RoundedUtils {
 
     public static void drawRound(float x, float y, float width, float height, float radius, boolean blur, int color) {
         RenderUtils.resetColor();
-        // Do not trust GlStateManager's cache here: Lunar mutates these states
-        // directly. Preserve its real state and establish a complete,
-        // deterministic translucent 2D pass for the panel.
         glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_BLEND);
         glDisable(GL_DEPTH_TEST);
@@ -262,8 +241,6 @@ public class RoundedUtils {
         setupRoundedRectUniforms(x, y, width, height, radius, roundedShadowShader);
         roundedShadowShader.setUniformf("softness", softness * sr.getScaleFactor());
         roundedShadowShader.setUniformf("color", getRed(color), getGreen(color), getBlue(color), getAlpha(color));
-
-        // Wide enough that the taper has room to run out without eating into the shadow proper.
         float expansion = softness * 3.5f + 2.0f;
         roundedShadowShader.setUniformf("cutoff", expansion * sr.getScaleFactor());
         ShaderUtils.drawQuads(x - expansion, y - expansion,

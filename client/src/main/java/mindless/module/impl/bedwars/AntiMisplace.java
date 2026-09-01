@@ -13,18 +13,6 @@ import net.minecraft.util.BlockPos;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-
-/**
- * Stops obsidian going anywhere except on the bed.
- *
- * <p>Obsidian is the one block in the game you cannot take back. Misplace a piece a block off the
- * bed and it is there for the rest of the game, in the way, and you are down the resources that
- * would have covered the bed properly. The block is only ever wanted touching the bed, so
- * anywhere else is a slip rather than a decision.
- *
- * <p>Only while a game is actually running -- in the lobby or on the practice server there is no
- * bed to be near, and blocking every placement there would be worse than useless.
- */
 public class AntiMisplace extends Module {
     private final ButtonSetting endStone;
     private final ButtonSetting notify;
@@ -39,7 +27,6 @@ public class AntiMisplace extends Module {
     public void onRightClick(RightClickMouseEvent event) {
         if (!this.isEnabled() || !Utils.nullCheck()) return;
         if (mc.currentScreen != null) return;
-        // 2 is "in a running game"; -1 not bedwars, 0 lobby, 1 pre-game.
         if (Utils.getBedwarsStatus() != 2) return;
 
         MovingObjectPosition target = mc.objectMouseOver;
@@ -47,14 +34,10 @@ public class AntiMisplace extends Module {
 
         ItemStack held = mc.thePlayer.getHeldItem();
         if (held == null || !isGuarded(held)) return;
-
-        // Where the block would land, not the face that was clicked.
         BlockPos placement = target.getBlockPos().offset(target.sideHit);
         if (isAdjacentToBed(placement)) return;
 
         event.setCanceled(true);
-        // Let go of the button as well. Cancelling the click alone leaves it held, so the very
-        // next tick tries the same placement again and the message repeats until you notice.
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
 
         if (notify.isToggled()) {

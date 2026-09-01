@@ -159,9 +159,6 @@ public class KillAura extends Module {
             return;
         }
         targetDistance = RotationUtils.distanceFromEyeToClosestOnAABB(target);
-        // Mouse-over is calculated in this same tick, before the normal module
-        // update pass. Keep the attack target current here so rapid switches or
-        // deaths do not leave Aura aiming at the previous entity for one tick.
         attackingEntity = targetDistance <= attackRange.getInput() ? target : null;
         if (rotationMode.getInput() == 0) {
             double aimRangeVal = aimRange.getInput();
@@ -198,8 +195,6 @@ public class KillAura extends Module {
                 EntityLivingBase living = (EntityLivingBase) attacked;
                 float hp = living.getHealth();
                 boolean dead = hp <= 0 || living.deathTime > 0 || living.isDead;
-                // Hypixel often removes entities before health reaches 0 on client.
-                // Detect kill when health drops very low after our damage.
                 if (!dead && lastAttackedHealth > 0 && hp <= 1.0f && hp < lastAttackedHealth * 0.25f) {
                     dead = true;
                 }
@@ -396,8 +391,6 @@ public class KillAura extends Module {
         if (!(entity instanceof EntityLivingBase) || entity == mc.thePlayer || entity.isDead) {
             return null;
         }
-
-        // cheap pre-cull: entity center distance before expensive AABB check
         double dx = entity.posX - mc.thePlayer.posX;
         double dy = entity.posY - mc.thePlayer.posY;
         double dz = entity.posZ - mc.thePlayer.posZ;
@@ -510,11 +503,6 @@ public class KillAura extends Module {
                 return candidate;
             }
         }
-
-        // All candidates can briefly be between the per-target hold period and
-        // the full switch cycle, especially when players enter/leave range.
-        // Retain the most recently selected valid target instead of dropping
-        // Aura for that gap.
         KillAuraTarget mostRecent = null;
         int mostRecentTick = Integer.MIN_VALUE;
         for (KillAuraTarget candidate : attackTargets) {

@@ -14,24 +14,13 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
 import net.minecraft.util.MathHelper;
 import org.lwjgl.opengl.GL11;
-
-/** Schema-safe implementation of the first-person animation Mixin. */
 public final class ItemAnimationRuntime {
     private static float spin;
     private static float delay;
     private static long lastUpdate = System.currentTimeMillis();
 
     private ItemAnimationRuntime() {}
-
-    /**
-     * Renders only animated swords through a self-contained path. Lunar puts
-     * a cancellable first-person callback ahead of vanilla's action switch;
-     * when that callback owns the frame, redirects deeper in the switch never
-     * become authoritative. Taking the sword frame at method HEAD makes Slow
-     * and Sword Animation deterministic while leaving maps, food, bows, hands,
-     * and every non-sword Lunar feature on the original renderer.
-     */
-    public static boolean renderSwordOverride(ItemRenderer renderer, ItemStack rendered, float partialTicks) {
+public static boolean renderSwordOverride(ItemRenderer renderer, ItemStack rendered, float partialTicks) {
         if (!isSword(rendered) || !Slow.isActive() && !Animations.isActive()) return false;
         Minecraft mc = Minecraft.getMinecraft();
         EntityPlayerSP player = mc.thePlayer;

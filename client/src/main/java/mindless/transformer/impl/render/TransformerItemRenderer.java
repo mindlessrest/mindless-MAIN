@@ -17,21 +17,11 @@ import net.minecraft.client.renderer.ItemRenderer;
 import net.minecraft.item.EnumAction;
 import net.minecraft.item.ItemStack;
 import org.lwjgl.opengl.GL11;
-
-/**
- * Unified ItemRenderer transformer. All helper logic lives in
- * {@link ItemRendererState} as static methods because JVMTI cannot
- * add methods or fields to already-loaded classes.
- */
 @CTransformer(ItemRenderer.class)
 public abstract class TransformerItemRenderer {
     @CShadow private ItemStack itemToRender;
     @CShadow private float equippedProgress;
     @CShadow private float prevEquippedProgress;
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // AlwaysBlock / Item spoofing
-    // ─────────────────────────────────────────────────────────────────────────────
 
     @CInline
     @CInject(method = "renderItemInFirstPerson", target = @CTarget("HEAD"), cancellable = true)
@@ -46,8 +36,6 @@ public abstract class TransformerItemRenderer {
         } else {
             this.itemToRender = Utils.getSpoofedItem(original);
         }
-
-        // Full sword rendering override for Slow + Animations
         if (ItemAnimationRuntime.renderSwordOverride((ItemRenderer)(Object)this, this.itemToRender, partial)) {
             ci.setCancelled(true);
         }
@@ -79,10 +67,6 @@ public abstract class TransformerItemRenderer {
                 ? EnumAction.BLOCK : stack.getItemUseAction();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Slow - redirect swing progress
-    // ─────────────────────────────────────────────────────────────────────────────
-
     @CInline
     @CRedirect(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
@@ -92,10 +76,6 @@ public abstract class TransformerItemRenderer {
         float vanilla = player.getSwingProgress(partialTicks);
         return Slow.getVisualSwingProgress(player, vanilla);
     }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Animations - inject before doBlockTransformations in blocking branch
-    // ─────────────────────────────────────────────────────────────────────────────
 
     @CInline
     @CInject(method = "renderItemInFirstPerson",
@@ -109,10 +89,6 @@ public abstract class TransformerItemRenderer {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Animations - scale before renderItem call
-    // ─────────────────────────────────────────────────────────────────────────────
-
     @CInline
     @CInject(method = "renderItemInFirstPerson",
             target = @CTarget(value = "INVOKE",
@@ -125,10 +101,6 @@ public abstract class TransformerItemRenderer {
         s = Math.max(0.1, Math.min(s, 2.0));
         GL11.glScaled(s, s, s);
     }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // updateEquippedItem / resetEquippedProgress guards
-    // ─────────────────────────────────────────────────────────────────────────────
 
     @CInline
     @CInject(method = "updateEquippedItem", target = @CTarget("HEAD"), cancellable = true)

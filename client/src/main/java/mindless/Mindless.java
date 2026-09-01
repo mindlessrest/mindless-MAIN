@@ -31,7 +31,6 @@ import mindless.utility.profile.Profile;
 import mindless.utility.profile.ProfileManager;
 import mindless.module.setting.impl.SliderSetting;
 import net.minecraft.client.Minecraft;
-import net.minecraftforge.client.ClientCommandHandler;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -56,7 +55,6 @@ public class Mindless {
 
     public static ModuleManager moduleManager;
     public static ClickGui clickGui;
-    public static ClickGui framesGui;
     public static ProfileManager profileManager;
     public static ScriptManager scriptManager;
     public static CommandManager commandManager;
@@ -77,8 +75,6 @@ public class Mindless {
 
         Runtime.getRuntime().addShutdownHook(new Thread(scheduledExecutor::shutdown));
         Runtime.getRuntime().addShutdownHook(new Thread(cachedExecutor::shutdown));
-        // Closing the game is the one exit that never goes through anything of ours, so the last
-        // few seconds of changes have to be caught here or they are simply not written.
         Runtime.getRuntime().addShutdownHook(new Thread(Mindless::saveOnShutdown));
 
         registerHandler(this, true);
@@ -91,8 +87,6 @@ public class Mindless {
         registerHandler(AttackPacketTimingTracker.INSTANCE, false);
         registerHandler(lagHandler = new UnifiedLagHandler(), false);
         registerHandler(new mindless.helper.GameWinDetector(), false);
-
-        // Account Manager
         AccountManager.init();
         registerHandler(new Events(), false);
 
@@ -104,7 +98,6 @@ public class Mindless {
         registerHandler(new BlockHighlightSharedHandler(), true);
         scriptManager = new ScriptManager();
         clickGui = new ModernClickGui();
-        framesGui = new mindless.clickgui.FramesClickGui();
         profileManager = new ProfileManager();
         ScriptDefaults.reloadModules();
         scriptManager.loadScripts();
@@ -117,7 +110,6 @@ public class Mindless {
     @SubscribeEvent
     public void onTick(ClientTickEvent e) {
         if (e.phase == Phase.END) {
-            // Outside the world check, so edits made from the main menu are written too.
             if (profileManager != null) {
                 profileManager.autoSaveTick();
             }
@@ -219,15 +211,7 @@ public class Mindless {
     public static ModuleManager getModuleManager() {
         return moduleManager;
     }
-
-    /**
-     * Writes the current profile out as the game goes down.
-     *
-     * <p>Runs on a shutdown hook, off the game thread, but by then nothing is changing module
-     * state any more. Skipped after an uninject, which has already saved and then torn everything
-     * down -- saving again would write a client with every module switched off.
-     */
-    private static void saveOnShutdown() {
+private static void saveOnShutdown() {
         try {
             if (unloaded || profileManager == null || currentProfile == null) {
                 return;
@@ -308,14 +292,7 @@ public class Mindless {
 
         return changed;
     }
-
-    /**
-     * Every object handed to a bus, so the registration can be undone.
-     *
-     * Forge unregisters by identity, so the instance has to be kept. The second flag records
-     * whether it also went on the FML bus, which only happens off Lunar.
-     */
-    private static final java.util.List<Object[]> EVENT_HANDLERS = new java.util.ArrayList<Object[]>();
+private static final java.util.List<Object[]> EVENT_HANDLERS = new java.util.ArrayList<Object[]>();
     private static volatile boolean unloaded = false;
 
     private static void registerHandler(Object handler, boolean alsoFmlBus) {
@@ -326,24 +303,10 @@ public class Mindless {
         }
         EVENT_HANDLERS.add(new Object[] { handler, Boolean.valueOf(fml) });
     }
-
-    /** Whether the client has been torn down and should be treated as absent. */
-    public static boolean isUnloaded() {
+public static boolean isUnloaded() {
         return unloaded;
     }
-
-    /**
-     * Tears the client down inside the running game.
-     *
-     * Mixins and transformers cannot be undone -- the bytecode was rewritten when the game class
-     * was loaded, and it stays rewritten. What can be undone is everything those hooks reach: the
-     * modules stop, the handlers come off the buses so posted events find no listeners, the GPU
-     * resources and background threads are released, and the surviving hooks then run against a
-     * client that does nothing.
-     *
-     * Settings are written out first, so nothing configured this session is lost.
-     */
-    public static synchronized void uninject() {
+public static synchronized void uninject() {
         if (unloaded) {
             return;
         }
@@ -355,19 +318,12 @@ public class Mindless {
             }
         } catch (Throwable ignored) {
         }
-
-        // Save before anything is torn down: disabling a module can change its own settings.
-        // Still subject to the auto save setting -- with it off, nothing writes a profile except
-        // "Update profile", and an uninject is no exception.
         try {
             if (profileManager != null && currentProfile != null) {
                 profileManager.flushCurrentProfile();
             }
         } catch (Throwable ignored) {
         }
-
-        // Modules first. Each one releases its own framebuffers, restores game settings it had
-        // overridden, and unregisters the handlers it registered when it was enabled.
         enabledBeforeUnload.clear();
         try {
             if (moduleManager != null) {
@@ -407,16 +363,10 @@ public class Mindless {
             } catch (Throwable ignored) {
             }
         }
-        // The list is deliberately kept. Forge registers and unregisters by identity, so bringing
-        // the client back means handing it the same instances again, not new ones.
-
-        // Anything holding a key down on our behalf has to let go, or the game is left walking.
         try {
             net.minecraft.client.settings.KeyBinding.unPressAllKeys();
         } catch (Throwable ignored) {
         }
-
-        // Untransform classes back to baseline original bytecode
         try {
             mindless.runtime.MindlessTransformerManager.get().setDisabled(true);
             mindless.runtime.TransformerHooks.untransformNative();
@@ -435,16 +385,7 @@ public class Mindless {
         } catch (Throwable ignored) {
         }
     }
-
-    /**
-     * Notes a state change in the log the loader reads.
-     *
-     * The loader decides what to show purely from that file, and an uninjected client is
-     * indistinguishable in it from a healthy one -- both have the module resident and the same
-     * startup lines -- so it reported "already attached" and offered a full restart as the only
-     * way out. With a marker it can say what is actually true and point at the key instead.
-     */
-    private static void markNativeLog(String message) {
+private static void markNativeLog(String message) {
         try {
             java.io.File dir = new java.io.File(System.getProperty("java.io.tmpdir"), "MindlessNative");
             if (!dir.isDirectory() && !dir.mkdirs()) return;
@@ -456,25 +397,11 @@ public class Mindless {
         } catch (Throwable ignored) {
         }
     }
-
-    /** Modules that were on when the client was torn down, restored on the way back in. */
-    private static final java.util.List<Module> enabledBeforeUnload = new java.util.ArrayList<Module>();
-
-    /**
-     * Brings the client back after an uninject, without touching the loader.
-     *
-     * Re-attaching from outside cannot work: the DLL is still resident so the loader reports it as
-     * already attached, and the classes are still defined in the LaunchClassLoader, so even a
-     * successful re-attach would run the same bytecode. Nothing needs to be reloaded, though --
-     * everything is still in memory, merely detached -- so this puts the same handler instances
-     * back on the buses and switches the same modules on again.
-     */
-    public static synchronized void reinject() {
+private static final java.util.List<Module> enabledBeforeUnload = new java.util.ArrayList<Module>();
+public static synchronized void reinject() {
         if (!unloaded) {
             return;
         }
-
-        // Re-transform classes back to transformed bytecode
         try {
             mindless.runtime.MindlessTransformerManager.get().setDisabled(false);
             mindless.runtime.TransformerHooks.retransformNative();

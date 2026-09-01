@@ -46,16 +46,12 @@ public class Backtrack extends Module {
     private int currentDelay = 0;
     private long lastDeactivationTime = 0;
     private boolean wasActive = false;
-
-    // Server-position interpolation
     private static final long POSITION_INTERP_MS = 80L;
     private static final double POS_EPS = 1.0e-6;
     private static final double MOVEMENT_DISTANCE_EPS = 0.001D;
     private Vec3 positionInterpFrom;
     private Vec3 positionInterpTo;
     private long positionInterpStartMs;
-
-    // Direction tracking
     private Vec3 lastTargetSnapshot = null;
     private boolean delayingPackets = false;
 
@@ -240,7 +236,6 @@ public class Backtrack extends Module {
             packetQueue.add(new TimedPacket(packet, System.currentTimeMillis()));
             e.setCanceled(true);
         } else if (!packetQueue.isEmpty()) {
-            // Enemy approaching — flush queued packets immediately
             while (!packetQueue.isEmpty()) {
                 TimedPacket tp = packetQueue.poll();
                 if (tp != null) processPacket(tp.packet);

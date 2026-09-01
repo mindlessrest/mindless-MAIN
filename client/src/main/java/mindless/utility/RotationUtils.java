@@ -233,12 +233,7 @@ public class RotationUtils implements IMinecraftInstance {
     public static float[] getRotationsToPoint(double x, double y, double z) {
         return getRotationsToPoint(x, y, z, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
     }
-
-    /**
-     * Base-aware overload for silent rotation paths. When the target is directly above/below
-     * (horizDist near zero), preserves baseYaw to avoid atan2(0,0) -> -90 degenerate yaw.
-     */
-    public static float[] getRotationsToPoint(double x, double y, double z, float baseYaw, float basePitch) {
+public static float[] getRotationsToPoint(double x, double y, double z, float baseYaw, float basePitch) {
         double deltaX = x - mc.thePlayer.posX;
         double deltaZ = z - mc.thePlayer.posZ;
         double deltaY = y - (mc.thePlayer.posY + mc.thePlayer.getEyeHeight());
@@ -267,12 +262,7 @@ public class RotationUtils implements IMinecraftInstance {
         }
         return getRotationsToPoint(aimPoint.xCoord, aimPoint.yCoord, aimPoint.zCoord, baseYaw, basePitch);
     }
-
-    /**
-     * Returns the aim point Vec3 for the given entity and multipoint settings.
-     * Extracted from getRotations logic for backup-point fallback.
-     */
-    public static Vec3 getAimPoint(Entity entity, double horizontalMultipoint, double verticalMultipoint) {
+public static Vec3 getAimPoint(Entity entity, double horizontalMultipoint, double verticalMultipoint) {
         if (entity == null || mc.thePlayer == null) return null;
         float borderSize = entity.getCollisionBorderSize();
         AxisAlignedBB bb = entity.getEntityBoundingBox().expand(borderSize, borderSize, borderSize);
@@ -303,23 +293,7 @@ public class RotationUtils implements IMinecraftInstance {
         double z = Math.max(box.minZ, Math.min(box.maxZ, point.zCoord));
         return new Vec3(x, y, z);
     }
-
-    /**
-     * The nearest point on a box that is safely inside a face rather than on its rim.
-     *
-     * <p>{@link #closestPointOnAabb} clamps the eye into the box, so whenever you are diagonal to
-     * a block -- which is nearly always -- the point it returns sits exactly on an edge or corner.
-     * That edge is shared with the block next door, and a ray aimed at it can resolve to either
-     * one. Aim at a seam between two blocks and the crosshair flickers between them as you move,
-     * which restarts the break each time and means neither ever finishes.
-     *
-     * <p>Pulling the point in from the rim on the two axes that are not the face normal puts it
-     * unambiguously on one block. The face itself is chosen by whichever axis the eye is furthest
-     * outside the box on, which is the face actually being looked at.
-     *
-     * @param margin how far in from each edge, in blocks
-     */
-    public static Vec3 closestPointOnAabb(AxisAlignedBB box, Vec3 point, double margin) {
+public static Vec3 closestPointOnAabb(AxisAlignedBB box, Vec3 point, double margin) {
         double x = Math.max(box.minX, Math.min(box.maxX, point.xCoord));
         double y = Math.max(box.minY, Math.min(box.maxY, point.yCoord));
         double z = Math.max(box.minZ, Math.min(box.maxZ, point.zCoord));
@@ -342,9 +316,7 @@ public class RotationUtils implements IMinecraftInstance {
         }
         return new Vec3(x, y, z);
     }
-
-    /** Keeps a coordinate at least {@code margin} from either end, or centres it if it cannot. */
-    private static double inset(double value, double min, double max, double margin) {
+private static double inset(double value, double min, double max, double margin) {
         double low = min + margin;
         double high = max - margin;
         if (low >= high) {
@@ -435,11 +407,7 @@ public class RotationUtils implements IMinecraftInstance {
             }
         }
     }
-
-    /**
-     * Returns squared distance from player eye to the closest point on the entity's expanded AABB.
-     */
-    public static double distanceSqFromEyeToClosestOnAABB(Entity entity) {
+public static double distanceSqFromEyeToClosestOnAABB(Entity entity) {
         if (entity == null || mc.thePlayer == null) return Double.MAX_VALUE;
         Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
         float borderSize = entity.getCollisionBorderSize();
@@ -450,20 +418,11 @@ public class RotationUtils implements IMinecraftInstance {
         double dz = eye.zCoord - closest.zCoord;
         return dx * dx + dy * dy + dz * dz;
     }
-
-    /**
-     * Returns distance from player eye to the closest point on the entity's expanded AABB.
-     */
-    public static double distanceFromEyeToClosestOnAABB(Entity entity) {
+public static double distanceFromEyeToClosestOnAABB(Entity entity) {
         double dSq = distanceSqFromEyeToClosestOnAABB(entity);
         return dSq == Double.MAX_VALUE ? Double.MAX_VALUE : Math.sqrt(dSq);
     }
-
-    /**
-     * Returns distance from player eye to the closest point on the entity's expanded AABB,
-     * positioned at a specific location (e.g. delayed server position for Backtrack).
-     */
-    public static double distanceFromEyeToClosestOnAABB(Entity entity, Vec3 position) {
+public static double distanceFromEyeToClosestOnAABB(Entity entity, Vec3 position) {
         if (entity == null || mc.thePlayer == null || position == null) return Double.MAX_VALUE;
         Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
         float borderSize = entity.getCollisionBorderSize();
@@ -750,25 +709,12 @@ public class RotationUtils implements IMinecraftInstance {
     }
 
     private static final float FAR_THRESHOLD = 180f;
-
-    /**
-     * Smoothly interpolates from base to target rotation using linear step model.
-     * Steps along the combined (yaw, pitch) direction so both axes move together proportionally,
-     * simulating human mouse movement (one fluid motion).
-     * @param speed 0 = no movement, 30 = practically instant
-     */
-    public static float[] smoothRotation(float baseYaw, float basePitch,
+public static float[] smoothRotation(float baseYaw, float basePitch,
                                          float targetYaw, float targetPitch,
                                          int speed) {
         return smoothRotation(baseYaw, basePitch, targetYaw, targetPitch, speed, 0f);
     }
-
-    /**
-     * Overload with configurable randomization (0-100%). Higher randomization varies step size
-     * per tick to bypass anticheat pattern analysis (consistent deltas, constant acceleration).
-     * @param speed 0 = no movement, 30 = practically instant
-     */
-    public static float[] smoothRotation(float baseYaw, float basePitch,
+public static float[] smoothRotation(float baseYaw, float basePitch,
                                          float targetYaw, float targetPitch,
                                          int speed, float randomizationPercent) {
         if (speed <= 0) {
@@ -791,7 +737,6 @@ public class RotationUtils implements IMinecraftInstance {
         float proximityFactor = Math.min(1f, magnitude / FAR_THRESHOLD);
         proximityFactor = (float) Math.pow(proximityFactor, 0.7);
         float maxSlowdown = (float)(randomizationPercent / 100.0);
-        // Cap proximity slowdown at 20% (min 80% speed) so high randomization doesn't kill aim assist
         float proximityMult = Math.max(0.8f, 1.0f - maxSlowdown * (1.0f - proximityFactor));
         stepSize *= proximityMult;
         float stepLength = Math.min(stepSize, magnitude);
@@ -802,19 +747,7 @@ public class RotationUtils implements IMinecraftInstance {
         float pitch = basePitch + stepPitch;
         return new float[] { yaw, clampPitch(pitch) };
     }
-
-    /**
-     * Human-like rotation smoothing modeled on real mouse dynamics.
-     *
-     * Real human aiming follows Fitts' law: a ballistic phase (fast, imprecise)
-     * followed by a corrective phase (slow, precise). This implementation uses:
-     *
-     * 1. Distance-adaptive speed curve: large flicks are fast, small corrections are slow
-     * 2. Asymmetric axis movement: yaw and pitch move at different rates (wrist vs. arm)
-     * 3. Gaussian noise: subtle per-tick jitter scaled to movement speed
-     * 4. Micro-correction simulation: near target, movement becomes deliberate and noisy
-     */
-    public static float[] smoothRotationHumanized(float baseYaw, float basePitch,
+public static float[] smoothRotationHumanized(float baseYaw, float basePitch,
                                                    float targetYaw, float targetPitch,
                                                    int speed, float randomizationPercent) {
         if (speed <= 0) {
@@ -833,41 +766,26 @@ public class RotationUtils implements IMinecraftInstance {
         }
 
         float baseSpeed = speed / 30f;
-
-        // Fitts' law ballistic curve: move a larger fraction when far, smaller when close.
-        // This creates the characteristic fast-flick then slow-correct pattern.
-        // The exponent controls how aggressively it decelerates near target.
         float distanceFactor;
         if (magnitude > 40f) {
-            // Ballistic phase: cover ground fast
             distanceFactor = 0.6f + baseSpeed * 0.35f;
         } else if (magnitude > 10f) {
-            // Transition: decelerating
             float normalized = (magnitude - 10f) / 30f;
             float ballistic = 0.6f + baseSpeed * 0.35f;
             float corrective = 0.15f + baseSpeed * 0.25f;
             distanceFactor = corrective + (ballistic - corrective) * normalized * normalized;
         } else {
-            // Corrective phase: precise, slow movements
             float corrective = 0.15f + baseSpeed * 0.25f;
             float nearScale = magnitude / 10f;
             distanceFactor = corrective * (0.4f + 0.6f * nearScale);
         }
-
-        // Asymmetric axis speeds: humans move yaw faster than pitch (wrist rotation vs arm lift)
-        // Also add per-tick variance to prevent constant-delta detection
         float randFactor = randomizationPercent / 100f;
         float yawBias = 1.0f + 0.15f * randFactor * ((float) Math.random() - 0.3f);
         float pitchBias = 1.0f - 0.1f * randFactor * ((float) Math.random() - 0.4f);
-
-        // Per-tick speed jitter (simulates inconsistent mouse polling / hand tremor)
         float tickJitter = 1f + randFactor * 0.2f * gaussianish();
 
         float effectiveYawStep = deltaYaw * distanceFactor * yawBias * tickJitter;
         float effectivePitchStep = deltaPitch * distanceFactor * pitchBias * tickJitter;
-
-        // Gaussian noise perpendicular to movement (hand shake / imprecision)
-        // Scaled to current movement speed — you shake more during fast flicks
         if (randFactor > 0f && magnitude > 1f) {
             float noiseScale = randFactor * 0.4f * Math.min(1f, magnitude / 20f) * baseSpeed;
             float perpNoise = gaussianish() * noiseScale;
@@ -876,9 +794,6 @@ public class RotationUtils implements IMinecraftInstance {
             effectiveYawStep += -normPitch * perpNoise;
             effectivePitchStep += normYaw * perpNoise;
         }
-
-        // Micro-overshoot: near target, occasionally overshoot slightly (then next tick corrects)
-        // This creates the characteristic oscillation humans show when landing on a target
         if (magnitude < 5f && magnitude > 0.3f && randFactor > 0.2f) {
             if (Math.random() < 0.08 * randFactor) {
                 float overshootAmount = 1f + (float) Math.random() * 0.12f * randFactor;
@@ -886,8 +801,6 @@ public class RotationUtils implements IMinecraftInstance {
                 effectivePitchStep *= overshootAmount;
             }
         }
-
-        // Prevent overshooting past the target by more than a small margin
         if (Math.abs(effectiveYawStep) > Math.abs(deltaYaw) * 1.15f) {
             effectiveYawStep = deltaYaw * 1.05f;
         }
@@ -905,8 +818,6 @@ public class RotationUtils implements IMinecraftInstance {
     public static float clampPitch(final float n) {
         return MathHelper.clamp_float(n, -90.0f, 90.0f);
     }
-
-    // TODO remove calls to this from the util as it's done globally in RotationHelper
     public static float[] fixRotation(float targetYaw, float targetPitch, final float yaw, final float pitch) {
         targetYaw = RotationHelper.unwrapYaw(targetYaw, yaw);
         float n5 = targetYaw - yaw;
@@ -957,11 +868,7 @@ public class RotationUtils implements IMinecraftInstance {
         final Vec3 vec32 = vec3.addVector(vec31.xCoord * blockReachDistance, vec31.yCoord * blockReachDistance, vec31.zCoord * blockReachDistance);
         return mc.theWorld.rayTraceBlocks(vec3, vec32, false, false, true);
     }
-
-    /**
-     * Raytraces for a block using the given yaw/pitch, but returns null if an entity is closer (so the block is "behind" an entity).
-     */
-    public static MovingObjectPosition rayTraceBlockIfNoEntityInFront(double reach, float yaw, float pitch) {
+public static MovingObjectPosition rayTraceBlockIfNoEntityInFront(double reach, float yaw, float pitch) {
         if (mc.thePlayer == null || mc.theWorld == null) return null;
         MovingObjectPosition blockHit = rayTraceCustom(reach, yaw, pitch);
         Vec3 eyes = mc.thePlayer.getPositionEyes(1.0F);

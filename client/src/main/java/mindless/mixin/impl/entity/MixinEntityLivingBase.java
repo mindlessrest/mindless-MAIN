@@ -95,12 +95,7 @@ public abstract class MixinEntityLivingBase extends Entity {
     protected float getJumpUpwardsMotion() {
         return 0.42F;
     }
-
-    /**
-     * @author Mindless
-     * @reason Jump event hook
-     */
-    @Overwrite
+@Overwrite
     protected void jump() {
         JumpEvent jumpEvent = new JumpEvent((EntityLivingBase) (Object) this, this.getJumpUpwardsMotion(), this.rotationYaw, this.isSprinting());
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(jumpEvent);

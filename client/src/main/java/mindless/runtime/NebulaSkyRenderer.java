@@ -94,7 +94,6 @@ public final class NebulaSkyRenderer {
         int first = atmosphere.nebulaColor.getColor();
         int second = atmosphere.nebulaColor2.getColor();
         float brightness = (float) atmosphere.nebulaBrightness.getInput();
-        // Use one shared pattern for every cube face; per-face seeds expose cube seams.
         Random stars = new Random(0x4D494E444C455353L);
 
         for (int y = 0; y < textureSize; y++) {

@@ -18,19 +18,6 @@ import org.lwjgl.input.Keyboard;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
-/**
- * Picks which enabled modules the arraylist is allowed to name.
- *
- * <p>Everything behind this already existed: modules carry a hidden flag, the arraylist skips the
- * ones that have it, and profiles have been saving it all along. There was simply no way to set it,
- * so the flag could only ever be false. This is the missing switch.
- *
- * <p>With the arraylist on, the picker is the arraylist -- the real one, where it really sits, with
- * its entries clicked in place. Reading a list somewhere else and mapping it back to what is on
- * screen is work the screen can do for you. The panel is the fallback for when the arraylist is
- * off and there is nothing on screen to point at.
- */
 public class HideModules extends Module {
     public HideModules() {
         super("Hide", category.client);
@@ -42,19 +29,14 @@ public class HideModules extends Module {
             }
         }));
     }
-
-    /** Whether there is an arraylist on screen to click entries in. */
-    private static boolean arrayListVisible() {
+private static boolean arrayListVisible() {
         return ModuleManager.hud != null && ModuleManager.hud.isEnabled();
     }
-
-    /** The arraylist's own order, filtered to what it would name. Hidden entries stay in. */
-    private static List<Module> candidates() {
+private static List<Module> candidates() {
         List<Module> candidates = new ArrayList<Module>();
         synchronized (ModuleManager.organizedModules) {
             for (Module module : ModuleManager.organizedModules) {
                 if (module == null || !module.canBeEnabled || !module.isEnabled()) continue;
-                if (module == ModuleManager.commandLine || module instanceof HUD) continue;
                 candidates.add(module);
             }
         }
@@ -65,16 +47,10 @@ public class HideModules extends Module {
         private static final float ROW_HEIGHT = 19f;
         private static final float PANEL_W = 260f;
         private static final float PADDING = 12f;
-
-        /** Set once on open: which of the two pickers this is. */
-        private boolean inPlace;
-
-        // --- panel fallback only
+private boolean inPlace;
         private final List<Module> modules = new ArrayList<Module>();
         private float scroll;
         private float panelLeft, panelTop, panelHeight, listTop, listBottom;
-
-        // --- in-place only, refreshed every frame by the draw
         private List<HUD.PickerRow> rows = new ArrayList<HUD.PickerRow>();
 
         @Override
@@ -110,15 +86,7 @@ public class HideModules extends Module {
             }
             super.drawScreen(mouseX, mouseY, partialTicks);
         }
-
-        /**
-         * The arraylist itself, clickable.
-         *
-         * <p>A light scrim rather than the panel's heavier one: the point is to see the arraylist
-         * against the game exactly as it normally looks, so the backdrop only has to lift it enough
-         * to read as a mode you are in rather than the game you were playing.
-         */
-        private void drawInPlace(int mouseX, int mouseY) {
+private void drawInPlace(int mouseX, int mouseY) {
             drawRect(0, 0, width, height, 0x66000000);
             rows = HUD.renderHidePicker(mouseX, mouseY);
 
@@ -184,9 +152,6 @@ public class HideModules extends Module {
                 RoundedUtils.drawRound(rowLeft, rowTop, rowRight - rowLeft, ROW_HEIGHT - 2f, 3f,
                         0x22FFFFFF);
             }
-
-            // A filled box means the module still shows. Reading it as "on screen" rather than
-            // "hidden" keeps the ticked state matching what you see in game.
             float boxSize = 9f;
             float boxX = rowLeft + 2f;
             float boxY = rowTop + (ROW_HEIGHT - 2f - boxSize) / 2f;
@@ -259,9 +224,7 @@ public class HideModules extends Module {
             }
             super.keyTyped(typedChar, keyCode);
         }
-
-        /** Clips the list to its own box, so scrolled rows do not spill past the panel. */
-        private void scissor(float x1, float y1, float x2, float y2) {
+private void scissor(float x1, float y1, float x2, float y2) {
             org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
             mindless.utility.RenderUtils.scissor(x1, y1, x2 - x1, y2 - y1);
         }

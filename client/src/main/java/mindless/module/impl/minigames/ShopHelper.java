@@ -150,12 +150,7 @@ public class ShopHelper extends Module {
         GlStateManager.enableLighting();
         GlStateManager.enableDepth();
     }
-
-    /**
-     * Called from the transformer/mixin when handleMouseClick fires.
-     * Returns: 0 = allow, 1 = cancel, 2 = replace with middle click
-     */
-    public int onShopClick(Slot slot, int clickedButton, int clickType) {
+public int onShopClick(Slot slot, int clickedButton, int clickType) {
         if (!Utils.nullCheck()) return 0;
         if (!(mc.currentScreen instanceof GuiChest)) return 0;
 
@@ -168,8 +163,6 @@ public class ShopHelper extends Module {
         if (slot == null || !slot.getHasStack()) return 0;
         ItemStack stack = slot.getStack();
         Item item = stack.getItem();
-
-        // Prevent duplicate purchases
         if (preventDuplicate.isToggled() && !title.contains("Upgrades & Traps")) {
             ItemCost cost = getCostFromLore(stack);
             if (cost != null && !shouldHighlight(stack, cost)) {
@@ -179,8 +172,6 @@ public class ShopHelper extends Module {
                 }
             }
         }
-
-        // Replace clicks with middle click for quick buy
         if (replaceClicks.isToggled() && clickType == 0 && !title.contains("Upgrades & Traps")) {
             return 2; // replace with middle click
         }
@@ -230,8 +221,6 @@ public class ShopHelper extends Module {
 
         int available = INVENTORY_RESOURCES.getOrDefault(cost.resourceType, 0);
         boolean affordable = available >= cost.amount;
-
-        // For upgrades, just check affordability
         if (mc.currentScreen instanceof GuiChest) {
             GuiChest chest = (GuiChest) mc.currentScreen;
             if (chest.inventorySlots instanceof ContainerChest) {
@@ -242,13 +231,9 @@ public class ShopHelper extends Module {
                 }
             }
         }
-
-        // For diamond items, just check affordability (always show as purchasable upgrade)
         if (cost.resourceType == Items.diamond) {
             return affordable;
         }
-
-        // For categorized items, only highlight if it's an upgrade over what we have
         Item item = stack.getItem();
         ItemCategory cat = CATEGORY.get(item);
         if (cat != null) {

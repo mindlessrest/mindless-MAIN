@@ -40,10 +40,6 @@ public class ProfileModule extends Module {
         }
 
         Mindless.profileManager.loadProfile(this.getName());
-
-        // The load sets this itself, and only when it got far enough to mean it. Claiming the
-        // profile regardless is how a failed load ended up presented as the new profile, with the
-        // old one's module state underneath it and "Update profile" ready to write that to disk.
         if (Mindless.currentProfile != profile) {
             return;
         }

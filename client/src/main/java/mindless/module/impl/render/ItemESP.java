@@ -37,29 +37,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-/**
- * Dropped-item ESP drawn as flat cards on the HUD rather than boxes in the world.
- *
- * <p>A card carries the item's own icon, how many of it are lying there, and optionally its name
- * and distance. Items of the same kind close together collapse into one card with a combined count,
- * so a scattered pile of forty ingots reads as one number instead of forty overlapping boxes.
- *
- * <p>The layout follows M1CK3Y's ResourceESP script for Mindless bS (GPL-3.0), reimplemented against
- * this client's own rendering rather than the script API. Two things are done differently on
- * purpose. Items are identified by their {@link Item} and, for potions, by the effect they carry,
- * where the script compared lowercased display-name substrings -- that misses anything the server
- * has renamed and matches things it should not, and "bow" had to be special-cased against "bowl".
- * And the icon is the stack that is actually on the ground, not a stand-in built per category, so
- * an enchanted or damaged item looks like itself.
- */
 public class ItemESP extends Module {
-    /**
-     * What a dropped stack counts as, and the colour its card is trimmed in.
-     *
-     * <p>Order matters: the first match wins, so the specific entries sit above the general ones.
-     */
-    private enum Category {
+private enum Category {
         DIAMOND("Diamond", 0x00E5FF),
         EMERALD("Emerald", 0x2ECC71),
         GOLD("Gold", 0xFFD700),
@@ -96,17 +75,7 @@ public class ItemESP extends Module {
     private final ButtonSetting showDistance;
     private final ButtonSetting showCount;
     private final ButtonSetting hideInGui;
-
-    /**
-     * What is on the ground, rebuilt on the tick rather than the frame.
-     *
-     * <p>Scanning every loaded entity, grouping it and boxing a map key is tick-rate work: the
-     * world only changes twenty times a second, and doing it per frame repeated all of it up to
-     * ten times for an identical answer, allocating a card and a boxed key each time round. The
-     * frame keeps the part that genuinely changes per frame -- interpolating each anchor and
-     * projecting it -- which is what makes the cards track smoothly instead of stepping.
-     */
-    private final List<Entry> entries = new ArrayList<Entry>();
+private final List<Entry> entries = new ArrayList<Entry>();
     private final List<Card> cards = new ArrayList<Card>();
     private final Map<Long, Entry> groups = new HashMap<Long, Entry>();
     private final double[] projected = new double[3];
@@ -168,8 +137,6 @@ public class ItemESP extends Module {
 
         project(event.partialTicks);
         if (cards.isEmpty()) return;
-
-        // Far cards first, so the near ones end up on top of them.
         Collections.sort(cards, FAR_FIRST);
         mc.entityRenderer.setupOverlayRendering();
         draw(resolution);
@@ -182,9 +149,7 @@ public class ItemESP extends Module {
             return Double.compare(b.distance, a.distance);
         }
     };
-
-    /** Rebuilds the snapshot: which stacks are on the ground, and how they group. */
-    private void collect() {
+private void collect() {
         entries.clear();
         groups.clear();
 
@@ -193,8 +158,6 @@ public class ItemESP extends Module {
 
         for (Entity entity : mc.theWorld.loadedEntityList) {
             if (!(entity instanceof EntityItem)) continue;
-            // A stack spends its first couple of ticks interpolating in from wherever the server
-            // said it spawned, which is rarely where it lands.
             if (entity.ticksExisted < 3 || entity.isDead) continue;
             if (!RenderUtils.isWithinDistanceSqToRenderView(entity, maxDistSq)) continue;
 
@@ -205,8 +168,6 @@ public class ItemESP extends Module {
             if (matched == null || matched.setting == null || !matched.setting.isToggled()) continue;
 
             if (stack) {
-                // Three-block cells. Loose enough that a burst of drops from one broken block lands
-                // in one cell, tight enough that two separate piles stay two cards.
                 long cell = (((long) Math.floor(entity.posX / 3.0) & 0x1FFFFF) << 42)
                         | (((long) Math.floor(entity.posY / 3.0) & 0x1FFFFF) << 21)
                         | ((long) Math.floor(entity.posZ / 3.0) & 0x1FFFFF);
@@ -225,18 +186,7 @@ public class ItemESP extends Module {
             entries.add(new Entry(matched, itemStack, itemStack.stackSize, entity));
         }
     }
-
-    /**
-     * Puts the snapshot on the screen at this frame's camera.
-     *
-     * <p>Anchors are interpolated here rather than in the snapshot, so a card follows a bouncing
-     * item smoothly instead of stepping twenty times a second.
-     *
-     * <p>The depth guard is the same one the player ESP uses: a point within about five thousandths
-     * of the near plane diverges under perspective division, and anything at or past the far plane
-     * is behind the camera.
-     */
-    private void project(float partialTicks) {
+private void project(float partialTicks) {
         cards.clear();
         net.minecraft.client.renderer.entity.RenderManager renderManager = mc.getRenderManager();
 
@@ -267,9 +217,7 @@ public class ItemESP extends Module {
             cards.add(card);
         }
     }
-
-    /** Cards are rebuilt every frame, so they are reused rather than reallocated. */
-    private final List<Card> cardPool = new ArrayList<Card>();
+private final List<Card> cardPool = new ArrayList<Card>();
 
     private Card newPooledCard() {
         Card card = new Card();
@@ -293,8 +241,6 @@ public class ItemESP extends Module {
 
         for (int i = 0; i < cards.size(); i++) {
             Card card = cards.get(i);
-            // A generous margin rather than the exact edge: a card whose anchor is just off screen
-            // still has most of its body on it.
             if (card.screenX < -150f || card.screenX > screenW + 150f
                     || card.screenY < -150f || card.screenY > screenH + 150f) {
                 continue;
@@ -338,15 +284,7 @@ public class ItemESP extends Module {
 
         GlStateManager.color(1f, 1f, 1f, 1f);
     }
-
-    /**
-     * The item's own icon, at whatever size the slider asks for.
-     *
-     * <p>renderItemAndEffectIntoGUI draws a sixteen-pixel sprite at integer coordinates, so the
-     * scaling and the fractional placement both have to happen in the matrix. It also leaves item
-     * lighting and depth behind it, which the flat cards drawn afterwards cannot have.
-     */
-    private void drawIcon(ItemStack itemStack, float x, float y, float scale) {
+private void drawIcon(ItemStack itemStack, float x, float y, float scale) {
         boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
         boolean blend = GL11.glIsEnabled(GL11.GL_BLEND);
         boolean depthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
@@ -360,15 +298,12 @@ public class ItemESP extends Module {
         try {
             mc.getRenderItem().renderItemAndEffectIntoGUI(itemStack, 0, 0);
         } catch (Throwable ignored) {
-            // A malformed stack from a server-side item is not worth losing the frame over.
         }
         GlStateManager.popMatrix();
         net.minecraft.client.renderer.RenderHelper.disableStandardItemLighting();
         RenderUtils.restoreGuiRenderState(depth, blend, depthMask);
     }
-
-    /** @return the category this stack belongs to, or null when it is not one this module shows */
-    private static Category categoryOf(ItemStack itemStack) {
+private static Category categoryOf(ItemStack itemStack) {
         Item item = itemStack.getItem();
         if (item == null) return null;
 
@@ -388,14 +323,7 @@ public class ItemESP extends Module {
         if (item instanceof ItemPotion) return potionCategory(itemStack);
         return null;
     }
-
-    /**
-     * Which potion this is, read from the effect it carries rather than its damage value.
-     *
-     * <p>Every strength and duration of one brew is a different damage value, and splash doubles
-     * the set again; the effect id is the same across all of them.
-     */
-    private static Category potionCategory(ItemStack itemStack) {
+private static Category potionCategory(ItemStack itemStack) {
         List<?> effects;
         try {
             effects = ((ItemPotion) itemStack.getItem()).getEffects(itemStack);
@@ -412,9 +340,7 @@ public class ItemESP extends Module {
         }
         return null;
     }
-
-    /** One card's worth of the world, as of the last tick. */
-    private static final class Entry {
+private static final class Entry {
         private final Category category;
         private final ItemStack icon;
         private final Entity anchor;

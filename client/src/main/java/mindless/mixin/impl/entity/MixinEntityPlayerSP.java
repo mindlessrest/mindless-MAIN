@@ -143,12 +143,7 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
             ModuleManager.invManager.handlePreInventoryClose("EntityPlayerSP.closeScreen");
         }
     }
-
-    /**
-     * @author Mindless
-     * @reason Motion and rotation updates
-     */
-    @Overwrite
+@Overwrite
     public void onUpdateWalkingPlayer() {
         PreMotionEvent.setRotations = false;
         PreMotionEvent.setRenderYaw(false);
@@ -243,12 +238,7 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
         }
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new PostMotionEvent());
     }
-
-    /**
-     * @author Mindless
-     * @reason Player living update hook
-     */
-    @Overwrite
+@Overwrite
     public void onLivingUpdate() {
         if (this.sprintingTicksLeft > 0) {
             --this.sprintingTicksLeft;

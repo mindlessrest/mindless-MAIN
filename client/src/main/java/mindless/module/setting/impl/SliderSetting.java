@@ -142,7 +142,6 @@ public class SliderSetting extends Setting {
 
     @Override
     public void resetToDefault() {
-        // Raw, so a slider parked on a sentinel outside its own range keeps it.
         this.defaultValue = capturedDefault;
     }
 
@@ -202,33 +201,10 @@ public class SliderSetting extends Setting {
     public void setSuffix(String suffix) {
         this.suffix = suffix;
     }
-
-    /** 1eN for N in 0..9, so the common cases need no {@link Math#pow}. */
-    private static final double[] POWERS_OF_TEN = {
+private static final double[] POWERS_OF_TEN = {
             1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
     };
-
-    /**
-     * Rounds to {@code p} decimal places, allocating nothing.
-     *
-     * <p>This used to be {@code new BigDecimal(v).setScale(p, HALF_UP)}, which is a startlingly
-     * expensive way to round a number that is about to be turned back into a double. The
-     * double-argument BigDecimal constructor takes the exact binary value, so 0.77 becomes a
-     * fifty-digit decimal, and setScale then does BigInteger division on it -- a BigDecimal, a
-     * BigInteger and its backing array allocated per call, before any arithmetic.
-     *
-     * <p>That would be tolerable somewhere cold. It is not: {@link #getInput()} routes through
-     * here, every module reads its sliders through getInput, and much of that happens per frame
-     * while rendering. In a flight recording it was the single largest allocation site in the
-     * client, with BigDecimal and BigInteger both in the ten most-allocated types overall and
-     * the garbage collector running about a hundred and forty phases a second.
-     *
-     * <p>Scaled arithmetic gives the same answer for the magnitudes a setting ever holds. Values
-     * too large for a double to represent integrally at this scale are returned unrounded, which
-     * is what BigDecimal would effectively do anyway, and the sign handling keeps HALF_UP
-     * rounding away from zero rather than toward positive infinity.
-     */
-    public static double roundToInterval(double v, int p) {
+public static double roundToInterval(double v, int p) {
         if (p < 0) {
             return 0.0D;
         }
@@ -238,7 +214,6 @@ public class SliderSetting extends Setting {
 
         double scale = POWERS_OF_TEN[p];
         double scaled = v * scale;
-        // Past 2^53 a double cannot represent consecutive integers, so rounding is meaningless.
         if (scaled <= -9.007199254740992E15 || scaled >= 9.007199254740992E15) {
             return v;
         }

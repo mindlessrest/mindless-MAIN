@@ -1,6 +1,4 @@
 #include <windows.h>
-
-/* Runtime-specific Mindless payloads selected by dllmain.c. */
 421 RCDATA "@MINDLESS_FORGE_PAYLOAD_JAR_ESCAPED@"
 422 RCDATA "@MINDLESS_LUNAR_PAYLOAD_JAR_ESCAPED@"
 

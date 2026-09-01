@@ -19,12 +19,7 @@ import net.minecraftforge.common.MinecraftForge;
 public abstract class MixinBlock {
     @Shadow
     public abstract AxisAlignedBB getCollisionBoundingBox(World worldIn, BlockPos pos, IBlockState state);
-
-    /**
-     * @author Mindless
-     * @reason Block collision box event hook
-     */
-    @Overwrite
+@Overwrite
     public void addCollisionBoxesToList(World worldIn, BlockPos pos, IBlockState state, AxisAlignedBB mask, List<AxisAlignedBB> list, Entity collidingEntity) {
         AxisAlignedBB axisalignedbb = this.getCollisionBoundingBox(worldIn, pos, state);
         CollisionEvent event = new CollisionEvent(pos, (Block)(Object)this, axisalignedbb);

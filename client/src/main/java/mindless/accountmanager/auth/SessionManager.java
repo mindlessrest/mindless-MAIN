@@ -84,7 +84,6 @@ public class SessionManager {
             }
         }
         catch (Exception exception) {
-            // empty catch block
         }
     }
 

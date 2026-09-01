@@ -15,19 +15,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-/**
- * What you can actually afford, without opening your inventory.
- *
- * <p>Every purchase in the game is priced in these four, and the answer to "can I buy this" is a
- * count you otherwise have to stop and go and look up. Mid-fight, on a bridge, that is the whole
- * reason to have it on screen.
- *
- * <p>The ender chest is counted too, but only from the last time you had it open -- the server
- * does not tell the client what is in a container that is closed, so there is nothing else to go
- * on. It is stale by definition rather than by accident, which is why it is shown apart from the
- * inventory figure instead of added into it.
- */
 public class ResourceTracker extends BedwarsHud {
     private static final Item[] TRACKED = {
             Items.iron_ingot, Items.gold_ingot, Items.diamond, Items.emerald
@@ -82,14 +69,7 @@ public class ResourceTracker extends BedwarsHud {
             add(inventory, stack.getItem(), stack.stackSize);
         }
     }
-
-    /**
-     * Snapshots the ender chest whenever it happens to be open.
-     *
-     * <p>Only the upper container is read. The lower slots of a chest screen are the player's own
-     * inventory, and counting those here would double every figure on the overlay.
-     */
-    private void countOpenEnderChest() {
+private void countOpenEnderChest() {
         if (!(mc.currentScreen instanceof GuiChest)) return;
         ContainerChest container = (ContainerChest) ((GuiChest) mc.currentScreen).inventorySlots;
         String title = Utils.stripColor(container.getLowerChestInventory().getDisplayName()

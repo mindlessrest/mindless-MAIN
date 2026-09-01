@@ -764,7 +764,6 @@ public class SimulatedPlayer {
             boolean flag2 = isWet();
 
             if (worldObj.isFlammableWithin(this.getEntityBoundingBox().contract(0.001, 0.001, 0.001))) {
-                //this.dealFireDamage(1);
                 if (!flag2) {
                     ++fire;
                     if (fire == 0) {
@@ -1241,8 +1240,6 @@ public class SimulatedPlayer {
                 velocityX += d6;
             }
         }
-
-        //noinspection ConstantConditions
         for (; velocityZ != 0 && worldObj.getCollidingBoundingBoxes(player, simPlayer.box.offset(0, -1, velocityZ)).isEmpty(); d5 = velocityZ) {
             if (velocityZ < d6 && velocityZ >= -d6) {
                 velocityZ = 0;
@@ -1252,8 +1249,6 @@ public class SimulatedPlayer {
                 velocityZ += d6;
             }
         }
-
-        //noinspection ConstantConditions
         for (; velocityX != 0 && velocityZ != 0 && worldObj.getCollidingBoundingBoxes(player, simPlayer.box.offset(velocityX, -1, velocityZ)).isEmpty(); d5 = velocityZ) {
             if (velocityX < d6 && velocityX >= -d6) {
                 velocityX = 0;

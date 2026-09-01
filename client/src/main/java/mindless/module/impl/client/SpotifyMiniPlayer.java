@@ -46,8 +46,7 @@ public class SpotifyMiniPlayer extends Module {
     public static SliderSetting lyricTextScale;
     public static SliderSetting lyricAnimationSpeed;
     public static SliderSetting lyricSyncOffset;
-    /** The lyric bubble's own position and scale, independent of the card it sits under. */
-    public static SliderSetting lyricsPosX;
+public static SliderSetting lyricsPosX;
     public static SliderSetting lyricsPosY;
     public static SliderSetting lyricsScale;
 
@@ -102,29 +101,17 @@ public class SpotifyMiniPlayer extends Module {
     public void onDisable() {
         SystemMediaClient.getInstance().setLyricsWanted(false);
         SystemMediaClient.getInstance().setPlayerWantsArtwork(false);
-        // The visualiser reads this same session to tell playing from paused, and it can be shown
-        // on its own. Tearing the session down here regardless would leave a standalone
-        // visualiser unable to see that Spotify had been paused.
         if (ModuleManager.audioVisualizer == null || !ModuleManager.audioVisualizer.isEnabled()) {
             SystemMediaClient.getInstance().setEnabled(false);
         }
     }
-
-    // Render via RenderTickEvent so the player shows reliably on Lunar.
-    // The GuiIngameForge transformer hook is kept as a secondary path but
-    // Lunar may call a subclass that does not invoke the Forge super method.
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent e) {
         if (e.phase != TickEvent.Phase.END) return;
         if (mc.currentScreen != null) return;
         if (!Utils.nullCheck()) return;
-
-        // Declared every frame rather than only when a setting changes, so the bridge always
-        // matches what is really on screen without anything having to remember to tell it.
         SystemMediaClient mediaClient = SystemMediaClient.getInstance();
         mediaClient.setLyricsWanted(showLyrics.isToggled());
-        // Mode 1 is "Album accent", which needs the artwork decoded even when the art itself
-        // is hidden -- the same literal the renderer tests against.
         mediaClient.setPlayerWantsArtwork(showAlbumArt.isToggled()
                 || (int) progressBarColorMode.getInput() == 1);
 
@@ -138,8 +125,6 @@ public class SpotifyMiniPlayer extends Module {
     @Override
     public void guiUpdate() {
         boolean widget = widgetStyle == null || (int) widgetStyle.getInput() == 0;
-        // The widget has a fixed shape with no header row, no badge and no source line, so the
-        // settings for those are hidden rather than left on screen doing nothing.
         if (showHeader != null) showHeader.setVisible(!widget, this);
         if (showDetails != null) showDetails.setVisible(!widget, this);
         if (showSourceApp != null) showSourceApp.setVisible(!widget, this);
@@ -173,15 +158,7 @@ public class SpotifyMiniPlayer extends Module {
             lyricAnimationSpeed.setVisible(animateVisible, this);
         }
     }
-
-    /**
-     * The widget and the lyric strip each pick their own face, or follow the HUD's.
-     *
-     * <p>Both used to read the HUD's font directly and had no say of their own. "Default" is index
-     * zero and keeps that behaviour, so a config that never touches these two looks exactly as it
-     * did; anything else applies to that piece alone.
-     */
-    private static final String[] FONT_OPTIONS = ModuleFont.options();
+private static final String[] FONT_OPTIONS = ModuleFont.options();
 
     public static String widgetFontName() {
         return ModuleFont.nameOf(widgetFont);
@@ -262,8 +239,7 @@ public class SpotifyMiniPlayer extends Module {
     public static class EditScreen extends GuiScreen {
         private MindlessButton resetPosition;
         private boolean dragging;
-        /** Which element the drag has hold of; the lyric bubble moves on its own. */
-        private boolean draggingLyrics;
+private boolean draggingLyrics;
         private float dragOffsetX;
         private float dragOffsetY;
 
@@ -271,8 +247,6 @@ public class SpotifyMiniPlayer extends Module {
         public void initGui() {
             super.initGui();
             this.buttonList.add(this.resetPosition = new MindlessButton(1, this.width - 90, this.height - 25, 85, 20, "Reset position"));
-            // Force a preview render so panelVisible/bounds are populated immediately
-            // even though onRenderTick skips rendering while a GUI screen is open.
             float[] bounds = MediaPlayerRenderer.renderPreview();
             if (bounds != null && !SpotifyMiniPlayer.hasCustomPosition()) {
                 ScaledResolution sr = new ScaledResolution(this.mc);
@@ -284,8 +258,6 @@ public class SpotifyMiniPlayer extends Module {
         @Override
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
             drawRect(0, 0, this.width, this.height, 0x7A000000);
-
-            // renderPreview() drives the renderer so panelX/Y/W/H are always fresh.
             float[] rect = MediaPlayerRenderer.renderPreview();
 
             if (rect != null) {
@@ -297,7 +269,6 @@ public class SpotifyMiniPlayer extends Module {
                     float nx = Math.max(0.0F, Math.min(sr.getScaledWidth() - pw, mouseX - dragOffsetX));
                     float ny = Math.max(0.0F, Math.min(sr.getScaledHeight() - ph, mouseY - dragOffsetY));
                     SpotifyMiniPlayer.setCustomPositionFromAbsolute(nx, ny, pw, ph, sr);
-                    // Re-render with updated position so outline matches
                     rect = MediaPlayerRenderer.renderPreview();
                     if (rect != null) { px = rect[0]; py = rect[1]; pw = rect[2]-rect[0]; ph = rect[3]-rect[1]; }
                 }
@@ -334,8 +305,6 @@ public class SpotifyMiniPlayer extends Module {
             super.mouseClicked(mouseX, mouseY, button);
             if (button != 0) return;
             float[] rect = MediaPlayerRenderer.renderPreview();
-            // The bubble is tested first: detached, it can sit over the card, and the thing on
-            // top is the thing you meant to grab.
             float[] lyrics = MediaPlayerRenderer.getLyricsRect();
             if (lyrics != null && mouseX >= lyrics[0] && mouseX <= lyrics[2]
                     && mouseY >= lyrics[1] && mouseY <= lyrics[3]) {
@@ -358,7 +327,6 @@ public class SpotifyMiniPlayer extends Module {
         @Override
         protected void mouseClickMove(int mouseX, int mouseY, int button, long timeSinceLastClick) {
             super.mouseClickMove(mouseX, mouseY, button, timeSinceLastClick);
-            // Dragging state is set in mouseClicked; movement handled in drawScreen.
         }
 
         @Override

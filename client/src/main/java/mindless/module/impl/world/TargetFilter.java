@@ -26,14 +26,7 @@ public class TargetFilter extends Module {
         this.closetModule = true;
         this.liteModule = true;
     }
-
-    /**
-     * Whether bot detection should answer at all.
-     *
-     * <p>Read by AntiBot itself, so a consumer calling AntiBot.isBot directly -- the render side
-     * does, for chams and ESP -- gets the same answer as one going through shouldFilter.
-     */
-    public static boolean isAntiBotActive() {
+public static boolean isAntiBotActive() {
         return ModuleManager.targetFilter != null
                 && ModuleManager.targetFilter.isEnabled()
                 && antiBot != null
@@ -62,8 +55,6 @@ public class TargetFilter extends Module {
         if (entity == null || entity == mc.thePlayer) {
             return true;
         }
-
-        // The toggle is checked inside isBot, so this reads the same either way round.
         if (AntiBot.isBot(entity)) {
             return true;
         }

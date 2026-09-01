@@ -15,7 +15,6 @@ public class PacketMappings {
     public static final Map<Class<? extends Packet<?>>, Class<? extends SPacket>> minecraftToScriptS = new LinkedHashMap<>();
 
     static {
-        // serverbound
         minecraftToScriptC.put(C0APacketAnimation.class, C0A.class);
         minecraftToScriptC.put(C0BPacketEntityAction.class, C0B.class);
         minecraftToScriptC.put(C01PacketChatMessage.class, C01.class);
@@ -33,8 +32,6 @@ public class PacketMappings {
         minecraftToScriptC.put(C13PacketPlayerAbilities.class, C13.class);
         minecraftToScriptC.put(C16PacketClientStatus.class, C16.class);
         minecraftToScriptC.put(C0DPacketCloseWindow.class, C0D.class);
-
-        // clientbound
         minecraftToScriptS.put(S12PacketEntityVelocity.class, S12.class);
         minecraftToScriptS.put(S27PacketExplosion.class, S27.class);
         minecraftToScriptS.put(S3EPacketTeams.class, S3E.class);

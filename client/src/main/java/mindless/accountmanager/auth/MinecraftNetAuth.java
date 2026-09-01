@@ -61,7 +61,6 @@ final class MinecraftNetAuth {
             decoded = URLDecoder.decode(accessTokenCookie, "UTF-8");
         }
         catch (Exception exception) {
-            // empty catch block
         }
         if (MinecraftNetAuth.looksLikeJwt(decoded)) {
             return decoded;
@@ -83,7 +82,6 @@ final class MinecraftNetAuth {
             }
         }
         catch (Exception exception) {
-            // empty catch block
         }
         return null;
     }

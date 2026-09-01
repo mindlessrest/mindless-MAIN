@@ -8,15 +8,6 @@ import mindless.utility.Utils;
 import net.minecraft.client.multiplayer.ServerData;
 
 import java.util.List;
-
-/**
- * Reports why the Rich Presence is showing what it is showing.
- *
- * <p>The presence has two halves that fail independently and look identical from the outside: the
- * pipe to Discord, and whether the client believes it is on Hypixel. Nothing distinguished them,
- * so "the RPC is broken" could mean Discord is not running, or that a proxy made the server
- * address unrecognisable. This prints both.
- */
 public class Rpc extends Command {
     public Rpc() {
         super("rpc");
@@ -73,12 +64,9 @@ public class Rpc extends Command {
                 : module.isForcingHypixel() ? "&eforced &8(not detected)" : "&cno")
                 + " &8| scraping: " + (hypixel ? "&ayes" : "&cno"));
         if (mc.theWorld == null) {
-            // Force Hypixel says the server is Hypixel, not that you are on one.
             reply("&8  not in a world, so nothing is being scraped");
         }
         if (!detected) {
-            // The usual cause. A proxy replaces the address with its own, so only the brand can
-            // still answer, and a proxy that rewrites the brand takes that away too.
             reply("&8  address must contain hypixel.net, or brand must contain hypixel");
             reply("&8  behind a proxy only the brand can match");
             if (!module.isForcingHypixel()) {

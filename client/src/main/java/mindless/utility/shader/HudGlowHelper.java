@@ -7,13 +7,6 @@ import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.shader.Framebuffer;
 import org.lwjgl.opengl.GL11;
-
-/**
- * Mask-based glow for HUD text elements (watermark, array list).
- *
- * Pipeline: render text into a transparent FBO mask, blur the mask via GlowBloomShader,
- * composite the blurred glow back onto the screen. The original text is then drawn sharply on top.
- */
 public final class HudGlowHelper {
     private static final Minecraft mc = Minecraft.getMinecraft();
     private static Framebuffer maskBuffer;
@@ -24,12 +17,7 @@ public final class HudGlowHelper {
     public static boolean isAvailable() {
         return glowShader.isValid();
     }
-
-    /**
-     * Begin capturing text into the mask buffer. Call this, draw text normally, then call endAndComposite.
-     * The drawn text will be captured as the glow source mask.
-     */
-    public static void beginMask() {
+public static void beginMask() {
         if (!isAvailable()) return;
         maskBuffer = RenderUtils.createFrameBuffer(maskBuffer, false);
         if (maskBuffer == null) return;
@@ -53,17 +41,7 @@ public final class HudGlowHelper {
         GlStateManager.enableTexture2D();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
-
-    /**
-     * End mask capture, blur the mask, and composite the glow onto the main framebuffer.
-     *
-     * @param radius   blur radius (recommended 6-12 for text)
-     * @param intensity brightness multiplier
-     * @param r        glow tint red 0-255
-     * @param g        glow tint green 0-255
-     * @param b        glow tint blue 0-255
-     */
-    public static void endAndComposite(float radius, float intensity, int r, int g, int b) {
+public static void endAndComposite(float radius, float intensity, int r, int g, int b) {
         if (!isAvailable() || maskBuffer == null) return;
 
         GlStateManager.matrixMode(GL11.GL_PROJECTION);

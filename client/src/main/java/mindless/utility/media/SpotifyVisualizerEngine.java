@@ -1,30 +1,13 @@
 package mindless.utility.media;
-
-/**
- * Keeps the visualiser's bars up to date.
- *
- * <p>Both the capture and the analysis now live in the media bridge, so this is only a pump: it
- * asks the bridge for a finished frame of bars at the configured rate and publishes it for the
- * renderer to read. The bars used to be produced here in Java, on top of a second native library
- * that did nothing but capture -- a flight recording found that analysis to be the hottest single
- * method in the entire client, ahead of anything in the game's own renderer, which is what
- * prompted moving it.
- *
- * <p>It still runs on its own thread rather than on the render thread. The transform is real work
- * whichever language it is written in, and the point of moving it was to keep it away from the
- * frame, not merely to relocate it.
- */
 public final class SpotifyVisualizerEngine {
-    /** Mirrors the bridge's own status codes. */
-    public static final int STATUS_STOPPED = 0;
+public static final int STATUS_STOPPED = 0;
     public static final int STATUS_SEARCHING = 1;
     public static final int STATUS_CAPTURING = 2;
     public static final int STATUS_UNSUPPORTED = 3;
     public static final int STATUS_FAILED = 4;
 
     private static final int MAX_BARS = 256;
-    /** Shut the tap down once nothing has asked for a frame for this long. */
-    private static final long IDLE_SHUTDOWN_MS = 2000L;
+private static final long IDLE_SHUTDOWN_MS = 2000L;
     private static final float[] NO_BARS = new float[0];
 
     private static final SpotifyVisualizerEngine INSTANCE = new SpotifyVisualizerEngine();
@@ -32,14 +15,7 @@ public final class SpotifyVisualizerEngine {
     private final Object lifecycleLock = new Object();
 
     private volatile float[] published = NO_BARS;
-    /**
-     * Two buffers the pump alternates between, so publishing a frame allocates nothing.
-     *
-     * <p>A fresh array per frame made this the single largest allocation site in the client -- at
-     * sixty frames a second it was producing more garbage than anything else running. Alternating
-     * means whatever the renderer is holding is never the one being written.
-     */
-    private float[] bufferA = NO_BARS;
+private float[] bufferA = NO_BARS;
     private float[] bufferB = NO_BARS;
     private boolean useBufferA;
     private volatile int status = STATUS_STOPPED;
@@ -76,15 +52,7 @@ public final class SpotifyVisualizerEngine {
         this.desiredSmoothing = noiseReduction;
         this.desiredUpdateRate = updateRate;
     }
-
-    /**
-     * Says that something is drawing this frame.
-     *
-     * <p>Starts the pump on the first call and keeps it alive; when the calls stop -- the module
-     * switched off, the HUD hidden, the player closed -- the pump notices the silence and releases
-     * the capture on its own.
-     */
-    public void requestFrame() {
+public void requestFrame() {
         lastRequestAt = System.currentTimeMillis();
         if (running) {
             return;
@@ -122,21 +90,7 @@ public final class SpotifyVisualizerEngine {
     public String getStatusText() {
         return statusText;
     }
-
-    /**
-     * Asks the pump to stop, without waiting for it.
-     *
-     * <p>This used to join the pump for up to a second and a half, and it is called from
-     * {@code onDisable} -- on the game thread. The pump could be inside a transform or a native
-     * poll, and its own cleanup hands the capture session back, which joins the capture thread for
-     * up to another two seconds. So switching the module off froze the game for as long as it took
-     * both threads to notice, every single time.
-     *
-     * <p>Nothing needs the wait. The pump is a daemon, it checks {@code running} every frame, and
-     * releasing the audio session is its job to finish on its own time. Clearing the published
-     * bars here means the renderer stops drawing immediately regardless of how long that takes.
-     */
-    public void shutdown() {
+public void shutdown() {
         synchronized (lifecycleLock) {
             running = false;
             worker = null;
@@ -164,7 +118,6 @@ public final class SpotifyVisualizerEngine {
                 if (bridge == null) {
                     bridge = SystemMediaClient.getInstance().getNativeBridge();
                     if (bridge == null) {
-                        // The session has not come up yet. Nothing to do but wait for it.
                         status = STATUS_STOPPED;
                         sleepUntilNextFrame(frameStarted);
                         continue;
@@ -215,8 +168,6 @@ public final class SpotifyVisualizerEngine {
         }
         finally {
             if (bridge != null && tapStarted) {
-                // Releasing the capture is the whole reason this runs down when idle: it hands
-                // the audio session back rather than holding it for a panel nobody is looking at.
                 bridge.audioStop();
             }
             published = NO_BARS;

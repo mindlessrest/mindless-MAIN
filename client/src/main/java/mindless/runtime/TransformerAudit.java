@@ -1,8 +1,4 @@
 package mindless.runtime;
-
-// The imports use the ORIGINAL org.objectweb.asm package: shadow's relocate
-// rewrites them at package time to mindless.deps.org.objectweb.asm, but
-// javac needs the source imports pre-relocation.
 import net.lenni0451.classtransform.utils.tree.IClassProvider;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Type;
@@ -18,32 +14,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-/**
- * Checks, before anything is woven, that every transformer is still describing a method that
- * exists.
- *
- * <p>A transformer is written against one build of the game and run against whatever build the
- * user has. When the host renames a method, moves a call, or refactors a body, the transformer
- * does not become obviously wrong -- it becomes wrong in a way that only shows up as an exception
- * deep inside the weaving library, whose consequence is that the whole target class silently keeps
- * its original bytecode. Every hook in that class is then missing, and because the retransform
- * itself "succeeded" nothing says so.
- *
- * <p>This reads the transformers the same way the weaver does and answers a narrower question: for
- * each declared target -- the method being injected into, the call being redirected, the field
- * being shadowed -- does that member exist in this process? The answer is a list of exactly what
- * this game build no longer provides, by transformer and by member, which is the difference
- * between "the client does not work on the new version" and "Minecraft.runTick is now called
- * something else".
- *
- * <p>Only meaningful where the runtime uses the same names the transformers were compiled against.
- * Under Forge's obfuscated namespace the member names are rewritten by the mapper on the way in,
- * and comparing the two directly would report every single one as missing.
- */
 final class TransformerAudit {
-    /** Marks a finding that costs one hook rather than a whole class. */
-    static final String OPTIONAL_PREFIX = "(optional) ";
+static final String OPTIONAL_PREFIX = "(optional) ";
 
     private static final String CTRANSFORMER = "Lnet/lenni0451/classtransform/annotations/CTransformer;";
     private static final String CSHADOW = "Lnet/lenni0451/classtransform/annotations/CShadow;";
@@ -65,36 +37,22 @@ final class TransformerAudit {
     TransformerAudit(IClassProvider provider) {
         this.provider = provider;
     }
-
-    /**
-     * @return one line per declared target this game build does not provide, in registration order
-     */
-    List<String> audit(List<String> transformerClassNames) {
+List<String> audit(List<String> transformerClassNames) {
         missing.clear();
         unreadable.clear();
         for (String transformerName : transformerClassNames) {
             try {
                 auditTransformer(transformerName);
             } catch (Throwable failure) {
-                // Being unable to read a transformer is not the same as the game having changed.
                 missing.add(transformerName + ": could not be audited (" + failure + ")");
             }
         }
         return new ArrayList<>(missing);
     }
-
-    /** Target classes the class loader would not describe, which were therefore not checked. */
-    Set<String> unreadableTargets() {
+Set<String> unreadableTargets() {
         return unreadable;
     }
-
-    /**
-     * Whether a class node carries enough to answer questions about its members.
-     *
-     * <p>A class with neither methods nor fields is one the provider could not read, not one the
-     * game shipped empty: every class this audit looks at has a constructor at minimum.
-     */
-    private static boolean isReadable(ClassNode node) {
+private static boolean isReadable(ClassNode node) {
         return !node.methods.isEmpty() || !node.fields.isEmpty();
     }
 
@@ -108,15 +66,9 @@ final class TransformerAudit {
         for (String targetClassName : targetClasses) {
             ClassNode target = load(targetClassName);
             if (target == null) {
-                // The class is simply not part of this build; the manager already skips those.
                 continue;
             }
             if (!isReadable(target)) {
-                // A class the loader could only describe as a name is not evidence that its
-                // members are gone. The game's classes reach us through a loader that hides them
-                // as resources, so what comes back is a reflective sketch that is sometimes empty;
-                // reporting every member of an empty sketch as missing buries the real findings
-                // under a hundred false ones.
                 unreadable.add(short_(targetClassName));
                 continue;
             }
@@ -149,8 +101,6 @@ final class TransformerAudit {
                         checkMember(transformerName, targetClassName, target, declared,
                                 shortName(annotationDescriptor) + " target method");
                     }
-                    // The instruction an injection anchors to is its own dependency on the host,
-                    // and the one a refactor breaks first.
                     for (AnnotationNode targetAnnotation : targetAnnotations(injection)) {
                         checkInstructionTarget(transformerName, targetAnnotation);
                     }
@@ -158,9 +108,7 @@ final class TransformerAudit {
             }
         }
     }
-
-    /** {@code Lowner;name(args)ret} -- the form a CTarget uses to name a call or field access. */
-    private void checkInstructionTarget(String transformerName, AnnotationNode targetAnnotation) {
+private void checkInstructionTarget(String transformerName, AnnotationNode targetAnnotation) {
         Object kind = value(targetAnnotation, "value");
         if (!"INVOKE".equals(kind) && !"FIELD".equals(kind)) return;
         Object declared = value(targetAnnotation, "target");
@@ -185,9 +133,6 @@ final class TransformerAudit {
             found = hasMethod(ownerNode, name, desc);
         }
         if (!found) {
-            // An optional anchor that is absent is a hook quietly not applying, which is the
-            // designed behaviour on a host that has moved the code. Worth saying, not worth
-            // counting alongside the ones that will actually break a class.
             boolean optional = Boolean.TRUE.equals(value(targetAnnotation, "optional"));
             missing.add((optional ? OPTIONAL_PREFIX : "") + simple(transformerName)
                     + " injection point " + short_(owner) + "." + member + " does not exist");
@@ -197,7 +142,6 @@ final class TransformerAudit {
     private void checkMember(String transformerName, String targetClassName, ClassNode target,
                              String declared, String what) {
         if (declared == null || declared.isEmpty()) return;
-        // A target may be written as a bare name or as name+descriptor, and may carry an owner.
         String member = declared;
         int ownerEnd = member.indexOf(';');
         if (member.startsWith("L") && ownerEnd > 1) member = member.substring(ownerEnd + 1);
@@ -211,8 +155,6 @@ final class TransformerAudit {
                     + short_(targetClassName) + "." + member + " does not exist");
         }
     }
-
-    // ------------------------------------------------------------------ lookups
 
     private boolean hasMethod(ClassNode node, String name, String desc) {
         return hasMethod(node, name, desc, new HashSet<String>());
@@ -265,8 +207,6 @@ final class TransformerAudit {
         return node;
     }
 
-    // -------------------------------------------------------------- annotations
-
     private static List<String> readTransformerTargets(ClassNode transformer) {
         AnnotationNode annotation = findAnnotation(transformer.invisibleAnnotations, CTRANSFORMER);
         if (annotation == null) {
@@ -307,9 +247,7 @@ final class TransformerAudit {
         }
         return null;
     }
-
-    /** ASM stores annotation members as a flat name/value list. */
-    private static Object value(AnnotationNode annotation, String name) {
+private static Object value(AnnotationNode annotation, String name) {
         if (annotation == null || annotation.values == null) return null;
         for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
             if (name.equals(annotation.values.get(i))) return annotation.values.get(i + 1);

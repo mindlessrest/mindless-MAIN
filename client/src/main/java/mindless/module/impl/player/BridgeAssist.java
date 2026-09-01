@@ -203,9 +203,6 @@ public class BridgeAssist extends Module {
     }
 
     private void tryReleaseSneak(PrePlayerInputEvent e, boolean resetDelay) {
-        // Never unsneak in mid-air: the release only matters once there is ground under the feet
-        // again, and letting go while airborne drops the sneak that is holding the player on the
-        // edge.
         if (!mc.thePlayer.onGround) {
             pressSneak(e, false);
             return;
@@ -214,9 +211,6 @@ public class BridgeAssist extends Module {
         int existed = mc.thePlayer.ticksExisted;
         if (unsneakStartTick == -1 && sneakJumpStartTick == -1) {
             unsneakStartTick = existed;
-            // A delay drawn from a range rather than a fixed value, so the unsneak timing is not
-            // identical on every edge. The bounds are sorted rather than assumed in order, so the
-            // sliders behave whichever way round they are set.
             double fromMs = Math.min(unsneakDelayMin.getInput(), unsneakDelayMax.getInput());
             double toMs = Math.max(unsneakDelayMin.getInput(), unsneakDelayMax.getInput());
             if (toMs <= fromMs) toMs = fromMs + 1;

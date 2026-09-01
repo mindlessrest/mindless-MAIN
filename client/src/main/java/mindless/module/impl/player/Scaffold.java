@@ -46,9 +46,7 @@ public class Scaffold extends Module {
     private static final ItemBlock PLACEHOLDER = new ItemBlock(Blocks.tnt);
     private static final int BPS_WINDOW_MS = 3000;
     private static final int TIMESTAMP_RING = 512;
-
-    /** Static because countFont() is, and it is called from the static overlay path. */
-    private static SliderSetting counterFont;
+private static SliderSetting counterFont;
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
     private final ButtonSetting keepY;
@@ -76,9 +74,7 @@ public class Scaffold extends Module {
 
     private final long[] timestamps = new long[TIMESTAMP_RING];
     private int tsHead, tsCount;
-
-    /** Sixteen for the icon itself, three of padding either side. */
-    private static final float BADGE_SIZE = 22.0F;
+private static final float BADGE_SIZE = 22.0F;
     private static final float BADGE_GAP = 7.0F;
     private static final float BADGE_RADIUS = 6.0F;
     private static final int BADGE_COLOUR = 0x66000000;
@@ -88,14 +84,7 @@ public class Scaffold extends Module {
     private static final float BAR_GAP = 3.5F;
     private static final float MIN_CONTENT_WIDTH = 78.0F;
     private static final long POP_DURATION_MS = 200L;
-    /**
-     * Where the capacity bar reads full.
-     *
-     * <p>Two stacks rather than one. A bridge is not in trouble at sixty-four blocks and a bar that
-     * is already pinned at the top says nothing; anchoring it here leaves the top half of its
-     * travel to describe a comfortable supply and the bottom half to describe running out.
-     */
-    private static final int BAR_FULL_BLOCKS = 128;
+private static final int BAR_FULL_BLOCKS = 128;
 
     private float overlayScale = 0f;
     private long overlayPopStart = -1L;
@@ -105,20 +94,10 @@ public class Scaffold extends Module {
     private float posY = Float.NaN;
     private float relativePosX = Float.NaN;
     private float relativePosY = Float.NaN;
-
-    /**
-     * Counters shown on the overlay, eased toward the real ones.
-     *
-     * <p>Blocks come off the stack in ones and BPS is a windowed average that steps whenever a
-     * placement leaves the window, so both jump. Read as numbers that is fine; drawn as a bar and
-     * a decimal it is a twitch, and a twitching HUD element reads as broken rather than live.
-     */
-    private float displayedBlocks = Float.NaN;
+private float displayedBlocks = Float.NaN;
     private float displayedBps;
     private long lastOverlayNanos;
-
-    /** The hotbar slot held when the module was switched on, so it can be given back. */
-    private int previousSlot = -1;
+private int previousSlot = -1;
 
     public Scaffold() {
         super("Scaffold", category.player);
@@ -136,9 +115,6 @@ public class Scaffold extends Module {
     @Override
     public void onEnable() {
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
-        // Remembered before the first placement moves the hand off it. Bridging is something you
-        // drop into for a second in the middle of a fight, and coming out of it holding a stack of
-        // wool instead of the sword you went in with is a death.
         previousSlot = Utils.nullCheck() ? mc.thePlayer.inventory.currentItem : -1;
         previewPos = null;
         previewFace = null;
@@ -168,15 +144,7 @@ public class Scaffold extends Module {
         }
         restorePreviousSlot();
     }
-
-    /**
-     * Puts the hand back on whatever it was holding before the module took it.
-     *
-     * <p>Only when the slot actually moved. Someone who picked their blocks by hand and then
-     * switched the module on is already holding what they want; snapping them back to a slot they
-     * left on purpose would be the same bug in the other direction.
-     */
-    private void restorePreviousSlot() {
+private void restorePreviousSlot() {
         int slot = previousSlot;
         previousSlot = -1;
 
@@ -386,37 +354,13 @@ public class Scaffold extends Module {
         syncPosition();
         drawOverlay(getDisplayBlock(), blocks, computeBps(), posX, posY, overlayScale);
     }
-
-    /**
-     * The pop curve: overshoots a little past full size before settling.
-     */
-    private static float easeOutBack(float t) {
+private static float easeOutBack(float t) {
         float c1 = 1.70158f;
         float c3 = c1 + 1f;
         return 1f + c3 * (float) Math.pow(t - 1, 3) + c1 * (float) Math.pow(t - 1, 2);
     }
-
-    /**
-     * The block-count overlay.
-     *
-     * <p>Two lines of dropshadowed vanilla text next to an icon is what a debug readout looks
-     * like, not what the rest of this client looks like. Everything else on the HUD -- the
-     * scoreboard, the session card, the alerts -- is a blurred panel with a hairline rim, in the
-     * client font, and this now matches: the count is the thing you glance at so it gets a large
-     * face of its own, the rate sits beside it as a secondary reading, and the bar underneath says
-     * how much is left without having to be read at all.
-     */
-    private void drawOverlay(ItemStack badgeStack, int blocks, float bps, float left, float top, float popScale) {
+private void drawOverlay(ItemStack badgeStack, int blocks, float bps, float left, float top, float popScale) {
         advanceOverlayCounters(blocks, bps);
-
-        // The pop is applied to the geometry rather than to the modelview.
-        //
-        // Every rounded shape here is drawn by a shader that is told where the rectangle is in
-        // screen pixels and works out its own corners and coverage from that. A matrix scale moves
-        // the quad those uniforms are painted onto but leaves the uniforms where they were, so the
-        // panel would be sliced by a rounded mask sitting somewhere else for the length of the
-        // animation. Scaling the coordinates instead keeps the shape and the quad describing the
-        // same rectangle.
         float scale = Math.max(0.0F, popScale);
 
         MindlessFontRenderer countFont = countFont();
@@ -435,9 +379,6 @@ public class Scaffold extends Module {
         float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
         float layoutWidth = PANEL_PAD_X * 2.0F + badgeSpan + contentW;
         float layoutHeight = overlayHeight(countFont, labelFont);
-
-        // Grown from the centre, so the panel expands in place instead of sliding out of its
-        // anchor on the way in.
         float centerX = left + layoutWidth * 0.5F;
         float centerY = top + layoutHeight * 0.5F;
         float width = layoutWidth * scale;
@@ -445,9 +386,6 @@ public class Scaffold extends Module {
         float panelLeft = centerX - width * 0.5F;
         float panelTop = centerY - height * 0.5F;
         float radius = 8.0F * mindless.module.impl.theme.ThemeManager.roundingScale() * scale;
-
-        // Shadow first: everything from prepareBlur on is stencilled to the panel and would paint
-        // straight over it.
         RoundedUtils.drawRoundShadow(panelLeft, panelTop, width, height, radius, 5.0F * scale, 0x82000000);
         BlurUtils.prepareBlur(panelLeft, panelTop, width, height);
         RoundedUtils.drawRound(panelLeft, panelTop, width, height, radius, 0xFF000000);
@@ -457,17 +395,10 @@ public class Scaffold extends Module {
                 new Color(255, 255, 255, 20), new Color(255, 255, 255, 4));
         RoundedUtils.drawRoundOutline(panelLeft, panelTop, width, height, radius, 1.0F,
                 new Color(0, 0, 0, 0), new Color(255, 255, 255, 30));
-
-        // The rounded-rect and blur shaders leave a program bound; glyphs drawn through it come
-        // out garbled.
         GL20.glUseProgram(0);
         GlStateManager.enableTexture2D();
         GlStateManager.enableBlend();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
-
-        // The contents are laid out at full size and scaled by the matrix. Unlike the panel they
-        // are ordinary quads, so the matrix carries them correctly and there is no reason to work
-        // the pop into every coordinate below.
         GlStateManager.pushMatrix();
         GlStateManager.translate(centerX, centerY, 0.0F);
         GlStateManager.scale(scale, scale, 1.0F);
@@ -480,9 +411,6 @@ public class Scaffold extends Module {
 
         float countY = top + PANEL_PAD_Y;
         countFont.drawString(countText, contentX, countY, 0xFF000000 | countColor, false);
-
-        // Right-aligned on the same line as the count, so the two readings share a baseline
-        // instead of stacking into a column of numbers.
         float rateBaseline = countY + (countFont.getFontHeight() - labelFont.getFontHeight()) * 0.6F;
         float suffixW = labelFont.getStringWidth(rateSuffix);
         float rateX = contentRight - rateW;
@@ -501,15 +429,11 @@ public class Scaffold extends Module {
             GlStateManager.popMatrix();
         }
     }
-
-    /** Height is driven by the fonts, so a larger HUD scale grows the panel with the text. */
-    private float overlayHeight(MindlessFontRenderer countFont, MindlessFontRenderer labelFont) {
+private float overlayHeight(MindlessFontRenderer countFont, MindlessFontRenderer labelFont) {
         float content = countFont.getFontHeight() + 1.0F + labelFont.getFontHeight() + BAR_GAP + BAR_HEIGHT;
         return Math.max(BADGE_SIZE, content) + PANEL_PAD_Y * 2.0F;
     }
-
-    /** The overlay's footprint, for the drag handle and the editor. */
-    private float[] overlaySize(ItemStack badgeStack) {
+private float[] overlaySize(ItemStack badgeStack) {
         MindlessFontRenderer countFont = countFont();
         MindlessFontRenderer labelFont = HUD.getHudFontRenderer();
         float rateW = labelFont.getStringWidth("0.0") + labelFont.getStringWidth(" BPS");
@@ -519,9 +443,7 @@ public class Scaffold extends Module {
         float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
         return new float[]{PANEL_PAD_X * 2.0F + badgeSpan + contentW, overlayHeight(countFont, labelFont)};
     }
-
-    /** A real larger face for the count, rather than scaling the small one up and blurring it. */
-    private static MindlessFontRenderer countFont() {
+private static MindlessFontRenderer countFont() {
         return FontManager.getHudRenderer(ModuleFont.nameOf(counterFont),
                 Math.min(2.0F, HUD.getSelectedFontScale() * 1.55F));
     }
@@ -532,9 +454,7 @@ public class Scaffold extends Module {
         if (blocks <= 64) return 0xFFFF55;
         return 0xFFFFFF;
     }
-
-    /** How much of the supply is left, as a bar rather than a number to be read. */
-    private void drawCapacityBar(float x, float y, float width, int fillColour) {
+private void drawCapacityBar(float x, float y, float width, int fillColour) {
         if (width <= 1.0F) return;
 
         float fraction = Math.max(0.0F, Math.min(1.0F, displayedBlocks / (float) BAR_FULL_BLOCKS));
@@ -548,15 +468,7 @@ public class Scaffold extends Module {
         GlStateManager.enableTexture2D();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
-
-    /**
-     * Eases the shown counters toward the real ones, per frame rather than per step.
-     *
-     * <p>Time-based, so the animation takes the same wall-clock time however fast the game is
-     * drawing. The block count snaps rather than easing when it jumps a long way -- a fresh stack
-     * from the inventory is a new supply, not the old one growing.
-     */
-    private void advanceOverlayCounters(int blocks, float bps) {
+private void advanceOverlayCounters(int blocks, float bps) {
         long now = System.nanoTime();
         float delta = lastOverlayNanos == 0L ? 1.0F / 60.0F
                 : Math.max(0.0F, Math.min(0.25F, (now - lastOverlayNanos) / 1_000_000_000.0F));
@@ -570,15 +482,7 @@ public class Scaffold extends Module {
         }
         displayedBps += (bps - displayedBps) * (1.0F - (float) Math.exp(-delta * 9.0F));
     }
-
-    /**
-     * The block the scaffold would place, without reaching for it.
-     *
-     * <p>{@link #getBlockItem} answers the same question but switches the held slot on its way to
-     * the answer. That is right when it is about to place; it is wrong from a render pass, where
-     * it would be moving the player's hand every frame in order to draw a picture of it.
-     */
-    private ItemStack getDisplayBlock() {
+private ItemStack getDisplayBlock() {
         ItemStack held = mc.thePlayer.inventory.getCurrentItem();
         if (held != null && held.getItem() instanceof ItemBlock && held.stackSize > 0) {
             return held;
@@ -586,9 +490,7 @@ public class Scaffold extends Module {
         int slot = getBestBlockSlot();
         return slot == -1 ? null : mc.thePlayer.inventory.mainInventory[slot];
     }
-
-    /** A rounded slot to the left of the count holding whatever is about to be bridged with. */
-    private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY) {
+private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY) {
         if (stack == null) {
             return;
         }
@@ -610,9 +512,6 @@ public class Scaffold extends Module {
         RenderHelper.disableStandardItemLighting();
         GlStateManager.disableDepth();
         GlStateManager.popMatrix();
-
-        // Item rendering leaves lighting, colour and texture state however it pleases, and
-        // everything drawn after this on the HUD expects them neutral.
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         GlStateManager.enableTexture2D();
     }
@@ -1102,8 +1001,6 @@ public class Scaffold extends Module {
             drawRect(0, 0, width, height, 0xB2000000);
 
             posX = ax; posY = ay;
-            // Previewed with a stack in hand even when the inventory is empty, so the panel being
-            // positioned is the same size as the one that will be shown in a game.
             ItemStack badgeStack = getDisplayBlock();
             int blocks = Math.max(1, getTotalBlocks());
             drawOverlay(badgeStack, blocks, computeBps(), posX, posY, 1.0F);

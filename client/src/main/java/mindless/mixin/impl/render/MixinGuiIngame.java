@@ -46,15 +46,7 @@ public abstract class MixinGuiIngame {
 
     @Shadow
     public abstract FontRenderer getFontRenderer();
-
-    /**
-     * Measures through whichever face is actually going to draw the line.
-     *
-     * <p>The panel sizes itself from these numbers, so taking them from the Minecraft font while
-     * drawing in another one is how a scoreboard ends up with its longest line hanging over the
-     * edge of its own background.
-     */
-    @Unique
+@Unique
     private int mindless$width(MindlessFontRenderer custom, FontRenderer vanilla, String text) {
         return custom != null ? custom.getStringWidth(text) : vanilla.getStringWidth(text);
     }
@@ -73,7 +65,6 @@ public abstract class MixinGuiIngame {
         if (glow) {
             TextGlowUtils.drawGlow(vanilla, text, x, y, 0xFFFFFFFF);
         }
-        // The float overload with no drop shadow, which is what the int one resolves to anyway.
         vanilla.drawString(text, x, y, 0xFFFFFFFF, false);
     }
 
@@ -111,8 +102,6 @@ public abstract class MixinGuiIngame {
         }
 
         FontRenderer font = getFontRenderer();
-        // A bundled face brings its own size, so the panel's fixed shrink is not applied on top of
-        // it -- the module's own scale setting is the one control over how large it comes out.
         MindlessFontRenderer customFont = ScoreboardModule.getCustomFont();
         float fontScale = customFont != null ? 1.0f : SCOREBOARD_SCALE;
 
@@ -147,10 +136,6 @@ public abstract class MixinGuiIngame {
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         Minecraft.getMinecraft().getFramebuffer().bindFramebuffer(true);
         GL11.glColorMask(true, true, true, true);
-
-        // Region form: the mask is one screen-sized buffer shared by every panel, and the
-        // scoreboard only ever writes its own rectangle into it. Wiping all of it here was a
-        // full-screen clear every frame for the sake of a few hundred pixels.
         BlurUtils.prepareBlur(left, top, right - left, bottom - top);
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
                 GuiIngameState.panelRadius(), 0xFF000000);
@@ -158,10 +143,6 @@ public abstract class MixinGuiIngame {
                 left - 2.0f, top - 2.0f, right - left + 4.0f, bottom - top + 4.0f);
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
                 GuiIngameState.panelRadius(), GuiIngameState.PANEL_FILL_COLOR);
-
-        // The scoreboard is rendered after several optional HUD modules. Give
-        // its text a clean baseline so a preceding gradient/shader cannot tint
-        // the title or team-formatted lines.
         GlStateManager.enableTexture2D();
         GlStateManager.enableAlpha();
         GlStateManager.enableBlend();

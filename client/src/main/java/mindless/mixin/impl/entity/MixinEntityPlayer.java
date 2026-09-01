@@ -54,12 +54,7 @@ public abstract class MixinEntityPlayer extends EntityLivingBase {
 
     @Shadow
     public abstract void addExhaustion(float p_addExhaustion_1_);
-
-    /**
-     * @author Mindless
-     * @reason Player attack target event hook
-     */
-    @Overwrite
+@Overwrite
     public void attackTargetEntityWithCurrentItem(Entity targetEntity) {
         if (LunarEventBridge.onPlayerAttackTarget(((EntityPlayer) (Object) this), targetEntity)) {
             if (targetEntity.canAttackWithItem() && !targetEntity.hitByEntity(this)) {

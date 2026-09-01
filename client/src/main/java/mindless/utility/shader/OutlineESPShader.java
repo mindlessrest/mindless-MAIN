@@ -46,18 +46,11 @@ public abstract class OutlineESPShader {
         }
         return id;
     }
-
-    /**
-     * A shader that fails to build used to leave programId at -1 and say nothing at all, so the
-     * effect simply did not appear and there was no way to tell that from it being switched off.
-     */
-    private void report(String stage) {
+private void report(String stage) {
         mindless.utility.Diagnostics.always("shader", getClass().getSimpleName() + " " + stage
                 + " failed: " + (error == null ? "no driver message" : error.trim()));
     }
-
-    /** Driver message from the failed build, or null when the shader is fine. */
-    public String getError() {
+public String getError() {
         return error;
     }
 

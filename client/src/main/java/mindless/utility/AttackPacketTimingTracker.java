@@ -11,14 +11,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
 import java.util.ArrayList;
 import java.util.List;
-
-/**
- * Tracks the round-trip latency between sending an attack packet and receiving
- * the damage-confirmation packet from the server. This gives a far more accurate
- * measure of effective combat latency than the scoreboard ping value.
- *
- * <p>Ported from VapeV4.21's {@code gg.vape.combat.AttackPacketTimingTracker}.</p>
- */
 public class AttackPacketTimingTracker {
 
     public static final AttackPacketTimingTracker INSTANCE = new AttackPacketTimingTracker();
@@ -34,8 +26,6 @@ public class AttackPacketTimingTracker {
     private long lastAttackTime;
 
     private AttackPacketTimingTracker() {}
-
-    // ── Outgoing attack tracking ─────────────────────────────────────────
 
     @SubscribeEvent
     public void onSendPacket(SendPacketEvent e) {
@@ -53,9 +43,6 @@ public class AttackPacketTimingTracker {
 
         int entityId = entity.getEntityId();
         long now = System.currentTimeMillis();
-
-        // Only start a new measurement window if the target wasn't recently hit
-        // and enough time has passed since the last attack
         if (entity.hurtResistantTime == 0 && now - lastHitTime > MIN_ATTACK_INTERVAL_MS) {
             if (now - lastAttackTime > getAverageHitDelay() * 2L) {
                 lastHitTime = now;
@@ -66,8 +53,6 @@ public class AttackPacketTimingTracker {
         lastAttackTime = now;
     }
 
-    // ── Incoming damage confirmation tracking ────────────────────────────
-
     @SubscribeEvent
     public void onReceivePacket(ReceivePacketEvent e) {
         if (e.isCanceled()) return;
@@ -77,14 +62,7 @@ public class AttackPacketTimingTracker {
             recordHitDelay();
         }
     }
-
-    // ── Public API ───────────────────────────────────────────────────────
-
-    /**
-     * Returns the rolling average delay (in milliseconds) between sending an
-     * attack and receiving the damage confirmation from the server.
-     */
-    public long getAverageHitDelay() {
+public long getAverageHitDelay() {
         if (hitDelays.isEmpty()) return 0L;
         long total = 0L;
         for (long delay : hitDelays) {
@@ -92,12 +70,7 @@ public class AttackPacketTimingTracker {
         }
         return total / hitDelays.size();
     }
-
-    /**
-     * Returns the expected hurt-time offset in ticks, derived from the average
-     * hit delay.
-     */
-    public int getExpectedHurtTimeTicks() {
+public int getExpectedHurtTimeTicks() {
         return (int) Math.floor((double) getAverageHitDelay() / 50.0);
     }
 
@@ -108,8 +81,6 @@ public class AttackPacketTimingTracker {
     public long getLastAttackTime() {
         return lastAttackTime;
     }
-
-    // ── Internal helpers ─────────────────────────────────────────────────
 
     private void recordHitDelay() {
         long delay = System.currentTimeMillis() - lastHitTime;
@@ -127,7 +98,6 @@ public class AttackPacketTimingTracker {
 
         if (packet instanceof S19PacketEntityStatus) {
             S19PacketEntityStatus status = (S19PacketEntityStatus) packet;
-            // Opcode 2 = entity hurt animation
             if (status.getOpCode() == 2) {
                 return status.getEntity(mc.theWorld);
             }
@@ -135,7 +105,6 @@ public class AttackPacketTimingTracker {
 
         if (packet instanceof S0BPacketAnimation) {
             S0BPacketAnimation anim = (S0BPacketAnimation) packet;
-            // Animation type 1 = hurt/damage
             if (anim.getAnimationType() == 1) {
                 return mc.theWorld.getEntityByID(anim.getEntityID());
             }

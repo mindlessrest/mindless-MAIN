@@ -12,6 +12,5 @@ public class TransformerActiveRenderInfo {
     @CInline
     @CInject(method = "updateRenderInfo", target = @CTarget("RETURN"))
     private static void onUpdateRenderInfoReturn(InjectionCallback ci) {
-        // Reserved for future camera-related features
     }
 }

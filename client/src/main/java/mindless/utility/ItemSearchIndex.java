@@ -594,10 +594,6 @@ public final class ItemSearchIndex {
         if (setting == null) {
             return false;
         }
-
-        // Already-selected items are hidden so the list cannot gain the same entry twice. Items a
-        // list explicitly allows more than one of are the exception: hiding those would leave no
-        // way to reach the second entry at all, since search is the only route into the list.
         if (setting instanceof mindless.module.setting.impl.InventoryItemListSetting
                 && mindless.module.setting.impl.InventoryItemListSetting.allowsDuplicates(entry.storageId)) {
             return false;

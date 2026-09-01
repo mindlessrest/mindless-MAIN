@@ -2,8 +2,6 @@ package mindless.utility;
 
 import java.io.InputStream;
 import java.util.Properties;
-
-/** Reads build metadata injected by Gradle at compile time. */
 public final class BuildInfo {
     private static final String DATE;
     private static final String TIME;

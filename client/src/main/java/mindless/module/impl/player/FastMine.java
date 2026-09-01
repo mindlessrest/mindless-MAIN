@@ -14,9 +14,7 @@ public class FastMine extends Module {
     private ButtonSetting creativeDisable;
     private ButtonSetting decreaseBreakDelay;
     private ButtonSetting ignoreShears;
-
-    /** Stale check for passive decay; must not live on {@code MixinMinecraft} (Mixin 0.7 LVT vs {@code IAccessorPlayerControllerMP}). */
-    private int passiveBlockHitLastSeen;
+private int passiveBlockHitLastSeen;
 
     public FastMine() {
         super("Fast Mine", category.player);

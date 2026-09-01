@@ -12,7 +12,6 @@ public class SystemUtils {
             desktop.getMethod("browse", URI.class).invoke(object, url);
         }
         catch (Exception exception) {
-            // empty catch block
         }
     }
 
@@ -21,7 +20,6 @@ public class SystemUtils {
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null);
         }
         catch (Exception exception) {
-            // empty catch block
         }
     }
 }

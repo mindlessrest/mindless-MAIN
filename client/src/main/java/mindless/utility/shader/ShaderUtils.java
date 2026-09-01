@@ -145,11 +145,6 @@ public class ShaderUtils {
                                          "    float distance = roundedSDF(p, rectSize * 0.5, radius);\n" +
                                          "    float outside = max(distance, 0.0);\n" +
                                          "    float fade = exp(-(outside * outside) / (2.0 * softness * softness));\n" +
-                                         // A Gaussian never reaches zero, so where the quad ends it is still worth two or
-                                         // three levels of alpha -- and a step of two levels along a dead straight line is
-                                         // perfectly visible against a smooth background, which is the faint rectangle that
-                                         // showed up under the panels against a bright sky. Taper the last stretch so there
-                                         // is genuinely nothing left by the time the geometry runs out.
                                          "    fade *= 1.0 - smoothstep(cutoff * 0.6, cutoff, outside);\n" +
                                          "    float softEdge = smoothstep(-0.5, 1.5, distance);\n" +
                                          "    gl_FragColor = vec4(color.rgb, color.a * fade * softEdge);\n" +
@@ -381,20 +376,7 @@ public class ShaderUtils {
                                             "        gl_FragColor = vec4(u_color.rgb, u_color.a * smoothstep(1.0, 0.0, length(max((abs(tex_coord - 0.5) + 0.5) * u_size - u_size + u_radius, 0.0)) - u_radius + 0.5));\n" +
                                             "    }\n" +
                                             "}";
-
-    /**
-     * A rounded rect whose four corners may each carry a different radius.
-     *
-     * <p>The quadrant a fragment falls in picks the radius, and the signed distance box is rebuilt
-     * around that radius, so each corner draws its own arc while the straight edges stay shared. A
-     * radius of zero is a square corner rather than a degenerate one: the arc term simply drops
-     * out and the box edge lands exactly on the rect boundary.
-     *
-     * <p>Antialiased over one pixel, matching {@code roundedRect}. {@code roundedRectGradient}
-     * smooths over two, which is why a gradient rect drawn over a plain one of the same size and
-     * radius spills past it at the corners.
-     */
-    private final String roundedRectCorners = "#version 120\n" +
+private final String roundedRectCorners = "#version 120\n" +
                                        "\n" +
                                        "uniform vec2 location, rectSize;\n" +
                                        "uniform vec4 color;\n" +
@@ -413,9 +395,7 @@ public class ShaderUtils {
                                        "    float a = (1.0 - smoothstep(0.0, 1.0, roundSDF(p, rectHalf - r - 1., r))) * color.a;\n" +
                                        "    gl_FragColor = vec4(color.rgb, a);\n" +
                                        "}";
-
-    /** {@link #roundedRectCorners} with the four-corner colour ramp of {@code roundedRectGradient}. */
-    private final String roundedRectGradientCorners = "#version 120\n" +
+private final String roundedRectGradientCorners = "#version 120\n" +
                                        "\n" +
                                        "uniform vec2 location, rectSize;\n" +
                                        "uniform vec4 color1, color2, color3, color4;\n" +

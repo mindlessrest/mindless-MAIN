@@ -8,12 +8,6 @@ import net.minecraft.network.play.server.*;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
-
-/**
- * Handles entity-only visual sync when Timer speed is 0.
- * Entity packets are replayed live so entities keep moving.
- * Everything else is buffered and replayed on resume.
- */
 public class FrozenEntitySync {
 
     private static final FrozenEntitySync INSTANCE = new FrozenEntitySync();
@@ -52,11 +46,7 @@ public class FrozenEntitySync {
         deferredQueue.clear();
         frozenTickAccumulator = 0;
     }
-
-    /**
-     * Called from ReceivePacketEvent when frozen. Returns true if the packet was intercepted.
-     */
-    public boolean intercept(Packet<?> packet) {
+public boolean intercept(Packet<?> packet) {
         if (!active) return false;
         if (isEntityPacket(packet)) {
             liveEntityQueue.add(packet);
@@ -65,11 +55,7 @@ public class FrozenEntitySync {
         }
         return true;
     }
-
-    /**
-     * Called every frame while timer is frozen. Drains live entity packets and runs entity ticks.
-     */
-    public void pumpFrame() {
+public void pumpFrame() {
         if (!active) return;
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.theWorld == null || mc.thePlayer == null) return;
@@ -97,13 +83,7 @@ public class FrozenEntitySync {
 
         snapLocalPlayerInterpolation(mc.thePlayer);
     }
-
-    /**
-     * Snap the local player's interpolation anchors so lastTickPos == pos
-     * and prevRotation == rotation. This prevents the changing renderPartialTicks
-     * from shifting the player's rendered position/rotation between frames.
-     */
-    private void snapLocalPlayerInterpolation(EntityPlayerSP player) {
+private void snapLocalPlayerInterpolation(EntityPlayerSP player) {
         player.lastTickPosX = player.posX;
         player.lastTickPosY = player.posY;
         player.lastTickPosZ = player.posZ;
@@ -115,11 +95,7 @@ public class FrozenEntitySync {
         player.prevSwingProgress = player.swingProgress;
         player.prevCameraPitch = player.cameraPitch;
     }
-
-    /**
-     * On resume, replay all deferred (non-entity) packets in arrival order.
-     */
-    public void flush() {
+public void flush() {
         drainLiveQueue();
         Packet<?> p;
         while ((p = deferredQueue.poll()) != null) {

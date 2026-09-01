@@ -32,7 +32,6 @@ import org.lwjgl.opengl.GL14;
 import org.lwjgl.util.glu.GLU;
 
 import mindless.Mindless;
-import mindless.utility.StairsUtils;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.util.ResourceLocation;
 
@@ -123,12 +122,7 @@ public class RenderUtils implements IMinecraftInstance {
     public static void renderBlock(BlockPos blockPos, int color, double y2, boolean outline, boolean shade) {
         renderBox(blockPos.getX(), blockPos.getY(), blockPos.getZ(), 1, y2, 1, color, outline, shade);
     }
-
-    /**
-     * Sets scissor in GUI coords (origin top-left). Uses edge-aware rounding so
-     * the clip rectangle does not lose/gain a pixel at animation boundaries.
-     */
-    public static void scissor(double x, double y, double width, double height) {
+public static void scissor(double x, double y, double width, double height) {
         double guiScale = ClickGui.getActiveRenderScale();
         x *= guiScale;
         y *= guiScale;
@@ -178,10 +172,6 @@ public class RenderUtils implements IMinecraftInstance {
         int glTop = (int) Math.ceil((screenH - y) * scale);
         int scaledHeight = Math.max(0, glTop - glBottom);
         boolean wasEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
-        // Checked before the array is touched, not after. Written the other way round the guard
-        // could never fire: the subscript threw first, and it threw with the depth already
-        // incremented, so the stack stayed one deeper than the number of clips actually pushed
-        // and every later push landed on the wrong slot.
         if (scissorPushDepth >= SCISSOR_PUSH_STACK_DEPTH) {
             throw new IllegalStateException("Scissor stack overflow");
         }
@@ -207,7 +197,6 @@ public class RenderUtils implements IMinecraftInstance {
     }
 
     public static void scissorPop() {
-        // An unmatched pop would take the depth negative and leave the clip on for good.
         if (scissorPushDepth <= 0) {
             GL11.glDisable(GL11.GL_SCISSOR_TEST);
             return;
@@ -360,13 +349,7 @@ public class RenderUtils implements IMinecraftInstance {
         GlStateManager.disableBlend();
         glPopMatrix();
     }
-
-    /**
-     * Renders only the given faces of a full block at pos (no double render when adjacent blocks are also highlighted).
-     * Caller should pass only faces whose neighbor is not in the same highlight set.
-     * Shaded fill uses 0.25f alpha to match drawBoundingBox; outline uses full color.
-     */
-    public static void renderBlockFaces(BlockPos blockPos, int color, boolean outline, boolean shade, java.util.Set<EnumFacing> faces) {
+public static void renderBlockFaces(BlockPos blockPos, int color, boolean outline, boolean shade, java.util.Set<EnumFacing> faces) {
         if (faces == null || faces.isEmpty()) return;
         double xPos = blockPos.getX() - mc.getRenderManager().viewerPosX;
         double yPos = blockPos.getY() - mc.getRenderManager().viewerPosY;
@@ -521,11 +504,7 @@ public class RenderUtils implements IMinecraftInstance {
                 break;
         }
     }
-
-    /**
-     * Draws one face of an AABB (box in current GL space). Caller must have set blend, disabled texture, etc.
-     */
-    public static void drawBoxFace(AxisAlignedBB box, EnumFacing face, int overlayColor, int outlineColor, boolean overlay, boolean outline) {
+public static void drawBoxFace(AxisAlignedBB box, EnumFacing face, int overlayColor, int outlineColor, boolean overlay, boolean outline) {
         Tessellator ts = Tessellator.getInstance();
         WorldRenderer wr = ts.getWorldRenderer();
         if (overlay) {
@@ -726,12 +705,7 @@ public class RenderUtils implements IMinecraftInstance {
         GlStateManager.enableTexture2D();
         GlStateManager.disableBlend();
     }
-
-    /**
-     * Draws a 12-edge wireframe outline of an AABB in world space.
-     * Caller must set GL11.glLineWidth and GL11.glColor before calling.
-     */
-    public static void drawOutlinedBox(AxisAlignedBB worldBox, double viewerX, double viewerY, double viewerZ) {
+public static void drawOutlinedBox(AxisAlignedBB worldBox, double viewerX, double viewerY, double viewerZ) {
         AxisAlignedBB renderBox = worldBox.offset(-viewerX, -viewerY, -viewerZ);
         RenderGlobal.drawSelectionBoundingBox(renderBox);
     }
@@ -739,9 +713,7 @@ public class RenderUtils implements IMinecraftInstance {
     public static void drawBoundingBox(AxisAlignedBB abb, float r, float g, float b) {
         drawBoundingBox(abb, r, g, b, 0.25f);
     }
-
-    /** Raw-coordinate overload — avoids allocating an AxisAlignedBB. */
-    public static void drawBoundingBox(double x0, double y0, double z0,
+public static void drawBoundingBox(double x0, double y0, double z0,
                                        double x1, double y1, double z1,
                                        float r, float g, float b, float a) {
         Tessellator ts = Tessellator.getInstance();
@@ -1232,18 +1204,7 @@ public class RenderUtils implements IMinecraftInstance {
     public static boolean needsNewFramebuffer(Framebuffer framebuffer) {
         return framebuffer == null || framebuffer.framebufferWidth != mc.displayWidth || framebuffer.framebufferHeight != mc.displayHeight;
     }
-
-    /**
-     * A framebuffer some fraction of the display in each axis, for passes whose output has no
-     * detail worth keeping at full resolution.
-     *
-     * <p>A wide blur is the obvious case. Its whole purpose is to destroy high frequencies, so the
-     * pixels it writes carry nothing that a half-size buffer cannot hold -- but the cost of
-     * producing them is per output pixel times per tap, and halving each axis removes three
-     * quarters of that. The result is stretched back up by the hardware sampler on the way out,
-     * which is exactly the smooth interpolation a blur wanted anyway.
-     */
-    public static Framebuffer createScaledFrameBuffer(Framebuffer framebuffer, int divisor, boolean depth) {
+public static Framebuffer createScaledFrameBuffer(Framebuffer framebuffer, int divisor, boolean depth) {
         int width = Math.max(1, mc.displayWidth / Math.max(1, divisor));
         int height = Math.max(1, mc.displayHeight / Math.max(1, divisor));
 
@@ -1299,9 +1260,6 @@ public class RenderUtils implements IMinecraftInstance {
     }
 
     public static void resetColor() {
-        // Some legacy render paths still call GL11.glColor* directly. In that
-        // case GlStateManager's cache can incorrectly believe the color is
-        // already white and skip the real reset. Invalidate the cache first.
         GlStateManager.resetColor();
         GlStateManager.color(1, 1, 1, 1);
     }
@@ -1377,10 +1335,6 @@ public class RenderUtils implements IMinecraftInstance {
         if (x2 <= x || y2 <= y) {
             return;
         }
-
-        // Coordinates are rendered at 2x and scaled back down for smoother edges,
-        // so the supplied radius is effectively a diameter in GUI coordinates.
-        // Clamp it to both axes to keep every corner valid on very narrow bars.
         radius = Math.max(0.0f, Math.min(radius, Math.min(x2 - x, y2 - y)));
 
         x *= 2.0;
@@ -1546,20 +1500,7 @@ public class RenderUtils implements IMinecraftInstance {
         GlStateManager.shadeModel(7424);
         syncGlState();
     }
-
-    /**
-     * Puts GlStateManager's cache back in agreement with real GL.
-     *
-     * The raw-GL helpers here call GL11.glColor4f, glEnable and glDisable directly, which
-     * GlStateManager never sees. Its cache then believes the colour is already white and blending
-     * is already on, so the next GlStateManager.color(1,1,1,1) or enableBlend() is skipped as
-     * redundant and the leaked state survives into the following frame -- which is what tinted the
-     * hotbar and drew it unblended after a notification card faded.
-     *
-     * resetColor invalidates the colour cache so the white actually reaches the driver, and each
-     * disable/enable pair forces a real call whichever way round the cache happens to be wrong.
-     */
-    public static void syncGlState() {
+public static void syncGlState() {
         resetColor();
         GlStateManager.disableBlend();
         GlStateManager.enableBlend();
@@ -1570,68 +1511,18 @@ public class RenderUtils implements IMinecraftInstance {
         GlStateManager.alphaFunc(GL_GREATER, 0.1f);
         GlStateManager.shadeModel(GL_FLAT);
     }
-
-    /**
-     * glPopAttrib, plus putting GlStateManager's cache back in step with the driver.
-     *
-     * <p>glPopAttrib restores real GL behind GlStateManager's back. Every state it hands back --
-     * the colour, blending, the bound texture, the depth mask -- is one GlStateManager also caches
-     * and checks before it forwards anything to the driver. After a bare pop the two disagree, and
-     * because the cache is what gets consulted, the disagreement is silent: the next
-     * {@code color(1, 1, 1, 1)} or {@code enableTexture2D()} is dropped as redundant when it is the
-     * very call that was needed. Whatever the popped-away block had set stays on the driver and
-     * tints or flattens everything drawn after it, for the rest of the frame and into the next one.
-     *
-     * <p>That is why it comes and goes, and why toggling an unrelated module clears it: a module
-     * that draws sets the cache to some other value on its way past, so the reset that follows is
-     * no longer considered redundant and finally reaches the driver.
-     *
-     * <p>Asserting a known state after the pop -- {@code enableBlend()} and friends -- does not
-     * work, for the same reason: those calls are checked against the same stale cache. The cache
-     * has to be told what is actually true, which means reading it back.
-     */
-    public static void popAttrib() {
+public static void popAttrib() {
         GL11.glPopAttrib();
         syncGlStateFromDriver();
     }
-
-    /**
-     * glPopAttrib for a caller that pushed a narrow mask, resyncing only what that mask can undo.
-     *
-     * <p>Every reader below is a driver query, and a driver query is the one kind of GL call that
-     * cannot be pipelined -- it has to produce an answer now. Reading nineteen of them back after
-     * a pop that only restored the scissor box and the blend state is eighteen stalls spent
-     * confirming that nothing changed. Pass the same mask the matching {@code glPushAttrib} used
-     * and only the groups that mask actually covers are read.
-     */
-    public static void popAttrib(int mask) {
+public static void popAttrib(int mask) {
         GL11.glPopAttrib();
         syncGlStateFromDriver(mask);
     }
-
-    /**
-     * Reads the states GlStateManager caches back off the driver and feeds them to it.
-     *
-     * <p>Each setter forwards to GL exactly when its cache disagrees with the value passed. Passing
-     * the value the driver actually holds therefore lands in step either way: it either skips,
-     * because the cache was already right, or it forwards a call that changes nothing on the driver
-     * and corrects the cache. Cheap enough for a handful of calls a frame, which is all this is
-     * used for -- the per-element rounded-rect path fences its own state and never needs it.
-     */
-    public static void syncGlStateFromDriver() {
+public static void syncGlStateFromDriver() {
         syncGlStateFromDriver(GL11.GL_ALL_ATTRIB_BITS);
     }
-
-    /**
-     * As above, but reading back only the groups the given attribute mask can restore.
-     *
-     * <p>A state is read whenever any bit in the mask could have put it back. GL_ENABLE_BIT covers
-     * every enable flag on its own, so it pulls in each of the toggles below; the buffer bits each
-     * carry their own enables as well as their settings; GL_CURRENT_BIT is the colour and nothing
-     * else. Anything the mask cannot reach was never restored, so the cache still describes it
-     * correctly and asking the driver would only stall.
-     */
-    public static void syncGlStateFromDriver(int mask) {
+public static void syncGlStateFromDriver(int mask) {
         boolean enables = (mask & GL11.GL_ENABLE_BIT) != 0;
         boolean colorBuffer = (mask & GL11.GL_COLOR_BUFFER_BIT) != 0;
         boolean depthBuffer = (mask & GL11.GL_DEPTH_BUFFER_BIT) != 0;
@@ -1699,9 +1590,6 @@ public class RenderUtils implements IMinecraftInstance {
         }
 
         if (enables || texture) {
-            // GlStateManager keeps one texture record per unit and picks the record by the active
-            // unit, so that has to agree first or the rest is filed against the wrong texture unit.
-            // Out-of-range units would index past the end of that array, so they are left alone.
             int activeUnit = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
             if (activeUnit >= GL13.GL_TEXTURE0 && activeUnit <= GL13.GL_TEXTURE7) {
                 GlStateManager.setActiveTexture(activeUnit);
@@ -2007,12 +1895,7 @@ public class RenderUtils implements IMinecraftInstance {
     }
 
     private static final java.util.Map<String, ResourceLocation> iconCache = new java.util.HashMap<>();
-
-    /**
-     * Returns a cached white-masked icon texture, loading it on first access.
-     * The resource path should start with "/" (e.g. "/assets/mindless/textures/gui/close.png").
-     */
-    public static ResourceLocation getIcon(String resourcePath) {
+public static ResourceLocation getIcon(String resourcePath) {
         ResourceLocation cached = iconCache.get(resourcePath);
         if (cached != null) {
             return cached;
@@ -2024,12 +1907,7 @@ public class RenderUtils implements IMinecraftInstance {
         }
         return icon;
     }
-
-    /**
-     * Draws a tinted icon texture at the given position with full GL state management.
-     * Saves and restores depth/blend state automatically.
-     */
-    public static void drawIcon(ResourceLocation texture, float x, float y, int size, int argbColor) {
+public static void drawIcon(ResourceLocation texture, float x, float y, int size, int argbColor) {
         if (texture == null) {
             return;
         }

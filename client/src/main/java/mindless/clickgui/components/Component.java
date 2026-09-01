@@ -32,14 +32,10 @@ public class Component {
     }
 
     public void onScroll(int scroll) {}
-
-    /** Returns this component's y-offset within its parent module. */
-    public float getOffset() {
+public float getOffset() {
         return 0f;
     }
-
-    /** Returns whether the underlying setting is visible (not hidden by condition). */
-    public boolean isBaseVisible() {
+public boolean isBaseVisible() {
         return true;
     }
 }

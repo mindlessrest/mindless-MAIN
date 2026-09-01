@@ -15,20 +15,6 @@ import mindless.utility.media.VisualizerRenderer;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-
-/**
- * A spectrum analyser for whatever Spotify is playing.
- *
- * <p>The audio behind it comes from Spotify's own process through the Windows process-loopback
- * device, so it reacts to Spotify and to nothing else on the machine -- not Minecraft, not
- * Discord, not a browser tab. Both the capture and CAVA's analysis live in the media bridge, and
- * this module only draws what the bridge hands back.
- *
- * <p>It can live in either of two places, and this module owns the settings for both. Inside the
- * mini player it is a section below the lyrics and the player reserves room for it; standalone it
- * is an ordinary draggable overlay with its own size and position. What it never is, is two
- * separate things: both modes read the one engine, which holds the one capture session.
- */
 public class AudioVisualizer extends Module {
     public static final int PLACEMENT_MINI_PLAYER = 0;
     public static final int PLACEMENT_STANDALONE = 1;
@@ -41,9 +27,7 @@ public class AudioVisualizer extends Module {
     public static final int COLOR_HUD = 0;
     public static final int COLOR_ALBUM = 1;
     public static final int COLOR_CUSTOM = 2;
-
-    /** What the bars do when there is no Spotify audio to follow. */
-    public static final int BEHAVIOUR_REACT = -1;
+public static final int BEHAVIOUR_REACT = -1;
     public static final int BEHAVIOUR_FLAT = 0;
     public static final int BEHAVIOUR_WAVE = 1;
     public static final int BEHAVIOUR_HIDE = 2;
@@ -80,9 +64,7 @@ public class AudioVisualizer extends Module {
     private final SliderSetting standaloneWidth;
     private final SliderSetting standaloneHeight;
     private final SliderSetting standaloneScale;
-
-    /** Last engine state announced in chat, so a problem is reported once and not per tick. */
-    private int reportedStatus = SpotifyVisualizerEngine.STATUS_STOPPED;
+private int reportedStatus = SpotifyVisualizerEngine.STATUS_STOPPED;
 
     private float relativeX = Float.NaN;
     private float relativeY = Float.NaN;
@@ -123,13 +105,6 @@ public class AudioVisualizer extends Module {
         this.registerSetting(opacity = new SliderSetting("Opacity", "%", 100, 10, 100, 5));
 
         this.registerSetting(new DescriptionSetting("Panel"));
-        // There is no card any more, in either placement.
-        //
-        // Inside the mini player the bars already sit on glass, so a card around them was a box
-        // drawn on a box. Standalone kept the card, which meant the same visualiser wore a
-        // rounded border in one place and not the other -- and a saved profile with the border
-        // switched on brought it back however the defaults changed. A rule for the bars to stand
-        // on reads in both places and needs no border at all.
         this.registerSetting(baseline = new ButtonSetting("Baseline", true));
 
         this.registerSetting(new DescriptionSetting("When silent"));
@@ -152,9 +127,6 @@ public class AudioVisualizer extends Module {
 
     @Override
     public void onEnable() {
-        // The visualiser needs the same media session the mini player uses, to know whether
-        // Spotify is playing or paused. Asking for it here means the visualiser works on its own
-        // without the mini player having to be switched on as well.
         SystemMediaClient.getInstance().setEnabled(true);
         VisualizerRenderer.reset();
     }
@@ -179,29 +151,9 @@ public class AudioVisualizer extends Module {
         if (customColor != null) customColor.setVisible(colorMode() == COLOR_CUSTOM, this);
         if (gradientDirection != null) gradientDirection.setVisible(gradientEnabled(), this);
     }
-
-    /**
-     * Explains a visualiser that cannot work, once, rather than leaving it silently flat.
-     *
-     * <p>The two states worth speaking up about are a Windows build too old for per-process
-     * capture and an outright capture failure. "Waiting for Spotify" is not one of them -- that is
-     * the ordinary state of things when Spotify is closed, and saying so repeatedly would be
-     * noise.
-     */
-    @SubscribeEvent
+@SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !this.isEnabled()) return;
-
-        // Keep the capture alive, and the analyser current, while a screen is covering the HUD.
-        //
-        // Both render paths bail out when mc.currentScreen is set, so for as long as the click
-        // GUI is open nothing asks the engine for a frame. Left alone the pump reaches its idle
-        // timeout, hands the audio session back, and then has to find the process, re-activate
-        // loopback and re-learn its gain from scratch the moment the menu closes -- which is
-        // exactly the pause after changing a setting. Ticking it here means the new settings are
-        // applied and already settled by the time the menu is out of the way. Only while a screen
-        // is up: with the HUD actually visible the render path does this, and when it is hidden
-        // for any other reason the idle shutdown should still release the session.
         if (mc.currentScreen != null) {
             SpotifyVisualizerEngine engine = SpotifyVisualizerEngine.getInstance();
             engine.configure(barCount(), smoothing(), updateRate());
@@ -222,26 +174,19 @@ public class AudioVisualizer extends Module {
         }
     }
 
-    // ------------------------------------------------------------------------ standalone render
-
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         if (!this.isEnabled() || placement() != PLACEMENT_STANDALONE) return;
-        // The HUD editor draws its own copy; a second underneath it drags out of step.
         if (mc.currentScreen != null) return;
         if (!Utils.nullCheck()) return;
         if (mc.gameSettings != null && mc.gameSettings.showDebugInfo) return;
         draw();
     }
-
-    /** Draws where it already sits and reports its bounds, for the HUD editor. */
-    public float[] renderPreview() {
+public float[] renderPreview() {
         return draw();
     }
-
-    /** Draws at a requested top-left and reports its bounds, for the HUD editor. */
-    public float[] renderDesignerPreview(float left, float top) {
+public float[] renderDesignerPreview(float left, float top) {
         setAbsolute(left, top, ScaledResolutionCache.get());
         return draw();
     }
@@ -254,8 +199,6 @@ public class AudioVisualizer extends Module {
         VisualizerRenderer.draw(posX, posY, width, height, 1.0F);
         return new float[]{posX, posY, posX + width, posY + height};
     }
-
-    // ------------------------------------------------------------------------------- position
 
     public float getPosX() {
         syncPosition();
@@ -270,14 +213,7 @@ public class AudioVisualizer extends Module {
     public SliderSetting scaleSetting() {
         return standaloneScale;
     }
-
-    /**
-     * Where the standalone visualiser sits, as a fraction of the screen.
-     *
-     * <p>Stored and restored as a fraction rather than in pixels so it lands in the same place
-     * across resolutions and GUI scales, which is how the other movable elements do it.
-     */
-    public float getRelativePosX() {
+public float getRelativePosX() {
         syncPosition();
         return relativeX;
     }
@@ -317,22 +253,11 @@ public class AudioVisualizer extends Module {
         relativeX = left / Math.max(1, resolution.getScaledWidth());
         relativeY = top / Math.max(1, resolution.getScaledHeight());
     }
-
-    // ------------------------------------------------------------------------------- accessors
-
-    /** Whether the mini player should make room for a visualiser section. */
-    public static boolean wantsMiniPlayerSection() {
+public static boolean wantsMiniPlayerSection() {
         AudioVisualizer module = instance;
         return module != null && module.isEnabled() && module.placement() == PLACEMENT_MINI_PLAYER;
     }
-
-    /**
-     * How tall the mini player's visualiser section wants to be at the given UI scale.
-     *
-     * <p>Deliberately not the standalone height: inside the player the section is one part of a
-     * card that is already sized, and a 180px overlay height there would swamp everything else.
-     */
-    public static float miniPlayerSectionHeight(float uiScale) {
+public static float miniPlayerSectionHeight(float uiScale) {
         AudioVisualizer module = instance;
         if (module == null) return 0.0F;
         return Math.max(16.0F, 34.0F * uiScale);
@@ -405,9 +330,7 @@ public class AudioVisualizer extends Module {
     public float opacity() {
         return (float) opacity.getInput() / 100.0F;
     }
-
-    /** Whether the bars stand on a hairline rule. */
-    public boolean baselineEnabled() {
+public boolean baselineEnabled() {
         return baseline.isToggled();
     }
 
@@ -418,25 +341,16 @@ public class AudioVisualizer extends Module {
     public int pausedBehaviour() {
         return (int) pausedBehaviour.getInput();
     }
-
-    /**
-     * The colour a bar at {@code position} (0 at the left, 1 at the right) should be.
-     *
-     * <p>Returns RGB; the caller owns alpha.
-     */
-    public int barColor(float position) {
+public int barColor(float position) {
         switch (colorMode()) {
             case COLOR_ALBUM: {
                 int accent = SystemMediaClient.getInstance().getAlbumAccentColor();
                 if (accent != 0) {
-                    // Still sweep across the bars when a gradient is asked for, by walking the
-                    // accent toward white rather than through unrelated hues.
                     if (gradientEnabled() && position > 0.0F) {
                         return blend(accent, 0xFFFFFF, position * 0.45F);
                     }
                     return accent;
                 }
-                // No artwork decoded yet -- fall through to the HUD colours rather than a gap.
                 return HUD.getHudColor(position * 120.0D) & 0xFFFFFF;
             }
             case COLOR_CUSTOM: {

@@ -28,18 +28,7 @@ public class Script {
         this.name = name;
         this.scriptName = "sc_" + javaIdentifier(name) + "_" + Utils.generateRandomString(5);
     }
-
-    /**
-     * A script's name turned into something Java will accept as a class name.
-     *
-     * The generated wrapper class is named after the script, and a script name allows
-     * characters an identifier does not -- a hyphen being the easy one to hit, since
-     * "keep-y" is a perfectly ordinary thing to call one. Spaces and brackets were
-     * handled and nothing else was, so anything else failed to compile with a message
-     * about the generated source rather than about the name. Anything not legal becomes
-     * an underscore; the display name is untouched.
-     */
-    private static String javaIdentifier(String name) {
+private static String javaIdentifier(String name) {
         if (name == null || name.isEmpty()) return "script";
         StringBuilder out = new StringBuilder(name.length());
         for (int i = 0; i < name.length(); i++) {
@@ -66,7 +55,6 @@ public class Script {
             final ScriptDiagnosticListener bp = new ScriptDiagnosticListener();
             final boolean isEcj = Mindless.scriptManager.compiler instanceof org.eclipse.jdt.internal.compiler.tool.EclipseCompiler;
             final StandardJavaFileManager stdFileManager = Mindless.scriptManager.compiler.getStandardFileManager(bp, null, null);
-            // Wrap with classloader-backed file manager so ECJ can resolve MC classes from memory
             final javax.tools.JavaFileManager fileManager = isEcj ? new ScriptClasspathFileManager(stdFileManager) : stdFileManager;
             final ArrayList<String> compilationOptions = new ArrayList<>();
             compilationOptions.add("-d");
@@ -79,7 +67,6 @@ public class Script {
                 compilationOptions.add("1.8");
                 compilationOptions.add("-target");
                 compilationOptions.add("1.8");
-                // Tell ECJ where to find java.lang.Object etc on JDK 9+
                 String javaHome = System.getProperty("java.home");
                 File jrtFs = new File(javaHome, "lib" + File.separator + "jrt-fs.jar");
                 if (jrtFs.exists()) {
@@ -100,8 +87,6 @@ public class Script {
                 catch (UnsupportedOperationException ex2) {}
                 compilationOptions.add(s);
             }
-
-            // ECJ cannot compile from in-memory JavaSourceFromString — write to temp file
             File tempSourceFile = null;
             Iterable<? extends javax.tools.JavaFileObject> compilationUnits;
             if (isEcj) {
@@ -113,8 +98,6 @@ public class Script {
             }
 
             boolean success = Mindless.scriptManager.compiler.getTask(null, fileManager, bp, compilationOptions, null, compilationUnits).call();
-
-            // Clean up temp source
             if (tempSourceFile != null && tempSourceFile.exists()) {
                 tempSourceFile.delete();
             }
@@ -149,8 +132,6 @@ public class Script {
 
     private static String buildRuntimeClasspath() {
         LinkedHashSet<String> entries = new LinkedHashSet<>();
-
-        // JDK 9+: add --system-style jars for platform classes
         String bootCp = System.getProperty("sun.boot.class.path");
         if (bootCp != null && !bootCp.isEmpty()) {
             for (String entry : bootCp.split(File.pathSeparator)) {
@@ -164,9 +145,6 @@ public class Script {
                 entries.add(rtJar.getAbsolutePath());
             }
         }
-
-        // The mod jar (contains scripting API). On Lunar it's embedded in memory —
-        // extract it to a temp file so ECJ can read it.
         try {
             java.security.CodeSource cs = ScriptManager.class.getProtectionDomain().getCodeSource();
             if (cs != null && cs.getLocation() != null) {
@@ -179,7 +157,6 @@ public class Script {
                         System.out.println("[Scripts] Classpath: mod jar from CodeSource: " + jarFile.getAbsolutePath());
                     }
                 } else {
-                    // Not a file — embedded. Dump the jar to temp.
                     File tempJar = new File(Mindless.scriptManager.COMPILED_DIR, "_mindless_classes.jar");
                     try (java.io.InputStream is = jarUrl.openStream();
                          java.io.FileOutputStream fos = new java.io.FileOutputStream(tempJar)) {
@@ -196,16 +173,11 @@ public class Script {
         } catch (Throwable t) {
             System.err.println("[Scripts] Failed to resolve CodeSource: " + t.getMessage());
         }
-
-        // If CodeSource didn't work, try to find the jar via the classloader's loaded class bytes.
-        // Fallback: locate the jar by scanning known paths where the native injector places it.
         if (entries.stream().noneMatch(e -> e.contains("mindless") || e.contains("Mindless") || e.contains("mindless") || e.contains("Mindless"))) {
-            // Try getting class file location directly
             try {
                 URL classUrl = ScriptManager.class.getResource("ScriptManager.class");
                 if (classUrl != null) {
                     String path = classUrl.toString();
-                    // jar:file:/path/to/mod.jar!/mindless/script/ScriptManager.class
                     if (path.startsWith("jar:file:")) {
                         String jarPath = path.substring("jar:file:".length(), path.indexOf("!"));
                         File jarFile = new File(java.net.URLDecoder.decode(jarPath, "UTF-8"));
@@ -214,7 +186,6 @@ public class Script {
                             System.out.println("[Scripts] Classpath: mod jar from class URL: " + jarFile.getAbsolutePath());
                         }
                     } else if (path.startsWith("file:")) {
-                        // Classes are in a directory (dev env)
                         String classesPath = path.substring("file:".length(), path.indexOf("mindless"));
                         File classesDir = new File(java.net.URLDecoder.decode(classesPath, "UTF-8"));
                         if (classesDir.exists()) {
@@ -225,8 +196,6 @@ public class Script {
                 }
             } catch (Throwable ignored) {}
         }
-
-        // Gather URLs from the LaunchWrapper loader (absent on Lunar, hence the null check)
         ClassLoader launchLoader = ScriptManager.launchClassLoader();
         try {
             if (launchLoader instanceof URLClassLoader) {
@@ -239,8 +208,6 @@ public class Script {
         }
         catch (Throwable ignored) {
         }
-
-        // Reflective getURLs on the LaunchWrapper loader
         try {
             if (launchLoader != null) {
                 java.lang.reflect.Method getURLs = launchLoader.getClass().getMethod("getURLs");
@@ -256,8 +223,6 @@ public class Script {
         }
         catch (Throwable ignored) {
         }
-
-        // java.class.path
         String cpProp = System.getProperty("java.class.path");
         if (cpProp != null && !cpProp.isEmpty()) {
             for (String entry : cpProp.split(File.pathSeparator)) {
@@ -266,8 +231,6 @@ public class Script {
                 }
             }
         }
-
-        // Lunar: scan the classpath dir for all jars (includes Forge, OptiFine, Minecraft classes)
         if (cpProp != null && !cpProp.isEmpty()) {
             String firstEntry = cpProp.split(File.pathSeparator)[0];
             File cpDir = new File(firstEntry).getParentFile();
@@ -287,8 +250,6 @@ public class Script {
                 entries.add(jp.getAbsolutePath());
             }
         }
-
-        // Add dumped MC classes jar (Lunar: MC classes only exist in memory)
         if (Mindless.scriptManager.mcClassesJar != null && Mindless.scriptManager.mcClassesJar.exists()) {
             entries.add(Mindless.scriptManager.mcClassesJar.getAbsolutePath());
         }

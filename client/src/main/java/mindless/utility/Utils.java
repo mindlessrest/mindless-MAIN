@@ -62,7 +62,6 @@ public class Utils implements IMinecraftInstance {
 
     public static boolean addEnemy(String name) {
         if (Mindless.playerRelationsManager != null) {
-            // Chat feedback is owned by callers (e.g. .enemy command) — avoid double messages with sendMessage + replyWithHeader
             return Mindless.playerRelationsManager.addEnemy(name);
         }
         if (enemies.add(name.toLowerCase())) {
@@ -233,7 +232,7 @@ public class Utils implements IMinecraftInstance {
     }
 
     public static String getServerName() {
-        return CommandHandler.nick.isEmpty() ? mc.thePlayer.getName() : CommandHandler.nick;
+        return mc.thePlayer.getName();
     }
 
     public static boolean tabbedIn() {
@@ -733,20 +732,7 @@ public class Utils implements IMinecraftInstance {
 
     private static String cachedServerBrand;
     private static boolean cachedBrandIsHypixel;
-
-    /**
-     * Whether we are on Hypixel, however we got there.
-     *
-     * <p>The address alone is not enough. Anyone joining through a proxy -- Liquid Proxy and the
-     * like -- has a server address of localhost, so an address test says no while the player is
-     * very much on Hypixel, and every Hypixel feature in the client silently switches itself off.
-     *
-     * <p>The server brand is the reliable signal. Hypixel sends it over MC|Brand from its own
-     * BungeeCord, and a proxy forwards that packet along with everything else, so it survives the
-     * hop. It is cached because the answer only changes when the brand string does, and this is
-     * called from per-tick and per-entity paths.
-     */
-    public static boolean isHypixel() {
+public static boolean isHypixel() {
         if (mc.isSingleplayer() || mc.thePlayer == null) {
             return false;
         }
@@ -767,9 +753,7 @@ public class Utils implements IMinecraftInstance {
         }
         return cachedBrandIsHypixel;
     }
-
-    /** The brand the server introduced itself with, for diagnosing a connection. */
-    public static String getServerBrand() {
+public static String getServerBrand() {
         return mc.thePlayer == null ? "" : String.valueOf(mc.thePlayer.getClientBrand());
     }
 
@@ -858,23 +842,7 @@ public class Utils implements IMinecraftInstance {
         int darkenedColor = (alpha << 24) | (red << 16) | (green << 8) | blue;
         return darkenedColor;
     }
-
-    /**
-     * Whether the entity is on our side.
-     *
-     * The old fallback took the first two characters of the unformatted display name and treated
-     * a match as a shared team tag. On Hypixel those two characters are the start of the rank
-     * prefix far more often than a team tag: "[MVP+] Someone" and "[MVP++] SomeoneElse" both
-     * reduce to "[M", so every player holding the same rank as us counted as a teammate. With no
-     * rank it was worse -- the tag became the first two letters of a username. That is what made
-     * KillAura skip one or two enemies on a team while attacking the rest of it.
-     *
-     * Team colour is the signal that actually carries meaning. Hypixel colours nametags through
-     * the scoreboard, either with one team per side or -- where tab sorting needs it -- one team
-     * per player that still carries the side's colour in its prefix, so the colour is compared
-     * as well as the team identity.
-     */
-    public static boolean isTeammate(Entity entity) {
+public static boolean isTeammate(Entity entity) {
         try {
             if (mc.thePlayer == null || !(entity instanceof EntityLivingBase) || entity == mc.thePlayer) {
                 return false;
@@ -1433,12 +1401,7 @@ public class Utils implements IMinecraftInstance {
             return MouseHelper.f() > 1 && System.currentTimeMillis() - MouseHelper.LL < 300L;
         }
     }
-
-    /**
-     * Returns true if the player is mining (attack key down, ray hits block, no entity in front).
-     * Uses raw input for attack key (ignores AutoClicker's KeyBinding state).
-     */
-    public static boolean isMining() {
+public static boolean isMining() {
         if (mc.playerController == null || !mc.playerController.getIsHittingBlock()) {
             return false;
         }

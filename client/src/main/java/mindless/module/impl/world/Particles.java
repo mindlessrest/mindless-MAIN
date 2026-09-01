@@ -154,9 +154,6 @@ public class Particles extends Module {
         } else {
             buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_COLOR);
         }
-
-        // Match the exact transforms used by the original per-particle path:
-        // rotate(-playerViewY, Y), then rotate(playerViewX, X).
         float yaw = (float) Math.toRadians(mc.getRenderManager().playerViewY);
         float pitch = (float) Math.toRadians(mc.getRenderManager().playerViewX);
         float sinYaw = MathHelper.sin(yaw);
@@ -334,9 +331,7 @@ public class Particles extends Module {
         if (heartTex == null) heartTex = loadTintMask("heart.png", "heart");
         if (starTex == null) starTex = loadTintMask("star.png", "star");
     }
-
-    /** Converts baked black backgrounds to transparency and white art to a tintable alpha mask. */
-    private ResourceLocation loadTintMask(String fileName, String name) {
+private ResourceLocation loadTintMask(String fileName, String name) {
         String path = "/assets/mindless/textures/particles/" + fileName;
         try (InputStream stream = getClass().getResourceAsStream(path)) {
             if (stream == null) return new ResourceLocation("mindless", "textures/particles/" + fileName);

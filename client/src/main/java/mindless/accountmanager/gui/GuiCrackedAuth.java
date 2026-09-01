@@ -53,8 +53,6 @@ public class GuiCrackedAuth extends GuiScreen {
         drawRect(cardX, cardY, cardX + cardW, cardY + 1, GuiAccountManager.C_ACCENT_DIM);
         sfBold.drawString("Cracked Login", width/2f - sfBold.getStringWidth("Cracked Login")/2f, cardY + 10f, GuiAccountManager.C_TEXT, false);
         sfSm.drawString("Offline / cracked username", width/2f - sfSm.getStringWidth("Offline / cracked username")/2f, cardY + 24f, GuiAccountManager.C_DIM, false);
-
-        // Text field background
         int fh = 22, fw = 200, fx = width/2 - fw/2;
         int fy = height/2 - 26;
         RoundedUtils.drawRound(fx, fy, fw, fh, 4f, GuiAccountManager.C_ROW);

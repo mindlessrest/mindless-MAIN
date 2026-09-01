@@ -6,8 +6,6 @@ import mindless.module.setting.impl.SliderSetting;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
-
-/** Client-only control over the local first-person swing animation duration. */
 public class Slow extends Module {
     private static Slow instance;
     public static boolean enabled;
@@ -60,26 +58,17 @@ public class Slow extends Module {
         hitSyncMode = (int) syncMode.getInput();
         hitImpactPoint = (float) impactPoint.getInput();
     }
-
-    /** Returns the real visual cycle that should own the next feedback burst. */
-    public static long getHitFeedbackCycle() {
+public static long getHitFeedbackCycle() {
         if (!isActive() || !syncHitEffects || hitSyncMode != 0) return -1L;
         if (!visualSwingActive) return visualSwingCycle + 1L;
         return currentVisualProgress() < impactProgress() ? visualSwingCycle : visualSwingCycle + 1L;
     }
-
-    /** True only when that real visual cycle has crossed its configured impact. */
-    public static boolean hasReachedHitFeedbackCycle(long cycle) {
+public static boolean hasReachedHitFeedbackCycle(long cycle) {
         if (!isActive() || !syncHitEffects || hitSyncMode != 0) return true;
         if (visualSwingCycle > cycle) return true;
         return visualSwingCycle == cycle && visualSwingActive && currentVisualProgress() >= impactProgress();
     }
-
-    /**
-     * Delay until the visible sword reaches its configured impact point.
-     * This changes feedback timing only; attack packets are never delayed.
-     */
-    public static long getHitFeedbackDelayMillis() {
+public static long getHitFeedbackDelayMillis() {
         if (!syncHitEffects) return 0L;
 
         double impact = impactProgress();
@@ -103,12 +92,7 @@ public class Slow extends Module {
         }
         return 0L;
     }
-
-    /**
-     * Supplies an independent first-person swing timeline. It deliberately does
-     * not alter EntityLivingBase's swing state, attack packets, or click rate.
-     */
-    public static float getVisualSwingProgress(AbstractClientPlayer player, float vanillaProgress) {
+public static float getVisualSwingProgress(AbstractClientPlayer player, float vanillaProgress) {
         ItemStack held = player == null ? null : player.getHeldItem();
         if (!isActive() || held == null || !(held.getItem() instanceof ItemSword)) {
             resetVisualSwing();
@@ -128,8 +112,6 @@ public class Slow extends Module {
         if (progress < 1.0F) return Math.max(0.0F, progress);
 
         visualSwingActive = false;
-        // At high CPS another vanilla swing may already be active. Begin the
-        // next visual cycle without allowing it to restart the current one.
         if (player.isSwingInProgress) {
             visualSwingActive = true;
             visualSwingStart = now;

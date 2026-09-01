@@ -187,11 +187,6 @@ public class TransformerEntityRenderer {
                 farPlaneDistance * Math.min(1.0F, end));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Freelook camera rotation overrides
-    // Redirect ALL field accesses to rotation fields in orientCamera
-    // ─────────────────────────────────────────────────────────────────────────────
-
     @CInline
     @CRedirect(method = "orientCamera",
             target = @CTarget(value = "FIELD", target = "Lnet/minecraft/entity/Entity;rotationYaw:F", optional = true))

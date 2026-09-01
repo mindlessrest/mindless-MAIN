@@ -376,8 +376,6 @@ public class CategoryComponent {
         RenderUtils.scissor(this.x - 2, this.y, this.width + 4, this.titleHeight + 3);
         RenderUtils.drawRoundedRectangle(this.x + 1.5f, this.y + 2.5f, this.x + 12.5f,
                 this.y + 13.5f, 3.0f, ICON_SURFACE);
-        // The rendered item is 8.8px at this scale; these offsets center it in
-        // the 11x11 icon surface instead of relying on integer rounding.
         renderItemForCategory(this.category, this.x + 2.6f, this.y + 3.6f, opened || hovering);
         titleRenderer.drawString(displayName, namePos, this.y + 3, CATEGORY_NAME_COLOR, false);
         GL11.glDisable(GL11.GL_SCISSOR_TEST);

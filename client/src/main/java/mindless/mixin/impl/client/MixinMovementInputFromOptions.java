@@ -22,12 +22,7 @@ public class MixinMovementInputFromOptions extends MovementInput {
     @Shadow
     @Final
     private GameSettings gameSettings;
-
-    /**
-     * @author Mindless
-     * @reason Custom movement input processing
-     */
-    @Overwrite
+@Overwrite
     public void updatePlayerMoveState() {
         this.moveStrafe = 0.0F;
         this.moveForward = 0.0F;

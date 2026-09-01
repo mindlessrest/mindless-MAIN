@@ -3,11 +3,6 @@ package mindless.runtime;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.util.List;
-
-/**
- * Java-side environment integrity checks.
- * Detects debuggers, agents, instrumentation, and sandbox/analysis tools.
- */
 public final class EnvironmentGuard {
 
     private EnvironmentGuard() {}
@@ -33,7 +28,6 @@ public final class EnvironmentGuard {
     }
 
     private static String checkJDWP() {
-        // JDWP agent = Java debugger attached
         RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
         List<String> args = runtime.getInputArguments();
         for (String arg : args) {
@@ -49,13 +43,10 @@ public final class EnvironmentGuard {
     }
 
     private static String checkAgents() {
-        // Check for instrumentation agents via system properties
         try {
             String agentProp = System.getProperty("jdk.attach.allowAttachSelf");
             if ("true".equals(agentProp)) return "AttachSelf";
         } catch (Exception ignored) {}
-
-        // Check for known agent classes in classloader
         String[] agentClasses = {
             "sun.instrument.InstrumentationImpl",
             "com.sun.tools.attach.VirtualMachine",
@@ -75,7 +66,6 @@ public final class EnvironmentGuard {
     }
 
     private static String checkSuspiciousProperties() {
-        // JRebel, DCEVM, or other hotswap tools
         String[] props = {
             "rebel.base",
             "jrebel.agent",
@@ -103,7 +93,6 @@ public final class EnvironmentGuard {
     }
 
     private static String checkClassLoaderTampering() {
-        // Check if our classes' classloader has been replaced
         ClassLoader ours = EnvironmentGuard.class.getClassLoader();
         if (ours == null) return null;
 
@@ -116,7 +105,6 @@ public final class EnvironmentGuard {
     }
 
     private static String checkReflectionFrameworks() {
-        // Detect known RE/hooking frameworks loaded into the JVM
         String[] frameworks = {
             "me.xdrop.fuzzywuzzy",        // fuzzy matching (deobfuscation)
             "org.jd.core",                 // JD-Core decompiler
@@ -140,7 +128,6 @@ public final class EnvironmentGuard {
 
     private static void onDetected(String reason) {
         NativeBootstrap.log("Environment check failed: " + reason);
-        // Report via heartbeat if available
         String token = System.getProperty("mindless.auth.token");
         String apiUrl = System.getProperty("mindless.auth.apiUrl");
         if (token != null && apiUrl != null && !token.isEmpty() && !apiUrl.isEmpty()) {

@@ -4,19 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
-
-/*
- * MindlessNative.dll — direct injection bootstrap for the Mindless b4/bS mod on
- * Minecraft 1.8.9 Forge and Forge-enabled Lunar. Loaded into javaw.exe via
- * CreateRemoteThread + LoadLibraryW by MindlessInjector.exe. Waits for the client
- * JVM, selects the SRG or MCP payload, appends it to the Minecraft class
- * loader, and invokes mindless.runtime.NativeBootstrap.start().
- *
- * Mindless uses ClassTransform plus JVMTI: already-loaded targets are
- * retransformed immediately and targets loaded later pass through the same
- * ClassFileLoadHook.
- */
-
 JavaVM   *g_vm     = NULL;
 jvmtiEnv *g_jvmti  = NULL;
 HMODULE   g_module = NULL;
@@ -32,8 +19,6 @@ typedef enum mindless_runtime_namespace {
     MINDLESS_NAMESPACE_MCP,
     MINDLESS_NAMESPACE_SRG
 } mindless_runtime_namespace;
-
-/* ClassFileLoadHook plumbing */
 static jclass    g_hooks_class = NULL;      /* mindless.runtime.TransformerHooks */
 static jmethodID g_hooks_transform = NULL;  /* static byte[] transform(String, byte[]) */
 static jobject   g_game_loader = NULL;      /* global ref; filters duplicate class names */
@@ -231,9 +216,7 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
         vape_log(L"embedded payload JAR resource is invalid");
         return 0;
     }
-
-    /* Resolve Java classes for ZIP parsing */
-    bais_cls = (*env)->FindClass(env, "java/io/ByteArrayInputStream");
+bais_cls = (*env)->FindClass(env, "java/io/ByteArrayInputStream");
     zis_cls  = (*env)->FindClass(env, "java/util/zip/ZipInputStream");
     ze_cls   = (*env)->FindClass(env, "java/util/zip/ZipEntry");
     baos_cls = (*env)->FindClass(env, "java/io/ByteArrayOutputStream");
@@ -257,15 +240,11 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
     map_init        = (*env)->GetMethodID(env, map_cls, "<init>", "()V");
     map_put         = (*env)->GetMethodID(env, map_cls, "put",
             "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-
-    /* Create JNI byte[] from the raw JAR data */
-    jar_bytes = (*env)->NewByteArray(env, (jsize)jar_size);
+jar_bytes = (*env)->NewByteArray(env, (jsize)jar_size);
     if (jar_bytes == NULL) { vape_log(L"OOM creating JAR byte array"); return 0; }
     (*env)->SetByteArrayRegion(env, jar_bytes, 0, (jsize)jar_size,
             (const jbyte *)jar_data);
-
-    /* Open a ZipInputStream over the byte array */
-    bais = (*env)->NewObject(env, bais_cls, bais_init, jar_bytes);
+bais = (*env)->NewObject(env, bais_cls, bais_init, jar_bytes);
     zis  = (*env)->NewObject(env, zis_cls, zis_init, bais);
     entries_map = (*env)->NewObject(env, map_cls, map_init);
     read_buf = (*env)->NewByteArray(env, 8192);
@@ -273,9 +252,7 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
         vape_log(L"OOM setting up ZIP reader");
         return 0;
     }
-
-    /* Iterate ZIP entries, decompress via Java, collect into HashMap */
-    while ((entry = (*env)->CallObjectMethod(env, zis, zis_next)) != NULL) {
+while ((entry = (*env)->CallObjectMethod(env, zis, zis_next)) != NULL) {
         jstring name_str;
         jobject baos_obj;
         jbyteArray entry_data;
@@ -292,9 +269,7 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
         }
 
         name_str = (jstring)(*env)->CallObjectMethod(env, entry, ze_name);
-
-        /* Read decompressed entry bytes via ByteArrayOutputStream */
-        baos_obj = (*env)->NewObject(env, baos_cls, baos_init);
+baos_obj = (*env)->NewObject(env, baos_cls, baos_init);
         while ((n = (*env)->CallIntMethod(env, zis, zis_read, read_buf)) >= 0) {
             if ((*env)->ExceptionCheck(env)) break;
             (*env)->CallVoidMethod(env, baos_obj, baos_write, read_buf, (jint)0, n);
@@ -307,16 +282,12 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
             continue;
         }
         entry_data = (jbyteArray)(*env)->CallObjectMethod(env, baos_obj, baos_to_array);
-
-        /* Store in HashMap */
-        {
+{
             jobject prev = (*env)->CallObjectMethod(env, entries_map, map_put,
                     name_str, entry_data);
             if (prev) (*env)->DeleteLocalRef(env, prev);
         }
-
-        /* Track the three helper classes we need to define first */
-        name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
+name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
         if (name_chars) {
             if (strcmp(name_chars, "mindless/runtime/MemoryResourceStore.class") == 0)
                 store_bytes_ref = (jbyteArray)(*env)->NewGlobalRef(env, entry_data);
@@ -342,9 +313,7 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
         if (handler_bytes_ref) (*env)->DeleteGlobalRef(env, handler_bytes_ref);
         return 0;
     }
-
-    /* DefineClass the three helpers into the game's ClassLoader */
-    {
+{
         jsize len = (*env)->GetArrayLength(env, store_bytes_ref);
         jbyte *buf = (*env)->GetByteArrayElements(env, store_bytes_ref, NULL);
         store_cls = (*env)->DefineClass(env, "mindless/runtime/MemoryResourceStore",
@@ -383,9 +352,7 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
             return 0;
         }
     }
-
-    /* Populate MemoryResourceStore with all JAR entries */
-    store_initialize = (*env)->GetStaticMethodID(env, store_cls, "initialize",
+store_initialize = (*env)->GetStaticMethodID(env, store_cls, "initialize",
             "(Ljava/util/Map;)V");
     if (!store_initialize) {
         vape_log_pending_exception(env, L"resolve MemoryResourceStore.initialize");
@@ -396,9 +363,7 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
         vape_log_pending_exception(env, L"MemoryResourceStore.initialize");
         return 0;
     }
-
-    /* Create URL with memory:// protocol backed by MemoryURLStreamHandler */
-    handler_ctor = (*env)->GetMethodID(env, handler_cls, "<init>", "()V");
+handler_ctor = (*env)->GetMethodID(env, handler_cls, "<init>", "()V");
     handler_obj = (*env)->NewObject(env, handler_cls, handler_ctor);
     if (!handler_obj || (*env)->ExceptionCheck(env)) {
         vape_log_pending_exception(env, L"create MemoryURLStreamHandler instance");
@@ -418,9 +383,7 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
         vape_log_pending_exception(env, L"create memory:// URL");
         return 0;
     }
-
-    /* Add the memory URL to the game's URLClassLoader search path */
-    ucl_cls = (*env)->FindClass(env, "java/net/URLClassLoader");
+ucl_cls = (*env)->FindClass(env, "java/net/URLClassLoader");
     add_url = (*env)->GetMethodID(env, ucl_cls, "addURL", "(Ljava/net/URL;)V");
     if (!add_url) {
         vape_log_pending_exception(env, L"resolve URLClassLoader.addURL");
@@ -472,10 +435,6 @@ static jobject find_client_class_loader(JNIEnv *env) {
     (*g_jvmti)->Deallocate(g_jvmti, (unsigned char *)threads);
     return result;
 }
-
-/* Resolve Minecraft through the active client thread, then return the loader
- * that actually defined that exact Class object. This avoids selecting an
- * unrelated duplicate from a diagnostic/plugin loader. */
 static jobject find_client_minecraft_class_loader(JNIEnv *env) {
     jobject context_loader = find_client_class_loader(env);
     jclass loader_class = NULL;
@@ -503,10 +462,6 @@ static jobject find_client_minecraft_class_loader(JNIEnv *env) {
     (*env)->DeleteLocalRef(env, context_loader);
     return defining_loader;
 }
-
-/* Fallback for launchers that rename the client thread. Accept a loaded
- * Minecraft class only when every matching definition uses the same loader;
- * an ambiguous loader is less safe than refusing injection. */
 static jobject find_minecraft_class_loader(JNIEnv *env) {
     jint class_count = 0;
     jclass *classes = NULL;
@@ -771,14 +726,6 @@ static int call_bootstrap_start(JNIEnv *env, jclass bootstrap) {
 static int pin_native_module(void) {
     return 1;
 }
-
-/* -------------------------------------------------------------------------
- * ClassTransform bridge:
- *   1) Install a ClassFileLoadHook that routes every retransform through
- *      mindless.runtime.TransformerHooks.transform(String, byte[]).
- *   2) Enumerate JVMTI GetLoadedClasses, filter to targets, RetransformClasses.
- * ------------------------------------------------------------------------- */
-
 static void JNICALL class_file_load_hook(
         jvmtiEnv *jvmti_env, JNIEnv *env, jclass class_being_redefined,
         jobject loader, const char *name, jobject protection_domain,
@@ -921,10 +868,6 @@ static int install_class_file_load_hook(void) {
     InterlockedExchange(&g_hook_ever_published, 1);
     return 1;
 }
-
-/* Stop future callbacks before abandoning a failed bootstrap. The DLL stays
- * pinned once a callback has ever been published, so a callback already in
- * flight can safely finish even while this thread tears down its JNI attach. */
 static int disable_class_file_load_hook(void) {
     jvmtiEventCallbacks empty_callbacks;
     jvmtiError notification_error;
@@ -959,9 +902,6 @@ static int disable_class_file_load_hook(void) {
     }
     return 0;
 }
-
-/* Loads a class through the LaunchClassLoader (dotted name). Returns NULL and
- * clears any pending exception on failure. */
 static jclass load_class_via_loader(JNIEnv *env, jobject class_loader,
         jmethodID load_class, const char *dotted_name) {
     jstring name = (*env)->NewStringUTF(env, dotted_name);
@@ -975,10 +915,6 @@ static jclass load_class_via_loader(JNIEnv *env, jobject class_loader,
     }
     return result;
 }
-
-/* Enumerates loaded classes via JVMTI and returns the one whose class signature
- * matches Lname; (internal form). Cost is O(loaded_classes) but only runs during
- * the retransform pass. */
 static jclass find_loaded_class_by_internal_name(JNIEnv *env,
         const char *internal_name, jobject expected_loader) {
     jint count = 0;
@@ -1010,9 +946,7 @@ static jclass find_loaded_class_by_internal_name(JNIEnv *env,
                 }
                 if (actual_loader != NULL) (*env)->DeleteLocalRef(env, actual_loader);
                 if (loader_matches) {
-                    /* Keep this local reference and release every other
-                     * reference returned by GetLoadedClasses below. */
-                    result = classes[i];
+result = classes[i];
                     classes[i] = NULL;
                 }
             }
@@ -1124,11 +1058,7 @@ static int collect_loaded_registered_targets(JNIEnv *env, jobject class_loader,
             vape_log_pending_exception(env, L"read transformer target name");
             goto cleanup;
         }
-        /* JVMTI GetLoadedClasses walks every loaded class (not just those the
-         * app loader can resolve), which is what we need for MC classes owned
-         * by LaunchClassLoader. FindClass with an internal-name would only look
-         * in the current loader chain and would miss most targets. */
-        klass = find_loaded_class_by_internal_name(env, chars, class_loader);
+klass = find_loaded_class_by_internal_name(env, chars, class_loader);
         if (klass == NULL) {
             vape_log(L"retransform target %hs not loaded yet, skipping", chars);
         } else {
@@ -1158,21 +1088,10 @@ cleanup:
     if (loader_class != NULL) (*env)->DeleteLocalRef(env, loader_class);
     return result;
 }
-
-/* Targets the client cannot run without.
- *
- * Minecraft carries the tick and input bridge, so without it nothing updates, no keybind is read
- * and no event is posted -- a client that started anyway would be indistinguishable from one that
- * never started. Everything else is a single feature, and a host update that refactors one of
- * those classes should cost that feature and nothing more. Requiring the whole batch is what
- * turned one refactored class into a client that never called NativeBootstrap.start. */
 static int is_required_target(const char *class_signature) {
     if (class_signature == NULL) return 0;
     return strcmp(class_signature, "Lnet/minecraft/client/Minecraft;") == 0;
 }
-
-/* JVMTI numbers alone say nothing about what went wrong; 62 in particular is the one a host
- * update produces and the one worth recognising on sight. */
 static const wchar_t *jvmti_error_name(jvmtiError error) {
     switch (error) {
         case JVMTI_ERROR_UNMODIFIABLE_CLASS: return L"UNMODIFIABLE_CLASS";
@@ -1218,10 +1137,7 @@ static int retransform_registered_targets(JNIEnv *env, jobject class_loader) {
         vape_log(L"could not allocate retransform rollback tracking");
         return 0;
     }
-    /* Retransform one at a time so the log identifies the exact failing class.
-     * Startup is accepted only if every loaded target succeeds. The per-class
-     * result also prevents one failure from hiding which target caused it. */
-    {
+{
         jint succeeded = 0;
         jint required_failed = 0;
         int batch_succeeded;
@@ -1255,11 +1171,7 @@ static int retransform_registered_targets(JNIEnv *env, jobject class_loader) {
             if (sig) (*g_jvmti)->Deallocate(g_jvmti, (unsigned char *)sig);
         }
         vape_log(L"retransformed %d/%d classes", succeeded, retransform_count);
-        /* A partial batch is no longer fatal on its own. Every class that failed kept its
-         * original definition -- JVMTI is atomic per call -- so the cost is the hooks in that one
-         * class, and the Java side names it in the transformer log. Only a required target being
-         * unusable is a reason to put the process back the way it was found. */
-        batch_succeeded = required_failed == 0;
+batch_succeeded = required_failed == 0;
         if (succeeded != retransform_count && batch_succeeded) {
             vape_log(L"%d optional target(s) were left untransformed; continuing startup",
                     retransform_count - succeeded);
@@ -1299,15 +1211,9 @@ static int retransform_registered_targets(JNIEnv *env, jobject class_loader) {
         }
         free(retransform_succeeded);
         free(classes_to_retransform);
-        /* A JVMTI success can also mean TransformerHooks returned NULL. The
-         * Java-side NativeBootstrap assertion remains responsible for turning
-         * that preflight result into a bootstrap failure. */
-        return batch_succeeded;
+return batch_succeeded;
     }
 }
-
-/* With Mindless's hook disabled, a JVMTI retransformation starts from the VM's
- * baseline class bytes and therefore removes bytecode supplied by our hook. */
 static int restore_loaded_registered_targets(JNIEnv *env, jobject class_loader) {
     jclass *classes_to_restore = NULL;
     jsize restore_count = 0;
@@ -1349,13 +1255,6 @@ static int restore_loaded_registered_targets(JNIEnv *env, jobject class_loader) 
             restored, restore_count);
     return restored == restore_count;
 }
-
-/* Force the MindlessTransformerManager singleton to be built now, WITH the hook
- * still disabled. Building it calls addTransformer(...) for every Transformer*
- * class, each of which triggers class loading via the LaunchClassLoader; if
- * the ClassFileLoadHook were already live those loads would recurse into
- * TransformerHooks.transform -> MindlessTransformerManager.get() before the
- * singleton finished initialising. */
 static int prime_transformer_manager(JNIEnv *env, jobject class_loader,
         jmethodID load_class) {
     jclass manager_class;
@@ -1488,9 +1387,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     }
     attached = 1;
     send_progress(0.45f, "Attached to Java VM");
-
-    /* Read auth data from the shared memory section the loader created */
-    {
+{
         wchar_t section_name[128];
         HANDLE mapping;
         _snwprintf_s(section_name, sizeof(section_name) / sizeof(section_name[0]),
@@ -1575,10 +1472,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         goto cleanup;
     }
     send_progress(0.55f, "Detected runtime namespace");
-    /* Plain Lunar + OptiFine has named Minecraft classes but no Forge API.
-     * The MCP payload embeds the required API and a loader-independent event
-     * bus. Record whether that compatibility layer must emit lifecycle events. */
-    embedded_forge = runtime_namespace == MINDLESS_NAMESPACE_MCP
+embedded_forge = runtime_namespace == MINDLESS_NAMESPACE_MCP
             && !(loader_has_class(env, loader,
                     "net.minecraftforge.common.MinecraftForge")
                  && loader_has_class(env, loader,
@@ -1599,9 +1493,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         goto cleanup;
     }
     send_progress(0.65f, "Payload loaded");
-    /* Validate after appending: resource 422 supplies these classes for a
-     * direct Lunar/OptiFine launch, while Forge/SRG still resolves its own. */
-    if (!validate_required_forge_api(env, loader)) {
+if (!validate_required_forge_api(env, loader)) {
         exit_code = 16;
         goto cleanup;
     }

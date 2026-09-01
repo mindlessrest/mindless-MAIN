@@ -325,7 +325,6 @@ public class Trajectories extends Module {
         }
 
         if (fluidState.inLava && !fluidState.inWater) {
-            // Vanilla 1.8.9 projectiles still use air drag in lava; lava only affects burning state.
         }
         tickVelocity(props, fluidState, mot);
     }

@@ -39,9 +39,7 @@ import java.util.List;
 
 public class Nametags extends Module {
     private static Nametags instance;
-
-    /** Returns true when this module is active and should suppress vanilla nametags for the entity. */
-    public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase entity) {
+public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase entity) {
         if (instance == null || !instance.isEnabled() || !instance.hideVanilla.isToggled()) return false;
         return entity instanceof net.minecraft.entity.player.EntityPlayer;
     }

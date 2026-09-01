@@ -18,28 +18,20 @@ public final class SystemMediaInfo {
     private final byte[] albumArtBytes;
     private final boolean nativeLyricsAvailable;
     private final List<TimedLyrics.LyricsLine> nativeLyricsLines;
-
-    /** Convenience: no sampledAtMs, no native lyrics. */
-    public SystemMediaInfo(boolean available, String sourceApp, String title, String artist, String album, String status,
+public SystemMediaInfo(boolean available, String sourceApp, String title, String artist, String album, String status,
                            long positionMs, long durationMs, String albumArtKey, byte[] albumArtBytes) {
         this(available, sourceApp, title, artist, album, status, positionMs, durationMs, System.currentTimeMillis(), albumArtKey, albumArtBytes, false, null);
     }
-
-    /** Convenience: no sampledAtMs, with native lyrics (used by mergeMediaInfo). */
-    public SystemMediaInfo(boolean available, String sourceApp, String title, String artist, String album, String status,
+public SystemMediaInfo(boolean available, String sourceApp, String title, String artist, String album, String status,
                            long positionMs, long durationMs, String albumArtKey, byte[] albumArtBytes,
                            boolean nativeLyricsAvailable, List<TimedLyrics.LyricsLine> nativeLyricsLines) {
         this(available, sourceApp, title, artist, album, status, positionMs, durationMs, System.currentTimeMillis(), albumArtKey, albumArtBytes, nativeLyricsAvailable, nativeLyricsLines);
     }
-
-    /** Convenience: with sampledAtMs, no native lyrics (legacy compat). */
-    public SystemMediaInfo(boolean available, String sourceApp, String title, String artist, String album, String status,
+public SystemMediaInfo(boolean available, String sourceApp, String title, String artist, String album, String status,
                            long positionMs, long durationMs, long sampledAtMs, String albumArtKey, byte[] albumArtBytes) {
         this(available, sourceApp, title, artist, album, status, positionMs, durationMs, sampledAtMs, albumArtKey, albumArtBytes, false, null);
     }
-
-    /** Canonical constructor. */
-    public SystemMediaInfo(boolean available, String sourceApp, String title, String artist, String album, String status,
+public SystemMediaInfo(boolean available, String sourceApp, String title, String artist, String album, String status,
                            long positionMs, long durationMs, long sampledAtMs, String albumArtKey, byte[] albumArtBytes,
                            boolean nativeLyricsAvailable, List<TimedLyrics.LyricsLine> nativeLyricsLines) {
         this.available = available;

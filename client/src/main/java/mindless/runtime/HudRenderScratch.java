@@ -4,8 +4,6 @@ import net.minecraft.scoreboard.Score;
 
 import java.util.ArrayList;
 import java.util.List;
-
-/** Render-thread scratch collections used by schema-preserving transformers. */
 public final class HudRenderScratch {
     private static final ThreadLocal<Scratch> LOCAL = new ThreadLocal<Scratch>() {
         @Override

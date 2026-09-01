@@ -3,7 +3,6 @@ package mindless.utility.color;
 import java.awt.*;
 
 public class ColorConstants {
-    // Minecraft's color codes and their respective RGB values
 
     public static final int DARK_RED = new Color(189, 0, 1).getRGB();
     public static final int RED = new Color(253, 63, 63).getRGB();

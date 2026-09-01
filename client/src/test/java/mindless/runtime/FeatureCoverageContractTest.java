@@ -12,8 +12,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-
-/** Guards the feature-level hooks that a target-class-only test cannot prove. */
 public class FeatureCoverageContractTest {
     @Test
     public void everyRegisteredModuleAndSharedUiHasItsNativeHookContract() throws Exception {

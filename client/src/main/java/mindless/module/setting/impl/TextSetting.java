@@ -77,15 +77,7 @@ public class TextSetting extends Setting {
             onSubmit.run();
         }
     }
-
-    /**
-     * Reads the saved text back.
-     *
-     * <p>The profile writer has always stored text settings; nothing read them back, so every
-     * text setting that did not override this reverted to its default on launch. Subclasses that
-     * need to validate the value, or to migrate an older key, still override.
-     */
-    @Override
+@Override
     public void loadProfile(JsonObject data) {
         if (data == null) {
             return;

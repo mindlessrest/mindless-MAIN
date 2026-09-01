@@ -1,8 +1,6 @@
 package mindless.runtime;
 
 import net.minecraft.client.Minecraft;
-
-/** Prevents live class retransformation while a multiplayer world is rendering. */
 public final class TransformSafety {
     private static final long MAX_WAIT_MS = 300_000L;
     private static final long STABLE_MENU_MS = 1_000L;

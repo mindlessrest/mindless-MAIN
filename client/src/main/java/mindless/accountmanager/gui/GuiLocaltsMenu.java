@@ -28,13 +28,9 @@ public class GuiLocaltsMenu extends GuiScreen {
     private final GuiScreen parent;
     private final String apiKey;
     private final Gson gson = new Gson();
-
-    // account info
     private String localtsUser    = null;
     private String localtsBalance = null;
     private boolean accountErr    = false;
-
-    // products
     private final List<String>  productIds    = new ArrayList<>();
     private final List<String>  productNames  = new ArrayList<>();
     private final List<String>  productTypes  = new ArrayList<>();
@@ -42,8 +38,6 @@ public class GuiLocaltsMenu extends GuiScreen {
     private final List<Integer> productPrices = new ArrayList<>();
     private boolean productsErr = false;
     private boolean loading     = true;
-
-    // purchase state
     private volatile String  resultMsg = null;
     private volatile boolean resultErr = false;
     private volatile String  statusMsg = null;
@@ -95,7 +89,6 @@ public class GuiLocaltsMenu extends GuiScreen {
             JsonObject p = arr.get(i).getAsJsonObject();
             if (!p.has("id")) continue;
             String id = p.get("id").getAsString();
-            // only show the supported product(s)
             if (!REFRESH_PID.equals(id)) continue;
             productIds.add(id);
             productNames.add("Hypixel (Refresh)");
@@ -173,15 +166,12 @@ public class GuiLocaltsMenu extends GuiScreen {
         new Thread(() -> {
             ExecutorService exec = Executors.newSingleThreadExecutor();
             try {
-                // 1. Place order
                 String purchResp = request("POST",
                         "/products/" + encode(productId) + "/purchase?amount=1");
                 JsonObject purchase = gson.fromJson(purchResp, JsonObject.class);
                 String orderId = (purchase != null && purchase.has("orderId"))
                         ? purchase.get("orderId").getAsString() : null;
                 if (orderId == null) throw new IOException("No order ID returned");
-
-                // 2. Poll for fulfillment (up to 60 s, 2-second intervals)
                 String status = "PENDING";
                 JsonObject order = null;
                 for (int i = 0; i < 30; i++) {

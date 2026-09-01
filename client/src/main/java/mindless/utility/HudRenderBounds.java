@@ -1,6 +1,4 @@
 package mindless.utility;
-
-/** Screen-space bounds shared by HUD renderers and overlay GUI effects. */
 public final class HudRenderBounds {
     private static float scoreboardLeft;
     private static float scoreboardTop;

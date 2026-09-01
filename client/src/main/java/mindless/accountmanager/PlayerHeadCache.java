@@ -8,29 +8,19 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.net.URL;
 import java.util.concurrent.ConcurrentHashMap;
-
-/**
- * Fetches and caches 32x32 player head avatars from mineskin.eu asynchronously.
- * Call {@link #get(String)} from the render thread — returns null while the
- * texture is loading and the cached ResourceLocation once ready.
- */
 public final class PlayerHeadCache {
     private static final ConcurrentHashMap<String, ResourceLocation> CACHE   = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Boolean>          PENDING = new ConcurrentHashMap<>();
 
     private PlayerHeadCache() {}
-
-    /** @return cached head texture, or null if still loading / username is blank */
-    public static ResourceLocation get(String username) {
+public static ResourceLocation get(String username) {
         if (username == null || username.isEmpty()) return null;
         ResourceLocation loc = CACHE.get(username);
         if (loc != null) return loc;
         fetch(username);
         return null;
     }
-
-    /** Evict a username so its head will be re-fetched on the next {@link #get} call. */
-    public static void invalidate(String username) {
+public static void invalidate(String username) {
         if (username == null) return;
         CACHE.remove(username);
     }

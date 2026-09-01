@@ -40,10 +40,6 @@ import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
 import java.text.DecimalFormat;
-
-/**
- * OpenMyau-style 2D entity ESP, adapted to Mindless' render and setting systems.
- */
 public class SexyESP extends Module {
     private static SexyESP instance;
     private final DecimalFormat healthFormat = new DecimalFormat("0.0");
@@ -90,18 +86,7 @@ public class SexyESP extends Module {
 
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
     private final SliderSetting font;
-
-    /**
-     * The face the tags are drawn in.
-     *
-     * <p>Nametag renderers rather than HUD ones: this text is drawn at a fixed size and then
-     * magnified into world space, so how many pixels a glyph covers depends on how far away the
-     * player is standing. The nametag path rasterises with that headroom and divides its metrics
-     * back down, so widths and heights read the same as the Minecraft font's did. Index zero is
-     * the Minecraft font, which comes back as an adapter over the vanilla renderer -- so this is
-     * safe to call unconditionally.
-     */
-    private MindlessFontRenderer espFont() {
+private MindlessFontRenderer espFont() {
         if (font == null) return FontManager.getNametagRenderer(FONT_OPTIONS[0]);
         int index = (int) Math.max(0, Math.min(FONT_OPTIONS.length - 1, font.getInput()));
         return FontManager.getNametagRenderer(FONT_OPTIONS[index]);
@@ -109,8 +94,7 @@ public class SexyESP extends Module {
 
     public static boolean renderingOutlinePass = false;
     private Framebuffer outlineFramebuffer;
-    /** Who the outline pass will actually draw, gathered before any of its buffers are touched. */
-    private final java.util.List<EntityPlayer> outlineCandidates = new java.util.ArrayList<EntityPlayer>();
+private final java.util.List<EntityPlayer> outlineCandidates = new java.util.ArrayList<EntityPlayer>();
     private final SeparableOutlineShader separableOutlineShader = new SeparableOutlineShader();
     private final GlowBloomShader glowBloomShader = new GlowBloomShader();
     private final GlowShader glowShader = new GlowShader();
@@ -166,9 +150,7 @@ public class SexyESP extends Module {
         registerSetting(color = new ColorSetting("Color", 255, 255, 255));
         registerSetting(maxDistance = new SliderSetting("Max distance", 128.0, 16.0, 512.0, 8.0));
     }
-
-    /** Avoids drawing a second full nametag/armor overlay for the same players. */
-    public static boolean replacesStandaloneNametags() {
+public static boolean replacesStandaloneNametags() {
         return instance != null && instance.isEnabled() && instance.tags.isToggled();
     }
 
@@ -258,9 +240,6 @@ public class SexyESP extends Module {
                                  double maxDistanceSq, float partialTicks, ScaledResolution resolution) {
         if (!isValidEntity(entity)) return;
         if (viewEntity.getDistanceSqToEntity(entity) > maxDistanceSq) return;
-        // The camera matrices are interpolated while entity/frustum positions
-        // can be one tick apart. A small pad prevents edge-of-screen players
-        // from flickering out without projecting every off-screen entity.
         if (!RenderUtils.isInViewFrustum(entity.getEntityBoundingBox().expand(0.35D, 0.35D, 0.35D))) return;
         if (projectBounds(entity, renderManager, partialTicks, resolution, projectedBounds)) {
             renderEntity(entity, projectedBounds);
@@ -269,7 +248,6 @@ public class SexyESP extends Module {
 
     private boolean projectBounds(Entity entity, RenderManager renderManager, float partialTicks,
                                   ScaledResolution resolution, Bounds output) {
-        // Entity feet position in camera space (camera is the origin).
         double ex = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks - renderManager.viewerPosX;
         double ey = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - renderManager.viewerPosY;
         double ez = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - renderManager.viewerPosZ;
@@ -280,8 +258,6 @@ public class SexyESP extends Module {
         double minX = Double.MAX_VALUE,  maxX = -Double.MAX_VALUE;
         double minY = Double.MAX_VALUE,  maxY = -Double.MAX_VALUE;
         int valid = 0;
-
-        // Reuse the pre-allocated buffer — it is consumed before the next iteration overwrites it.
         double[] pt = projectedPoint;
 
         for (int xi = -1; xi <= 1; xi += 2) {
@@ -292,11 +268,6 @@ public class SexyESP extends Module {
                         continue;
 
                     double d = pt[2];
-                    // Depth 0 = near plane, 1 = far plane.
-                    // Corners within ~0.005 depth of the near plane diverge under
-                    // perspective division and must be excluded.  With Minecraft's
-                    // typical 0.05-near / 128-far setup, 0.005 depth ≈ 0.7 blocks —
-                    // safely past the near clip even at close range.
                     if (d <= 0.005 || d >= 1.0) continue;
 
                     if (pt[0] < minX) minX = pt[0];
@@ -307,9 +278,6 @@ public class SexyESP extends Module {
                 }
             }
         }
-
-        // Require at least 4 valid corners.  Fewer means the camera is inside
-        // or clipping through the AABB — the projection is not meaningful.
         if (valid < 4) return false;
 
         output.set(minX, minY, maxX, maxY);
@@ -354,11 +322,6 @@ public class SexyESP extends Module {
     }
 
     private void drawOutlinedRect(double left, double top, double right, double bottom, int renderColor) {
-        // The black border is drawn as four rects a pixel to either side of each edge. Nothing
-        // stopped the left one from reaching the right one: on a box narrower than two pixels --
-        // a player far enough off that the projection collapses to a sliver -- the two sides meet
-        // and the outline fills in, which is the black slab that appears where a distant player
-        // is. Half the shorter side is as wide as the border can be and still leave a hole.
         double edge = Math.min(1.0, Math.min(Math.abs(right - left), Math.abs(bottom - top)) / 2.0);
         double inner = Math.min(0.5, edge);
         drawFlatRect(left - edge, top - edge, right + edge, top + edge, 0xFF000000);
@@ -388,9 +351,6 @@ public class SexyESP extends Module {
         double healthY = b.bottom - b.height() * healthRatio;
 
         if (healthBar.isToggled()) {
-            // Always use one continuous, fixed-width bar. OpenMyau's Dots mode
-            // split tall/nearby projections into sections, making its shape
-            // change with distance.
             drawFlatRect(b.left - 3.5, b.top - 0.5, b.left - 1.5, b.bottom + 0.5, 0x78000000);
             int healthColor = Color.HSBtoRGB((float) (healthRatio / 3.0), 1.0F, 1.0F) | 0xFF000000;
             drawFlatRect(b.left - 3, healthY, b.left - 2, b.bottom, healthColor);
@@ -513,7 +473,6 @@ public class SexyESP extends Module {
     private double getTagScale(Bounds b) {
         double scale = fontScale.getInput();
         if (distanceTextScale.isToggled()) {
-            // Keep distant text readable; scaling is intentionally subtle.
             scale *= MathHelper.clamp_double(b.height() / 48.0, 0.9, 1.1);
         }
         return scale;
@@ -521,14 +480,9 @@ public class SexyESP extends Module {
 
     private void drawTag(String text, double centerX, double y, double scale) {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
-        // Resolved once. The border alone is eight draws, and every one of them used to go back
-        // through the font cache and build its key string again.
         MindlessFontRenderer tagFont = espFont();
         double width = tagFont.getStringWidth(text) * scale;
         if (tagBackground.isToggled()) {
-            // Padding scales with the text. Held flat it was two screen pixels either side of
-            // glyphs half that tall at the default font scale, so the plate read as a black slab
-            // with a name somewhere inside it rather than as a backing for the name.
             double padX = 2.0 * scale;
             double padY = 1.5 * scale;
             drawFlatRect(centerX - width / 2 - padX, y - padY, centerX + width / 2 + padX,
@@ -540,8 +494,6 @@ public class SexyESP extends Module {
         GlStateManager.translate(centerX - width / 2.0, y, 0);
         GlStateManager.scale(scale, scale, 1);
         if (textBorder.isToggled()) {
-            // Strip formatting for the outline so team color codes cannot turn
-            // the supposed black border into another colored copy of the text.
             String outlineText = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(text);
             int border = 0xF0000000;
             tagFont.drawString(outlineText, -1, -1, border, false);
@@ -592,9 +544,7 @@ public class SexyESP extends Module {
     private void drawFlatRect(double left, double top, double right, double bottom, int color) {
         rectBatch.add(left, top, right, bottom, color);
     }
-
-    /** Restores the unlit state used by the projected 2D overlay. */
-    private void restoreFlatOverlayState() {
+private void restoreFlatOverlayState() {
         GlStateManager.disableLighting();
         GlStateManager.disableRescaleNormal();
         GlStateManager.disableDepth();
@@ -642,12 +592,6 @@ public class SexyESP extends Module {
         }
         if (!glowShader.isValid()) return;
         if (!glowBloomShader.isValid() && !separableOutlineShader.isValid()) return;
-
-        // Work out whether there is anything to glow before spending anything on the machinery
-        // that would glow it. Everything below this point is priced per screen pixel rather than
-        // per player -- two full-screen buffer clears, a camera transform, and a separable blur
-        // that fetches tens of millions of texels -- and all of it used to run in an empty lobby
-        // and composite a completely transparent result over the scene.
         collectOutlineCandidates();
         if (outlineCandidates.isEmpty()) return;
 
@@ -658,13 +602,6 @@ public class SexyESP extends Module {
         }
 
         mc.getFramebuffer().bindFramebuffer(true);
-        // Both matrices are saved, not just the modelview. setupCameraTransform below replaces the
-        // projection with the camera's perspective, and the composite at the end needs an
-        // orthographic one -- every fullscreen helper draws its quad in scaled-GUI coordinates, so
-        // under a perspective projection that quad lands on the camera's near plane and none of the
-        // glow ever reaches the screen. The setupOverlayRendering call was deleted once for leaving
-        // the projection in ortho and breaking freelook; putting the saved matrices back afterwards
-        // fixes that without giving up the projection the composite depends on.
         GlStateManager.matrixMode(GL11.GL_PROJECTION);
         GL11.glPushMatrix();
         GlStateManager.matrixMode(GL11.GL_MODELVIEW);
@@ -703,8 +640,6 @@ public class SexyESP extends Module {
             if (showInvisible.isToggled()) player.setInvisible(false);
             mc.getRenderManager().renderEntityStatic(player, partialTicks, true);
             player.setInvisible(invis);
-            // Built inside the check: the concatenation runs before the call, so leaving it
-            // bare pays for a string per player per frame with diagnostics switched off.
             if (mindless.utility.Diagnostics.isEnabled()) {
                 mindless.utility.Diagnostics.gl("esp: drew silhouette for " + player.getName());
             }
@@ -716,18 +651,8 @@ public class SexyESP extends Module {
 
         mc.gameSettings.entityShadows = shadows;
         mc.entityRenderer.disableLightmap();
-        // Ortho for the composite. Done while the outline buffer is still bound, because this also
-        // clears depth and that buffer has no depth attachment for it to damage.
         mc.entityRenderer.setupOverlayRendering();
         mc.getFramebuffer().bindFramebuffer(true);
-
-        // A Gaussian smear of the silhouette's coverage, tinted and added over the scene. The
-        // Kawase bloom that used to run here wrote its result straight onto the main framebuffer
-        // and was then overdrawn by a two-texel dilation of the same silhouette, so what survived
-        // was a hard traced edge with the soft part fighting it rather than a glow.
-        //
-        // Glow size is in screen pixels; the multiplier turns the slider's 0-10 into a reach wide
-        // enough to read as a halo rather than as a traced edge.
         float glowSize = (float) outlineGlowSize.getInput();
         if (glowSize > 0.0f && glowBloomShader.isValid()) {
             mc.getFramebuffer().bindFramebuffer(false);
@@ -735,14 +660,10 @@ public class SexyESP extends Module {
                     (float) outlineGlowStrength.getInput(), oR, oG, oB);
         }
         else if (glowSize > 0.0f) {
-            // Fall back to the old bloom if the driver would not build the Gaussian. Worse
-            // looking, but a glow that renders beats one that vanishes with no explanation.
             KawaseBloom.renderBlur(outlineFramebuffer.framebufferTexture,
                     Math.max(1, Math.round(glowSize)), glowSize);
         }
         mc.getFramebuffer().bindFramebuffer(false);
-        // The crisp traced edge is now opt-in: it reads as an outline, which is the opposite of
-        // what the glow is for, but it sharpens the silhouette when both are wanted together.
         if (outlineEdge.isToggled()) {
             mc.getFramebuffer().bindFramebuffer(false);
             separableOutlineShader.render(outlineFramebuffer);
@@ -755,9 +676,6 @@ public class SexyESP extends Module {
         GL11.glPopMatrix();
         GlStateManager.matrixMode(GL11.GL_MODELVIEW);
         GL11.glPopMatrix();
-        // glPopAttrib puts real GL back, but GlStateManager never sees it happen, so its cache
-        // still holds whatever this pass left behind and the next enableTexture2D or color is
-        // skipped as redundant -- which is what drew the ESP nametags flat and black afterwards.
         RenderUtils.syncGlState();
         mindless.utility.Diagnostics.gl("esp: outline pass complete");
     }
@@ -775,14 +693,9 @@ public class SexyESP extends Module {
     }
 
     private Framebuffer createOutlineFramebuffer(Framebuffer framebuffer) {
-        // Display-sized, like every other glow pass here. At three quarters of the width the blur
-        // reached three quarters as far sideways as it did vertically, because both halves share a
-        // single texel-size uniform taken from the display, and the halo came out an ellipse.
         framebuffer = RenderUtils.createFrameBuffer(framebuffer, false);
         if (framebuffer == null) return null;
         framebuffer.setFramebufferColor(0.0f, 0.0f, 0.0f, 0.0f);
-        // Linear filtering: at a wide radius the seventeen taps sit several pixels apart, and
-        // nearest sampling turns that spacing into visible rings.
         framebuffer.setFramebufferFilter(GL11.GL_LINEAR);
         return framebuffer;
     }

@@ -64,20 +64,11 @@ public class ProfileManager implements IMinecraftInstance {
             this.keybind = keybind;
         }
     }
-
-    /**
-     * How long a change sits unwritten before it is saved on its own.
-     *
-     * <p>Long enough that dragging a slider writes once rather than once a frame, short enough
-     * that a crash costs a few seconds of fiddling rather than an evening of it.
-     */
-    private static final long AUTO_SAVE_DELAY_MS = 4000L;
+private static final long AUTO_SAVE_DELAY_MS = 4000L;
 
     public File directory;
     public List<Profile> profiles = new ArrayList<>();
-
-    /** When the current profile first went unsaved, or 0 when it is clean. */
-    private long dirtySince;
+private long dirtySince;
 
     public ProfileManager() {
         directory = new File(mc.mcDataDir + File.separator + "mindless", "profiles");
@@ -105,16 +96,7 @@ public class ProfileManager implements IMinecraftInstance {
         profile.getModule().saved = true;
         dirtySince = 0L;
     }
-
-    /**
-     * Saves without holding up the frame.
-     *
-     * <p>The reading of module state still happens here, on the game thread, so what gets written
-     * is one coherent snapshot; only the write itself is handed off. A profile is around fifty
-     * kilobytes and the write is followed by a flush to the disk, which is not something to do in
-     * the middle of a frame every time a slider moves.
-     */
-    private void saveProfileInBackground(Profile profile) {
+private void saveProfileInBackground(Profile profile) {
         if (profile == null) {
             return;
         }
@@ -165,21 +147,7 @@ public class ProfileManager implements IMinecraftInstance {
             return null;
         }
     }
-
-    /**
-     * Writes a profile whole, or not at all.
-     *
-     * <p>Opening the profile itself for writing empties it first, so anything that interrupted the
-     * write -- the game being closed, a crash, the machine going down -- left behind half a
-     * profile or none of one, and the next launch reported it as unloadable. The new contents go
-     * to a temporary file, are flushed to the disk rather than left in the operating system's
-     * cache, and only then replace the profile in a single move. The copy being replaced is kept
-     * alongside as {@code .bak}, which is what a load falls back to if a profile is ever damaged
-     * from outside this method.
-     *
-     * @return whether the profile on disk now holds the given contents
-     */
-    private boolean writeProfileFile(String profileName, String serialized) {
+private boolean writeProfileFile(String profileName, String serialized) {
         File target = new File(directory, profileName + ".json");
         File temp = new File(directory, profileName + ".json.tmp");
         File backup = new File(directory, profileName + ".json.bak");
@@ -203,7 +171,6 @@ public class ProfileManager implements IMinecraftInstance {
                     Files.copy(target.toPath(), backup.toPath(), StandardCopyOption.REPLACE_EXISTING);
                 }
                 catch (Exception ignored) {
-                    // A missing backup is worth less than the save itself; carry on.
                 }
             }
 
@@ -226,30 +193,14 @@ public class ProfileManager implements IMinecraftInstance {
             }
         }
     }
-
-    /**
-     * Writes the current profile if it has unsaved changes, on this thread.
-     *
-     * <p>For the two moments where there is no later: switching to another profile, which
-     * overwrites every module with the incoming one's state, and the game closing.
-     */
-    public void flushCurrentProfile() {
+public void flushCurrentProfile() {
         Profile profile = Mindless.currentProfile;
         if (profile == null || !isAutoSaveEnabled() || profile.getModule().saved) {
             return;
         }
         saveProfile(profile);
     }
-
-    /**
-     * Saves the current profile a few seconds after it was last changed.
-     *
-     * <p>Profiles used to be written only when "Update profile" was pressed, and nothing in the
-     * menu said whether that was still owed. Toggling a module, closing the game and coming back
-     * to find it off again reads as the profile being broken rather than as never having been
-     * saved, and switching profiles threw the same changes away without a word.
-     */
-    public void autoSaveTick() {
+public void autoSaveTick() {
         Profile profile = Mindless.currentProfile;
         if (profile == null || !isAutoSaveEnabled()) {
             dirtySince = 0L;
@@ -275,19 +226,7 @@ public class ProfileManager implements IMinecraftInstance {
         module.saved = true;
         saveProfileInBackground(profile);
     }
-
-    /**
-     * Whether profiles are written without being asked.
-     *
-     * <p>Off unless turned on, so a profile only changes on disk when "Update profile" is pressed.
-     * The active row in the menu reads "Unsaved" while a write is owed, which is the part that was
-     * missing before -- the old behaviour was this one without the indicator, so changes were lost
-     * on quit with nothing having said they were pending.
-     *
-     * <p>Before the setting exists there is no session to save yet, so the answer is the same as
-     * the default rather than the opposite of it.
-     */
-    private static boolean isAutoSaveEnabled() {
+private static boolean isAutoSaveEnabled() {
         return Settings.autoSaveProfiles != null && Settings.autoSaveProfiles.isToggled();
     }
 
@@ -372,9 +311,6 @@ public class ProfileManager implements IMinecraftInstance {
             for (CategoryComponent c : ClickGui.categories) {
                 moduleInformation.addProperty(c.category.name(), c.x + "," + c.y + "," + c.opened);
             }
-            // Where the modern window was dragged to. The legacy category panels above have always
-            // been saved; this one was not, so the window went back to the middle of the screen on
-            // every launch however far it had been moved.
             moduleInformation.addProperty("modernGuiOffsetX",
                     mindless.clickgui.ModernClickGui.getDragOffsetX());
             moduleInformation.addProperty("modernGuiOffsetY",
@@ -422,22 +358,9 @@ public class ProfileManager implements IMinecraftInstance {
     private static boolean shouldSaveModuleStateOnly(Module module) {
         return module instanceof Relationships;
     }
-
-    /**
-     * Applies a saved profile to every module.
-     *
-     * <p>Read first, apply second. The file is turned into a plan -- which modules should be on,
-     * what each one's settings and position should be -- before anything is touched, so a
-     * malformed entry is skipped rather than abandoning the load partway through with half the
-     * client on the old profile and half on the new one, still labelled as whichever came last.
-     * That half-applied state was then what "Update profile" wrote back to disk.
-     */
-    public void loadProfile(String name) {
+public void loadProfile(String name) {
         Profile existingProfile = getProfile(name);
         String profileName = existingProfile != null ? existingProfile.getName() : normalizeProfileName(name);
-
-        // Anything unsaved belongs to the profile being left, and the load below overwrites every
-        // module with the incoming one. Written out here or gone without a word.
         Profile outgoing = Mindless.currentProfile;
         if (outgoing != null && !outgoing.getName().equalsIgnoreCase(profileName)) {
             flushCurrentProfile();
@@ -506,7 +429,6 @@ public class ProfileManager implements IMinecraftInstance {
                                 moduleInformation.get("modernGuiOffsetX").getAsFloat(),
                                 moduleInformation.get("modernGuiOffsetY").getAsFloat() };
                     } catch (Exception malformed) {
-                        // A profile written before this existed, or hand-edited. Leave it centred.
                         savedModernGuiOffset = null;
                     }
                 }
@@ -530,8 +452,6 @@ public class ProfileManager implements IMinecraftInstance {
         }
 
         try {
-            // Off first: a module's own disable can write to its settings, which would otherwise
-            // land on top of the values just read for it.
             for (Module module : loadableModules) {
                 RequestedModuleState requestedState = requestedModuleStates.get(module);
                 if (requestedState != null && !requestedState.enabled && module.isEnabled()) {
@@ -553,11 +473,6 @@ public class ProfileManager implements IMinecraftInstance {
             for (Map.Entry<Module, JsonObject> entry : loadedModuleData.entrySet()) {
                 applyModulePosition(entry.getKey(), entry.getValue());
             }
-
-            // Over every module, not just the ones the file mentions. A setting the profile has no
-            // opinion about goes back to its default instead of keeping whatever the profile
-            // before it left there, which is what let two profiles disagree about a value only one
-            // of them had ever been asked for.
             for (Module module : loadableModules) {
                 if (!module.ignoreOnSave) {
                     applyModuleSettings(module, loadedModuleData.get(module));
@@ -576,9 +491,6 @@ public class ProfileManager implements IMinecraftInstance {
                     module.disable();
                 }
             }
-
-            // Last, so modules that keep their own copy of their settings pick the new ones up
-            // even when they were already on and so were never re-enabled.
             for (Module module : loadableModules) {
                 try {
                     module.onProfileLoad();
@@ -596,7 +508,6 @@ public class ProfileManager implements IMinecraftInstance {
         Profile loaded = getProfile(profileName);
         if (loaded != null) {
             Mindless.currentProfile = loaded;
-            // Freshly read from disk, so nothing is owed until something changes.
             loaded.getModule().saved = true;
         }
         dirtySince = 0L;
@@ -665,17 +576,7 @@ public class ProfileManager implements IMinecraftInstance {
             }
         }
     }
-
-    /**
-     * Puts one module's settings where the profile says they should be.
-     *
-     * <p>A setting the file names is read from it; a setting it does not name goes back to the
-     * value it was built with. Both halves matter: without the second, profiles leak into each
-     * other, and a profile written before a setting existed silently adopts whatever the last
-     * profile set it to. Settings that have never been asked for their default -- registered after
-     * the first profile load, which scripts can do -- are left alone rather than reset to nothing.
-     */
-    private static void applyModuleSettings(Module module, JsonObject moduleInformation) {
+private static void applyModuleSettings(Module module, JsonObject moduleInformation) {
         for (Setting setting : module.getSettings()) {
             try {
                 if (moduleInformation != null && hasSavedValue(setting, moduleInformation)) {
@@ -711,9 +612,7 @@ public class ProfileManager implements IMinecraftInstance {
             }
         }
     }
-
-    /** Restores the on-screen position of the modules that have one. */
-    private static void applyModulePosition(Module module, JsonObject moduleInformation) {
+private static void applyModulePosition(Module module, JsonObject moduleInformation) {
         try {
             if (module == ModuleManager.hud) {
                 if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
@@ -840,9 +739,7 @@ public class ProfileManager implements IMinecraftInstance {
             e.printStackTrace();
         }
     }
-
-    /** The file for a profile, matching the name exactly first and then ignoring case. */
-    private File findProfileFile(String profileName) {
+private File findProfileFile(String profileName) {
         String wanted = profileName + ".json";
         File exact = new File(directory, wanted);
         if (exact.isFile()) {
@@ -855,16 +752,7 @@ public class ProfileManager implements IMinecraftInstance {
         }
         return null;
     }
-
-    /**
-     * Reads a profile, falling back to the copy kept beside it.
-     *
-     * <p>A profile that could not be parsed used to be reported as a failure and left exactly as
-     * it was, so every launch after failed the same way and the profile was effectively gone. The
-     * backup is written before each save, so at worst it is one save behind; restoring it turns a
-     * lost profile into a lost edit.
-     */
-    private JsonObject readProfileJson(File file, String profileName) {
+private JsonObject readProfileJson(File file, String profileName) {
         JsonObject parsed = parseProfileFile(file);
         if (parsed != null) {
             return parsed;
@@ -973,8 +861,6 @@ public class ProfileManager implements IMinecraftInstance {
             String fileName = file.getName();
             String profileName = fileName.substring(0, fileName.length() - ".json".length());
             try {
-                // One unreadable profile used to abandon every profile after it. Now it costs
-                // only itself, and only after the backup beside it has also been tried.
                 JsonObject profileJson = readProfileJson(file, profileName);
                 if (profileJson == null) {
                     failedMessage("load", profileName);
@@ -1005,8 +891,6 @@ public class ProfileManager implements IMinecraftInstance {
                 Mindless.currentProfile.getModule().saved = currentProfileSaved;
             }
         }
-        
-        // Auto-load the last active profile, or default if none saved
         if (Mindless.currentProfile == null && !profiles.isEmpty()) {
             String lastProfile = getLastProfile();
             Profile toLoad = null;

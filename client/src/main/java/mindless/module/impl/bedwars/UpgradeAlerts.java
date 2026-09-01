@@ -14,22 +14,10 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.HashSet;
 import java.util.Set;
-
-/**
- * Says when an enemy team buys a team upgrade.
- *
- * <p>Hypixel does not announce these, so the first you usually know about Sharpened Swords is
- * losing a fight you should have won. There is no packet for it either -- the only evidence is
- * that everyone on that team is suddenly holding enchanted gear, so that is what this watches.
- *
- * <p>Once per team per upgrade. The upgrade is bought for the whole team, so the second and third
- * player carrying it is the same piece of news.
- */
 public class UpgradeAlerts extends Module {
     private static final String SHARPNESS = "Sharpened Swords";
     private static final String PROTECTION = "Reinforced Armour";
-    /** A second between sweeps. Armour does not change hands fast enough to want more. */
-    private static final int SCAN_INTERVAL = 20;
+private static final int SCAN_INTERVAL = 20;
 
     private final ButtonSetting pingSound;
 
@@ -53,7 +41,6 @@ public class UpgradeAlerts extends Module {
         if (!this.isEnabled() || !Utils.nullCheck()) return;
 
         if (Utils.getBedwarsStatus() != 2) {
-            // Between games the slate has to be clean, or the next game reports nothing.
             if (!announced.isEmpty()) announced.clear();
             return;
         }
@@ -93,9 +80,7 @@ public class UpgradeAlerts extends Module {
             mc.thePlayer.playSound("note.pling", 1.0f, 1.2f);
         }
     }
-
-    /** The player's bedwars team, as a coloured label, or null when they are not on one. */
-    private String teamName(EntityPlayer player) {
+private String teamName(EntityPlayer player) {
         if (mc.theWorld == null) return null;
         ScorePlayerTeam team = mc.theWorld.getScoreboard().getPlayersTeam(player.getName());
         if (team == null) return null;
@@ -112,9 +97,7 @@ public class UpgradeAlerts extends Module {
             default: return null;
         }
     }
-
-    /** The first colour code in a team prefix, which is the team's colour. */
-    private EnumChatFormatting colourOf(String prefix) {
+private EnumChatFormatting colourOf(String prefix) {
         if (prefix == null) return EnumChatFormatting.RESET;
         for (int i = 0; i < prefix.length() - 1; i++) {
             if (prefix.charAt(i) != '§') continue;

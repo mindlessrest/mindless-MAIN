@@ -15,12 +15,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @SideOnly(Side.CLIENT)
 @Mixin(ActiveRenderInfo.class)
 public class MixinActiveRenderInfo {
-    // Note: The Freelook functionality for camera rotation is already handled in MixinEntityRenderer
-    // via the orientCamera method redirects. This mixin is kept for potential future use but
-    // the updateRenderInfo method doesn't directly access rotationYaw/rotationPitch in 1.8.9
     
     @Inject(method = "updateRenderInfo", at = @At("RETURN"))
     private static void onUpdateRenderInfoReturn(CallbackInfo ci) {
-        // Reserved for future camera-related features
     }
 }

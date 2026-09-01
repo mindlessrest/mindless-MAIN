@@ -9,11 +9,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
-
-/**
- * Minimal HTTP + JSON helper shared by NiceAlts and Localts screens.
- * No external dependencies beyond standard Java + JDK.
- */
 public final class AltShopHttp {
     private AltShopHttp() {}
 
@@ -72,9 +67,7 @@ public final class AltShopHttp {
         if (headerKey != null) conn.setRequestProperty(headerKey, headerVal);
         return conn;
     }
-
-    /** Naive JSON string-field extractor — avoids a Gson dependency. */
-    public static String field(String json, String key) {
+public static String field(String json, String key) {
         if (json == null) return null;
         String search = "\"" + key + "\":";
         int idx = json.indexOf(search);

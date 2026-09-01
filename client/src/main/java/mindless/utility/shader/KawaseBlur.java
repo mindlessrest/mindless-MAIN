@@ -22,27 +22,12 @@ public class KawaseBlur {
     private static final int MASK_TEXTURE_UNIT = GL13.GL_TEXTURE1;
     public static ShaderUtils kawaseDown = new ShaderUtils("kawaseDown");
     public static ShaderUtils kawaseUp = new ShaderUtils("kawaseUp");
-
-    /**
-     * One downsample chain per blur strength.
-     *
-     * <p>There used to be a single chain and an int remembering which strength it was built for.
-     * Any panel asking for a different strength tore the whole chain down and allocated a new
-     * one, full-resolution buffer included. On a HUD with panels at three different strengths
-     * that is several full-screen texture allocations and frees <em>every frame</em>, which costs
-     * far more than the blur it was there to serve. Keeping a chain per strength means each is
-     * built once and then simply reused.
-     */
-    private static final Map<Integer, Pyramid> pyramids = new HashMap<>();
-
-    /** Full-resolution scratch for the whole-screen composite path, shared by every chain. */
-    private static Framebuffer compositeBuffer;
+private static final Map<Integer, Pyramid> pyramids = new HashMap<>();
+private static Framebuffer compositeBuffer;
 
     private static int builtWidth;
     private static int builtHeight;
-
-    /** A downsample chain: index 1 is half-ish size, index n is the smallest. */
-    private static final class Pyramid {
+private static final class Pyramid {
         private final int iterations;
         private final List<Framebuffer> levels = new ArrayList<>();
         private long preparedFrame = Long.MIN_VALUE;
@@ -76,9 +61,7 @@ public class KawaseBlur {
             this.levels.clear();
         }
     }
-
-    /** Fetches the chain for this strength, building it only the first time it is asked for. */
-    private static Pyramid pyramid(int iterations, int downsampleFactor) {
+private static Pyramid pyramid(int iterations, int downsampleFactor) {
         if (builtWidth != mc.displayWidth || builtHeight != mc.displayHeight) {
             for (Pyramid stale : pyramids.values()) {
                 stale.delete();
@@ -254,11 +237,6 @@ public class KawaseBlur {
     }
 
     private static void renderFBO(Framebuffer framebuffer, int framebufferTexture, ShaderUtils shader, float offset) {
-        // bindFramebuffer(true) is the whole of what the clear was here for. framebufferClear
-        // binds with the viewport, clears, then unbinds, so the pair cost three framebuffer binds
-        // and a full-surface clear per pass to establish a viewport -- and the clear itself was
-        // dead, because both kawase shaders write every channel of every pixel of a quad that
-        // covers the target, at alpha 1, so nothing of the old contents can survive either way.
         framebuffer.bindFramebuffer(true);
         shader.init();
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
@@ -272,13 +250,7 @@ public class KawaseBlur {
         ShaderUtils.drawQuads();
         shader.unload();
     }
-
-    /**
-     * Binds the source and mask without escaping Minecraft 1.8's eight cached
-     * texture units.  Unit 16 is not a valid fragment-sampler index on every
-     * Lunar OpenGL profile and leaves the following font/menu draws broken.
-     */
-    private static TextureBindings bindCompositeTextures(int maskTexture, int sourceTexture) {
+private static TextureBindings bindCompositeTextures(int maskTexture, int sourceTexture) {
         int previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
 
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
@@ -309,9 +281,6 @@ public class KawaseBlur {
             GlStateManager.bindTexture(maskTexture);
             GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
             GlStateManager.bindTexture(texture0);
-
-            // Minecraft 1.8 only caches units 0-7. Keep an unexpected external
-            // active unit from indexing outside that cache on the next bind.
             if (activeTexture >= GL13.GL_TEXTURE0 && activeTexture <= GL13.GL_TEXTURE7) {
                 GlStateManager.setActiveTexture(activeTexture);
             } else {

@@ -20,8 +20,6 @@ import org.lwjgl.input.Keyboard;
 
 public class Events {
     private static final Minecraft mc = Minecraft.getMinecraft();
-
-    // Right Shift = LWJGL key 54
     private static final int KEY_RSHIFT = Keyboard.KEY_RSHIFT;
     private boolean prevShiftDown = false;
     private GuiScreen lastScreen = null;
@@ -31,7 +29,6 @@ public class Events {
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             SessionManager.captureLaunchSession();
-            // Track how long the current screen has been open
             if (mc.currentScreen != lastScreen) {
                 lastScreen = mc.currentScreen;
                 screenOpenTicks = 0;
@@ -46,8 +43,6 @@ public class Events {
         if (event.phase != TickEvent.Phase.END) return;
 
         boolean shiftDown = Keyboard.isKeyDown(KEY_RSHIFT);
-        // Only open from pre-game screens (main menu, multiplayer list, etc.)
-        // mc.theWorld != null means the player is in a game — never open there.
         if (shiftDown && !prevShiftDown
                 && mc.theWorld == null
                 && mc.currentScreen != null

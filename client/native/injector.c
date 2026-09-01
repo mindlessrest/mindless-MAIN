@@ -10,16 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
-
-/*
- * MindlessInjector.exe — enumerates visible java.exe/javaw.exe windows every
- * 750 ms, lets the user pick one with Up/Down/Enter, and injects
- * MindlessNative.dll via CreateRemoteThread(LoadLibraryW). x64 only.
- *
- * Non-interactive form for scripts: MindlessInjector.exe <pid> <dll-path>
- * Default DLL name looked up next to the exe: MindlessNative.dll
- */
-
 #define MAX_CANDIDATES 256
 #define WINDOW_TITLE_CAPACITY 256
 #define REFRESH_INTERVAL_MS 750

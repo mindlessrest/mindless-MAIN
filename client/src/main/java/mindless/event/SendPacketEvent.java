@@ -19,12 +19,7 @@ public class SendPacketEvent extends Event {
     public Packet<?> getPacket() {
         return packet;
     }
-
-    /**
-     * Lunar's embedded Forge does not reliably discover @Cancelable on
-     * injected event classes. Override to guarantee cancellation works.
-     */
-    @Override
+@Override
     public boolean isCancelable() {
         return true;
     }

@@ -53,13 +53,7 @@ public class ColorComponent extends Component {
 
     private static final int BORDER = 0xFF23252C;
     private static final int PANEL = 0xFF1A1C21;
-
-    /**
-     * Hue in RGB is piecewise linear between these six corners, so interpolating straight between
-     * them is exact. The bar used to be twenty HSB samples with a gradient between each pair,
-     * which is an approximation of a function that did not need approximating -- and it banded.
-     */
-    private static final int[] HUE_CORNERS = {
+private static final int[] HUE_CORNERS = {
             0xFFFF0000, 0xFFFFFF00, 0xFF00FF00, 0xFF00FFFF, 0xFF0000FF, 0xFFFF00FF, 0xFFFF0000
     };
 
@@ -166,12 +160,9 @@ public class ColorComponent extends Component {
                 cachedHue = colorSetting.getHue();
             }
         }
-        // When black or grey, RGBtoHSB gives hue=0; use cached hue so the hue bar doesn't jump to red
         boolean useCachedHue = dragMode != 0 || isBlack || isGrey;
         float hue = useCachedHue ? cachedHue / 360f : colorSetting.getHue() / 360f;
         float sat = (dragMode != 0 || isBlack) ? cachedSat : satFromSetting;
-
-        // Saturation/brightness field.
         int hueRGB = Color.HSBtoRGB(hue, 1f, 1f) | 0xFF000000;
         border(areaLeft, sqTop, sqRight, sqBottom);
         RenderUtils.drawRect(areaLeft, sqTop, sqRight, sqBottom, hueRGB);
@@ -179,15 +170,10 @@ public class ColorComponent extends Component {
                 0xFFFFFFFF, 0x00FFFFFF);
         RenderUtils.drawVerticalGradientRect(areaLeft, sqTop, sqRight, sqBottom,
                 0x00000000, 0xFF000000);
-
-        // A ring, not a pair of crossed bars. It reads against any colour underneath because the
-        // dark ring outside it carries the contrast wherever the light one loses it.
         float indX = areaLeft + sat * SQUARE_SIZE;
         float indY = sqTop + (1f - bri) * SQUARE_SIZE;
         ring(indX, indY, 4.1f, 1.0f, 0x66000000);
         ring(indX, indY, 3.2f, 1.4f, 0xFFFFFFFF);
-
-        // Hue bar.
         float hueLeft = sqRight + HUE_GAP;
         float hueRight = hueLeft + BAR_WIDTH;
         border(hueLeft, sqTop, hueRight, sqBottom);
@@ -198,8 +184,6 @@ public class ColorComponent extends Component {
         }
         knob(hueLeft, hueRight, sqTop + Math.max(0f, Math.min(1f, hue)) * SQUARE_SIZE,
                 Color.HSBtoRGB(hue, 1f, 1f) | 0xFF000000);
-
-        // Alpha bar.
         if (colorSetting.hasAlpha()) {
             float alphaLeft = hueRight + ALPHA_GAP;
             float alphaRight = alphaLeft + BAR_WIDTH;
@@ -212,8 +196,6 @@ public class ColorComponent extends Component {
             knob(alphaLeft, alphaRight, sqTop + alphaFrac * SQUARE_SIZE,
                     (Math.round(alphaFrac * 255) << 24) | (rgb & 0xFFFFFF));
         }
-
-        // Preset swatches, so the common colours are one click rather than a hunt around the field.
         float swatchTop = sqBottom + SWATCH_GAP;
         for (int i = 0; i < SWATCHES.length; i++) {
             float left = areaLeft + i * (SWATCH_SIZE + SWATCH_SPACING);
@@ -222,8 +204,6 @@ public class ColorComponent extends Component {
             RenderUtils.drawRect(left, swatchTop, left + SWATCH_SIZE, swatchTop + SWATCH_SIZE,
                     SWATCHES[i]);
         }
-
-        // Hex readout, so the value is legible and copyable by eye instead of guessed at.
         MindlessFontRenderer renderer = Gui.getClickGuiSettingFontRenderer();
         String hex = String.format("#%06X", colorSetting.getRGB() & 0xFFFFFF);
         if (colorSetting.hasAlpha()) {
@@ -235,9 +215,7 @@ public class ColorComponent extends Component {
                 0xFF9AA0AC, false);
         GL11.glPopMatrix();
     }
-
-    /** A hairline frame with the panel colour behind it, drawn before whatever fills the box. */
-    private static void border(float left, float top, float right, float bottom) {
+private static void border(float left, float top, float right, float bottom) {
         RenderUtils.drawRect(left - 1, top - 1, right + 1, bottom + 1, BORDER);
         RenderUtils.drawRect(left, top, right, bottom, PANEL);
     }
@@ -251,12 +229,7 @@ public class ColorComponent extends Component {
             }
         }
     }
-
-    /**
-     * The marker on a vertical bar: a rounded chip carrying the value it points at, rather than
-     * the full-width white slab that used to hide the colour it was selecting.
-     */
-    private static void knob(float left, float right, float centerY, int color) {
+private static void knob(float left, float right, float centerY, int color) {
         float x1 = left - 1.5f, x2 = right + 1.5f;
         float y1 = centerY - 2.0f, y2 = centerY + 2.0f;
         RoundedUtils.drawRound(x1 - 0.6f, y1 - 0.6f, (x2 - x1) + 1.2f, (y2 - y1) + 1.2f,
@@ -265,9 +238,7 @@ public class ColorComponent extends Component {
         RoundedUtils.drawRound(x1 + 1.1f, y1 + 1.1f, (x2 - x1) - 2.2f, (y2 - y1) - 2.2f,
                 1.0f, new Color(color, true));
     }
-
-    /** An anti-aliased ring. Nothing in this path smooths geometry, so the edges are feathered. */
-    private static void ring(float cx, float cy, float radius, float thickness, int color) {
+private static void ring(float cx, float cy, float radius, float thickness, int color) {
         float inner = radius - thickness * 0.5f;
         float outer = radius + thickness * 0.5f;
         ringBand(cx, cy, inner, 1f, outer, 1f, color);
@@ -282,21 +253,6 @@ public class ColorComponent extends Component {
         if (c0 <= 0 && c1 <= 0) {
             return;
         }
-
-        // Three pieces of inherited state have to be corrected here, and every one of them is
-        // invisible until geometry like this is drawn through it.
-        //
-        // shadeModel is the important one. The gradient helpers in RenderUtils set GL_SMOOTH,
-        // draw, and set GL_FLAT back, and syncGlState leaves GL_FLAT too. Under GL_FLAT a
-        // triangle takes one vertex's colour for all of it, so the alpha ramps that feather
-        // every edge below collapsed into solid blocks -- the anti-aliasing was being written
-        // and then thrown away by the rasteriser.
-        //
-        // The alpha test is Minecraft's usual GL_GREATER 0.1, which chops the tail off a fade
-        // and turns the soft edge back into a hard one.
-        //
-        // Culling depends on winding, and winding here depends on which way a stroke runs, so a
-        // shape could vanish entirely based on the direction it was drawn in.
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,

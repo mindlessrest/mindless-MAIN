@@ -10,20 +10,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
 import net.minecraft.util.MathHelper;
 import org.lwjgl.opengl.GL11;
-
-/**
- * Runtime replacement for the old IMixinItemRenderer instance state.
- * MixinItemRenderer previously added a set of {@code cancelUpdate},
- * {@code cancelReset}, and {@code forceSwordBlockAnimationActive} fields
- * directly onto ItemRenderer. That approach depended on Mixin-injected
- * interfaces which JVMTI RetransformClasses cannot add post-load; keeping
- * the state as a static singleton here lets the module code untouched
- * (aside from the call sites, which now go through this class) and lets
- * TransformerItemRenderer read it later when its @CInject bodies land.
- *
- * The client is single-threaded on the render path (all callers below run
- * on the Minecraft Client thread), so a plain static is safe.
- */
 public final class ItemRendererState {
     private ItemRendererState() {}
 
@@ -45,13 +31,9 @@ public final class ItemRendererState {
     public static boolean isForceSwordBlockAnimationActive() {
         return forceSwordBlockAnimationActive;
     }
-
-    /** Alias kept for MixinItemRenderer / IMixinItemRenderer compatibility. */
-    public static boolean isRenderItemInUse() { return forceSwordBlockAnimationActive; }
+public static boolean isRenderItemInUse() { return forceSwordBlockAnimationActive; }
     public static void setRenderItemInUse(boolean value) { forceSwordBlockAnimationActive = value; }
-
-    /** Keeps per-render temporary state outside the already-loaded ItemRenderer class. */
-    public static void rememberOriginalRenderedItem(ItemStack item) {
+public static void rememberOriginalRenderedItem(ItemStack item) {
         originalRenderedItem.set(item);
     }
 
@@ -60,9 +42,7 @@ public final class ItemRendererState {
         originalRenderedItem.remove();
         return item;
     }
-
-    /** Mirrors MixinItemRenderer.shouldRenderForcedSwordBlock. */
-    public static boolean shouldRenderForcedSwordBlock(ItemStack stack) {
+public static boolean shouldRenderForcedSwordBlock(ItemStack stack) {
         if (!forceSwordBlockAnimationActive) return false;
         Minecraft mc = Minecraft.getMinecraft();
         EntityPlayerSP player = mc == null ? null : mc.thePlayer;
@@ -78,10 +58,6 @@ public final class ItemRendererState {
                 ? null : mc.thePlayer.getHeldItem();
         return held != null && held.getItem() instanceof ItemSword ? held : null;
     }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Animation state (moved from TransformerItemRendererAnimations instance fields)
-    // ─────────────────────────────────────────────────────────────────────────────
     private static float spin;
     private static float delay;
     private static long lastUpdate = System.currentTimeMillis();
@@ -93,19 +69,10 @@ public final class ItemRendererState {
     public static void setDelay(float v) { delay = v; }
     public static void setLastUpdate(long v) { lastUpdate = v; }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Animation runtime (called from @CInline transformer methods)
-    // These MUST be static - JVMTI cannot add methods to loaded classes
-    // ─────────────────────────────────────────────────────────────────────────────
-
     public static boolean isRenderedSword(ItemStack itemToRender) {
         return itemToRender != null && itemToRender.getItem() instanceof ItemSword;
     }
-
-    /**
-     * Applies the blocking animation transform. Called before doBlockTransformations.
-     */
-    public static void applyAnimationTransform(float equippedProgress, float prevEquippedProgress, float partialTicks) {
+public static void applyAnimationTransform(float equippedProgress, float prevEquippedProgress, float partialTicks) {
         float equipProgress = 1.0f - (prevEquippedProgress + (equippedProgress - prevEquippedProgress) * partialTicks);
         AbstractClientPlayer player = Minecraft.getMinecraft().thePlayer;
         if (player == null) return;
@@ -130,13 +97,7 @@ public final class ItemRendererState {
             m.invoke(instance);
         } catch (Exception ignored) {}
     }
-
-    /**
-     * Main animation switch. Caller passes the ItemRenderer instance for reflection calls.
-     */
-    public static void animate(float equip, float sp) {
-        // We use reflection for transformFirstPersonItem and doBlockTransformations
-        // since we can't call them from a static context without the instance
+public static void animate(float equip, float sp) {
         Object renderer = Minecraft.getMinecraft().entityRenderer != null
                 ? Minecraft.getMinecraft().getItemRenderer() : null;
 
@@ -207,15 +168,11 @@ public final class ItemRendererState {
             case 54: GlStateManager.translate(0.56f, -0.52f, -0.72f); GlStateManager.rotate(45, 0, 1, 0); float a154 = MathHelper.sin(sp*sp*3.1415927f); float a254 = MathHelper.sin(MathHelper.sqrt_float(sp)*3.1415927f); GlStateManager.rotate(a154*-20, 0, 1, 0); GlStateManager.rotate(a254*-20, 0, 0, 1); GlStateManager.rotate(a254*-40, 1, 0, 0); GlStateManager.scale(0.4f, 0.4f, 0.4f); if(renderer!=null) doBlockTransformationsRefl(renderer); break;
             case 55: GL11.glTranslated(0, -0.18, -0.1); GlStateManager.translate(-0.5f, 0, 0); if(renderer!=null) doBlockTransformationsRefl(renderer); break;
         }
-
-        // Write back mutable state
         ItemRendererState.spin = spin;
         ItemRendererState.delay = delay;
         ItemRendererState.lastUpdate = lastUpdate;
     }
-
-    /** Get the ItemRenderer instance */
-    public static Object getItemRenderer() {
+public static Object getItemRenderer() {
         Minecraft mc = Minecraft.getMinecraft();
         try {
             java.lang.reflect.Field f = Minecraft.class.getDeclaredField("itemRenderer");

@@ -33,18 +33,14 @@ public abstract class MixinGuiContainerShop {
         if (!name.contains("Shop") && !name.contains("Item Shop") && !name.contains("Upgrades")) return;
 
         if (slot == null || !slot.getHasStack()) return;
-
-        // Delegate to ShopHelper module for decision
         int result = ModuleManager.shopHelper.onShopClick(slot, clickedButton, clickType);
 
         if (result == 1) {
-            // Cancel (prevent duplicate)
             ci.cancel();
             return;
         }
 
         if (result == 2) {
-            // Replace with middle click (quick buy)
             ci.cancel();
             Minecraft.getMinecraft().playerController.windowClick(
                     chest.inventorySlots.windowId,
@@ -55,8 +51,6 @@ public abstract class MixinGuiContainerShop {
             );
             return;
         }
-
-        // Instant buy: force click type to 0 (normal click, bypass shift-click etc.)
         if (ModuleManager.shopHelper.instantBuy.isToggled()) {
             ci.cancel();
             Minecraft.getMinecraft().playerController.windowClick(

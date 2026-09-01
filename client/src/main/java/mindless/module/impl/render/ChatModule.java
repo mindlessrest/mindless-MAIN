@@ -5,19 +5,6 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
-
-/**
- * How the chat box looks: its panel, its typeface, and whether messages are labelled with the
- * face of whoever sent them.
- *
- * <p>Everything here is read by the chat renderer rather than drawn from here. The renderer is a
- * mixin over vanilla's {@code drawChat}, which is the only place with access to the wrapped lines
- * and the scroll position; this module is where the choices live so they can be saved with a
- * profile and edited like any other module's.
- *
- * <p>The module being off leaves the chat exactly as it was: the panel, the animation and the
- * vanilla font are all the defaults, so switching it on and changing nothing changes nothing.
- */
 public class ChatModule extends Module {
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
 
@@ -71,9 +58,7 @@ public class ChatModule extends Module {
     public static boolean drawBackground() {
         return !active() || background == null || background.isToggled();
     }
-
-    /** Panel opacity as a fraction, matching what the blur composite expects. */
-    public static float backgroundOpacity() {
+public static float backgroundOpacity() {
         if (!active() || backgroundOpacity == null) {
             return 0.85f;
         }
@@ -98,20 +83,10 @@ public class ChatModule extends Module {
     public static float headSize() {
         return !active() || headSize == null ? 8.0f : (float) headSize.getInput();
     }
-
-    /** Extra pixels between lines, on top of vanilla's nine. */
-    public static float lineSpacing() {
+public static float lineSpacing() {
         return !active() || lineSpacing == null ? 0.0f : (float) lineSpacing.getInput();
     }
-
-    /**
-     * The face chat should be drawn in, or null to keep the Minecraft one.
-     *
-     * <p>Null rather than an adapter around the vanilla renderer: vanilla wraps the message text
-     * into lines using its own metrics before this ever runs, so the default path has to stay
-     * exactly the font those line breaks were measured with.
-     */
-    public static MindlessFontRenderer getCustomFont() {
+public static MindlessFontRenderer getCustomFont() {
         if (!active() || font == null || isMinecraftFontSelected()) {
             return null;
         }

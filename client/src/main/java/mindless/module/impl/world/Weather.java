@@ -205,14 +205,9 @@ public class Weather extends Module {
             int oR = (c >>> 16) & 0xFF;
             int oG = (c >>> 8) & 0xFF;
             int oB = c & 0xFF;
-            // Lerp 55% toward the configured night tint, keep 45% of the original
-            // block/sky light value so world detail is preserved.
             int nR = (int) Math.round(oR * 0.45 + tR * 0.55);
             int nG = (int) Math.round(oG * 0.45 + tG * 0.55);
             int nB = (int) Math.round(oB * 0.45 + tB * 0.55);
-            // 12% minimum brightness floor, tinted toward the target color so the
-            // darkest lightmap entries read as deep blue/indigo ambient rather
-            // than a flat grey floor.
             int floorR = (int) Math.round(tR * 0.12);
             int floorG = (int) Math.round(tG * 0.12);
             int floorB = (int) Math.round(tB * 0.12);

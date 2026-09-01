@@ -71,7 +71,6 @@ public class Image {
             }
             textureReferences.clear();
             while (textureReferenceQueue.poll() != null) {
-                // Drain references whose textures were deleted above.
             }
         }
     }

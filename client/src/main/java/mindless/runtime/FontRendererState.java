@@ -3,8 +3,6 @@ package mindless.runtime;
 import mindless.module.ModuleManager;
 import mindless.module.impl.other.NameHider;
 import mindless.module.impl.render.AntiShuffle;
-
-/** State and pure helpers that must not be copied onto FontRenderer by JVMTI. */
 public final class FontRendererState {
     private static final ThreadLocal<Boolean> REENTRANT = new ThreadLocal<>();
 

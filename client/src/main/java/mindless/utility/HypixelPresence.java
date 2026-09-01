@@ -14,34 +14,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-/**
- * Everything the Rich Presence knows about the current Hypixel session.
- *
- * <p>Two sources feed this. The scoreboard is free, since it is already on screen, and gives the
- * game, the map and the Skyblock figures. What it will not tell you is which variant of a game you
- * are in -- the Bed Wars sidebar looks the same in Solo as it does in Doubles -- and that variant
- * is the interesting half of a status line. {@code /locraw} answers it authoritatively, so it is
- * asked once per server and its reply is swallowed before it reaches chat. Where both have an
- * opinion, locraw wins and the scoreboard is the fallback.
- *
- * <p>The party chat patterns come from HyCord (DeDiamondPro), which had already worked out how
- * many ways Hypixel can word "somebody joined your party" once ranks, the dungeon finder and the
- * party finder are all in play. They are kept verbatim rather than tidied for exactly that reason:
- * every branch in them is load-bearing against some real message.
- */
 public final class HypixelPresence {
     private HypixelPresence() {
     }
-
-    /**
-     * A rank prefix as it appears in party chat, colour codes and all.
-     *
-     * <p>Every party pattern below embeds this, which is why it is pulled out rather than repeated
-     * nine times. It matches the bracketed ranks, the plus signs MVP++ carries, the odd two-colour
-     * YOUTUBE tag, and the bare grey used for a player with no rank at all.
-     */
-    private static final String RANK =
+private static final String RANK =
             "(\\[(MVP((\u00a7r)?(\u00a7[a-z0-9])?(\\+)){0,2}(\u00a7r)?(\u00a7[a-z0-9])?"
                     + "|VIP(\u00a7r)?(\u00a7[a-z0-9])?\\+?(\u00a7r)?(\u00a7[a-z0-9])?"
                     + "|ADMIN|HELPER|MOD|(\u00a7r)?(\u00a7[a-z0-9])YOUTUBE(\u00a7r)?(\u00a7[a-z0-9]))]"
@@ -89,63 +65,25 @@ public final class HypixelPresence {
     private static final Pattern JOINED = Pattern.compile(
             "\u00a7eYou have joined (\u00a7r)?(\u00a7[a-z0-9])" + RANK
                     + "( )?(?<user>[a-zA-Z0-9_]{3,16})'s \u00a7r\u00a7eparty!\u00a7r");
-
-    /**
-     * The party finder's "you'll be partying with" line.
-     *
-     * <p>The rank is optional here where HyCord had it mandatory. Its version could not match a
-     * list containing anyone without a rank, because a rankless name arrives as a single colour
-     * code that the preceding group has already eaten, leaving nothing for the rank to match.
-     */
-    private static final Pattern PARTY_WITH = Pattern.compile(
+private static final Pattern PARTY_WITH = Pattern.compile(
             "\u00a7eYou'll be partying with: ((\u00a7r)(\u00a7[a-z0-9])" + RANK + "?"
                     + " ?(?<user>[a-zA-Z0-9_]{3,16})\u00a7r(\u00a7e, )?)+");
 
     private static final Pattern SB_TIME = Pattern.compile(" (?<time>[0-9]{1,2}:[0-9]{1,2}(am|pm)) ");
     private static final Pattern SB_DATE = Pattern.compile(" (?<date>[a-zA-Z ]+[0-9]+.{2})");
-
-    /** The Skyblock location marker, which the sidebar puts in front of the area name. */
-    private static final char SKYBLOCK_AREA_MARKER = '\u23e3';
-    /** Bed Wars marks a team's bed as standing with a tick and the team as out with a cross. */
-    private static final char TEAM_BED_ALIVE = '\u2713';
+private static final char SKYBLOCK_AREA_MARKER = '\u23e3';
+private static final char TEAM_BED_ALIVE = '\u2713';
     private static final char TEAM_ELIMINATED = '\u2717';
-
-    /**
-     * A Bed Wars team line: a single letter, the colour, then the team's state.
-     *
-     * <p>Reads "R Red: [tick]" while the bed stands, "B Blue: 3" once it is gone and three players
-     * are left, and "G Green: [cross]" when the team is out. The single leading letter is what
-     * keeps this off the other sidebar lines -- "Beds Destroyed: 3" leads with a whole word.
-     */
-    private static final Pattern BEDWARS_TEAM =
+private static final Pattern BEDWARS_TEAM =
             Pattern.compile("^[A-Z] [A-Za-z]+: *(?<status>\\S+).*$");
-
-    /** How SkyWars and the arcade games count down instead. */
-    private static final Pattern PLAYERS_LEFT =
+private static final Pattern PLAYERS_LEFT =
             Pattern.compile("^Players left: *(?<count>[0-9]+).*$");
 
     private static final Pattern WHITESPACE_RUN = Pattern.compile("\\s{2,}");
-    /** A separator left at either end once the variable beside it turned out to be empty. */
-    private static final Pattern DANGLING_SEPARATOR =
+private static final Pattern DANGLING_SEPARATOR =
             Pattern.compile("^\\s*[-|,:]+\\s*|\\s*[-|,:]+\\s*$");
-
-    /**
-     * Hypixel's internal game ids, spelled the way a person would say them.
-     *
-     * <p>locraw hands back things like {@code SURVIVAL_GAMES} and {@code GINGERBREAD}, which are
-     * the original names of games Hypixel has since renamed. Nobody calls it Gingerbread.
-     */
-    private static final Map<String, String> GAME_NAMES = new HashMap<>();
-
-    /**
-     * Game variants, keyed by id with the game's own prefix already stripped.
-     *
-     * <p>This is the whole point of asking locraw: {@code EIGHT_ONE} is Solo and {@code EIGHT_TWO}
-     * is Doubles, and no amount of staring at the scoreboard will tell you which one you are in.
-     * Anything missing falls through to {@link #prettify}, which is wrong less often than it is
-     * right but never worse than showing the raw id.
-     */
-    private static final Map<String, String> MODE_NAMES = new HashMap<>();
+private static final Map<String, String> GAME_NAMES = new HashMap<>();
+private static final Map<String, String> MODE_NAMES = new HashMap<>();
 
     static {
         GAME_NAMES.put("BEDWARS", "Bed Wars");
@@ -217,16 +155,7 @@ public final class HypixelPresence {
         MODE_NAMES.put("BOW_DUEL", "Bow Duel");
         MODE_NAMES.put("LOBBY", "Lobby");
     }
-
-    /**
-     * How many players a team holds in each Bed Wars style mode id.
-     *
-     * <p>The ids read teams-then-size: {@code EIGHT_TWO} is eight teams of two, {@code FOUR_THREE}
-     * is four teams of three. The second word is therefore the team size, and reading it that way
-     * covers the suffixed variants -- Rush, Lucky, Voidless, Armed -- and any mode Hypixel adds
-     * later, without a table entry for each one.
-     */
-    private static final Map<String, Integer> TEAM_WORDS = new HashMap<>();
+private static final Map<String, Integer> TEAM_WORDS = new HashMap<>();
 
     static {
         TEAM_WORDS.put("ONE", 1);
@@ -240,8 +169,7 @@ public final class HypixelPresence {
 
     private static String game = "";
     private static String mode = "Lobby";
-    /** The mode exactly as locraw spelled it, which is what the team size is read out of. */
-    private static String rawMode = "";
+private static String rawMode = "";
     private static String map = "";
     private static String server = "";
     private static String coins = "";
@@ -252,19 +180,9 @@ public final class HypixelPresence {
 
     private static int partyMembers = 1;
     private static long startedAt = System.currentTimeMillis() / 1000L;
-
-    /** True once locraw has been asked on this server, so it is asked exactly once. */
-    private static boolean askedLocraw;
-    /** True while our own locraw reply is in flight, so only that one gets hidden from chat. */
-    private static boolean awaitingOurLocraw;
-
-    /**
-     * Forgets everything tied to a server.
-     *
-     * <p>Called on world load. The elapsed timer restarts here too, so Discord shows time in the
-     * current game rather than time since the client launched.
-     */
-    public static void reset() {
+private static boolean askedLocraw;
+private static boolean awaitingOurLocraw;
+public static void reset() {
         game = "";
         mode = "Lobby";
         rawMode = "";
@@ -279,17 +197,10 @@ public final class HypixelPresence {
         awaitingOurLocraw = false;
         startedAt = System.currentTimeMillis() / 1000L;
     }
-
-    /** Wipes the party count as well. Only for a full disconnect, not a server hop. */
-    public static void resetParty() {
+public static void resetParty() {
         partyMembers = 1;
     }
-
-    /**
-     * Re-reads the scoreboard. Cheap enough to call often, but the module throttles it anyway
-     * since none of this changes between one tick and the next.
-     */
-    public static void tick(boolean useLocraw) {
+public static void tick(boolean useLocraw) {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.theWorld == null || mc.thePlayer == null) {
             return;
@@ -328,9 +239,6 @@ public final class HypixelPresence {
         if (map.equals("Your Island")) {
             map = "Private Island";
         }
-
-        // The sidebar heading is the game name on every Hypixel server. No heading means limbo,
-        // which is also where you land when the server has nothing to say about you.
         String heading = sidebarHeading();
         if (!heading.isEmpty()) {
             game = heading;
@@ -341,9 +249,6 @@ public final class HypixelPresence {
 
         ItemStack held = mc.thePlayer.getHeldItem();
         itemHeld = held == null ? "" : Utils.stripColor(held.getDisplayName());
-
-        // Hypixel gives each of these its own scoreboard heading, but Discord reads better with
-        // the umbrella name up front and the specific game as the mode.
         if (isOneOf(game, "Bow spleef", "Pvp run") || game.toLowerCase(Locale.ROOT).contains("tnt")) {
             mode = game;
             game = "TNT Games";
@@ -367,15 +272,7 @@ public final class HypixelPresence {
             mc.thePlayer.sendChatMessage("/locraw");
         }
     }
-
-    /**
-     * Feeds a chat line in.
-     *
-     * @param formatted   the message with its colour codes, which the party patterns need
-     * @param unformatted the message stripped, which is what locraw's JSON arrives as
-     * @return true when the line was our own locraw reply and should not reach chat
-     */
-    public static boolean onChat(String formatted, String unformatted) {
+public static boolean onChat(String formatted, String unformatted) {
         if (unformatted.startsWith("{\"server\":\"") && unformatted.endsWith("}")) {
             readLocraw(unformatted);
             if (awaitingOurLocraw) {
@@ -407,9 +304,6 @@ public final class HypixelPresence {
             return false;
         }
         if (PARTY_WITH.matcher(formatted).matches()) {
-            // The line names everyone except you, comma separated, so a list of n names carries
-            // n-1 commas and the party is that plus yourself. HyCord started this count at three
-            // and came out one over on every group size.
             int commas = 0;
             for (int i = 0; i < formatted.length(); i++) {
                 if (formatted.charAt(i) == ',') {
@@ -419,15 +313,11 @@ public final class HypixelPresence {
             partyMembers = commas + 2;
             return false;
         }
-        // Promotions and demotions do not change the head count, but they are matched so the
-        // patterns stay exercised and a future invite button has the leader state to work from.
         PROMOTE.matcher(formatted).matches();
         DEMOTE.matcher(formatted).matches();
         return false;
     }
-
-    /** Pulls what locraw knows over whatever the scoreboard guessed. */
-    private static void readLocraw(String json) {
+private static void readLocraw(String json) {
         try {
             JsonObject root = new JsonParser().parse(json).getAsJsonObject();
             if (root.has("server")) {
@@ -447,12 +337,9 @@ public final class HypixelPresence {
             }
         }
         catch (Exception ignored) {
-            // A malformed reply just leaves the scoreboard's version in place.
         }
     }
-
-    /** Fills in the {@code {...}} placeholders. Empty when the result would not fit Discord. */
-    public static String format(String template) {
+public static String format(String template) {
         if (template == null || template.isEmpty()) {
             return "";
         }
@@ -474,27 +361,11 @@ public final class HypixelPresence {
                 .replace("{time}", sbTime)
                 .replace("{date}", sbDate)
                 .replace("{players}", players);
-
-        // A variable with nothing behind it yet leaves its punctuation stranded: "{game} - {mode}"
-        // becomes " - Solo" in the second before the game name arrives, and "SkyBlock - {map}"
-        // becomes "SkyBlock -" in a lobby. Closing the gap and dropping a dangling separator lets
-        // a template read properly while it is still filling in, rather than only once it is full.
         out = WHITESPACE_RUN.matcher(out).replaceAll(" ").trim();
         out = DANGLING_SEPARATOR.matcher(out).replaceAll("").trim();
-
-        // Discord rejects a field under two characters and truncates past 128, so anything that
-        // lands outside that is dropped rather than sent and shown wrong.
         return out.length() < 2 || out.length() >= 128 ? "" : out;
     }
-
-    /**
-     * The art key for the current game.
-     *
-     * <p>These are asset names, not URLs: they only resolve if art with the same name has been
-     * uploaded to the Discord application. Anything unrecognised falls back to the client's own
-     * logo, which is always present.
-     */
-    public static String iconKey() {
+public static String iconKey() {
         String g = game.toLowerCase(Locale.ROOT).replace(' ', '_');
         if (g.contains("bed_wars") || g.contains("bedwars")) return "bedwars";
         if (g.contains("speed_uhc")) return "speeduhc";
@@ -543,21 +414,7 @@ public final class HypixelPresence {
     public static int getPartyMembers() {
         return partyMembers;
     }
-
-    /**
-     * How many teams are still in the game.
-     *
-     * <p>This is what a solo game has instead of teammates: there is nobody beside you, but there
-     * is a field that shrinks as the lobby is whittled down, which is the interesting number.
-     *
-     * <p>Bed Wars states it a team at a time -- a tick while the bed stands, a count once it is
-     * gone, a cross when the team is out -- so the answer is every team line that is not a cross.
-     * SkyWars and the arcade games say it outright with a "Players left" line, and that is taken
-     * as given when it appears.
-     *
-     * @return teams still alive, or 0 when the scoreboard does not say
-     */
-    public static int getTeamsRemaining() {
+public static int getTeamsRemaining() {
         int alive = 0;
         for (String raw : Utils.getSidebarLines()) {
             String line = cleanLine(raw).trim();
@@ -574,23 +431,8 @@ public final class HypixelPresence {
         }
         return alive;
     }
-
-    /**
-     * How many players fit on a team in the current mode.
-     *
-     * <p>This is what the Discord party field should be counting against. A fixed cap made Solo
-     * read "1 of 10", which is wrong twice over: there is no party of one, and there is no tenth
-     * slot. Doubles is two, 3v3v3v3 is three, 4v4v4v4 and 4v4 are four.
-     *
-     * @return the team size, or 0 when the mode is solo, unknown, or has no meaningful team --
-     *         all of which mean the party field should be left off entirely
-     */
-    public static int getTeamSize() {
+public static int getTeamSize() {
         String id = rawMode;
-
-        // Teams-then-size, with the game prefix already gone: EIGHT_ONE is eight teams of one,
-        // FOUR_THREE is four teams of three. So the word after the first is the team size, and
-        // reading it there survives the suffixed variants -- EIGHT_TWO_RUSH is still doubles.
         String[] parts = id.split("_");
         for (int i = 1; i < parts.length; i++) {
             Integer size = TEAM_WORDS.get(parts[i]);
@@ -608,9 +450,6 @@ public final class HypixelPresence {
         if (id.contains("SOLO") || id.contains("SINGLES") || id.contains("DUEL")) {
             return 0;
         }
-
-        // Nothing in the id, so fall back to the name shown to the player. This is what covers a
-        // mode read off the scoreboard, where there is no id to read at all.
         String pretty = mode.toLowerCase(Locale.ROOT);
         if (pretty.contains("solo")) {
             return 0;
@@ -638,15 +477,7 @@ public final class HypixelPresence {
     public static boolean inLobby() {
         return mode.equalsIgnoreCase("Lobby") || game.equalsIgnoreCase("Lobby");
     }
-
-    /**
-     * Strips formatting the way the sidebar needs it stripped.
-     *
-     * <p>{@link Utils#stripString} drops everything above the ASCII range, which takes the
-     * Skyblock area marker with it and loses the only thing identifying a location line. This
-     * keeps that one character and discards the rest of the high range as usual.
-     */
-    private static String cleanLine(String line) {
+private static String cleanLine(String line) {
         char[] chars = StringUtils.stripControlCodes(line).toCharArray();
         StringBuilder cleaned = new StringBuilder(chars.length);
         for (char c : chars) {
@@ -678,16 +509,7 @@ public final class HypixelPresence {
         String known = GAME_NAMES.get(gametype.toUpperCase(Locale.ROOT));
         return known != null ? known : prettify(gametype);
     }
-
-    /**
-     * Drops the game's own prefix from a mode id.
-     *
-     * <p>Bed Wars reports BEDWARS_EIGHT_ONE, SkyWars reports solo_normal. Removing the prefix lets
-     * one table cover both spellings, and it matters twice over for the team size: with the prefix
-     * still attached, the first word of BEDWARS_EIGHT_ONE is BEDWARS and the second is EIGHT --
-     * the number of teams, not the number of players on one.
-     */
-    private static String stripGamePrefix(String gametype, String rawMode) {
+private static String stripGamePrefix(String gametype, String rawMode) {
         String id = rawMode.toUpperCase(Locale.ROOT);
         String prefix = gametype.toUpperCase(Locale.ROOT) + "_";
         return id.startsWith(prefix) ? id.substring(prefix.length()) : id;
@@ -697,9 +519,7 @@ public final class HypixelPresence {
         String known = MODE_NAMES.get(id);
         return known != null ? known : prettify(id);
     }
-
-    /** {@code EIGHT_ONE} to {@code Eight One}. The fallback when nothing better is known. */
-    private static String prettify(String id) {
+private static String prettify(String id) {
         return titleCase(id.replace('_', ' '));
     }
 

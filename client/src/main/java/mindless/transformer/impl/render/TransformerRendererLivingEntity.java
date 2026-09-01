@@ -102,7 +102,6 @@ public abstract class TransformerRendererLivingEntity {
             ci.setReturnValue(false);
             return;
         }
-        // Suppress vanilla nametags when SexyESP or Nametags renders custom ones
         if (SexyESP.replacesStandaloneNametags() || Nametags.shouldHideVanillaFor(entity)) {
             ci.setReturnValue(false);
         }
@@ -135,19 +134,4 @@ public abstract class TransformerRendererLivingEntity {
     private void nameHider$clearRenderEntity(EntityLivingBase entity, double x, double y, double z, InjectionCallback ci) {
         RendererLivingEntityState.nameHiderRenderNameEntity = null;
     }
-
-    // NOTE: CRedirect on IChatComponent.getFormattedText() inside renderName is not viable —
-    // Lunar's renderName does not call getFormattedText() directly on the display name component.
-    // ProfileSpoofer name replacement is handled via FontRendererState.rewrite() in
-    // TransformerFontRenderer, which intercepts every drawString call including nametags.
-
-    // NOTE: The @ModifyVariable for "modifyInvisibleFlag" in renderModel cannot be
-    // cleanly replicated with CInject/CRedirect (it modifies a local variable store).
-    // PlayerESP showInvis functionality relies on this; it will need a @COverride
-    // of the renderModel method, which is too large to port. This is a known limitation.
-    //
-    // NOTE: The @ModifyArg methods for damageTint on FloatBuffer.put cannot be
-    // cleanly replicated — they modify arguments to specific FloatBuffer.put calls
-    // inside setBrightness. CRedirect cannot match such fine-grained argument
-    // modification without replacing the entire setBrightness method via @COverride.
 }

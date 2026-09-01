@@ -78,17 +78,11 @@ public abstract class TransformerGuiNewChat {
         }
         double newestEase = GuiNewChatState.easeOutCubic(newestProgress);
         double animatedRows = Math.max(0.0, visibleLines - 1.0 + newestEase);
-
-        // Chat's own Font and spacing settings, which this path had never read -- it drew every
-        // line with mc.fontRendererObj regardless of what the module said.
         MindlessFontRenderer chatFont = ChatModule.getCustomFont();
         float rowHeight = (chatFont != null ? chatFont.getLineHeight() : 9.0f) + ChatModule.lineSpacing();
         if (rowHeight < 1.0f) rowHeight = 1.0f;
         float headSize = ChatModule.playerHeads() ? ChatModule.headSize() : 0.0f;
         float textIndent = headSize > 0.0f ? headSize + 2.0f : 0.0f;
-
-        // The panel and the line positions have to agree on a row's height, or a taller face or
-        // extra spacing pushes the oldest messages outside their own background.
         float bgX = 3.0f;
         float bgW = chatWidth * scale + 10.0f + textIndent * scale;
         float bgH = (float) (animatedRows * rowHeight * scale + 10.0f);
@@ -129,7 +123,6 @@ public abstract class TransformerGuiNewChat {
 
             if (headSize > 0.0f) {
                 String sender = GuiNewChatState.senderOf(chatLine.getChatComponent());
-                // Nudged down so the face sits on the text's optical centre rather than its box.
                 GuiNewChatState.drawPlayerHead(sender, x, y - 1.0f, headSize, alpha);
                 GlStateManager.enableBlend();
                 GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
@@ -141,9 +134,6 @@ public abstract class TransformerGuiNewChat {
                     textColor, ChatModule.textShadow(), glow);
         }
         GlStateManager.disableBlend();
-
-        // Only while the chat has actually been scrolled back, and clear of the text. Kept in
-        // step with MixinGuiNewChat, which carries the explanation.
         if (chatOpen && isScrolled && rendered > 0) {
             float fontHeight = rowHeight;
             int totalHeight = (int) (totalLines * fontHeight) + totalLines;

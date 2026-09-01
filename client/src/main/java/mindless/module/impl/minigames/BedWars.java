@@ -140,7 +140,6 @@ public class BedWars extends Module {
         entitySpawnQueue.clear();
         spawnedMobs.clear();
         lastAlertMap.clear();
-        // The bed tracker is shared with BedAura and is not cleared here; see BedAura.onDisable.
         magicMilkExpiresAt = 0L;
         closestEnemySizeInitialized = false;
         closestEnemyVisibilityInitialized = false;
@@ -307,8 +306,6 @@ public class BedWars extends Module {
         syncHudPositions(resolution);
 
         if (showClosestEnemy) {
-            // A destroyed or not-yet-located bed gives no reference of its own, and the
-            // tracker already reports null for both, so there is nothing extra to check here.
             Vec3 bedReference = getOwnBedReference();
             List<EntityPlayer> enemies = findClosestEnemies(
                     bedReference,
@@ -568,15 +565,7 @@ public class BedWars extends Module {
         }
         return false;
     }
-
-    /**
-     * Where your bed is, for ranking enemies by how close they are to it.
-     *
-     * <p>Used to fall back to the spawn anchor when the bed itself had not been located. There is
-     * no anchor any more, and no need for one: an unknown bed gives no reference, and the enemy
-     * list falls back to distance from you, which is the honest answer.
-     */
-    private Vec3 getOwnBedReference() {
+private Vec3 getOwnBedReference() {
         return OwnBedTracker.getOwnBedCenter();
     }
 
@@ -609,9 +598,7 @@ public class BedWars extends Module {
         }
         return player.getDistance(bedReference.xCoord, bedReference.yCoord, bedReference.zCoord);
     }
-
-    /** Only for leaving the world -- the tracked bed is shared, see onDisable. */
-    private void resetSpawnTracking() {
+private void resetSpawnTracking() {
         OwnBedTracker.reset();
     }
 

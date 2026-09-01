@@ -11,42 +11,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
-
-/**
- * Pushes Rich Presence to every Discord client running on this machine.
- *
- * <p>Discord listens on a named pipe per instance, numbered from zero, so stable, PTB, Canary and
- * a second account each get their own. All of them are offered the same presence.
- *
- * <p>Everything touching a pipe happens on the worker thread. It used to happen on the game
- * thread, which is what made this unreliable: a named pipe read blocks with no timeout, so any
- * Discord that was slow to answer took the game down with it, and any Discord that went away took
- * the presence down for the rest of the session. See {@link #pump} for what the worker guarantees.
- */
 public class DiscordRPC {
-    /** Discord numbers its pipes from zero. Ten covers more clients than anyone runs at once. */
-    private static final int MAX_PIPES = 10;
-    /** How long to wait before hunting for pipes again after finding none. */
-    private static final long RECONNECT_INTERVAL_MS = 5000L;
-    /** Worker cycle. Fast enough that a presence change lands promptly, slow enough to be free. */
-    private static final long POLL_INTERVAL_MS = 100L;
-    /**
-     * How long the worker may go without completing a cycle before it is assumed wedged.
-     *
-     * <p>The only way it can wedge is a pipe read that never returns. Closing the pipe from
-     * another thread makes that read throw, which is how the watchdog frees it.
-     */
-    private static final long STALL_TIMEOUT_MS = 10000L;
-    /**
-     * Discord rate limits activity updates to five in any twenty seconds and quietly drops the
-     * rest, so the presence would stick on whatever was sent when the budget ran out. A bucket of
-     * five refilling one per four seconds is the same allowance, spent deliberately: a burst when
-     * you change game, then a trickle.
-     */
-    private static final int RATE_LIMIT_BURST = 5;
+private static final int MAX_PIPES = 10;
+private static final long RECONNECT_INTERVAL_MS = 5000L;
+private static final long POLL_INTERVAL_MS = 100L;
+private static final long STALL_TIMEOUT_MS = 10000L;
+private static final int RATE_LIMIT_BURST = 5;
     private static final long RATE_LIMIT_REFILL_MS = 4000L;
-    /** Frames to look through for our own reply before giving up on a connection. */
-    private static final int MAX_REPLY_SCAN = 8;
+private static final int MAX_REPLY_SCAN = 8;
 
     private static final int OP_HANDSHAKE = 0;
     private static final int OP_FRAME = 1;
@@ -61,23 +33,13 @@ public class DiscordRPC {
     private volatile RichPresence desired;
     private volatile boolean running;
     private volatile long lastCycleAt;
-    /**
-     * The connection currently mid-handshake in {@link #findPipes()}, if any.
-     *
-     * <p>A handshake read has no timeout and happens before the connection is added to
-     * {@link #connections}, so the stall watchdog needs a second place to look — otherwise a
-     * Discord that opens the pipe but never answers the handshake wedges the worker forever with
-     * nothing in {@code connections} for {@link #update} to force-close.
-     */
-    private volatile Connection connectingPipe;
+private volatile Connection connectingPipe;
     private Thread worker;
 
     public DiscordRPC(String clientId) {
         this.clientId = clientId;
     }
-
-    /** Starts the worker. Returns immediately; the pipes are found on the worker's own time. */
-    public void connect() {
+public void connect() {
         synchronized (lifecycleLock) {
             if (running) {
                 return;
@@ -95,25 +57,12 @@ public class DiscordRPC {
             worker.start();
         }
     }
-
-    /**
-     * Hands the worker the presence to aim for. Safe to call every tick; it never blocks and never
-     * touches a pipe.
-     *
-     * <p>This is a target, not a send. If Discord is missing, or the rate limit budget is spent,
-     * the worker keeps this and sends it when it can, so the presence always converges on the
-     * latest state rather than getting stuck on whatever happened to fit through.
-     */
-    public void update(RichPresence presence) {
+public void update(RichPresence presence) {
         desired = presence;
         if (!running) {
             connect();
             return;
         }
-
-        // A worker that has not finished a cycle in this long is blocked in a pipe read. Closing
-        // the pipes under it is what makes that read throw so it can recover. That includes a
-        // connection still mid-handshake in findPipes(), which isn't in `connections` yet.
         if (System.currentTimeMillis() - lastCycleAt > STALL_TIMEOUT_MS) {
             System.out.println("[discord rpc] worker stalled, dropping connections to free it");
             for (Connection c : connections) {
@@ -129,18 +78,14 @@ public class DiscordRPC {
     public boolean isConnected() {
         return !connections.isEmpty();
     }
-
-    /** Which Discord clients are attached right now, for the diagnostic command. */
-    public List<String> describeConnections() {
+public List<String> describeConnections() {
         List<String> out = new ArrayList<>();
         for (Connection c : connections) {
             out.add(c.label);
         }
         return out;
     }
-
-    /** The presence the worker is trying to get to, whether or not it has landed yet. */
-    public RichPresence getDesired() {
+public RichPresence getDesired() {
         return desired;
     }
 
@@ -155,19 +100,7 @@ public class DiscordRPC {
         }
         connections.clear();
     }
-
-    /**
-     * The worker.
-     *
-     * <p>Three things it promises, each of which was broken before. A connection that dies is
-     * dropped from the list rather than left in it marked dead, because a list of dead connections
-     * is not empty and so never triggered a reconnect -- one hiccup and the presence was gone
-     * until the module was toggled. A send is only counted as done once a Discord actually
-     * accepted it, so a failed send is retried instead of being remembered as sent. And no send
-     * goes out without a rate limit token, because the updates over the limit were not queued,
-     * they were discarded.
-     */
-    private void pump() {
+private void pump() {
         int tokens = RATE_LIMIT_BURST;
         long lastRefillAt = System.currentTimeMillis();
         long nextConnectAt = 0L;
@@ -185,19 +118,11 @@ public class DiscordRPC {
                 }
 
                 dropDeadConnections();
-
-                // Probed on a timer regardless of whether we already have connections, so a
-                // Discord client launched after the first one is still picked up. findPipes()
-                // skips indices we're already attached to, so this is cheap once things are
-                // steady.
                 if (now >= nextConnectAt) {
                     nextConnectAt = now + RECONNECT_INTERVAL_MS;
                     int before = connections.size();
                     findPipes();
                     if (connections.size() != before) {
-                        // A freshly attached client has no presence set yet, so whatever we
-                        // last sent to the others no longer applies everywhere and has to go
-                        // out again.
                         sentSignature = null;
                     }
                 }
@@ -209,8 +134,6 @@ public class DiscordRPC {
                         tokens--;
                         if (send(target)) {
                             sentSignature = signature;
-                            // Only reached when the presence actually changed and Discord took
-                            // it, so this cannot spam the way a per-update log would.
                             System.out.println("[discord rpc] set: " + target.details
                                     + " / " + target.state);
                         }
@@ -233,9 +156,7 @@ public class DiscordRPC {
             }
         }
     }
-
-    /** @return true when at least one Discord took the update. */
-    private boolean send(RichPresence presence) {
+private boolean send(RichPresence presence) {
         String json = buildActivityJson(presence);
         boolean delivered = false;
         for (Connection c : connections) {
@@ -256,15 +177,7 @@ public class DiscordRPC {
             }
         }
     }
-
-    /**
-     * Probes every pipe index not already attached.
-     *
-     * <p>Indices already in {@link #connections} are skipped so this is safe to call on every
-     * reconnect tick, not just when we have nothing -- that's what lets a second Discord client
-     * be discovered after the first one is already up.
-     */
-    private void findPipes() {
+private void findPipes() {
         Set<Integer> already = new HashSet<>();
         for (Connection c : connections) {
             already.add(c.getPipeIndex());
@@ -285,16 +198,7 @@ public class DiscordRPC {
             }
         }
     }
-
-    /**
-     * Builds the SET_ACTIVITY payload.
-     *
-     * <p>Fields are collected and joined rather than concatenated with trailing commas that get
-     * mopped up afterwards. The old version stripped every {@code ,}} in the finished document,
-     * which also reached inside the user's own text -- a map or template containing that pair came
-     * out quietly altered.
-     */
-    private String buildActivityJson(RichPresence presence) {
+private String buildActivityJson(RichPresence presence) {
         List<String> activity = new ArrayList<>(6);
         if (presence.details != null && !presence.details.isEmpty()) {
             activity.add(quoted("details", presence.details));
@@ -369,15 +273,7 @@ public class DiscordRPC {
             return 0L;
         }
     }
-
-    /**
-     * Escapes a string for JSON.
-     *
-     * <p>Quotes and backslashes were handled; control characters were not, so a stray newline or
-     * tab anywhere in an item name or a template produced a malformed frame that Discord rejected
-     * whole. The presence then simply did not change, with nothing to say why.
-     */
-    private static String escape(String s) {
+private static String escape(String s) {
         StringBuilder out = new StringBuilder(s.length() + 8);
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
@@ -409,9 +305,7 @@ public class DiscordRPC {
             Thread.currentThread().interrupt();
         }
     }
-
-    /** One connection to a single Discord instance. Only ever touched by the worker. */
-    private static final class Connection {
+private static final class Connection {
         private final String clientId;
         private final int pipeIndex;
         private volatile RandomAccessFile pipe;
@@ -468,19 +362,12 @@ public class DiscordRPC {
             }
             return false;
         }
-
-        /** @return true when Discord acknowledged this update. */
-        boolean send(String json) {
+boolean send(String json) {
             if (!alive) {
                 return false;
             }
             try {
                 sendPacket(OP_FRAME, json);
-
-                // Discord is free to send events we did not ask for, and used to send a PING that
-                // went unanswered. Taking the next frame as the reply meant one stray frame put
-                // every later read one behind, so replies drifted further out of step until the
-                // connection was useless. Frames are now matched, and anything else handled.
                 for (int i = 0; i < MAX_REPLY_SCAN; i++) {
                     Frame frame = readFrame();
                     if (frame == null) {
@@ -507,9 +394,6 @@ public class DiscordRPC {
                         return true;
                     }
                 }
-
-                // Never found our reply. The stream is out of step, so the connection is finished
-                // rather than left to drift.
                 System.out.println("[discord rpc] " + label + " lost sync, reconnecting");
                 alive = false;
                 return false;
@@ -520,9 +404,7 @@ public class DiscordRPC {
                 return false;
             }
         }
-
-        /** Closes the pipe from any thread, which also frees a worker blocked in a read. */
-        void forceClose() {
+void forceClose() {
             alive = false;
             RandomAccessFile open = pipe;
             if (open == null) {
@@ -638,12 +520,8 @@ public class DiscordRPC {
         public RichPresence startTimestamp(long timestamp) { this.startTimestamp = timestamp; return this; }
         public RichPresence largeImage(String key, String text) { this.largeImage = key; this.largeText = text; return this; }
         public RichPresence smallImage(String key, String text) { this.smallImage = key; this.smallText = text; return this; }
-
-        /** Renders next to the state as "(1 of 10)". A max of zero leaves the party off entirely. */
-        public RichPresence party(int size, int max) { this.partySize = size; this.partyMax = max; return this; }
-
-        /** Everything the pipe actually sends, so an unchanged presence is not sent twice. */
-        public String signature() {
+public RichPresence party(int size, int max) { this.partySize = size; this.partyMax = max; return this; }
+public String signature() {
             return details + " " + state + " " + largeImage + " " + largeText
                     + " " + smallImage + " " + smallText
                     + " " + partySize + "/" + partyMax + " " + startTimestamp;

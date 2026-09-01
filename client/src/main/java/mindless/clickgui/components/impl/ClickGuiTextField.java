@@ -54,19 +54,7 @@ public class ClickGuiTextField {
 
     private long lastCursorTick;
     private boolean cursorVisible;
-
-    /**
-     * Index of the first character drawn.
-     *
-     * <p>GuiTextField keeps one of these too, and reading it was the bug. It derives its own from
-     * the vanilla font at the width the field was constructed with -- one hundred pixels, a number
-     * this class never uses -- while everything drawn here is measured with the ClickGui font at
-     * half scale across whatever the row actually spans. The two windows disagreed, so the caret
-     * would leave the drawn range and stay pinned at an edge, the text stopped following it, and
-     * anything past the right of the box was simply unreachable. Arrow keys, selection and paste
-     * were all working the whole time; none of their results could be seen.
-     */
-    private int scrollOffset;
+private int scrollOffset;
 
     public ClickGuiTextField(String placeholder, int maxLength) {
         this(placeholder, maxLength, DEFAULT_TEXT_SCALE);
@@ -157,14 +145,7 @@ public class ClickGuiTextField {
             lastCursorTick = System.currentTimeMillis();
         }
     }
-
-    /**
-     * Slides the window so the caret is always inside it, and no further than it has to.
-     *
-     * <p>The caret is allowed one pixel of its own at the right edge, or a caret sitting at the
-     * very end of a string that exactly fills the box lands on the boundary and is clipped.
-     */
-    private void updateScroll(String text, int cursor, float width, MindlessFontRenderer renderer) {
+private void updateScroll(String text, int cursor, float width, MindlessFontRenderer renderer) {
         if (scrollOffset > text.length()) {
             scrollOffset = text.length();
         }
@@ -174,8 +155,6 @@ public class ClickGuiTextField {
         while (scrollOffset < cursor && measure(text, scrollOffset, cursor, renderer) > width - 1.0f) {
             scrollOffset++;
         }
-        // Anything the window could show without pushing the caret out, it should: otherwise
-        // deleting from the end leaves the field scrolled with blank space against its right edge.
         while (scrollOffset > 0 && measure(text, scrollOffset - 1, text.length(), renderer) <= width - 1.0f) {
             scrollOffset--;
         }

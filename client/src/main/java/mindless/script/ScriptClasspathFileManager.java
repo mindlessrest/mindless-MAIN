@@ -6,12 +6,6 @@ import java.io.*;
 import java.net.URI;
 import java.util.Collections;
 import java.util.Set;
-
-/**
- * A ForwardingJavaFileManager that resolves class files from the game's classloader
- * when the underlying StandardJavaFileManager can't find them on disk.
- * This is needed on Lunar where Minecraft classes only exist in memory.
- */
 public class ScriptClasspathFileManager extends ForwardingJavaFileManager<StandardJavaFileManager> {
 
     public ScriptClasspathFileManager(StandardJavaFileManager delegate) {
@@ -35,8 +29,6 @@ public class ScriptClasspathFileManager extends ForwardingJavaFileManager<Standa
     @Override
     public Iterable<JavaFileObject> list(JavaFileManager.Location location, String packageName, Set<JavaFileObject.Kind> kinds, boolean recurse) throws IOException {
         Iterable<JavaFileObject> result = super.list(location, packageName, kinds, recurse);
-        // We can't enumerate all classes in memory — just return what the delegate has.
-        // Individual class lookups will be handled by inferBinaryName + getJavaFileForInput.
         return result;
     }
 
@@ -54,19 +46,15 @@ public class ScriptClasspathFileManager extends ForwardingJavaFileManager<Standa
     }
 
     private static byte[] loadClassBytes(String className) {
-        // May be null: Lunar/Genesis has no LaunchWrapper class loader.
         ClassLoader launchLoader = ScriptManager.launchClassLoader();
 
         try {
-            // Try LaunchClassLoader.getClassBytes() — transformed bytes, not resources
             if (launchLoader != null) {
                 java.lang.reflect.Method getClassBytes = launchLoader.getClass().getMethod("getClassBytes", String.class);
                 byte[] bytes = (byte[]) getClassBytes.invoke(launchLoader, className.replace('/', '.'));
                 if (bytes != null) return bytes;
             }
         } catch (Throwable ignored) {}
-
-        // Fallback: try getResourceAsStream
         try {
             String resourcePath = className.replace('.', '/') + ".class";
             ClassLoader resourceLoader = launchLoader != null ? launchLoader : ScriptManager.scriptParentClassLoader();

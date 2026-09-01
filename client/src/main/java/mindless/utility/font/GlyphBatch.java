@@ -5,28 +5,6 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
 import java.nio.FloatBuffer;
-
-/**
- * Collects glyph quads and submits them as one draw.
- *
- * <p>Immediate mode charges per call, not per pixel. A glyph drawn with a bind, a colour, a
- * glBegin, four texture coordinates, four vertices and a glEnd is thirteen crossings into the
- * driver for two triangles; a HUD with a few thousand glyphs on it spends milliseconds doing
- * nothing but crossing. The same quads written into a client-side vertex array and handed over
- * with a single glDrawArrays cost three pointer calls and one draw, whatever the count.
- *
- * <p>Interleaved rather than three separate arrays: position, texture coordinate and colour for
- * one vertex sit next to each other, so the vertex puller walks memory forwards instead of
- * jumping between three regions.
- *
- * <p>Colour travels per vertex instead of as a state change, which is what lets a string with
- * formatting codes in it -- or a whole ring of glow passes in different tints -- stay a single
- * batch. The cost is that the GL current colour is left holding whatever the last vertex carried,
- * so it is put back explicitly when the batch closes.
- *
- * <p>begin/end nest. Callers that draw a string at a time get one batch per string; callers that
- * wrap a group of strings get one batch for the group.
- */
 public final class GlyphBatch {
     private static final int FLOATS_PER_VERTEX = 8;
     private static final int STRIDE = FLOATS_PER_VERTEX * 4;
@@ -60,13 +38,7 @@ public final class GlyphBatch {
 
         flush();
     }
-
-    /**
-     * @param textureId atlas page holding the glyph; zero means nothing to draw
-     * @param x         left edge, in the caller's own coordinate space
-     * @param y         top edge
-     */
-    public static void quad(int textureId, float x, float y, float width, float height,
+public static void quad(int textureId, float x, float y, float width, float height,
                             float u0, float v0, float u1, float v1,
                             float red, float green, float blue, float alpha) {
         if (textureId == 0 || width <= 0.0f || height <= 0.0f) {
@@ -90,13 +62,7 @@ public final class GlyphBatch {
     private static void vertex(float x, float y, float u, float v, float red, float green, float blue, float alpha) {
         VERTICES.put(x).put(y).put(u).put(v).put(red).put(green).put(blue).put(alpha);
     }
-
-    /**
-     * Establishes its own state rather than trusting whatever begin() left behind. A batch that is
-     * held open across other drawing -- a row of text over a panel, say -- would otherwise flush
-     * into whatever blend mode or texture enable that other drawing had switched to.
-     */
-    private static void flush() {
+private static void flush() {
         if (quads == 0 || texture == 0) {
             VERTICES.clear();
             quads = 0;
@@ -113,9 +79,6 @@ public final class GlyphBatch {
         GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
         GL11.glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
         GL11.glEnableClientState(GL11.GL_COLOR_ARRAY);
-
-        // LWJGL reads the pointer from the buffer position, so each attribute is aimed by moving
-        // the position to its offset within the first vertex.
         VERTICES.position(0);
         GL11.glVertexPointer(2, STRIDE, VERTICES);
         VERTICES.position(2);
@@ -130,11 +93,6 @@ public final class GlyphBatch {
         GL11.glDisableClientState(GL11.GL_VERTEX_ARRAY);
 
         GlStateManager.bindTexture(0);
-
-        // The colour array left the GL current colour holding the last vertex it drew, and
-        // GlStateManager has no idea -- its cache still says whatever was set before the batch, so
-        // asking it for white can early-out and change nothing. Set it through the cache first so
-        // the cache agrees, then force the driver directly so it agrees too.
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 

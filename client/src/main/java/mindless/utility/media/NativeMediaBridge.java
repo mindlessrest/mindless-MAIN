@@ -19,39 +19,13 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
-
-/**
- * The client's half of the media bridge.
- *
- * <p>The native side used to expose one call that returned everything -- title, artist, album,
- * position, the artwork as base64 and the entire timed-lyrics array -- and this class polled it
- * twenty times a second. Every one of those polls re-serialised a hundred kilobytes of artwork and
- * lyrics that had not changed since the track started, and most of the caching in here existed
- * purely to throw the duplicate work away again after paying for it.
- *
- * <p>It is now a call per thing, each polled at the rate that thing actually changes: position
- * every tick because it moves continuously and costs a hundred bytes, the track description only
- * when a track might have changed, artwork and lyrics only once per track and only if something is
- * actually going to draw them. A feature switched off in the mini player is never fetched at all.
- */
 final class NativeMediaBridge {
     private static final String[] LIBRARY_BASENAMES = new String[] { "MindlessMediaBridge" };
     private static final String BUNDLED_LIBRARY_RESOURCE = "/mindless/native/MindlessMediaBridge.dll";
-
-    /** The source application changes only when a different player takes over the session. */
-    private static final long APP_POLL_INTERVAL_MS = 1000L;
-    /** Title/artist/album change once a track; this only has to be quick enough to look instant. */
-    private static final long DESCRIPTION_POLL_INTERVAL_MS = 400L;
-    /** How often to re-ask while a lyrics lookup is still in flight. */
-    private static final long LYRICS_RETRY_INTERVAL_MS = 1000L;
-    /**
-     * How long "this track has no lyrics" is believed before asking once more.
-     *
-     * <p>Not forever, because that answer is also what a failed lookup produces: a provider
-     * timing out caches an empty result, and latching on it meant a song that briefly could not
-     * be reached never showed lyrics again for the rest of the session.
-     */
-    private static final long LYRICS_ABSENT_RETRY_MS = 60000L;
+private static final long APP_POLL_INTERVAL_MS = 1000L;
+private static final long DESCRIPTION_POLL_INTERVAL_MS = 400L;
+private static final long LYRICS_RETRY_INTERVAL_MS = 1000L;
+private static final long LYRICS_ABSENT_RETRY_MS = 60000L;
 
     private static volatile String lastLoadFailure;
 
@@ -115,14 +89,7 @@ final class NativeMediaBridge {
     public static String getLastLoadFailure() {
         return lastLoadFailure;
     }
-
-    /**
-     * Reads the current session.
-     *
-     * @param wantLyrics  whether anything is going to draw lyrics; when false they are never fetched
-     * @param wantArtwork whether anything is going to draw album art; when false it is never fetched
-     */
-    public SystemMediaInfo poll(boolean wantLyrics, boolean wantArtwork) {
+public SystemMediaInfo poll(boolean wantLyrics, boolean wantArtwork) {
         if (library == null) {
             return SystemMediaInfo.unavailable();
         }
@@ -164,8 +131,6 @@ final class NativeMediaBridge {
                 thumbnailKey = artworkKey;
             }
             else {
-                // Nothing is drawing it, so drop what we were holding rather than pinning a
-                // bitmap for a panel that is switched off.
                 artworkTrackKey = "";
                 artworkBytes = null;
                 artworkKey = "";
@@ -231,28 +196,8 @@ final class NativeMediaBridge {
             artworkKey = "";
         }
     }
-
-    /**
-     * Fetches lyrics at most once per track, and stops asking once the answer is known.
-     *
-     * <p>The native side reports a state rather than just a list. {@code absent} means every
-     * provider was asked and none of them had this track, which is a permanent answer for as long
-     * as it is playing -- so nothing here ever asks again. {@code pending} means a lookup is still
-     * running, which is the only case worth re-polling, and then only about once a second.
-     */
-    private void refreshLyrics(long now) {
-        // Keyed on the song, not on the full track key.
-        //
-        // The track key carries the source app and the album as well, and those are not stable
-        // across a pause: the session republishes and the album can come back empty for a poll or
-        // two. Resetting on that threw away lyrics that were already on screen for a song that had
-        // not changed, and the reported symptom was exactly that -- pause, play the same song, and
-        // the lyrics never come back. The lookup itself only ever used title and artist, so this
-        // now matches what actually identifies the words.
+private void refreshLyrics(long now) {
         String songKey = cachedTitle + "" + cachedArtist;
-
-        // A blank title or artist is a blip between polls rather than a new song. Leave whatever
-        // is already showing alone until the session says something real again.
         if (cachedTitle.isEmpty() || cachedArtist.isEmpty()) {
             return;
         }
@@ -311,8 +256,6 @@ final class NativeMediaBridge {
         lyricsLines = null;
     }
 
-    // ------------------------------------------------------------------ visualiser
-
     public void audioStart() {
         if (library != null) {
             try {
@@ -354,9 +297,7 @@ final class NativeMediaBridge {
             }
         }
     }
-
-    /** Fills {@code bars} with heights in 0..1 and returns how many were written. */
-    public int readSpectrum(float[] bars) {
+public int readSpectrum(float[] bars) {
         if (library == null || bars == null || bars.length == 0) {
             return 0;
         }
@@ -380,8 +321,6 @@ final class NativeMediaBridge {
         }
     }
 
-    // ------------------------------------------------------------------ plumbing
-
     private String readString(Pointer pointer) {
         if (pointer == null) {
             return "";
@@ -398,9 +337,7 @@ final class NativeMediaBridge {
             }
         }
     }
-
-    /** Reads and frees a native string, then parses it. Null when it was not a JSON object. */
-    private JsonObject readJson(Pointer pointer) {
+private JsonObject readJson(Pointer pointer) {
         String json = readString(pointer);
         if (json.trim().isEmpty()) {
             return null;

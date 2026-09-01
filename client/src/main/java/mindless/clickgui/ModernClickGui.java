@@ -6,9 +6,7 @@ import mindless.clickgui.components.impl.ModuleComponent;
 import mindless.module.Module;
 import mindless.module.setting.Setting;
 import mindless.module.setting.impl.*;
-import mindless.module.impl.client.CommandLine;
 import mindless.module.impl.client.Gui;
-import mindless.utility.CommandHandler;
 import mindless.utility.BlockSearchIndex;
 import mindless.utility.ItemSearchIndex;
 import mindless.utility.PlayerRelationsManager;
@@ -47,81 +45,37 @@ import java.util.Map;
 import java.util.Set;
 
 import javax.imageio.ImageIO;
-
-/**
- * Mindless' registry-driven three-panel ClickGUI. The legacy components remain
- * alive behind this screen because profiles, scripts and setting visibility use
- * them as their compatibility index; this class only replaces presentation.
- */
 public final class ModernClickGui extends ClickGui {
     private static final String LOGO_RESOURCE = "/assets/mindless/textures/gui/logo.png";
     private static final String FALLBACK_FONT_REGULAR = "Sf-Regular";
     private static final String FALLBACK_FONT_BOLD = "Sf-Bold";
     private static final float LOGO_DRAW_W = 30f;
     private static final float LOGO_DRAW_H = 20f;
-    /**
-     * The logo ships at 1536x1024 and is drawn into thirty pixels by twenty.
-     *
-     * <p>Left at full size that is a fifty-fold reduction performed by the texture sampler every
-     * frame, and a bilinear tap reads a two-by-two neighbourhood however large the footprint it
-     * stands for -- so all but a handful of the source pixels were never consulted, and which
-     * handful it landed on shifted as the panel moved. That is the shimmer. Rasterising once at
-     * load, by halving repeatedly so every pixel contributes, is the same reasoning already
-     * applied to the fonts on this screen.
-     *
-     * <p>Four times the drawn size leaves headroom for the largest GUI scale without going back to
-     * a reduction the sampler cannot do well. It also returns about six megabytes of texture
-     * memory that were being held for a thirty-pixel logo.
-     */
-    private static final int LOGO_RASTER_W = (int) LOGO_DRAW_W * 4;
+private static final int LOGO_RASTER_W = (int) LOGO_DRAW_W * 4;
     private static final int LOGO_RASTER_H = (int) LOGO_DRAW_H * 4;
-    /** Cloud is hidden from the sidebar; flip to re-expose it. */
-    private static final boolean SHOW_CLOUD_TAB = false;
     private static final float CATEGORY_ROW_HEIGHT = 21f;
     private static final float CATEGORY_ROW_STEP = 22f;
     private static final float MODULE_ROW_HEIGHT = 26f;
     private static final float MODULE_ROW_STEP = 30f;
     private static final float DROPDOWN_MIN_W = 78f;
     private static final float DROPDOWN_MAX_W = 156f;
-    /** Gap kept between a setting's label and its dropdown. */
-    private static final float DROPDOWN_LABEL_GAP = 10f;
-    /**
-     * Narrowest a control may be before it stops being usable.
-     *
-     * <p>Every control in the panel starts at one column so they read as a set rather than each
-     * sitting wherever its own label happened to end. Where that column falls is worked out from
-     * the module rather than fixed, but a slider you cannot aim at is no better than a label you
-     * cannot read, so it does not go below this.
-     */
-    private static final float CONTROL_MIN_W = 92f;
-    /** Narrowest the number column is allowed to get, so short values still line up. */
-    private static final float VALUE_MIN_W = 16f;
-    /** Widest it may grow before the label starts losing more than the number gains. */
-    private static final float VALUE_MAX_W = 52f;
-    /** Gap between the number and the control column. */
-    private static final float VALUE_GAP = 8f;
-    /** Gap between a label and whatever comes after it. */
-    private static final float LABEL_GAP = 10f;
-    /** Label sizes tried in order; the first that lets everything fit wins. */
-    private static final float[] LABEL_SCALES = {.75f, .70f, .64f, .58f};
-    /** Vertical gap between setting rows. Shared by the draw and the hit-test walk. */
-    private static final float SETTING_GAP = 4f;
-    /** Most options a string setting may have before it is a dropdown rather than segments. */
-    private static final int MAX_SEGMENTS = 3;
-    /** Gap between the buttons of a segmented picker. */
-    private static final float SEGMENT_GAP = 4f;
-    /** Height of a control inside its row. */
-    private static final float CONTROL_HEIGHT = 22f;
+private static final float DROPDOWN_LABEL_GAP = 10f;
+private static final float CONTROL_MIN_W = 92f;
+private static final float VALUE_MIN_W = 16f;
+private static final float VALUE_MAX_W = 52f;
+private static final float VALUE_GAP = 8f;
+private static final float LABEL_GAP = 10f;
+private static final float[] LABEL_SCALES = {.75f, .70f, .64f, .58f};
+private static final float SETTING_GAP = 4f;
+private static final int MAX_SEGMENTS = 3;
+private static final float SEGMENT_GAP = 4f;
+private static final float CONTROL_HEIGHT = 22f;
 
     private static int ACCENT = argb(255, 159, 143, 210);
     private static int ACCENT_SOFT = argb(42, 159, 143, 210);
     private static int ACCENT_FOREGROUND = argb(255, 25, 22, 31);
-    // Compatibility aliases keep the setting renderer concise while the visual
-    // palette itself is now lavender rather than the previous gold theme.
     private static int GOLD = ACCENT;
     private static int GOLD_SOFT = ACCENT_SOFT;
-    // Surfaces are no longer constants: a theme may repaint the whole chrome, not just the
-    // accent and text. DEFAULT_* keeps the stock look so surface theming can be switched off.
     private static final int DEFAULT_PANEL = argb(232, 13, 16, 18);
     private static final int DEFAULT_PANEL_ALT = argb(236, 15, 18, 20);
     private static final int DEFAULT_ROW = argb(224, 24, 27, 28);
@@ -139,25 +93,18 @@ public final class ModernClickGui extends ClickGui {
     private static int CONTROL_HOVER = DEFAULT_CONTROL_HOVER;
     private static int BORDER = DEFAULT_BORDER;
     private static int DIVIDER = DEFAULT_DIVIDER;
-    // The dropdown gets its own three so it is not welded to the panel and the accent.
     private static int DROPDOWN_BG = DEFAULT_PANEL_ALT;
     private static int DROPDOWN_BORDER = DEFAULT_BORDER;
     private static int DROPDOWN_SELECTED = argb(80, 159, 143, 210);
-    /** What the surface palette was last derived from; -1 means "currently stock". */
-    private static int surfaceSeed = -1;
+private static int surfaceSeed = -1;
     private static int TEXT = argb(255, 235, 234, 230);
     private static int MUTED = argb(255, 157, 158, 156);
     private static int DIM = argb(255, 105, 108, 108);
     private static final int DANGER = argb(255, 219, 104, 100);
     private static final float TEXT_SCALE = .92f;
-
-    /** Width of the number column, recomputed each frame from the open module's sliders. */
-    private float sliderValueWidth = VALUE_MIN_W;
-    /** Width and size of the label column, likewise. */
-    private float settingLabelWidth = 60f;
+private float sliderValueWidth = VALUE_MIN_W;
     private float settingLabelScale = LABEL_SCALES[0];
-    /** Where the controls start, once the label and number have taken what they need. */
-    private float settingControlLeft = Float.NaN;
+private float settingControlLeft = Float.NaN;
     private Module.category selectedCategory = Module.category.combat;
     private Module selectedModule;
     private float moduleScroll;
@@ -172,16 +119,7 @@ public final class ModernClickGui extends ClickGui {
     private TextSetting activeText;
     private Setting activeList;
     private String listDraft = "";
-
-    /**
-     * Caret, selection and clipboard for whichever field currently has focus.
-     *
-     * <p>One instance covers the setting input, the list input and the command line because only
-     * one of them can be focused at a time. Each loads its value on focus and takes the edits
-     * straight back, so the strings around it stay the source of truth for everything that reads
-     * them. The search box is not routed through here -- it already had its own equivalent.
-     */
-    private final TextEditor editor = new TextEditor();
+private final TextEditor editor = new TextEditor();
     private Setting suggestionSetting;
     private String suggestionQuery = "";
     private List<Suggestion> suggestionCache = Collections.emptyList();
@@ -192,33 +130,15 @@ public final class ModernClickGui extends ClickGui {
     private int sliderEditCaret;
     private int sliderEditAnchor;
     private SliderSetting openDropdown;
-    /** Screen Y of the open dropdown's trigger row, used for overlay positioning. */
-    private float dropdownAnchorY = 0f;
-    /** Width of the open dropdown's control, so the overlay lines up with its trigger. */
-    private float dropdownWidth = DROPDOWN_MAX_W;
-    /** Scroll inside the open dropdown, for option lists taller than the panel. */
-    private float dropdownScroll = 0f;
+private float dropdownAnchorY = 0f;
+private float dropdownWidth = DROPDOWN_MAX_W;
+private float dropdownScroll = 0f;
     private float dropdownScrollTarget = 0f;
-    /** Visible height of the open dropdown, recomputed each frame; 0 when closed. */
-    private float dropdownViewH = 0f;
+private float dropdownViewH = 0f;
     private float dropdownFullH = 0f;
-    /** Top of the option box, which is above the control when it will not fit below it. */
-    private float dropdownRowTop = 0f;
+private float dropdownRowTop = 0f;
     private boolean dropdownFlipped = false;
-
-    /**
-     * Places the open dropdown's option box and sizes it.
-     *
-     * <p>It only ever opened downward, so a setting near the bottom of the panel got a box with a
-     * couple of pixels to live in -- clamped to one row and then clipped by the panel edge, which
-     * is the half-cut option you see under the last setting in a list. Opening upward when there is
-     * more room that way is what every other dropdown does, and the room is there: the control is
-     * at the bottom precisely because the panel above it is full.
-     *
-     * <p>One place computes this, because the draw, the hover test and the click test all have to
-     * agree on where the box is. They disagreed by construction when each recomputed it.
-     */
-    private void layoutDropdown() {
+private void layoutDropdown() {
         if (openDropdown == null || openDropdown.getOptions() == null) {
             dropdownViewH = 0f;
             dropdownFullH = 0f;
@@ -232,8 +152,6 @@ public final class ModernClickGui extends ClickGui {
         float controlTop = dropdownAnchorY + 6f;
         float roomBelow = panelBottom - controlBottom;
         float roomAbove = controlTop - panelTop;
-        // Flip only when staying put would show less than about three rows, and only when turning
-        // round actually buys something. A box that fits stays where the eye expects it.
         boolean flip = roomBelow < Math.min(fullH, 63f) && roomAbove > roomBelow;
         float viewH = Math.max(23f, Math.min(fullH, flip ? roomAbove : roomBelow));
         dropdownFullH = fullH;
@@ -249,23 +167,21 @@ public final class ModernClickGui extends ClickGui {
     private String commandDraft = "";
     private boolean commandFocused;
 
-    private float baseX, baseY, panelH, sideW, centerW, detailW, gap;
+    private float baseX;
+    private float baseY;
+    private float panelH;
+    private float sideW;
+    private float centerW;
+    private float detailW;
     private float centerX, detailX;
     private float settingsContentHeight;
     private float modulesContentHeight;
-    /** 0 = detail panel fully collapsed, 1 = fully expanded. */
-    private float detailPanelOpen = 0f;
-    /** Tracks which module was last rendered so we can detect module changes for slide-in. */
-    private Module lastRenderedModule = null;
-    /** Per-module content reveal progress (0 = just switched, slides in to 1). */
-    private float detailContentReveal = 0f;
-    /** GUI open/close scale+fade progress. 0 = closed, 1 = fully open. */
-    private float guiOpenProgress = 0f;
-    /** Set to true when the GUI is in the process of closing so we animate out. */
-    private boolean guiClosing = false;
-    /** About/info dropdown state. */
-    private boolean aboutOpen = false;
-    private float aboutOpenProgress = 0f;
+private float detailPanelOpen = 0f;
+private Module lastRenderedModule = null;
+private float detailContentReveal = 0f;
+private float guiOpenProgress = 0f;
+private boolean guiClosing = false;
+private float aboutOpenProgress = 0f;
     private final Rect sliderRect = new Rect();
     private final Rect colorSB = new Rect();
     private final Rect colorHue = new Rect();
@@ -279,14 +195,7 @@ public final class ModernClickGui extends ClickGui {
     private final Map<SliderSetting, Float> sliderProgressAnimation = new IdentityHashMap<SliderSetting, Float>();
     private final Object searchAnimationKey = new Object();
     private final Manager profileManagerModule = new Manager();
-    /**
-     * Where the window has been dragged to, relative to centred.
-     *
-     * <p>Static because the screen object is thrown away and rebuilt every time the GUI is opened,
-     * so an instance field put the panel back in the middle on each open. Static also lets the
-     * profile read and restore it without holding a screen.
-     */
-    private static float guiDragOffsetX = 0f;
+private static float guiDragOffsetX = 0f;
     private static float guiDragOffsetY = 0f;
 
     public static float getDragOffsetX() {
@@ -322,8 +231,6 @@ public final class ModernClickGui extends ClickGui {
         } else if (selectedModule != null && (moduleSnapshot == null || moduleSnapshot.module != selectedModule)) {
             moduleSnapshot = new ModuleSnapshot(selectedModule);
         }
-        // Snap animation state immediately on (re-)open so the panel doesn't
-        // slide in from zero every time the GUI is toggled with a module active.
         detailPanelOpen = selectedModule != null ? 1f : 0f;
         detailContentReveal = selectedModule != null ? 1f : 0f;
         lastRenderedModule = selectedModule;
@@ -356,28 +263,18 @@ public final class ModernClickGui extends ClickGui {
 
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-        // The menu draws over a frame the world and the HUD have already been through, so it
-        // starts by reconciling GlStateManager's cache with the driver -- otherwise a colour or a
-        // blend mode left set out there is one the menu's own resets are too stale to clear.
         RenderUtils.syncGlStateFromDriver();
         updateAnimationClock();
         updateThemePalette();
         double renderScale = getActiveRenderScale();
         int mx = (int) Math.floor(mouseX / renderScale);
         int my = (int) Math.floor(mouseY / renderScale);
-
-        // GUI open animation: ease to 1 on open; close nearly instantly (3-4 frames)
-        // so the GUI doesn't feel "sticky" when dismissed.
         guiOpenProgress = ease(guiOpenProgress, guiClosing ? 0f : 1f, guiClosing ? 60f : 22f);
         if (guiClosing && guiOpenProgress < 0.01f) {
             mc.displayGuiScreen(null);
             return;
         }
-
-        // Animate the detail panel open/close.
         detailPanelOpen = ease(detailPanelOpen, selectedModule != null ? 1f : 0f, 14f);
-
-        // Detect module change and reset content reveal so it slides in fresh.
         if (lastRenderedModule != selectedModule) {
             lastRenderedModule = selectedModule;
             detailContentReveal = 0f;
@@ -386,9 +283,6 @@ public final class ModernClickGui extends ClickGui {
             detailContentReveal = ease(detailContentReveal, 1f, 18f);
         }
 
-        // About window animation
-        aboutOpenProgress = ease(aboutOpenProgress, aboutOpen ? 1f : 0f, 22f);
-
         computeLayout();
         drawBackdrop(renderScale);
         drawDashboardShadows((float) renderScale);
@@ -396,16 +290,11 @@ public final class ModernClickGui extends ClickGui {
         GlStateManager.scale(renderScale, renderScale, 1.0D);
         syncSelectedModule();
         updateSmoothScroll();
-
-        // Screen-space rounded shaders cannot safely be matrix-scaled. Animate
-        // detail width and content reveal without deforming panel geometry.
         drawMascot();
         drawPanels();
         drawSidebar(mx, my);
         drawModulePanel(mx, my);
         drawSettingsPanel(mx, my);
-        drawCommandPalette(mx, my);
-        drawAboutWindow(mx, my);
         updateDragging(mx, my);
         clampScrolls();
 
@@ -418,36 +307,22 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void computeLayout() {
-        gap = 9f;
+        float gap = 9f;
         float totalW = Math.min(700f, width - 18f);
         panelH = Math.max(326f, Math.min(356f, height - 18f));
         sideW = Math.max(104f, totalW * .16f);
-        // Wider than it was. Settings here are named things like "Range (aim assist)" and
-        // "Multipoint Horizontal", and the column they get is what is left after the value and
-        // the control -- at 205 that was about forty pixels, which is four characters.
         float detailWFull = Math.max(238f, totalW * .35f);
-        // detail panel width animates via smoothstep
         float t = detailPanelOpen;
         float openEased = t * t * (3f - 2f * t);
         detailW = detailWFull * openEased;
-        // center panel always occupies remaining space; detail + gap only counted when visible
         float usedByDetail = detailW > 1f ? detailW + gap : 0f;
         centerW = totalW - sideW - gap - usedByDetail;
-        // Snapped to whole physical pixels. Everything in here is positioned relative to these
-        // three, and the menu is drawn through two scales -- the configured menu scale and
-        // Minecraft's own -- whose product is not a whole number. A drag step is one unit in menu
-        // space, so without snapping each step moves the text a fractional pixel and every glyph
-        // gets resampled at a new sub-pixel offset: the letters crawl and shimmer while the window
-        // is being moved. Rounding the origins to the pixel grid keeps that offset fixed, so the
-        // window moves and the text inside it stays still.
         baseX = snapToPixel(Math.max(5f, (width - totalW) / 2f + guiDragOffsetX));
         baseY = snapToPixel(Math.max(6f, (height - panelH) / 2f + guiDragOffsetY));
         centerX = snapToPixel(baseX + sideW + gap);
         detailX = snapToPixel(centerX + centerW + gap);
     }
-
-    /** The number of physical pixels one unit of menu space covers. */
-    private float pixelScale() {
+private float pixelScale() {
         float scale = (float) getActiveRenderScale()
                 * Math.max(1, ScaledResolutionCache.get().getScaleFactor());
         return scale > 0.01f ? scale : 1f;
@@ -493,15 +368,8 @@ public final class ModernClickGui extends ClickGui {
 
         float t = guiOpenProgress;
         float eased = t * t * (3f - 2f * t);
-
-        // Blur always runs at full strength — scaling radius toward 0 breaks Kawase.
-        // Fade is handled entirely by the dark overlay on top.
         float configured = Gui.backgroundBlur == null ? 0f : (float) Gui.backgroundBlur.getInput();
         float blurRadius = 1.65f + configured * .012f;
-        // Build one live mask from the panels' current animated bounds.  The old
-        // full-screen mask made an expanding detail panel move over a stationary
-        // blurred image, which looked like a frozen copy of the world.  Keeping
-        // this as one shared pass avoids multiplying the shader cost per panel.
         BlurUtils.prepareBlur();
         GlStateManager.pushMatrix();
         GlStateManager.scale(renderScale, renderScale, 1.0D);
@@ -512,8 +380,6 @@ public final class ModernClickGui extends ClickGui {
         }
         GlStateManager.popMatrix();
         BlurUtils.blurEnd(2, blurRadius, eased * .9f);
-
-        // Dark tint fades with progress
         int overlayAlpha = (int)(128 * eased);
         net.minecraft.client.gui.Gui.drawRect(0, 0, backdropWidth, backdropHeight, argb(overlayAlpha, 2, 4, 5));
     }
@@ -544,9 +410,7 @@ public final class ModernClickGui extends ClickGui {
         y = drawCategory(Module.category.scripts, y, mx, my);
         y = drawCategory(Module.category.theme, y, mx, my);
     }
-
-    /** Categories drawn below the divider in a fixed order rather than in enum order. */
-    private static boolean isPinnedCategory(Module.category category) {
+private static boolean isPinnedCategory(Module.category category) {
         return category == Module.category.profiles
                 || category == Module.category.scripts
                 || category == Module.category.theme;
@@ -558,12 +422,9 @@ public final class ModernClickGui extends ClickGui {
         boolean hover = inside(mx, my, baseX + 7, y, baseX + sideW - 7, y + h);
         float hp = animate(hoverAnimation, category, hover ? 1f : 0f, 16f);
         float sp = animate(selectedAnimation, category, active ? 1f : 0f, 18f);
-        // Background pill
         float surface = Math.max(hp * .55f, sp);
         if (surface > .01f) rounded(baseX + 7, y, baseX + sideW - 7, y + h, 5f,
                 withAlpha(ACCENT, (int) (surface * 44)));
-        // Left accent bar. Square where it meets the row's edge and rounded on the free end: a
-        // capsule rounded at both ends reads as floating rather than anchored to the side.
         if (sp > .01f) {
             float barTop = y + 3 + (1f - sp) * 4f;
             float barBot = y + h - 3 - (1f - sp) * 4f;
@@ -594,9 +455,6 @@ public final class ModernClickGui extends ClickGui {
         rounded(sx, baseY + 15, sx + searchW, baseY + 39, 12f, mixColor(CONTROL, CONTROL_HOVER, searchState));
         drawSearchText(sx, baseY + 15, searchW, baseY + 39);
         drawSearchGlyph(sx + searchW - 15, baseY + 27, searchFocused ? ACCENT : MUTED);
-
-        // A single even rule. There used to be a short bright accent segment over the first
-        // 33px of it, which just read as the line being thicker on the left than the right.
         line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 46));
         float top = baseY + 61f;
         float bottom = baseY + panelH - 12f;
@@ -610,16 +468,12 @@ public final class ModernClickGui extends ClickGui {
         scissor(0, 0, 0, 0, false);
         drawScrollbar(centerX + centerW - 7, top, bottom, moduleScroll, modulesContentHeight);
     }
-
-    // --- Theme Panel ---
     private static final int THEME_COLUMNS = 3;
     private static final float THEME_GAP = 9f;
     private static final float THEME_SIDE_PAD = 18f;
     private static final float THEME_CARD_H = 78f;
-    /** Height of the full-bleed swatch across the top of the card. */
-    private static final float THEME_SWATCH_H = 47f;
-    /** Same nominal radius the rest of the chrome uses, so it tracks the Rounding setting. */
-    private static final float THEME_CARD_RADIUS = 10f;
+private static final float THEME_SWATCH_H = 47f;
+private static final float THEME_CARD_RADIUS = 10f;
 
     private float themeCardWidth() {
         float usable = centerW - THEME_SIDE_PAD * 2f - THEME_GAP * (THEME_COLUMNS - 1);
@@ -629,13 +483,7 @@ public final class ModernClickGui extends ClickGui {
     private float themeCardX(int column) {
         return centerX + THEME_SIDE_PAD + column * (themeCardWidth() + THEME_GAP);
     }
-
-    /**
-     * The theme category is a picker, not a module list, so it gets a grid of swatch cards:
-     * a colour panel on top and a dark name bar beneath. Left click applies, right click
-     * applies and opens the Theme Manager's settings.
-     */
-    private void drawThemePanel(int mx, int my) {
+private void drawThemePanel(int mx, int my) {
         drawText("Theme", centerX + 18, baseY + 18, TEXT, 1.45f, true);
         int count = mindless.module.impl.theme.ThemeManager.themeCount();
         drawText(count + " themes", centerX + 18, baseY + 40, MUTED, .82f, false);
@@ -647,9 +495,6 @@ public final class ModernClickGui extends ClickGui {
         rounded(sx, baseY + 15, sx + searchW, baseY + 39, 12f, mixColor(CONTROL, CONTROL_HOVER, searchState));
         drawSearchText(sx, baseY + 15, searchW, baseY + 39);
         drawSearchGlyph(sx + searchW - 15, baseY + 27, searchFocused ? ACCENT : MUTED);
-
-        // A single even rule. There used to be a short bright accent segment over the first
-        // 33px of it, which just read as the line being thicker on the left than the right.
         line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 46));
 
         float top = baseY + 61f;
@@ -685,43 +530,14 @@ public final class ModernClickGui extends ClickGui {
         java.awt.Color accent = mindless.module.impl.theme.ThemeManager.themeAccent(index);
         int from = argb(255, fromC.getRed(), fromC.getGreen(), fromC.getBlue());
         int to = argb(255, toC.getRed(), toC.getGreen(), toC.getBlue());
-
-        // One surface: the card supplies its own background and all four corners, and the
-        // swatch sits on it full-bleed. No second panel colour underneath the label, which is
-        // what made it read as two stacked overlays.
         int cardColor = mixColor(ROW, ROW_HOVER, Math.max(hp * .85f, sp * .6f));
         if (sp > .01f || hp > .01f) {
             outline(x1, y, x2, y2, THEME_CARD_RADIUS,
                     withAlpha(ACCENT, (int) (215 * sp + 75 * hp * (1f - sp))));
         }
         rounded(x1, y, x2, y2, THEME_CARD_RADIUS, cardColor);
-
-        // The swatch's top corners have to be the card's corners, not their own: the card is 78
-        // tall and the swatch 47, so a radius derived from the swatch's height came out smaller
-        // whenever the theme's rounding was turned up, and the difference showed as two beads of
-        // gradient sitting outside the card's corner arc at the top left and top right. Taking the
-        // card's radius makes the two arcs the same arc. It always fits, because radius() caps at
-        // half the shorter side -- 39 at the very most, well inside the swatch's height.
         float r = radius(THEME_CARD_RADIUS, w, THEME_CARD_H);
-
-        // Drawn by the rounded-rect shader, which evaluates the corner as a signed distance
-        // field and interpolates the colour per fragment.
-        //
-        // The previous version used RenderUtils.drawRoundedGradientRect, which builds a
-        // GL_POLYGON and lets OpenGL Gouraud-shade it. GL_POLYGON is triangulated as a fan from
-        // its first vertex, so the colour is interpolated across triangles rather than across
-        // the shape -- that is the diagonal streak across each swatch, and it got worse as the
-        // radius grew because the fan got wider. A fragment shader has no triangulation to show.
-        //
-        // The bottom edge is interior, against the label area, so those two corners are square.
-        // They used to be squared off afterwards by painting a rect over them, which had to
-        // re-derive the gradient colour at the seam to keep the join continuous and still left a
-        // hard edge down the sides where the shader's own was antialiased. Asking for the corners
-        // we want costs one draw and no arithmetic.
         gradientRoundedCorners(x1, y, x2, splitY, r, r, 0f, 0f, to, from, to, from);
-
-        // The gradient helper leaves the alpha limit and blend state it set up, so reset before
-        // any text goes down.
         resetTextRenderState();
 
         if (selected) drawCheck(x2 - 13f, y + 13f, argb(255, accent.getRed(), accent.getGreen(), accent.getBlue()));
@@ -747,9 +563,7 @@ public final class ModernClickGui extends ClickGui {
         if (k == null) { k = new Object(); themeCardKeys.put(index, k); }
         return k;
     }
-
-    /** Returns true when the click was consumed by the theme picker. */
-    private boolean clickThemePanel(int mx, int my, int mouseButton) {
+private boolean clickThemePanel(int mx, int my, int mouseButton) {
         if (selectedCategory != Module.category.theme || !search.trim().isEmpty()) return false;
         float top = baseY + 61f;
         float bottom = baseY + panelH - 12f;
@@ -764,7 +578,6 @@ public final class ModernClickGui extends ClickGui {
             if (inside(mx, my, x1, y, x1 + w, y + THEME_CARD_H)) {
                 mindless.module.impl.theme.ThemeManager.select(i);
                 if (mouseButton == 1 && mindless.module.ModuleManager.themeManager != null) {
-                    // Right click: jump to the manager's settings to tune this theme.
                     openModule(mindless.module.ModuleManager.themeManager);
                 }
                 return true;
@@ -783,11 +596,9 @@ public final class ModernClickGui extends ClickGui {
         int rowColor = mixColor(ROW, ROW_HOVER, hp);
         rowColor = mixColor(rowColor, withAlpha(ACCENT, 55), sp);
         rounded(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f, rowColor);
-        // Left accent bar — slides in from top when selected
         if (sp > .01f) {
             float barTop = y + 5 + (1f - sp) * 4f;
             float barBot = y + MODULE_ROW_HEIGHT - 5 - (1f - sp) * 4f;
-            // Squared against the row edge for the same reason as the sidebar's.
             roundedCorners(x1, barTop, x1 + 2.5f, barBot,
                     0f, 1.25f, 1.25f, 0f, withAlpha(ACCENT, (int) (255 * sp)));
         }
@@ -795,18 +606,12 @@ public final class ModernClickGui extends ClickGui {
         float availableTextWidth = Math.max(42f, toggleX - x1 - 18f);
         drawText(trim(module.getName(), availableTextWidth, .73f, true),
                 x1 + 10, y + 4.5f, mixColor(MUTED, TEXT, Math.max(hp * .5f, sp)), .73f, sp > .5f);
-        // Description uses a 9px font rendered at scale 1.0 — no GL downscaling so
-        // glyphs stay crisp. The 13px setting renderer scaled to 0.60 was bilinearly
-        // blurred; this is the correct approach for small readable text.
         drawSmallText(trimSmall(moduleDescription(module), availableTextWidth),
                 x1 + 10, y + 16f, mixColor(argb(255, 132, 134, 133), MUTED,
                         Math.max(hp * .42f, sp * .62f)));
 
         if (module instanceof ProfileModule) {
             boolean active = module.isEnabled();
-            // The active row says whether the profile on disk still matches what is on screen.
-            // With auto save on this is only ever a flicker; with it off it is the only warning
-            // that closing the game will lose the last few changes.
             boolean unsaved = active && !((ProfileModule) module).saved;
             drawCenteredV(active ? (unsaved ? "Unsaved" : "Active") : "Load",
                     toggleX - 4, toggleX + 34, y, y + MODULE_ROW_HEIGHT,
@@ -827,26 +632,15 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void drawSettingsPanel(int mx, int my) {
-        // Don't draw anything when panel is fully collapsed or no module selected.
         if (detailW < 4f || selectedModule == null) return;
-
-        // Content alpha and horizontal slide driven by detailContentReveal.
-        // Slide: content starts 18px to the right and moves to 0.
         float reveal = detailContentReveal;
         float contentAlpha = reveal;
         float slideOffset = (1f - reveal) * 18f;
-
-        // Clip everything to the visible panel width so content doesn't bleed
-        // during the expand animation.
         scissor(detailX, baseY, detailX + detailW, baseY + panelH, true);
-
-        // Header — fades in with content
         int headerAlpha = (int) (255 * contentAlpha);
         float headerCenterY = baseY + 28.5f;
         GL11.glPushMatrix();
         GL11.glTranslatef(slideOffset, 0f, 0f);
-        // The category glyph sits in a ring, which gives the header something to be built
-        // around instead of a mark floating next to the name.
         circle(detailX + 25, headerCenterY, 12.5f, withAlpha(GOLD_SOFT, (int) (headerAlpha * .55f)));
         circleOutline(detailX + 25, headerCenterY, 12.5f, withAlpha(GOLD, (int) (headerAlpha * .8f)));
         drawCategoryIcon(selectedModule.moduleCategory(), detailX + 25, headerCenterY,
@@ -856,7 +650,6 @@ public final class ModernClickGui extends ClickGui {
                 detailX + 42, baseY + 10, baseY + 47,
                 withAlpha(TEXT, headerAlpha), withAlpha(MUTED, headerAlpha),
                 .98f, .67f, 2.5f, 1f);
-        // Close X button
         segments(withAlpha(DIM, headerAlpha),
                 detailX + detailW - 23, headerCenterY - 4, detailX + detailW - 15, headerCenterY + 4,
                 detailX + detailW - 15, headerCenterY - 4, detailX + detailW - 23, headerCenterY + 4);
@@ -880,7 +673,6 @@ public final class ModernClickGui extends ClickGui {
                 drawSetting(setting, y, h, mx, my, contentAlpha, firstRow);
             }
             firstRow = false;
-            // Track where the open dropdown's row sits in screen space
             if (setting == openDropdown) dropdownAnchorY = y;
             y += h + SETTING_GAP;
         }
@@ -891,56 +683,21 @@ public final class ModernClickGui extends ClickGui {
 
         GL11.glPopMatrix();
         scissor(0, 0, 0, 0, false);
-
-        // Draw dropdown overlay on top of everything (no scissor, no scroll offset)
         drawDropdownOverlay(mx, my);
     }
 
     private float settingsLeft() { return detailX + 15; }
 
     private float settingsRight() { return detailX + detailW - 15; }
-
-    /** Left edge of the shared control column. */
-    private float controlLeft() {
+private float controlLeft() {
         if (Float.isNaN(settingControlLeft)) return settingsLeft() + settingsRight() * 0f + 100f;
         return settingControlLeft;
     }
-
-    /**
-     * Right edge of a slider's track, pulled in by the radius of its thumb.
-     *
-     * The thumb is drawn centred on the track's end, so a track running to the full width would
-     * put half a thumb past where every other control stops.
-     */
-    private float sliderTrackRight() { return settingsRight() - 4f; }
-
-    /**
-     * Left edge of the number column, sized to the widest number the open module actually has.
-     *
-     * <p>A fixed fraction of the panel cannot know that one module's sliders read "3" and
-     * another's read "0.03404715". Too narrow and the number itself gets an ellipsis, which is
-     * the one thing on the row that must stay readable; too wide and every label is cut short to
-     * pay for space nothing is using. Measuring the module settles it per module, and the column
-     * still lines up because every row is measured against the same number.
-     */
-    private float sliderValueLeft() {
+private float sliderTrackRight() { return settingsRight() - 4f; }
+private float sliderValueLeft() {
         return controlLeft() - VALUE_GAP - sliderValueWidth;
     }
-
-    /**
-     * Works out where the three columns fall for the module being shown.
-     *
-     * <p>The old layout put the controls at a fixed fraction of the panel, so they took the same
-     * 58% whether the labels needed it or not -- and settings named "Maximum block delay" or
-     * "Unblock out of range" lost their tails to pay for space nothing was using.
-     *
-     * <p>So the module is measured instead. The longest label and the longest number are what
-     * they are; the controls take what is left, down to a floor below which a slider stops being
-     * aimable. Only when even the smallest label size cannot fit does anything get cut, and by
-     * then it genuinely does not fit. Measured once per frame rather than per row, so the
-     * columns stay straight down the page instead of stepping in and out beside each setting.
-     */
-    private void measureSettingColumns() {
+private void measureSettingColumns() {
         float rowWidth = settingsRight() - settingsLeft();
 
         float value = 0f;
@@ -967,7 +724,7 @@ public final class ModernClickGui extends ClickGui {
         }
 
         settingLabelScale = scale;
-        settingLabelWidth = Math.max(24f, Math.min(label, budget));
+float settingLabelWidth = Math.max(24f, Math.min(label, budget));
         settingControlLeft = settingsLeft() + settingLabelWidth + LABEL_GAP + valueSpace;
     }
 
@@ -976,7 +733,6 @@ public final class ModernClickGui extends ClickGui {
         float widest = 0f;
         for (Setting setting : selectedModule.getSettings()) {
             if (!isMeasurable(setting)) continue;
-            // Headings and grouped rows run the full width and are not part of the column.
             if (setting instanceof DescriptionSetting || setting instanceof GroupSetting) continue;
             if (setting instanceof TextSetting || isList(setting)) continue;
             widest = Math.max(widest, textWidth(setting.getName(), scale, false));
@@ -989,16 +745,7 @@ public final class ModernClickGui extends ClickGui {
         GroupSetting owner = groupOf(setting);
         return owner == null || owner.isOpened();
     }
-
-    /**
-     * Where the buttons of a segmented picker go, as {left edge, button width}, or null when this
-     * setting should stay a dropdown.
-     *
-     * A short handful of short options reads better laid out than hidden behind a menu -- you can
-     * see what the alternatives are and switch with one click instead of two. Anything longer
-     * than that does not fit across the column, so it keeps the dropdown.
-     */
-    /**
+/**
      * A setting's name, made a little smaller before it is cut short.
      *
      * Pinning the controls to a shared column leaves the label a fixed width, and plenty of
@@ -1008,8 +755,6 @@ public final class ModernClickGui extends ClickGui {
      */
     private void drawSettingLabel(String name, float x, float y1, float y2, float maxWidth,
                                   int color) {
-        // One size for the whole module, chosen so the longest of them fits. Sizing each label
-        // on its own made a panel of settings in four different sizes.
         drawTextVCentered(trim(name, maxWidth, settingLabelScale, false), x, y1, y2, color,
                 settingLabelScale, false);
     }
@@ -1032,33 +777,13 @@ public final class ModernClickGui extends ClickGui {
     private float segmentX(float[] layout, int index) {
         return layout[0] + index * (layout[1] + SEGMENT_GAP);
     }
-
-    /**
-     * The same colour with its alpha forced to full.
-     *
-     * outline() works by laying a slightly larger rect of the border colour down first and
-     * letting the fill cover its middle, so only a one pixel rim survives. That only holds while
-     * the fill is opaque. Every control surface here is defined translucent so it can sit over
-     * the panel, and over an outline that turns the whole control into a wash of the border
-     * colour -- which for a selected control is the accent, so it comes out a solid accent block
-     * with its label invisible on top of it.
-     */
-    private static int opaque(int color) { return color | 0xFF000000; }
-
-    /** Scales the alpha channel of a packed ARGB color by [0,1]. */
-    private int fa(int color, float alpha) {
+private static int opaque(int color) { return color | 0xFF000000; }
+private int fa(int color, float alpha) {
         int a = (int) (((color >>> 24) & 255) * alpha);
         return withAlpha(color, a);
     }
-
-    /**
-     * Draws the open dropdown options as a floating overlay, on top of the settings
-     * panel and not affected by the scroll scissor. Animates via a slide-down
-     * scissor reveal (same feel as the detail panel expand).
-     */
-    private void drawDropdownOverlay(int mx, int my) {
+private void drawDropdownOverlay(int mx, int my) {
         if (openDropdown == null || openDropdown.getOptions() == null) {
-            // Still animate closed if needed
             animationValue(dropdownAnimation, new Object(), 0f);
             return;
         }
@@ -1066,7 +791,6 @@ public final class ModernClickGui extends ClickGui {
         if (open < 0.01f) return;
 
         float x2 = detailX + detailW - 15;
-        // One source of truth, shared with the click and hover hit-boxes.
         float dw = overlayWidth();
         float dx1 = x2 - dw, dx2 = x2;
         layoutDropdown();
@@ -1077,26 +801,17 @@ public final class ModernClickGui extends ClickGui {
         clampDropdownScroll();
         dropdownScroll += (dropdownScrollTarget - dropdownScroll) * .32f;
         if (Math.abs(dropdownScrollTarget - dropdownScroll) < .08f) dropdownScroll = dropdownScrollTarget;
-
-        // Revealed from the edge nearest the control, so it reads as coming out of the control
-        // either way round rather than sliding in from off-panel.
         float clipTop = dropdownFlipped ? rowTop + viewH - open * viewH : rowTop;
         float clipBottom = dropdownFlipped ? rowTop + viewH : rowTop + open * viewH;
         if (clipBottom <= clipTop) return;
 
         scissor(detailX + 4f, clipTop, detailX + detailW - 4f, clipBottom, true);
-
-        // Shadow behind dropdown
         RoundedUtils.drawRoundShadow(dx1 - 1, rowTop, dx2 - dx1 + 2, viewH, 5f, 6f, argb((int)(80 * open), 0, 0, 0));
-
-        // Keep dropdown surface aligned with rest of the themed ClickGUI palette.
         int bgAlpha = (int)(255 * open);
         net.minecraft.client.gui.Gui.drawRect((int) dx1, (int) rowTop, (int) dx2, (int)(rowTop + viewH),
                 fa(DROPDOWN_BG, open));
         outline(dx1, rowTop, dx2, rowTop + viewH, 5f, fa(DROPDOWN_BORDER, open));
         resetTextRenderState();
-
-        // Options
         float oy = rowTop + 2f + dropdownScroll;
         for (int i = 0; i < n; i++) {
             if (oy + 19 < rowTop || oy > rowTop + viewH) { oy += 21f; continue; }
@@ -1104,7 +819,6 @@ public final class ModernClickGui extends ClickGui {
             boolean hov = inside(mx, my, dx1 + 2, Math.max(oy, rowTop), dx2 - 2, Math.min(oy + 19, rowTop + viewH));
             Object rowKey = getDropdownRowKey(openDropdown, i);
             float rowHp = animate(hoverAnimation, rowKey, hov ? 1f : 0f, 16f);
-            // Selected row: solid accent bg; hover row: subtle tint
             if (sel) {
                 net.minecraft.client.gui.Gui.drawRect((int)(dx1 + 2), (int) oy, (int)(dx2 - 2), (int)(oy + 19),
                         fa(DROPDOWN_SELECTED, open));
@@ -1120,8 +834,6 @@ public final class ModernClickGui extends ClickGui {
                     .68f, sel);
             oy += 21f;
         }
-
-        // Scroll indicator, only while the list actually overflows
         if (fullH > viewH + .5f) {
             float track = viewH - 8f;
             float thumb = Math.max(14f, track * (viewH / fullH));
@@ -1134,29 +846,21 @@ public final class ModernClickGui extends ClickGui {
         resetTextRenderState();
         scissor(0, 0, 0, 0, false);
     }
-
-    /** Clears everything cached about an open dropdown's box. */
-    private void closeDropdownState() {
+private void closeDropdownState() {
         dropdownScroll = dropdownScrollTarget = 0f;
         dropdownViewH = dropdownFullH = 0f;
     }
-
-    /** Keeps the dropdown scroll inside its content, and pins it at 0 when nothing overflows. */
-    private void clampDropdownScroll() {
+private void clampDropdownScroll() {
         float min = Math.min(0f, dropdownViewH - dropdownFullH);
         dropdownScrollTarget = Math.max(min, Math.min(0f, dropdownScrollTarget));
         dropdownScroll = Math.max(min, Math.min(0f, dropdownScroll));
     }
-
-    /** True when the pointer is over the open dropdown's box. */
-    private boolean overDropdown(int mx, int my) {
+private boolean overDropdown(int mx, int my) {
         if (openDropdown == null || openDropdown.getOptions() == null) return false;
         float x2 = detailX + detailW - 15;
         return inside(mx, my, x2 - overlayWidth(), dropdownRowTop, x2, dropdownRowTop + dropdownViewH);
     }
-
-    /** Overlay width: the trigger's width, widened to fit the longest option, capped to the panel. */
-    private float overlayWidth() {
+private float overlayWidth() {
         if (openDropdown == null || openDropdown.getOptions() == null) return dropdownWidth;
         float widest = 0f;
         for (String option : openDropdown.getOptions()) {
@@ -1177,10 +881,6 @@ public final class ModernClickGui extends ClickGui {
                              boolean first) {
         float x1 = detailX + 15, x2 = detailX + detailW - 15;
         if (setting instanceof DescriptionSetting) {
-            // A quiet heading with the rule above it, rather than an accent-coloured line of
-            // text underlined in the accent again. It is a label for what follows, not a thing
-            // to look at, and reading it as one makes the settings under it the loudest part of
-            // the panel. The first heading skips the rule, since the panel header drew one.
             if (!first) line(x1, y + 6, x2, y + 6, fa(DIVIDER, alpha));
             drawTextVCentered(((DescriptionSetting) setting).getDesc(), x1 + 2, y + 9, y + h,
                     fa(MUTED, alpha), .72f, false);
@@ -1191,8 +891,6 @@ public final class ModernClickGui extends ClickGui {
             drawTextVCentered(group.isOpened() ? "-" : "+", x2 - 15, y, y + h, fa(group.isOpened() ? GOLD : MUTED, alpha), .85f, true);
         } else if (setting instanceof ButtonSetting) {
             ButtonSetting button = (ButtonSetting) setting;
-            // Toggles sit hard right, so the label may run past the control column -- but it
-            // still takes the module's size, or one panel ends up in two type sizes.
             drawSettingLabel(button.getName(), x1 + 2, y, y + h, x2 - 38f - x1, fa(TEXT, alpha));
             if (button.isMethodButton) {
                 float hp = animate(hoverAnimation, button, inside(mx, my, x1, y, x2, y + h) ? 1f : 0f, 17f);
@@ -1206,9 +904,6 @@ public final class ModernClickGui extends ClickGui {
             if (slider.isString) {
                 String label = slider.getName();
                 float labelLeft = x1 + 2;
-
-                // A short set of short options is laid out rather than hidden behind a menu: you
-                // can see the alternatives and switch in one click instead of two.
                 float[] segments = segmentLayout(slider);
                 if (segments != null) {
                     drawSettingLabel(label, labelLeft, y, y + h,
@@ -1216,10 +911,6 @@ public final class ModernClickGui extends ClickGui {
                     drawSegments(slider, segments, y, h, mx, my, alpha);
                     return;
                 }
-
-                // Width follows the label rather than being a fixed 128px, so a long setting
-                // name no longer runs underneath the control. It reaches for the shared control
-                // column first and only gives ground back when the name needs the room.
                 float available = x2 - labelLeft - textWidth(label, .75f, false) - DROPDOWN_LABEL_GAP;
                 float dropW = Math.max(DROPDOWN_MIN_W, Math.min(x2 - controlLeft(), available));
                 float dx1 = x2 - dropW, dx2 = x2;
@@ -1231,9 +922,6 @@ public final class ModernClickGui extends ClickGui {
                 float open = animate(dropdownAnimation, slider, openDropdown == slider ? 1f : 0f, 20f);
                 boolean over = inside(mx, my, dx1, y + 3, dx2, y + 27);
                 float hp = animate(hoverAnimation, slider, over ? 1f : 0f, 16f);
-                // outline() paints a filled rect one pixel larger and is meant to sit BEHIND the
-                // fill. It was being drawn after it, so the control became a solid block of the
-                // border colour -- which is the accent while open, hiding the selected option.
                 outline(dx1, y + 3, dx2, y + 27, 4f, fa(mixColor(BORDER, GOLD, open), alpha));
                 rounded(dx1, y + 3, dx2, y + 27, 4f, fa(opaque(
                         mixColor(CONTROL, CONTROL_HOVER, Math.max(hp * .65f, open * .7f))), alpha));
@@ -1241,13 +929,8 @@ public final class ModernClickGui extends ClickGui {
                 drawTextVCentered(trim(sliderValue(slider), dropW - 26f, .68f, false), dx1 + 8, y + 3, y + 27,
                         fa(mixColor(MUTED, TEXT, Math.max(open, hp * .6f)), alpha), .68f, false);
                 drawChevron(dx2 - 10, y + 15, open, fa(mixColor(MUTED, GOLD, open), alpha));
-                // Options drawn as floating overlay in drawDropdownOverlay()
                 return;
             }
-            // Label, value and track on one row: name on the left, the number in its own
-            // column, the track filling the control column to the right edge. The track used to
-            // sit on a second line under the label, which made a slider twice the height of
-            // every other row and broke the rhythm of the panel.
             float valueLeft = sliderValueLeft();
             float trackLeft = controlLeft();
             drawSettingLabel(slider.getName(), x1 + 2, y, y + h, valueLeft - x1 - 12,
@@ -1270,8 +953,6 @@ public final class ModernClickGui extends ClickGui {
                 float right = valueX + textWidth(sliderEditDraft.substring(0, to), valueScale, false);
                 rounded(left - 1, y + 8, right + 1, y + h - 8, 2f, fa(withAlpha(ACCENT, 74), alpha));
             }
-            // No trim. The column was measured to fit this string, and a number reading "3..."
-            // tells you nothing at all -- better to shrink it, which valueScale already does.
             drawTextVCentered(displayedValue, valueX, y, y + h, fa(TEXT, alpha), valueScale, false);
             if (editingValue && blink()) {
                 float caretX = valueX + textWidth(sliderEditDraft.substring(0, sliderEditCaret), valueScale, false);
@@ -1279,12 +960,8 @@ public final class ModernClickGui extends ClickGui {
             }
             float bx1 = trackLeft, bx2 = sliderTrackRight(), by = y + h / 2f - 1.5f;
             float hp = animate(controlAnimation, slider, inside(mx, my, bx1 - 5, y + 3, bx2 + 3, y + h - 3) ? 1f : 0f, 18f);
-            // Track bg. Opaque, and light enough to read as a groove the fill runs along --
-            // at 120 alpha over a near-black panel the unfilled part was all but invisible, so a
-            // slider near its maximum looked like a plain bar with nothing left to give.
             rounded(bx1, by, bx2, by + 3, 1.5f,
                     fa(opaque(mixColor(argb(255, 47, 50, 51), argb(255, 68, 71, 72), hp)), alpha));
-            // Animate fill progress toward real value
             float targetProgress = (float) ((slider.getInput() - slider.getMin()) / Math.max(.00001, slider.getMax() - slider.getMin()));
             targetProgress = clamp01(targetProgress);
             Float animProg = sliderProgressAnimation.get(slider);
@@ -1293,18 +970,13 @@ public final class ModernClickGui extends ClickGui {
             if (Math.abs(targetProgress - animProg) < 0.0008f) animProg = targetProgress;
             sliderProgressAnimation.put(slider, animProg);
             float px = bx1 + (bx2 - bx1) * animProg;
-            // Fill
             rounded(bx1, by, px, by + 3, 1.5f, fa(mixColor(GOLD, TEXT, hp * .18f), alpha));
-            // Thumb — grows slightly on hover, follows animated position
             float thumbR = 4.1f + hp * .7f;
             circle(px, by + 1.5f, thumbR, fa(mixColor(GOLD, TEXT, hp * .24f), alpha));
             if (draggingSlider == slider) sliderRect.set(bx1, y, bx2, y + h);
         } else if (setting instanceof KeySetting) {
             KeySetting key = (KeySetting) setting;
             String value = binding == key ? "Press a key" : keyName(key.getKey());
-            // A chip sized to the key rather than a fixed 76px slab. A bind is one or two
-            // characters nearly always, and a box five times wider than its contents reads as an
-            // empty field waiting to be filled in.
             float chipLeft = keyChipLeft(key);
             drawSettingLabel(key.getName(), x1 + 2, y, y + h, chipLeft - x1 - 12,
                     fa(TEXT, alpha));
@@ -1324,11 +996,7 @@ public final class ModernClickGui extends ClickGui {
             drawListSetting(setting, y, h, mx, my, alpha);
         }
     }
-
-    /**
-     * Left edge of a keybind's chip: wide enough for what it says, never past the control column.
-     */
-    private float keyChipLeft(KeySetting key) {
+private float keyChipLeft(KeySetting key) {
         String value = binding == key ? "Press a key" : keyName(key.getKey());
         float width = Math.max(34f, textWidth(value, .66f, false) + 18f);
         return Math.min(controlLeft(), settingsRight() - width);
@@ -1344,9 +1012,6 @@ public final class ModernClickGui extends ClickGui {
             float sx1 = segmentX(layout, i), sx2 = sx1 + layout[1];
             boolean on = i == selected;
             float hover = !on && inside(mx, my, sx1, top, sx2, bottom) ? 1f : 0f;
-            // outline() lays a slightly larger rect down first and the fill covers its middle,
-            // which is what leaves a one pixel border. Drawing it after would bury the fill, and
-            // a fill that is not opaque lets it through -- see opaque().
             outline(sx1, top, sx2, bottom, 4f, fa(on ? GOLD : BORDER, alpha));
             rounded(sx1, top, sx2, bottom, 4f, fa(opaque(on
                     ? mixColor(ROW, GOLD, .17f)
@@ -1371,11 +1036,6 @@ public final class ModernClickGui extends ClickGui {
 
         drawSaturationBrightnessField(color, alpha);
         drawHueStrip(alpha);
-
-        // Handles, not dots. A two-tone ring stays visible over every part of the field, which a
-        // single colour cannot -- white vanishes into the top left corner and black into the
-        // bottom edge, and an invisible handle is why picking a colour felt like starting over
-        // every time this was opened.
         float sbX = colorSB.x1 + color.getSaturation() * colorSB.w();
         float sbY = colorSB.y1 + (1f - color.getBrightness()) * colorSB.h();
         circleOutline(sbX, sbY, 4.2f, fa(0xFF000000, alpha));
@@ -1394,30 +1054,14 @@ public final class ModernClickGui extends ClickGui {
             rounded(ax - 1f, colorAlpha.y1 - 1.5f, ax + 1f, colorAlpha.y2 + 1.5f, 1f, fa(0xFF000000, alpha));
         }
     }
-
-    /**
-     * The saturation and brightness square.
-     *
-     * <p>One draw with a colour at each corner: white and the pure hue along the top, black along
-     * the whole bottom. That is exactly what an HSB square is, and because every corner is an
-     * opaque colour it composites correctly whatever the row is fading at.
-     *
-     * <p>The previous version laid transparent black over a white-to-hue fade, which only reaches
-     * true black if that overlay is fully opaque -- and scaled by the row's own fade it never
-     * quite was. White shows through a not-quite-opaque black far more than a saturated colour
-     * does, which is why the bottom left sat noticeably lighter than the bottom right instead of
-     * both being black.
-     */
-    private void drawSaturationBrightnessField(ColorSetting color, float alpha) {
+private void drawSaturationBrightnessField(ColorSetting color, float alpha) {
         int hueRgb = 0xFF000000 | Color.HSBtoRGB(color.getHue() / 360f, 1f, 1f);
         int black = 0xFF000000;
         RoundedUtils.drawGradientRound(colorSB.x1, colorSB.y1, colorSB.w(), colorSB.h(), 3f,
                 fa(black, alpha), fa(0xFFFFFFFF, alpha), fa(black, alpha), fa(hueRgb, alpha));
         outline(colorSB.x1, colorSB.y1, colorSB.x2, colorSB.y2, 3f, fa(BORDER, alpha));
     }
-
-    /** The hue rail, as six gradients through the wheel rather than twenty-four flat bands. */
-    private void drawHueStrip(float alpha) {
+private void drawHueStrip(float alpha) {
         float step = colorHue.h() / 6f;
         for (int i = 0; i < 6; i++) {
             int top = 0xFF000000 | Color.HSBtoRGB(i / 6f, 1f, 1f);
@@ -1427,9 +1071,7 @@ public final class ModernClickGui extends ClickGui {
         }
         outline(colorHue.x1, colorHue.y1, colorHue.x2, colorHue.y2, 2f, fa(BORDER, alpha));
     }
-
-    /** Transparent to opaque over a chequer, so "half transparent" looks like something. */
-    private void drawAlphaStrip(ColorSetting color, float alpha) {
+private void drawAlphaStrip(ColorSetting color, float alpha) {
         int squares = (int) Math.ceil(colorAlpha.w() / 4f);
         for (int i = 0; i < squares; i++) {
             float sx = colorAlpha.x1 + i * 4f;
@@ -1442,8 +1084,6 @@ public final class ModernClickGui extends ClickGui {
                         fa(light ? 0xFF6E6E76 : 0xFF3A3A42, alpha));
             }
         }
-        // Both ends carry the same RGB so the fade is the colour thinning out, not the colour
-        // sliding towards black on its way to transparent.
         RenderUtils.drawHorizontalGradientRect(colorAlpha.x1, colorAlpha.y1, colorAlpha.x2, colorAlpha.y2,
                 withAlpha(color.getRGB(), 0), fa(0xFF000000 | color.getRGB(), alpha));
         outline(colorAlpha.x1, colorAlpha.y1, colorAlpha.x2, colorAlpha.y2, 2f, fa(BORDER, alpha));
@@ -1494,9 +1134,6 @@ public final class ModernClickGui extends ClickGui {
             drawTextVCentered("+", x2 - 19, ey, ey + 19, fa(GOLD, alpha), .7f, true);
             ey += 21;
         }
-        // Rows are addressed by position, not by the text in them. An item may legitimately
-        // appear twice -- two stacks of wool bound to two slots -- and looking the row up by its
-        // name would give both rows the first one's slot and let either button edit it.
         List<String> entries = listEntries(setting);
         for (int row = 0; row < entries.size(); row++) {
             String entry = entries.get(row);
@@ -1512,16 +1149,7 @@ public final class ModernClickGui extends ClickGui {
             ey += 23;
         }
     }
-
-    /**
-     * Draws the focused field: the window follows the caret, the selection sits behind the text,
-     * and the caret is a rule between two characters rather than a bar stuck on the end.
-     *
-     * <p>Nothing here ellipsizes. {@link #trim} is right for a label that has to fit, and wrong
-     * for a field being typed into -- it keeps a prefix and drops the rest, so the end of a long
-     * value could never be seen however far the caret was moved.
-     */
-    private void drawEditable(float x, float y1, float y2, float available, float scale,
+private void drawEditable(float x, float y1, float y2, float available, float scale,
                               int color, float alpha) {
         String text = editor.getText();
         int caret = Math.max(0, Math.min(text.length(), editor.getCaret()));
@@ -1549,68 +1177,8 @@ public final class ModernClickGui extends ClickGui {
         }
     }
 
-    private void drawCommandPalette(int mx, int my) {
-        if (!CommandLine.opened) return;
-        float w = Math.min(390, width - 30), x = (width - w) / 2f, y = baseY + panelH - 47;
-        panelSurface(x, y, x + w, y + 35, argb(245, 10, 12, 14));
-        drawTextVCentered(">", x + 11, y, y + 35, GOLD, .85f, true);
-        if (commandFocused) {
-            drawEditable(x + 26, y, y + 35, w - 48, .73f, TEXT, 1f);
-        } else {
-            String shown = commandDraft.isEmpty() ? "Type a command..." : commandDraft;
-            drawTextVCentered(trim(shown, w - 48, .73f, false), x + 26, y, y + 35,
-                    commandDraft.isEmpty() ? DIM : TEXT, .73f, false);
-        }
-    }
-
-    private void drawAboutWindow(int mx, int my) {
-        if (aboutOpenProgress < 0.01f) return;
-
-        float t = aboutOpenProgress;
-        float eased = t * t * (3f - 2f * t);
-
-        float ax = baseX + 7f;
-        float aw = sideW - 14f;
-        float ay = baseY + 53f; // sits just below the divider line
-
-        boolean isInjection = mindless.runtime.LunarEventBridge.isDirectLunar();
-        String[] keys = { "Version", "Build", "Mode" };
-        String[] vals = {
-            mindless.utility.BuildInfo.getVersion(),
-            mindless.utility.BuildInfo.getBuild(),
-            isInjection ? "Injection" : "Mod"
-        };
-
-        float rowH = 26f;
-        float fullH = keys.length * rowH + 8f;
-        float revealH = eased * fullH;
-
-        // Clip slide-down
-        scissor(ax, ay, ax + aw, ay + revealH, true);
-
-        int aa = (int)(255 * eased);
-
-        // Panel — slightly lighter than the sidebar so it pops
-        rounded(ax, ay, ax + aw, ay + fullH, 5f, withAlpha(argb(255, 26, 29, 32), aa));
-
-        float ry = ay + 4f;
-        for (int i = 0; i < keys.length; i++) {
-            drawTextVCentered(keys[i], ax + 10f, ry, ry + rowH, withAlpha(MUTED, aa), .68f, false);
-            drawTextVCentered(vals[i], ax + aw - 10f - textWidth(vals[i], .68f, true),
-                    ry, ry + rowH, withAlpha(TEXT, aa), .68f, true);
-            if (i < keys.length - 1) {
-                line(ax + 8f, ry + rowH, ax + aw - 8f, ry + rowH, withAlpha(DIVIDER, aa));
-            }
-            ry += rowH;
-        }
-
-        scissor(0, 0, 0, 0, false);
-    }
-
     @Override
     public void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
-        // GuiScreen converts click events with this screen's logical width/height.
-        // Unlike drawScreen's coordinates these are already in our GUI space.
         int mx = mouseX, my = mouseY;
         computeLayout();
         if (binding != null) {
@@ -1622,22 +1190,6 @@ public final class ModernClickGui extends ClickGui {
         }
         if (editingSliderValue != null) finishSliderValueEdit(true);
         if (mouseButton != 0 && mouseButton != 1) return;
-
-        if (CommandLine.opened) {
-            if (!commandFocused) editor.reset(commandDraft);
-            commandFocused = true;
-            return;
-        }
-
-        // About dropdown interactions
-        if (aboutOpen && aboutOpenProgress > 0.05f) {
-            float aw = sideW - 14f, fullH = 72f;
-            float ax = baseX + 7f, ay = baseY + 48f;
-            // Clicks inside close it
-            if (inside(mx, my, ax, ay, ax + aw, ay + fullH)) return;
-        }
-
-        // Mindless logo/title area — drag handle for the whole GUI
         if (mouseButton == 0 && inside(mx, my, baseX + 10, baseY + 8, baseX + sideW - 10, baseY + 40)) {
             draggingGui = true;
             dragStartMouseX = mx;
@@ -1670,7 +1222,6 @@ public final class ModernClickGui extends ClickGui {
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.scripts); return; }
         cy += CATEGORY_ROW_STEP;
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.theme); return; }
-        // Theme picker click handling
         if (clickThemePanel(mx, my, mouseButton)) return;
 
 
@@ -1681,12 +1232,10 @@ public final class ModernClickGui extends ClickGui {
                 float x2 = centerX + centerW - 14;
                 if (module instanceof ProfileModule) {
                     if (mouseButton == 1) {
-                        // Right-click = open settings panel (save / delete / upload)
                         openModule(module);
                     } else if (mx >= x2 - 55 && mx <= x2 - 16) {
                         binding = module;
                     } else if (mx >= x2 - 14) {
-                        // > arrow = open settings panel (rename / delete)
                         openModule(module);
                     } else {
                         activateProfile((ProfileModule) module);
@@ -1694,14 +1243,11 @@ public final class ModernClickGui extends ClickGui {
                 } else if (module instanceof Manager) {
                     openModule(module);
                 } else if (mx >= x2 - 55 && mx <= x2 - 16) {
-                    // bind zone — both buttons
                     binding = module;
                 } else if (mouseButton == 1) {
-                    // right click: open settings, or close them if already open
                     if (module == selectedModule) selectModule(null);
                     else openModule(module);
                 } else {
-                    // left click → toggle, also open settings if clicking the > arrow
                     if (mx >= x2 - 14) openModule(module);
                     else module.toggle();
                 }
@@ -1714,13 +1260,10 @@ public final class ModernClickGui extends ClickGui {
                 selectModule(null);
                 return;
             }
-            // Dropdown overlay eats clicks first
             if (openDropdown != null && openDropdown.getOptions() != null) {
                 float x2 = detailX + detailW - 15;
                 float dx1 = x2 - overlayWidth(), dx2 = x2;
                 float overlayTop = dropdownRowTop;
-                // Hit-test the visible box, not the full list: rows clipped off the bottom
-                // are not on screen and must not swallow clicks meant for the panel.
                 float overlayBot = overlayTop + dropdownViewH;
                 if (inside(mx, my, dx1, overlayTop, dx2, overlayBot)) {
                     int index = (int)((my - (overlayTop + 2f + dropdownScroll)) / 21f);
@@ -1732,7 +1275,6 @@ public final class ModernClickGui extends ClickGui {
                     closeDropdownState();
                     return;
                 }
-                // Click outside overlay → close it and consume the click
                 openDropdown = null;
                 closeDropdownState();
                 return;
@@ -1784,7 +1326,6 @@ public final class ModernClickGui extends ClickGui {
                     }
                     return;
                 }
-                // toggle open/close — actual option selection handled in mouseClicked overlay block
                 openDropdown = openDropdown == slider ? null : slider;
                 closeDropdownState(); // a freshly opened list always starts at the top
             } else if (button == 0 && inside(mx, my, sliderValueLeft() - 5, y + 5, bx1 - 8, y + h - 5)) {
@@ -1872,8 +1413,6 @@ public final class ModernClickGui extends ClickGui {
 
     @Override
     public void handleMouseInput() throws IOException {
-        // Capture the event delta first. ClickGui's legacy wheel handler calls
-        // Mouse.getDWheel(), which consumes it before this dashboard can scroll.
         int wheel = Mouse.getEventDWheel();
         super.handleMouseInput();
         if (wheel == 0) return;
@@ -1882,8 +1421,6 @@ public final class ModernClickGui extends ClickGui {
         int my = (int) Math.floor(height - Mouse.getEventY() * height / (double) mc.displayHeight - 1);
         float speed = Gui.scrollSpeed == null ? 28f : (float) Math.max(8d, Math.min(90d, Gui.scrollSpeed.getInput()));
         float amount = wheel > 0 ? speed : -speed;
-        // An open dropdown takes the wheel first, otherwise the panel behind it scrolls out
-        // from under the options and the hidden entries stay unreachable.
         if (overDropdown(mx, my)) {
             dropdownScrollTarget += amount;
             clampDropdownScroll();
@@ -1912,12 +1449,6 @@ public final class ModernClickGui extends ClickGui {
             editSliderValue(typedChar, keyCode);
             return;
         }
-        if (CommandLine.opened) {
-            if (keyCode == Keyboard.KEY_ESCAPE) { CommandLine.opened = false; CommandLine.closed = false; commandFocused = false; return; }
-            if (keyCode == Keyboard.KEY_RETURN && !commandDraft.trim().isEmpty()) { CommandHandler.runCommand(commandDraft); commandDraft = ""; editor.reset(""); return; }
-            if (editor.keyTyped(typedChar, keyCode, 256)) commandDraft = editor.getText();
-            return;
-        }
         if (searchFocused) {
             editSearch(typedChar, keyCode);
             return;
@@ -1939,11 +1470,6 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void closeDashboard() {
-        // Use the close animation instead of immediately calling displayGuiScreen(null).
-        // Immediate close races with Module.onKeyBind() in the same tick: the module
-        // fires toggle() → onEnable() → sees mc.currentScreen == null → re-opens.
-        // With guiClosing=true the screen stays alive during the animation, so
-        // onEnable()'s guard (mc.currentScreen != Mindless.clickGui) prevents the re-open.
         guiClosing = true;
     }
 
@@ -2042,15 +1568,7 @@ public final class ModernClickGui extends ClickGui {
             }
         }
     }
-
-    /**
-     * Also clears the modern panel's own view state.
-     *
-     * The inherited implementation repositions category components, which this layout does not
-     * read: it centres itself on the screen and cannot be dragged. Scroll offsets are the only
-     * part of the view the user can get stuck, so they are what the button resets here.
-     */
-    @Override
+@Override
     public void resetPositions() {
         super.resetPositions();
         moduleScroll = moduleScrollTarget = 0f;
@@ -2157,17 +1675,11 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private float settingHeight(Setting setting) {
-        // Section headings carry their own space above the rule that separates them.
         if (setting instanceof DescriptionSetting) return 31;
         if (setting instanceof GroupSetting) return 31;
-        // Action-only rows do not need the height of a full toggle/control.
-        // Keeping them compact makes utility pages such as Scripts read as a
-        // single grouped menu instead of a set of disconnected labels.
         if (setting instanceof ButtonSetting && ((ButtonSetting) setting).isMethodButton) return 25;
         if (setting instanceof SliderSetting) {
             SliderSetting slider = (SliderSetting) setting;
-            // Label, number and track share one row now, so a slider is no taller than
-            // anything else and the panel keeps an even rhythm down the page.
             if (!slider.isString) return 32;
             return 32; // dropdown draws as floating overlay, not in-flow
         }
@@ -2308,8 +1820,6 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void panelSurface(float x1, float y1, float x2, float y2, int color) {
-        // A single fill produces cleaner antialiased corners than the previous
-        // fill-plus-offset outline pairing, which exposed a faint second radius.
         rounded(x1, y1, x2, y2, 7.5f, color);
     }
 
@@ -2318,29 +1828,13 @@ public final class ModernClickGui extends ClickGui {
                 width * renderScale, height * renderScale,
                 7.5f * renderScale, 6f * renderScale, argb(108, 0, 0, 0));
     }
-
-    /**
-     * Every corner in this screen goes through here or {@link #rounded}, so the theme's rounding
-     * percentage only has to be applied in these two places. Clamped to half the shorter side so
-     * a large value cannot invert the geometry.
-     */
-    private static float radius(float radius, float w, float h) {
+private static float radius(float radius, float w, float h) {
         float scaled = radius * mindless.module.impl.theme.ThemeManager.roundingScale();
         float limit = Math.min(Math.abs(w), Math.abs(h)) * .5f;
-        // Never hand the shader an exact zero: its signed distance field degenerates there and
-        // the quad it expands by a pixel bleeds over whatever was drawn next to it.
         return Math.max(.5f, Math.min(scaled, Math.max(.5f, limit)));
     }
-
-    /**
-     * Font family for this screen. The two family names used to be compile-time constants, so
-     * the Font setting changed nothing here -- it is read live now. Only the SF family ships a
-     * separate bold face; every other family reuses itself for headers.
-     */
-    private static String uiFontFamily(boolean bold) {
+private static String uiFontFamily(boolean bold) {
         String family = Gui.getSelectedFontName();
-        // "Minecraft" is the bitmap font; it cannot be rasterised at arbitrary heights and looks
-        // like a different UI entirely here, so this screen always uses a real typeface.
         if (family == null || family.isEmpty() || "Minecraft".equalsIgnoreCase(family)) {
             return bold ? FALLBACK_FONT_BOLD : FALLBACK_FONT_REGULAR;
         }
@@ -2349,8 +1843,6 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void outline(float x1, float y1, float x2, float y2, float radius, int color) {
-        // Draw a 1px larger rect in the border color behind the fill.
-        // Avoids the roundRectOutline shader's transparent-fill blending artifact.
         float b = 1f;
         float w = (x2 - x1) + b * 2f, h = (y2 - y1) + b * 2f;
         RoundedUtils.drawRound(x1 - b, y1 - b, w, h, radius(radius + b, w, h), color);
@@ -2359,15 +1851,7 @@ public final class ModernClickGui extends ClickGui {
     private void rounded(float x1, float y1, float x2, float y2, float radius, int color) {
         RoundedUtils.drawRound(x1, y1, x2 - x1, y2 - y1, radius(radius, x2 - x1, y2 - y1), color);
     }
-
-    /**
-     * A rect whose corners are rounded individually, clockwise from the top left.
-     *
-     * <p>Zero means square, and unlike {@link #radius} that is honoured rather than nudged up to
-     * half a pixel: the per-corner shader drops the arc term entirely at zero instead of
-     * degenerating there, so there is nothing to guard against.
-     */
-    private void roundedCorners(float x1, float y1, float x2, float y2,
+private void roundedCorners(float x1, float y1, float x2, float y2,
                                 float topLeft, float topRight, float bottomRight, float bottomLeft,
                                 int color) {
         float w = x2 - x1, h = y2 - y1;
@@ -2375,9 +1859,7 @@ public final class ModernClickGui extends ClickGui {
                 corner(topLeft, w, h), corner(topRight, w, h),
                 corner(bottomRight, w, h), corner(bottomLeft, w, h), color);
     }
-
-    /** {@link #roundedCorners} with the four-corner colour ramp of the gradient shader. */
-    private void gradientRoundedCorners(float x1, float y1, float x2, float y2,
+private void gradientRoundedCorners(float x1, float y1, float x2, float y2,
                                         float topLeft, float topRight,
                                         float bottomRight, float bottomLeft,
                                         int blColor, int tlColor, int brColor, int trColor) {
@@ -2387,19 +1869,11 @@ public final class ModernClickGui extends ClickGui {
                 corner(bottomRight, w, h), corner(bottomLeft, w, h),
                 blColor, tlColor, brColor, trColor);
     }
-
-    /** {@link #radius} for a single corner: same theme scaling and cap, but zero stays zero. */
-    private static float corner(float radius, float w, float h) {
+private static float corner(float radius, float w, float h) {
         if (radius <= 0f) return 0f;
         return radius(radius, w, h);
     }
     private void line(float x1, float y1, float x2, float y2, int color) {
-        // Exactly one physical pixel, sitting on the physical pixel grid.
-        //
-        // A half-unit-tall rect at an arbitrary fractional y covers no pixel centre at all when it
-        // falls between two rows, and then nothing is drawn. That is why the divider under the
-        // category list came and went: its y is the running total of however many category rows
-        // are above it, so whether it landed on a sample point was luck.
         float scale = pixelScale();
         float top = Math.round(Math.min(y1, y2) * scale) / scale;
         RenderUtils.drawRect(x1, top, x2, top + 1f / scale, color);
@@ -2487,7 +1961,6 @@ public final class ModernClickGui extends ClickGui {
     }
 
     private void drawCategoryIcon(Module.category category, float x, float y, int color) {
-        // Use PNG icon if loaded, tinted with the supplied color.
         ResourceLocation icon = categoryIcons.get(category);
         if (icon != null) {
             float size = 12f;
@@ -2499,14 +1972,12 @@ public final class ModernClickGui extends ClickGui {
                     0, 0, 32, 32, 32, 32, r, g, b, a);
             return;
         }
-        // Vector fallback
         GL11.glPushMatrix();
         GL11.glTranslatef(x, y, 0f);
         GL11.glScalef(.82f, .82f, 1f);
         x = 0f; y = 0f;
         switch (category) {
             case combat:
-                // Crosshair with center dot
                 segments(color,
                     x, y - 6.5f, x, y - 3.2f,
                     x, y + 3.2f, x, y + 6.5f,
@@ -2516,7 +1987,6 @@ public final class ModernClickGui extends ClickGui {
                 circleOutline(x, y, 3.0f, color);
                 break;
             case movement:
-                // Arrow pointing top-right (paper plane / speed arrow)
                 segments(color,
                     x - 5.5f, y + 5.5f, x + 5.5f, y - 5.5f,
                     x + 5.5f, y - 5.5f, x + 5.5f, y + 1.5f,
@@ -2524,7 +1994,6 @@ public final class ModernClickGui extends ClickGui {
                     x + 5.5f, y - 5.5f, x - 1.5f, y + 1.5f);
                 break;
             case player:
-                // Person silhouette: circle head + body arc
                 circleOutline(x, y - 3.8f, 2.4f, color);
                 segments(color,
                     x - 4.5f, y + 6f, x - 3.6f, y + 1.8f,
@@ -2534,42 +2003,35 @@ public final class ModernClickGui extends ClickGui {
                     x + 3.6f, y + 1.8f, x + 4.5f, y + 6f);
                 break;
             case world:
-                // Globe: circle + latitude/longitude lines
                 circleOutline(x, y, 6f, color);
                 segments(color,
                     x - 6f, y, x + 6f, y,
                     x, y - 6f, x, y + 6f);
-                // Horizontal arc hints (just two shorter horizontal lines)
                 segments(color,
                     x - 5.2f, y - 3f, x + 5.2f, y - 3f,
                     x - 5.2f, y + 3f, x + 5.2f, y + 3f);
                 break;
             case render:
-                // Monitor: rounded rect + stand
                 lineBox(x - 5.8f, y - 5f, x + 5.8f, y + 2.8f, color);
                 segments(color,
                     x, y + 2.8f, x, y + 5.5f,
                     x - 3f, y + 5.5f, x + 3f, y + 5.5f);
                 break;
             case other:
-                // Three horizontal dots
                 circle(x - 4.5f, y, 1.4f, color);
                 circle(x, y, 1.4f, color);
                 circle(x + 4.5f, y, 1.4f, color);
                 break;
             case client:
-                // Sliders / settings lines
                 segments(color,
                     x - 6f, y - 4f, x + 6f, y - 4f,
                     x - 6f, y, x + 6f, y,
                     x - 6f, y + 4f, x + 6f, y + 4f);
-                // Notch indicators
                 circle(x + 1.5f, y - 4f, 1.3f, color);
                 circle(x - 2f, y, 1.3f, color);
                 circle(x + 2.5f, y + 4f, 1.3f, color);
                 break;
             case profiles:
-                // ID card / bookmark
                 lineBox(x - 5.8f, y - 5f, x + 5.8f, y + 5f, color);
                 circleOutline(x - 2.5f, y - 1f, 1.6f, color);
                 segments(color,
@@ -2579,7 +2041,6 @@ public final class ModernClickGui extends ClickGui {
                     x + 1f, y + 2.8f, x + 4.5f, y + 2.8f);
                 break;
             case theme:
-                // Paint palette: rounded body with a thumb hole and three paint wells
                 circleOutline(x, y, 6f, color);
                 circleOutline(x + 2.6f, y + 2.6f, 1.6f, color);
                 circle(x - 3.2f, y - 1.2f, 1.25f, color);
@@ -2587,7 +2048,6 @@ public final class ModernClickGui extends ClickGui {
                 circle(x + 2.8f, y - 2.4f, 1.25f, color);
                 break;
             case bedwars:
-                // Bed from the side: headboard, mattress, pillow, two legs.
                 segments(color,
                     x - 6.5f, y + 2.5f, x - 6.5f, y - 4.5f,
                     x - 6.5f, y - 0.5f, x + 6.5f, y - 0.5f,
@@ -2598,7 +2058,6 @@ public final class ModernClickGui extends ClickGui {
                 lineBox(x - 5.5f, y - 2.5f, x - 2.5f, y - 0.5f, color);
                 break;
             case scripts:
-                // Code brackets </>
                 segments(color,
                     x - 5f, y - 3.5f, x - 2f, y,
                     x - 2f, y, x - 5f, y + 3.5f,
@@ -2670,12 +2129,7 @@ public final class ModernClickGui extends ClickGui {
     private ResourceLocation loadBundledTexture(String name, String path, boolean smooth) {
         return loadBundledTexture(name, path, smooth, 0, 0);
     }
-
-    /**
-     * @param rasterW largest width to keep, or zero to upload the image at its own size
-     * @param rasterH largest height to keep, or zero to upload the image at its own size
-     */
-    private ResourceLocation loadBundledTexture(String name, String path, boolean smooth,
+private ResourceLocation loadBundledTexture(String name, String path, boolean smooth,
                                                 int rasterW, int rasterH) {
         try (InputStream stream = ModernClickGui.class.getResourceAsStream(path)) {
             if (stream == null) return null;
@@ -2689,16 +2143,7 @@ public final class ModernClickGui extends ClickGui {
             return null;
         }
     }
-
-    /**
-     * Reduces an image to a target size once, at load, rather than leaving it to the sampler.
-     *
-     * <p>Halved repeatedly first, because one bilinear step averages a two-by-two neighbourhood no
-     * matter how far it is reducing; going straight from a large source to a small target throws
-     * away nearly all of it and keeps whichever pixels happened to fall under the taps. Each
-     * halving keeps every pixel contributing to the one that replaces it.
-     */
-    private static BufferedImage rasterize(BufferedImage source, int targetW, int targetH) {
+private static BufferedImage rasterize(BufferedImage source, int targetW, int targetH) {
         int w = source.getWidth(), h = source.getHeight();
         if (w <= targetW && h <= targetH) return source;
         BufferedImage image = source;
@@ -2709,16 +2154,7 @@ public final class ModernClickGui extends ClickGui {
         }
         return w == targetW && h == targetH ? image : scaleTo(image, targetW, targetH);
     }
-
-    /**
-     * Scales in premultiplied alpha so the transparent surround cannot bleed into the edge.
-     *
-     * <p>Averaging straight ARGB mixes in the colour of pixels that are not there -- in a PNG that
-     * is usually transparent black -- and leaves a dark rim around everything. Premultiplied
-     * samples carry no colour where they carry no alpha. DynamicTexture reads through getRGB,
-     * which converts back, so nothing downstream has to know.
-     */
-    private static BufferedImage scaleTo(BufferedImage source, int w, int h) {
+private static BufferedImage scaleTo(BufferedImage source, int w, int h) {
         BufferedImage scaled = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB_PRE);
         Graphics2D graphics = scaled.createGraphics();
         graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
@@ -2753,16 +2189,8 @@ public final class ModernClickGui extends ClickGui {
         GlStateManager.color(1f, 1f, 1f, 1f);
         GlStateManager.disableBlend();
     }
-
-    /** Nominal body size; every other scale is expressed as a multiple of this. */
-    private static final float BASE_TEXT_PX = 13f;
-
-    /**
-     * Renderer rasterised at the exact height this text will occupy, so it can be drawn at
-     * scale 1.0. Previously headers came from an 11px atlas drawn at 1.45x and body text from a
-     * 13px atlas drawn at 0.63x -- both resampled, which is what made the GUI look soft.
-     */
-    private MindlessFontRenderer scaledFont(float scale, boolean bold) {
+private static final float BASE_TEXT_PX = 13f;
+private MindlessFontRenderer scaledFont(float scale, boolean bold) {
         float px = Math.max(6f, Math.round(BASE_TEXT_PX * scale * TEXT_SCALE));
         return FontManager.getClickGuiRenderer(uiFontFamily(bold), px);
     }
@@ -2770,15 +2198,10 @@ public final class ModernClickGui extends ClickGui {
     private MindlessFontRenderer uiFont(boolean bold) {
         return scaledFont(1f, bold);
     }
-
-    /** Returns the 9px renderer rasterised at its natural size — always rendered at scale 1.0
-     *  so the atlas is never downsampled and glyphs stay crisp. */
-    private MindlessFontRenderer uiSmallFont() {
+private MindlessFontRenderer uiSmallFont() {
         return FontManager.getClickGuiSmallRenderer(uiFontFamily(false));
     }
-
-    /** Draws text using the 9px small renderer at scale 1.0 — no GL downscaling, no blur. */
-    private void drawSmallText(String text, float x, float y, int color) {
+private void drawSmallText(String text, float x, float y, int color) {
         MindlessFontRenderer renderer = uiSmallFont();
         GL11.glPushMatrix(); GL11.glTranslatef(x, y, 0);
         renderer.drawString(text == null ? "" : text, 0, 0, color, false);
@@ -2788,17 +2211,7 @@ public final class ModernClickGui extends ClickGui {
     private float smallTextWidth(String text) {
         return uiSmallFont().getStringWidth(text == null ? "" : text);
     }
-
-    /**
-     * As much of the text as fits, ending in an ellipsis.
-     *
-     * <p>It used to be possible to get back nothing but the ellipsis. The loop appended it and
-     * returned the moment the first character failed to leave room, and on a narrow column that is
-     * the very first pass -- so a description disappeared entirely and left two dots behind. An
-     * ellipsis on its own carries no information at all; a single letter carries some. When even
-     * one character plus the ellipsis will not fit, the ellipsis is what gets dropped.
-     */
-    private String trimSmall(String text, float maxWidth) {
+private String trimSmall(String text, float maxWidth) {
         if (text == null || text.isEmpty()) return "";
         MindlessFontRenderer font = uiSmallFont();
         if (font.getStringWidth(text) <= maxWidth) return text;
@@ -2816,9 +2229,7 @@ public final class ModernClickGui extends ClickGui {
         if (sb.length() > 0) return sb.toString();
         return fitWithoutEllipsis(font, text, maxWidth);
     }
-
-    /** The longest prefix that fits, with at least one character kept whatever the width. */
-    private static String fitWithoutEllipsis(MindlessFontRenderer font, String text, float maxWidth) {
+private static String fitWithoutEllipsis(MindlessFontRenderer font, String text, float maxWidth) {
         int length = text.length();
         while (length > 1 && font.getStringWidth(text.substring(0, length)) > maxWidth) length--;
         return text.substring(0, length);
@@ -2826,8 +2237,6 @@ public final class ModernClickGui extends ClickGui {
 
     private void drawText(String text, float x, float y, int color, float scale, boolean bold) {
         MindlessFontRenderer renderer = scaledFont(scale, bold);
-        // Snap to the physical pixel grid. A fractional translate samples the glyph atlas
-        // between texels, which smears every edge; this is the other half of the crispness fix.
         double rs = getActiveRenderScale();
         if (rs <= 0) rs = 1;
         float sx = (float) (Math.round(x * rs) / rs);
@@ -2863,8 +2272,7 @@ public final class ModernClickGui extends ClickGui {
         drawText(title, x, top, titleColor, titleScale, true);
         drawText(subtitle, x, top + titleHeight + gap, subtitleColor, subtitleScale, false);
     }
-    /** {@link #trimSmall} at an arbitrary scale, and blanking the same way it used to. */
-    private String trim(String text, float maxWidth, float scale, boolean bold) {
+private String trim(String text, float maxWidth, float scale, boolean bold) {
         if (text == null) return "";
         MindlessFontRenderer f = scaledFont(scale, bold);
         if (f.getStringWidth(text) <= maxWidth) return text;
@@ -3217,8 +2625,6 @@ public final class ModernClickGui extends ClickGui {
     private static int argb(int a, int r, int g, int b) { return ((a&255)<<24)|((r&255)<<16)|((g&255)<<8)|(b&255); }
 
     private void updateThemePalette() {
-        // Push a pending theme selection into Gui's colour settings before reading them, so
-        // picking a theme repaints on the same frame instead of on the next GUI open.
         mindless.module.impl.theme.ThemeManager.poll();
         int next = Gui.themeColor == null ? argb(255, 159, 143, 210)
                 : 0xFF000000 | Gui.themeColor.getRGB();
@@ -3240,18 +2646,9 @@ public final class ModernClickGui extends ClickGui {
                     : argb(255, 244, 242, 248);
         }
 
-        // Runs unconditionally: surfaces derive from the accent, so they must settle even on
-        // the frames where the accent itself did not move.
         updateSurfacePalette();
     }
-
-    /**
-     * Repaints panels, rows, controls and borders from the theme's surface colour, so a theme
-     * changes the whole GUI rather than only the accent and the text. Reverts to the stock
-     * palette when surface theming is off.
-     */
-    private void updateSurfacePalette() {
-        // Full manual control wins over anything derived: every surface is taken verbatim.
+private void updateSurfacePalette() {
         if (mindless.module.impl.theme.ThemeManager.colorsOverridden()) {
             surfaceSeed = -3;
             PANEL = mindless.module.impl.theme.ThemeManager.panel();
@@ -3297,16 +2694,13 @@ public final class ModernClickGui extends ClickGui {
         ROW_HOVER = shade(236, r, g, b, 2.70f);
         CONTROL = shade(118, r, g, b, .55f);
         CONTROL_HOVER = shade(150, r, g, b, 2.40f);
-        // Edges lean toward the accent so the chrome reads as part of the theme.
         BORDER = withAlpha(mixColor(argb(255, 210, 210, 204), ACCENT, .55f), 62);
         DIVIDER = withAlpha(mixColor(argb(255, 210, 210, 204), ACCENT, .40f), 50);
         DROPDOWN_BG = PANEL_ALT;
         DROPDOWN_BORDER = BORDER;
         DROPDOWN_SELECTED = withAlpha(ACCENT, 80);
     }
-
-    /** Scales a surface colour's brightness, clamped, and never quite to black. */
-    private static int shade(int alpha, int r, int g, int b, float factor) {
+private static int shade(int alpha, int r, int g, int b, float factor) {
         return argb(Math.min(255, alpha),
                 Math.min(255, Math.round(r * factor) + 3),
                 Math.min(255, Math.round(g * factor) + 3),
@@ -3362,9 +2756,7 @@ public final class ModernClickGui extends ClickGui {
         int b = (int) ((from & 255) + ((to & 255) - (from & 255)) * p);
         return argb(a, r, g, b);
     }
-
-    /** A lightweight edit checkpoint for the selected module's direct controls. */
-    private static final class ModuleSnapshot {
+private static final class ModuleSnapshot {
         final Module module;
         final boolean enabled;
         final int bind;

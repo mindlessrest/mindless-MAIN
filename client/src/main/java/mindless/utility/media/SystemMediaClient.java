@@ -18,22 +18,12 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public final class SystemMediaClient {
-    // The displayed position interpolates every rendered frame; the native
-    // session only needs periodic correction and track/seek updates.
     private static final long POLL_INTERVAL_MS = 50L;
-    /** A position change larger than this is a seek, not clock drift, and is applied at once. */
-    private static final long SEEK_SNAP_MS = 2000L;
-    /** Largest single correction applied to the playback clock, so drift is never a visible jump. */
-    private static final long MAX_DRIFT_STEP_MS = 300L;
+private static final long SEEK_SNAP_MS = 2000L;
+private static final long MAX_DRIFT_STEP_MS = 300L;
     private static final long MEDIA_STALE_GRACE_MS = 1800L;
     private static final int MAX_ALBUM_ART_SIZE = 256;
-    /**
-     * How few pixels the softened copy keeps.
-     *
-     * <p>Small enough that no feature of the cover survives as a feature, large enough that the
-     * wash still moves across the panel rather than being one flat colour.
-     */
-    /**
+/**
      * The softened copy is a wide band, not a square.
      *
      * <p>It gets stretched across a panel four times wider than it is tall. Taken as a square,
@@ -43,8 +33,7 @@ public final class SystemMediaClient {
      */
     private static final int ALBUM_ART_BLUR_WIDTH = 96;
     private static final int ALBUM_ART_BLUR_HEIGHT = 32;
-    /** Passes of box blur. Three is the usual stand-in for a Gaussian. */
-    private static final int ALBUM_ART_BLUR_PASSES = 3;
+private static final int ALBUM_ART_BLUR_PASSES = 3;
     private static final int ALBUM_ART_BLUR_RADIUS = 5;
     private static final SystemMediaClient INSTANCE = new SystemMediaClient();
 
@@ -60,15 +49,7 @@ public final class SystemMediaClient {
     private volatile String statusMessage = "No media detected";
     private volatile long lastSuccessfulPollAt;
     private volatile String lastNativeTrackKey = "";
-    /**
-     * What the enabled modules actually intend to draw.
-     *
-     * <p>Lyrics cost a network lookup and artwork costs a PNG decode, and neither is worth paying
-     * for to fill a panel nobody is showing. Each consumer declares its own need and the bridge is
-     * told the union, so switching synced lyrics off in the mini player stops the lookups outright
-     * rather than fetching them and discarding the result.
-     */
-    private volatile boolean lyricsWanted;
+private volatile boolean lyricsWanted;
     private volatile boolean playerWantsArtwork;
     private volatile boolean visualizerWantsArtwork;
     private volatile long lastNativePositionMs = Long.MIN_VALUE;
@@ -88,8 +69,7 @@ public final class SystemMediaClient {
     private DynamicTexture uploadedBlurTexture;
     private String requestedAlbumArtKey = "";
     private DecodedAlbumArt decodedAlbumArt;
-    /** Accent pulled from the current artwork, for anything that wants to match the record. */
-    private volatile int albumAccentColor;
+private volatile int albumAccentColor;
     private volatile String albumAccentKey = "";
     private Future<?> albumArtDecodeTask;
 
@@ -113,8 +93,6 @@ public final class SystemMediaClient {
                 nativeBridge = null;
                 timedLyricsManager.updateTrack(SystemMediaInfo.unavailable());
                 statusMessage = "Connecting to media";
-                // Load the native bridge on a background thread so the game
-                // thread never blocks on DLL extraction + antivirus scan.
                 mediaExecutor.execute(() -> {
                     NativeMediaBridge bridge = NativeMediaBridge.tryLoad();
                     synchronized (lifecycleLock) {
@@ -203,13 +181,7 @@ public final class SystemMediaClient {
                     @Override
                     public void run() {
                         BufferedImage image = decodeAndResizeAlbumArt(encodedImage);
-                        // Sampled here rather than at draw time: the pixels are already in hand
-                        // on a background thread, and the answer only changes once per track.
                         int accent = image == null ? 0 : extractAccentColor(image);
-                        // Same reasoning for the wash. It is a downscale and three blur passes,
-                        // which is a couple of milliseconds -- nothing on a worker thread, but a
-                        // dropped frame if it were done on the render thread at the moment of the
-                        // upload, which is exactly when a track changes and the panel is on screen.
                         BufferedImage wash = softenAlbumArt(image);
                         synchronized (albumArtLock) {
                             if (albumArtKey.equals(requestedAlbumArtKey)) {
@@ -247,26 +219,10 @@ public final class SystemMediaClient {
 
         return null;
     }
-
-    /**
-     * A colour that reads as belonging to the current album art, or 0 when there is none.
-     *
-     * <p>RGB only -- callers supply their own alpha.
-     */
-    public int getAlbumAccentColor() {
+public int getAlbumAccentColor() {
         return albumAccentKey.isEmpty() ? 0 : albumAccentColor;
     }
-
-    /**
-     * Picks the colour a person would say the cover "is".
-     *
-     * <p>An average is the obvious approach and the wrong one: averaging a cover produces mud,
-     * because opposing hues cancel. This buckets pixels by hue instead and takes the heaviest
-     * bucket, weighting each pixel by how colourful it is, so a mostly-grey sleeve with one red
-     * detail comes back red rather than grey. Near-black and near-white pixels are skipped
-     * entirely; they carry no hue and every cover has plenty of both.
-     */
-    private static int extractAccentColor(BufferedImage image) {
+private static int extractAccentColor(BufferedImage image) {
         final int buckets = 24;
         double[] weight = new double[buckets];
         double[] sumRed = new double[buckets];
@@ -309,8 +265,6 @@ public final class SystemMediaClient {
         int red = (int) (sumRed[best] / weight[best]);
         int green = (int) (sumGreen[best] / weight[best]);
         int blue = (int) (sumBlue[best] / weight[best]);
-
-        // Lift it clear of the dark panel it will be drawn on, without washing out the hue.
         Color.RGBtoHSB(red, green, blue, hsb);
         int lifted = Color.HSBtoRGB(hsb[0], Math.min(1.0F, Math.max(0.55F, hsb[1])),
                 Math.min(1.0F, Math.max(0.72F, hsb[2])));
@@ -348,9 +302,7 @@ public final class SystemMediaClient {
             pollTask = null;
         }
     }
-
-    /** The loaded bridge, or null when the helper is unavailable. For the visualiser pump. */
-    NativeMediaBridge getNativeBridge() {
+NativeMediaBridge getNativeBridge() {
         return nativeBridge;
     }
 
@@ -417,19 +369,7 @@ public final class SystemMediaClient {
         uploadedBlurTexture = null;
         uploadedAlbumArtKey = "";
     }
-
-    /**
-     * A heavily softened copy of the artwork, for drawing behind text.
-     *
-     * <p>It is the same picture reduced to a handful of pixels. Drawn back at panel size with
-     * linear filtering, the hardware interpolates between those few samples and the result is a
-     * smooth wash of the record's colours -- which is what a CSS blur of the cover looks like, at
-     * a fraction of the cost of actually blurring anything.
-     *
-     * <p>Only meaningful once {@link #getAlbumArtTextureLocation} has run for the current track,
-     * since both are uploaded together.
-     */
-    public ResourceLocation getAlbumArtBlurTextureLocation() {
+public ResourceLocation getAlbumArtBlurTextureLocation() {
         return enabled ? uploadedBlurLocation : null;
     }
 
@@ -439,24 +379,7 @@ public final class SystemMediaClient {
             albumArtDecodeTask = null;
         }
     }
-
-    /**
-     * Turns the cover into the wash that sits behind the card.
-     *
-     * <p>Shrinking a cover to a handful of pixels is not the same as blurring it. What comes back
-     * out when those pixels are stretched across the panel is straight lines between neighbouring
-     * samples -- flat facets meeting at creases, which is what made it read as a stretched
-     * thumbnail rather than as blurred artwork. Blurring at a size with something left in it and
-     * then magnifying gives smooth gradients instead, because there is no detail left at the pixel
-     * scale for the magnification to expose. Three box passes stand in for a Gaussian.
-     *
-     * <p>The whole cover goes in rather than a centre band, so the wash carries the record's full
-     * palette. Squashing it out of shape costs nothing once it is this far gone.
-     *
-     * <p>Averaging also walks every pixel towards grey, mixing a sleeve's lights and darks
-     * together, and the wash came out muddy for it. Saturation goes back on afterwards.
-     */
-    private static BufferedImage softenAlbumArt(BufferedImage source) {
+private static BufferedImage softenAlbumArt(BufferedImage source) {
         if (source == null) {
             return null;
         }
@@ -472,17 +395,7 @@ public final class SystemMediaClient {
             return null;
         }
     }
-
-    /**
-     * Halves repeatedly before the final step.
-     *
-     * <p>One bilinear draw from a 600px cover down to under a hundred reads four neighbouring
-     * pixels and ignores the rest, so most of the artwork never reaches the result and what does
-     * is whichever pixels happened to land under the sample points. Halving averages everything on
-     * the way down, which is what makes the wash the colour of the record rather than the colour
-     * of an arbitrary scattering of its pixels.
-     */
-    private static BufferedImage downscale(BufferedImage source, int targetWidth, int targetHeight) {
+private static BufferedImage downscale(BufferedImage source, int targetWidth, int targetHeight) {
         BufferedImage current = source;
         int width = source.getWidth();
         int height = source.getHeight();
@@ -508,15 +421,7 @@ public final class SystemMediaClient {
         }
         return out;
     }
-
-    /**
-     * Separable box blur, edges held rather than wrapped.
-     *
-     * <p>Run over a few thousand pixels once per track, so the running-sum form is not needed for
-     * speed so much as for staying obviously correct at the edges: a row is read into a buffer
-     * first and clamped at both ends, so the left of the wash never picks up the right of it.
-     */
-    private static void boxBlur(BufferedImage image, int radius) {
+private static void boxBlur(BufferedImage image, int radius) {
         int width = image.getWidth();
         int height = image.getHeight();
         if (radius < 1 || width < 2 || height < 2) {
@@ -544,8 +449,6 @@ public final class SystemMediaClient {
                 int a = 0, r = 0, g = 0, b = 0;
                 for (int k = -radius; k <= radius; k++) {
                     int index = i + k;
-                    // Held, not wrapped: a wash whose left edge samples its right edge shows the
-                    // seam as a bright band down whichever side it borrowed from.
                     index = index < 0 ? 0 : (index >= lineLength ? lineLength - 1 : index);
                     int argb = line[index];
                     a += (argb >>> 24) & 0xFF;
@@ -563,9 +466,7 @@ public final class SystemMediaClient {
             }
         }
     }
-
-    /** Pushes every pixel away from its own grey, and lifts it a little. */
-    private static void saturate(BufferedImage image, float saturation, float brightness) {
+private static void saturate(BufferedImage image, float saturation, float brightness) {
         for (int y = 0; y < image.getHeight(); y++) {
             for (int x = 0; x < image.getWidth(); x++) {
                 int argb = image.getRGB(x, y);
@@ -628,8 +529,7 @@ public final class SystemMediaClient {
     private static final class DecodedAlbumArt {
         private final String key;
         private final BufferedImage image;
-        /** The blurred backdrop, built on the same background thread as the decode. */
-        private final BufferedImage wash;
+private final BufferedImage wash;
 
         private DecodedAlbumArt(String key, BufferedImage image, BufferedImage wash) {
             this.key = key;
@@ -683,27 +583,12 @@ public final class SystemMediaClient {
             return incoming;
         }
         if (trackChanged || !isSameTrack(previous, incoming)) {
-            // During track transitions SMTC may briefly report the new track with an empty
-            // title before metadata populates. Showing that for 1-2 frames causes a visible
-            // flicker (panel shrinks / "Nothing playing" flash). Keep the old info until the
-            // new track has a real title.
             String title = incoming.getTitle();
             if (title == null || title.trim().isEmpty()) {
                 return previous;
             }
             return incoming;
         }
-
-        // Some media sessions only publish a new raw position every ~5 seconds.
-        // Continue the prior local clock while that raw value is repeated, but
-        // re-anchor immediately when the service publishes a new value. This
-        // gives a smooth per-second display without refusing real corrections.
-        //
-        // Additionally: if the native position is more than 750ms BEHIND the
-        // current interpolated value, keep interpolating instead of snapping.
-        // This prevents position fluctuations in SMTC (which can briefly report
-        // a stale value ~300-500ms behind the running clock) from causing the
-        // lyric view to flicker/reset.
         long mergedPosition;
         if (incoming.isPlaying()) {
             long prevLive = previous.getLivePositionMs();
@@ -711,14 +596,6 @@ public final class SystemMediaClient {
             if (!nativePositionChanged) {
                 mergedPosition = prevLive;
             } else {
-                // Ease onto the newly published position instead of snapping to it.
-                //
-                // SMTC republishes every few seconds and its value is routinely a couple of
-                // hundred ms off the running clock in either direction. Jumping straight to it
-                // shifted the lyric clock by up to 750ms at a time, which is why lines landed
-                // early on one refresh and late on the next. The old rule was also asymmetric:
-                // corrections more than 750ms *backwards* were discarded outright, so genuine
-                // drift in that direction could never be recovered.
                 long error = incomingLive - prevLive;
                 if (Math.abs(error) > SEEK_SNAP_MS) {
                     mergedPosition = incomingLive; // a real seek, not drift

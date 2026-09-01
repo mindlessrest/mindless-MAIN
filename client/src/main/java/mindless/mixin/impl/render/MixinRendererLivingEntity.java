@@ -46,13 +46,7 @@ public abstract class MixinRendererLivingEntity<T extends EntityLivingBase> exte
     protected MixinRendererLivingEntity(RenderManager renderManager) {
         super(renderManager);
     }
-
-    /**
-     * Third-person uses RendererLivingEntity's swing value instead of the
-     * first-person ItemRenderer path. Feed the local player through Slow's
-     * same visual-only clock so perspective changes cannot desynchronize it.
-     */
-    @Inject(method = "getSwingProgress", at = @At("HEAD"), cancellable = true)
+@Inject(method = "getSwingProgress", at = @At("HEAD"), cancellable = true)
     private void slow$useLocalVisualSwing(T entity, float partialTicks, CallbackInfoReturnable<Float> cir) {
         if (entity == Minecraft.getMinecraft().thePlayer && entity instanceof AbstractClientPlayer) {
             float vanilla = entity.getSwingProgress(partialTicks);
@@ -219,9 +213,6 @@ public abstract class MixinRendererLivingEntity<T extends EntityLivingBase> exte
         if (DamageTint.instance == null) {
             return;
         }
-
-        // Damage tint piggybacks on RendererLivingEntity#setBrightness, so restore the
-        // same texture combiner state vanilla expects after a brightness pass.
         this.unsetBrightness();
         GlStateManager.setActiveTexture(OpenGlHelper.lightmapTexUnit);
         GlStateManager.enableTexture2D();

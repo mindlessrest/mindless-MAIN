@@ -12,8 +12,6 @@ import org.lwjgl.input.Mouse;
 
 import java.util.Map;
 import java.util.WeakHashMap;
-
-/** Schema-safe command completion/preview state for native GuiChat transforms. */
 public final class ChatCommandRuntime {
     private static final int MAX_PREVIEW_ROWS = 6;
     private static final Map<GuiChat, State> STATES = new WeakHashMap<>();

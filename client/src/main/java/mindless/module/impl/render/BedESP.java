@@ -666,9 +666,6 @@ public class BedESP extends Module {
 
             for (EnumFacing side : EnumFacing.values()) {
                 BlockPos neighbor = bedPart.offset(side);
-
-                // Never treat either half of the tracked bed as exposed space. During
-                // bed removal, the two halves can become air on different updates.
                 if (neighbor.equals(pair[0]) || neighbor.equals(pair[1])) {
                     continue;
                 }
@@ -1003,8 +1000,6 @@ public class BedESP extends Module {
                             secondX = x;
                             secondZ = startZ + breadth;
                         }
-
-                        // Treat each physical block position as belonging to the first shell that reaches it.
                         addOffset(offsets, seenAcrossLayers, firstX, firstY, firstZ);
                         addOffset(offsets, seenAcrossLayers, secondX, secondY, secondZ);
 

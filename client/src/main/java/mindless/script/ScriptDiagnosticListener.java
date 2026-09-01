@@ -14,8 +14,6 @@ public class ScriptDiagnosticListener implements DiagnosticListener<JavaFileObje
         if (message.contains("SpongePowered")) {
             return;
         }
-
-        // Safely extract source info — ECJ uses EclipseFileObject, not JavaSourceFromString
         JavaFileObject source = diagnostic.getSource();
         String sourceName = "unknown";
         int extraLines = 0;

@@ -16,8 +16,6 @@ val mindlessForgeVersion = providers.gradleProperty("mindlessForgeVersion")
 val version: String by project
 val modid: String by project
 val transformerFile = file("src/main/resources/accesstransformer.cfg")
-
-// "forge" = normal mod (Mixin). "injectable" = native DLL injection (ClassTransform/JVMTI).
 val mindlessBuildType: String = run {
     val explicit = project.findProperty("mindlessBuildType") as String?
     if (explicit != null) return@run explicit
@@ -124,8 +122,6 @@ dependencies {
     shadowImpl("org.slf4j:slf4j-api:2.0.13")
     shadowImpl("net.java.dev.jna:jna:5.14.0")
     shadowImpl("com.squareup.okhttp3:okhttp:4.12.0")
-    // Lunar may run on a JRE without javax.tools' system compiler. Keep script
-    // compilation available inside the payload instead of requiring launcher Java configuration.
     shadowImpl("org.eclipse.jdt:ecj:3.24.0")
 
     compileOnly("org.spongepowered:mixin:0.7.11-SNAPSHOT") {
@@ -141,10 +137,6 @@ dependencies {
     }
 
     testImplementation("junit:junit:4.13.2")
-    // The transformer compatibility tests are written against the weaving library and ASM, which
-    // reach the main source set through compileOnly/shadow and so never landed on the test
-    // classpath. Without these the whole test source set fails to compile, which is why the
-    // transformer suite has been skipped rather than run.
     testImplementation("net.lenni0451.classtransform:core:1.15.1")
     testImplementation("net.lenni0451.classtransform:additionalclassprovider:1.15.1")
 }
@@ -258,12 +250,6 @@ val lunarPayloadJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
 
 tasks.assemble.get().dependsOn(tasks.remapJar)
 
-// ---------------------------------------------------------------------------
-// MSA (Mindless Scripting API) — stub jar for offline script compilation.
-// Contains all net.minecraft.*, net.minecraftforge.*, and mindless.script.*
-// classes so scripts can compile without the game running.
-// ---------------------------------------------------------------------------
-
 val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
     group = "build"
     description = "Builds msa.jar (Mindless Scripting API) for offline script compilation."
@@ -273,8 +259,6 @@ val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
     archiveClassifier.set("")
     destinationDirectory.set(layout.buildDirectory.dir("libs"))
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-
-    // Our scripting API classes
     from(sourceSets.main.get().output) {
         include("mindless/script/**")
         include("mindless/module/Module.class")
@@ -285,14 +269,10 @@ val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
         include("mindless/event/**")
         include("mindless/Mindless.class")
     }
-
-    // Minecraft + Forge classes from loom's mapped jar
     from({ zipTree(forgeMappedJar.get()) }) {
         include("net/minecraft/**")
         include("net/minecraftforge/**")
     }
-
-    // Minecraft mapped classes from the actual MC jar on compileClasspath
     from({
         val mcJar = configurations.named("minecraftNamed").get().files.firstOrNull {
             it.name == "minecraft-mapped.jar" || it.name.contains("minecraft-mapped")
@@ -316,12 +296,6 @@ tasks.withType<JavaCompile>().configureEach {
         "-Aquiet=true"
     ))
 }
-
-// ---------------------------------------------------------------------------
-// Native injection bundle (MindlessNative.dll + MindlessInjector.exe).
-// Requires: Visual Studio 2022 C++ x64, CMake >= 3.21, and a JDK exposing
-// jni.h + jvmti.h (JDK 8 is fine). Set -PnativeJavaHome to point at it.
-// ---------------------------------------------------------------------------
 
 val nativeDir = layout.projectDirectory.dir("native").asFile
 val nativeBuildDir = layout.buildDirectory.dir("native").get().asFile

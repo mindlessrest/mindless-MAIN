@@ -7,18 +7,6 @@ import net.lenni0451.classtransform.annotations.CTarget;
 import net.lenni0451.classtransform.annotations.CTransformer;
 import net.lenni0451.classtransform.annotations.injection.CInject;
 import net.minecraft.client.gui.FontRenderer;
-
-/**
- * MixinFontRenderer replacement.
- *
- * The original used @ModifyVariable to rewrite the incoming {@code string}
- * argument. ClassTransform's equivalent (@CLocalVariable + @CInject) is
- * bytecode-fragile at STORE positions. We take a simpler route: cancel the
- * call at HEAD, replace the string, and re-invoke the same method via
- * reflection with the modified argument. Recursion state lives outside the
- * already-loaded FontRenderer class so JVMTI retransformation preserves its
- * schema.
- */
 @CTransformer(FontRenderer.class)
 public abstract class TransformerFontRenderer {
     @CInline

@@ -22,8 +22,6 @@ public class ScoreboardModule extends Module {
 
     @Override
     public void guiUpdate() {
-        // Scale belongs to the bundled faces. The Minecraft font is drawn through the panel's own
-        // fixed scale, and giving it a second one that does nothing would be a control that lies.
         if (fontScale != null) {
             fontScale.setVisible(!isMinecraftFontSelected(), this);
         }
@@ -32,16 +30,7 @@ public class ScoreboardModule extends Module {
     public static boolean isCustomScoreboardEnabled() {
         return instance != null && instance.isEnabled();
     }
-
-    /**
-     * The face the scoreboard should be drawn in, or null to keep the Minecraft one.
-     *
-     * <p>Null rather than an adapter around the vanilla renderer on purpose: the vanilla path has
-     * its own fixed panel scale and its own metrics, and routing it through the client's renderer
-     * to save a branch would move every line by a pixel or two for everyone who never asked for a
-     * different font.
-     */
-    public static MindlessFontRenderer getCustomFont() {
+public static MindlessFontRenderer getCustomFont() {
         if (instance == null || !instance.isEnabled() || font == null || isMinecraftFontSelected()) {
             return null;
         }

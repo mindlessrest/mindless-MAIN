@@ -11,13 +11,7 @@ public class Chams extends Module {
     private ButtonSetting ignoreBots;
     private ButtonSetting renderSelf;
     private ButtonSetting hidePlayers;
-
-    /**
-     * Whether the polygon offset is currently pushed. The pre and post hooks used to each work
-     * out for themselves whether they applied, which came apart the moment a setting changed
-     * between the two halves of one player's render and left the offset stuck on.
-     */
-    private static boolean offsetPushed;
+private static boolean offsetPushed;
 
     public Chams() {
         super("Chams", Module.category.render, 0);
@@ -26,15 +20,7 @@ public class Chams extends Module {
         this.registerSetting(hidePlayers = new ButtonSetting("Hide players", false));
         this.registerSetting(renderSelf = new ButtonSetting("Render self", false));
     }
-
-    /**
-     * Called from the RenderPlayer hook rather than through {@code RenderPlayerEvent}. Forge
-     * posts that event from its own patched copy of the render classes; Lunar has no Forge
-     * patches, so nothing ever posted it and this module did nothing at all.
-     *
-     * @return true when the player should not be drawn.
-     */
-    public static boolean onRenderPlayerPre(Entity entity) {
+public static boolean onRenderPlayerPre(Entity entity) {
         offsetPushed = false;
 
         Module module = ModuleManager.getModule(Chams.class);

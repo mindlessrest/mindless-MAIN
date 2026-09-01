@@ -1,6 +1,4 @@
 package mindless.transformer.impl.render;
-
-/** Cross-transformer bridge for the Weather time override. */
 public final class WeatherTimeOverride {
     private WeatherTimeOverride() {}
     private static volatile boolean active;

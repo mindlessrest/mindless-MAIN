@@ -37,8 +37,7 @@ public class HUD extends Module {
     private static final String[] WAVE_AXES = new String[] { "Vertical", "Horizontal" };
     private static final String[] VERTICAL_WAVE_DIRECTIONS = new String[] { "Down", "Up" };
     private static final String[] HORIZONTAL_WAVE_DIRECTIONS = new String[] { "Left", "Right" };
-    /** Horizontal wave: scales screen X (center of row) into phase; larger = faster change across X. */
-    private static final double HUD_WAVE_HORIZONTAL_X_SCALE = 0.35;
+private static final double HUD_WAVE_HORIZONTAL_X_SCALE = 0.35;
     private static final long HUD_RAINBOW_PERIOD_MS = 7500L;
     private static final double HUD_WAVE_ANGLE_SCALE = 0.12;
 
@@ -81,21 +80,13 @@ public class HUD extends Module {
     private static final String[] OUTLINE_MODES = new String[] { "None", "Full", "Side" };
     private static final String[] BACKGROUND_MODES = new String[] { "Connected", "Per line", "Panel" };
     private static final String[] SHADOW_STYLES = new String[] { "Drop", "Outline", "Soft" };
-    /**
-     * Offsets and weights for the soft shadow, as {x, y, weight}.
-     *
-     * A single offset copy is a duplicate of the text, not a shadow, and over a bright background
-     * it reads as a smear. Stacking a few weighted copies over a two pixel spread gives a falloff
-     * instead, which stays legible without turning into a second set of letters.
-     */
-    private static final float[][] SOFT_SHADOW_TAPS = {
+private static final float[][] SOFT_SHADOW_TAPS = {
             { 0.55f, 0.55f, 0.30f },
             { 1.00f, 1.00f, 0.50f },
             { 1.45f, 1.45f, 0.26f }
     };
     private static final String[] INFO_SEPARATORS = new String[] { "Space", "Brackets", "Dash" };
-    /** Eight neighbours, so an outlined glyph is enclosed on the diagonals as well as the sides. */
-    private static final int[][] OUTLINE_OFFSETS = {
+private static final int[][] OUTLINE_OFFSETS = {
             { -1, -1 }, { 0, -1 }, { 1, -1 },
             { -1,  0 },            { 1,  0 },
             { -1,  1 }, { 0,  1 }, { 1,  1 }
@@ -108,15 +99,7 @@ public class HUD extends Module {
     private float lastHudFontScale = -1.0f;
 
     public HUD() {
-        // Named for what it is. "HUD" said nothing about the on-screen module list, so the
-        // settings that control it -- colours, sorting, alignment, position -- were sitting
-        // behind a name nobody would think to open. Old profiles still resolve through the
-        // legacy alias in ModuleManager.
         super("Array List", Module.category.render);
-        // The theme owns the list's colours by default, which is what keeps the client looking
-        // like one thing. Everything below the toggle is the list's own scheme, for when it should
-        // not: the settings and the wave machinery were always here, they just had nothing
-        // registered to drive them once the theme took over.
         this.registerSetting(useTheme = new ButtonSetting("Use theme", true));
         this.registerSetting(colorMode = new SliderSetting("Color mode", 0, COLOR_MODES));
         this.registerSetting(hudColor = new ColorSetting("Color", 255, 255, 255));
@@ -134,9 +117,6 @@ public class HUD extends Module {
         this.registerSetting(alphabeticalSort = new ButtonSetting("Alphabetical sort", false));
         this.registerSetting(lineSpacing = new SliderSetting("Line spacing", 0.0, -2.0, 8.0, 0.5));
         this.registerSetting(drawBackground = new ButtonSetting("Draw background", false));
-        // "Rounded background" used to be the only rounding control and it silently switched the
-        // whole list onto one panel behind the rows, which is not what rounding a background means
-        // and is why it looked broken. The shape is its own choice now.
         this.registerSetting(backgroundMode = new SliderSetting("Background mode", 0, BACKGROUND_MODES));
         this.registerSetting(roundedBackground = new ButtonSetting("Rounded background", false));
         this.registerSetting(cornerRadius = new SliderSetting("Corner radius", 4.0, 0.0, 12.0, 0.5));
@@ -165,8 +145,6 @@ public class HUD extends Module {
         if (hudColor2 != null) {
             hudColor2.setVisible(ownColors && mode == 1, this);
         }
-        // The wave shapes the gradient phase whichever palette is in use, so it stays available
-        // for a themed list too -- it just has nothing to shape when the colour is flat.
         boolean waving = mode != 0 || useTheme == null || useTheme.isToggled();
         if (waveAxis != null) {
             waveAxis.setVisible(waving, this);
@@ -294,17 +272,12 @@ public class HUD extends Module {
         double lastOutlineRight = 0.0;
         double lastBackgroundBottom = 0.0;
         boolean removeVelocity = ModuleManager.antiKnockback.isEnabled();
-
-        // Mask-based glow: pre-pass renders text into FBO, blurs it, composites as glow underneath
         boolean useShaderGlow = Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled()
                 && HudGlowHelper.isAvailable();
         if (useShaderGlow) {
             renderArrayListGlowPass(hudFont, removeVelocity, rowHeight, horizontalTextPadding,
                     textTopOffset, textTopPadding);
         }
-
-        // Backgrounds are drawn up front, from the same widths the loop below lays the rows out
-        // with, so the two can never disagree about how wide or tall the list is.
         if (drawBackground.isToggled()) {
             drawArrayListBackground(collectRowWidths(hudFont, removeVelocity),
                     posY, horizontalTextPadding, rowHeight);
@@ -443,9 +416,7 @@ public class HUD extends Module {
         }
         return new float[] { left, top, left + maxWidth, top + lines.size() * rowHeight };
     }
-
-    /** One arraylist row, and the box the hide picker can click on to reach it. */
-    public static final class PickerRow {
+public static final class PickerRow {
         public final Module module;
         public final float left, top, right, bottom;
 
@@ -461,25 +432,12 @@ public class HUD extends Module {
             return x >= left && x <= right && y >= top && y <= bottom;
         }
     }
-
-    /**
-     * Draws the arraylist where it actually sits so its entries can be clicked in place.
-     *
-     * <p>Two things separate this from the live render. Hidden modules are drawn rather than
-     * skipped -- greyed and struck through, because a hidden entry that disappears is one you can
-     * never click again to bring back. And the row's box is handed back rather than just painted,
-     * since the picker has to know where each line landed to hit-test it; the widths here are per
-     * line, so the clickable area is the text, which is what you are aiming at.
-     *
-     * @return every drawn row, in draw order
-     */
-    public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY) {
+public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY) {
         MindlessFontRenderer font = getHudFontRenderer();
         java.util.List<Module> shown = new java.util.ArrayList<Module>();
         boolean removeVelocity = ModuleManager.antiKnockback != null && ModuleManager.antiKnockback.isEnabled();
         for (Module module : ModuleManager.organizedModules) {
             if (!module.isEnabled() || module instanceof HUD) continue;
-            if (module == ModuleManager.commandLine) continue;
             if (module instanceof mindless.module.impl.combat.Velocity && removeVelocity) continue;
             shown.add(module);
         }
@@ -531,9 +489,6 @@ public class HUD extends Module {
         if (module.isHidden()) {
             return true;
         }
-        if (module == ModuleManager.commandLine) {
-            return true;
-        }
         return module instanceof Velocity && removeVelocity;
     }
 
@@ -572,16 +527,7 @@ public class HUD extends Module {
     public static String getHudRenderText(Module module) {
         return getHudText(module) + getHudInfoText(module);
     }
-
-    /**
-     * The module's value with its separator, or "" when there is nothing to show.
-     *
-     * The colour code that used to be baked in here (a literal section-7) fixed the value at
-     * Minecraft's grey and could not be changed, which is what stopped the list from being able to
-     * do a dim name against a bright value. The two halves are drawn separately now and this
-     * carries no colour at all.
-     */
-    private static String getHudInfoText(Module module) {
+private static String getHudInfoText(Module module) {
         if (showInfo == null || !showInfo.isToggled()) {
             return "";
         }
@@ -598,16 +544,13 @@ public class HUD extends Module {
             default: return " " + info;
         }
     }
-
-    /** Colour for the value half of a row, given the colour the name was drawn in. */
-    private static int getHudInfoColor(int nameColor) {
+private static int getHudInfoColor(int nameColor) {
         if (infoMatchName != null && infoMatchName.isToggled()) {
             return nameColor;
         }
         if (infoColor == null) {
             return 0xFFAAAAAA;
         }
-        // Carry the name's alpha across so both halves fade together.
         int alpha = (nameColor >>> 24) & 0xFF;
         return ((alpha == 0 ? 0xFF : alpha) << 24) | (infoColor.getRGB() & 0xFFFFFF);
     }
@@ -707,9 +650,7 @@ public class HUD extends Module {
     private static int getBackgroundMode() {
         return backgroundMode == null ? 0 : (int) backgroundMode.getInput();
     }
-
-    /** Widths of every row the list will draw, in the order it will draw them. */
-    private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean removeVelocity) {
+private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean removeVelocity) {
         java.util.List<Integer> widths = new java.util.ArrayList<Integer>();
         for (Module module : ModuleManager.organizedModules) {
             if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
@@ -754,17 +695,7 @@ public class HUD extends Module {
 
         drawConnectedBackground(widths, top, horizontalTextPadding, rowHeight);
     }
-
-    /**
-     * One continuous shape behind the whole list, following its stepped edge.
-     *
-     * Rounding every row on all four corners leaves a notch wherever two rows meet, because each
-     * one curves away from a neighbour that is flush against it. Here a corner is only rounded
-     * when it is genuinely on the outside of the silhouette -- the ends of the list, and the steps
-     * where a row sticks out past the one above or below it. Everything else is squared off, so
-     * the rows fuse into a single outline.
-     */
-    private static void drawConnectedBackground(int[] widths, float top, int horizontalTextPadding, int rowHeight) {
+private static void drawConnectedBackground(int[] widths, float top, int horizontalTextPadding, int rowHeight) {
         boolean right = alignRight.isToggled();
         int alpha = getBackgroundAlpha();
         if (alpha <= 0) {
@@ -777,11 +708,6 @@ public class HUD extends Module {
             float width = widths[i] + horizontalTextPadding * 2f;
             float left = right ? posX - widths[i] - horizontalTextPadding : posX - horizontalTextPadding;
             float rowTop = top + i * rowHeight;
-
-            // Only the two ends of the list are rounded. Rounding each step as well curls every
-            // row's outer corner back on itself, and against rows this short the curve is most of
-            // the step -- the left edge stops reading as a staircase and turns into a column of
-            // scalloped tongues. Square steps between rounded ends stay one clean shape.
             boolean firstRow = i == 0;
             boolean lastRow = i == widths.length - 1;
             float top4 = firstRow ? radius : 0.0f;
@@ -791,19 +717,7 @@ public class HUD extends Module {
                     top4, top4, bottom4, bottom4, color);
         }
     }
-
-    /**
-     * One row of the connected background, with rounding on the corners asked for.
-     *
-     * Built from flat rectangles plus a quarter disc at each rounded corner, rather than from a
-     * rounded-rect shader. That shader anti-aliases a whole quadrant at a time, so a row with any
-     * rounded corner also got a soft ramp along the straight edge it shares with the row above or
-     * below -- two ramps meeting is less than full coverage, which is the pale line that showed
-     * between every row. Straight edges here are hard and land on the same coordinate as their
-     * neighbour's, so the rows meet with nothing between them, and the only softened pixels in the
-     * whole shape are on the curves themselves.
-     */
-    private static void fillRow(float x1, float y1, float x2, float y2,
+private static void fillRow(float x1, float y1, float x2, float y2,
                                 float topLeft, float topRight, float bottomRight, float bottomLeft,
                                 int color) {
         float topBand = Math.max(topLeft, topRight);
@@ -816,17 +730,12 @@ public class HUD extends Module {
         if (bottomBand > 0.0f) {
             RenderUtils.drawRect(x1 + bottomLeft, y2 - bottomBand, x2 - bottomRight, y2, color);
         }
-
-        // Zero is up and the sweep runs clockwise, so each quarter starts at the axis leading into
-        // its own corner.
         quarterDisc(x1 + topLeft, y1 + topLeft, topLeft, 270.0f, color);
         quarterDisc(x2 - topRight, y1 + topRight, topRight, 0.0f, color);
         quarterDisc(x2 - bottomRight, y2 - bottomRight, bottomRight, 90.0f, color);
         quarterDisc(x1 + bottomLeft, y2 - bottomLeft, bottomLeft, 180.0f, color);
     }
-
-    /** Width of the translucent fringe on a corner curve, in GUI pixels. */
-    private static final float CORNER_FEATHER = 0.6f;
+private static final float CORNER_FEATHER = 0.6f;
 
     private static void quarterDisc(float cx, float cy, float radius, float startDeg, int color) {
         if (radius <= 0.0f) {
@@ -835,13 +744,7 @@ public class HUD extends Module {
         radialBand(cx, cy, 0.0f, 1.0f, radius, 1.0f, startDeg, color);
         radialBand(cx, cy, radius, 1.0f, radius + CORNER_FEATHER, 0.0f, startDeg, color);
     }
-
-    /**
-     * A ninety degree band as a triangle strip, alpha {@code a0} at {@code r0} fading to
-     * {@code a1} at {@code r1}. Nothing in this path is anti-aliased by the pipeline, so the
-     * fringe band is how the curve gets its soft edge.
-     */
-    private static void radialBand(float cx, float cy, float r0, float a0, float r1, float a1,
+private static void radialBand(float cx, float cy, float r0, float a0, float r1, float a1,
                                    float startDeg, int color) {
         int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
         int alpha = (color >>> 24) & 0xFF;
@@ -849,21 +752,6 @@ public class HUD extends Module {
         if (c0 <= 0 && c1 <= 0) {
             return;
         }
-
-        // Three pieces of inherited state have to be corrected here, and every one of them is
-        // invisible until geometry like this is drawn through it.
-        //
-        // shadeModel is the important one. The gradient helpers in RenderUtils set GL_SMOOTH,
-        // draw, and set GL_FLAT back, and syncGlState leaves GL_FLAT too. Under GL_FLAT a
-        // triangle takes one vertex's colour for all of it, so the alpha ramps that feather
-        // every edge below collapsed into solid blocks -- the anti-aliasing was being written
-        // and then thrown away by the rasteriser.
-        //
-        // The alpha test is Minecraft's usual GL_GREATER 0.1, which chops the tail off a fade
-        // and turns the soft edge back into a hard one.
-        //
-        // Culling depends on winding, and winding here depends on which way a stroke runs, so a
-        // shape could vanish entirely based on the direction it was drawn in.
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
@@ -902,20 +790,9 @@ public class HUD extends Module {
         }
         float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
                 * mindless.module.impl.theme.ThemeManager.roundingScale();
-        // A third of the row, not half. The corner lives inside a single row -- it cannot spill
-        // into the one below, because that row is a different width -- so at half the row height
-        // the curve runs from the top edge to the middle and the end row stops reading as a
-        // rounded corner and starts reading as a lozenge stuck on the end of a square staircase.
         return Math.max(0.0f, Math.min(radius, height * 0.34f));
     }
-
-    /**
-     * One background box, rounded or square, blurred or not.
-     *
-     * Both call sites go through here so a per-line background and a panel behind the whole list
-     * pick up the same radius, opacity and blur rather than each carrying its own hardcoded look.
-     */
-    private static void drawHudBackground(float left, float top, float width, float height) {
+private static void drawHudBackground(float left, float top, float width, float height) {
         if (width <= 0.0f || height <= 0.0f) {
             return;
         }
@@ -925,9 +802,6 @@ public class HUD extends Module {
         }
         int color = new Color(0, 0, 0, alpha).getRGB();
         float radius = getBackgroundRadius(Math.min(width, height));
-
-        // Blur is a full-screen pass per box, so it is offered on the single panel only. Behind
-        // fifteen separate rows it would be fifteen of them every frame.
         if (backgroundBlur != null && backgroundBlur.isToggled() && getBackgroundMode() == 2) {
             BlurUtils.prepareBlur(left, top, width, height);
             RoundedUtils.drawRound(left, top, width, height, radius, 0xFF000000);
@@ -966,15 +840,7 @@ public class HUD extends Module {
         }
         return rowCenterX * (HUD_WAVE_HORIZONTAL_X_SCALE / getWaveLengthMultiplier()) * getHorizontalWaveDirectionSign();
     }
-
-    /**
-     * Draws one row as a name and a value, each in its own colour.
-     *
-     * <p>Held open as one batch. A row is a shadow in several passes and then two coloured
-     * segments, all in the same font and all from the same glyph atlas, with nothing drawn between
-     * them -- so what would otherwise be five draws is one.
-     */
-    private static void drawHudRow(MindlessFontRenderer hudFont, Module module, float xPos, float textY, int color) {
+private static void drawHudRow(MindlessFontRenderer hudFont, Module module, float xPos, float textY, int color) {
         String name = getHudText(module);
         String info = getHudInfoText(module);
         if (info.isEmpty()) {
@@ -1004,17 +870,7 @@ public class HUD extends Module {
             GlyphBatch.end();
         }
     }
-
-    /**
-     * Glow and shadow for a row, drawn under the text.
-     *
-     * Every offset is a multiple of the font's own height rather than a fixed pixel count. At
-     * scale 2 a one pixel shadow is half as far as it should be and at scale 0.6 it is nearly
-     * twice; anchoring it to the glyph keeps the same shadow at every size. All three styles are
-     * drawn here rather than leaning on the renderer's built-in shadow, so Shadow opacity means
-     * something for all of them.
-     */
-    private static void drawDecoration(MindlessFontRenderer hudFont, String text, float xPos, float textY, int color) {
+private static void drawDecoration(MindlessFontRenderer hudFont, String text, float xPos, float textY, int color) {
         if (Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled() && !HudGlowHelper.isAvailable()) {
             TextGlowUtils.drawGlow(hudFont, text, xPos, textY, color);
         }
@@ -1040,9 +896,6 @@ public class HUD extends Module {
                 }
                 break;
             case 2:
-                // Three copies a fraction of a pixel apart along one diagonal. Overlapping them
-                // builds a falloff, where the old taps sat up to two pixels out in three
-                // directions and read as a second, blurrier set of letters.
                 for (float[] tap : SOFT_SHADOW_TAPS) {
                     int alpha = Math.round(base * tap[2]);
                     if (alpha > 0) {
@@ -1056,18 +909,10 @@ public class HUD extends Module {
                 break;
         }
     }
-
-    /**
-     * Pre-pass: renders all ArrayList text into the glow mask, blurs it, composites as glow.
-     * Glow follows actual glyphs rather than producing rectangular artifacts.
-     */
-    private static void renderArrayListGlowPass(MindlessFontRenderer hudFont, boolean removeVelocity,
+private static void renderArrayListGlowPass(MindlessFontRenderer hudFont, boolean removeVelocity,
                                                  int rowHeight, int horizontalTextPadding,
                                                  int textTopOffset, int textTopPadding) {
         HudGlowHelper.beginMask();
-        // Nothing but text goes into the mask, so the whole list is one batch. The finally is not
-        // decoration: an unbalanced begin leaves the batch permanently open and no text anywhere in
-        // the client would ever be flushed again.
         GlyphBatch.begin();
         try {
             float yPos = posY;
@@ -1140,11 +985,7 @@ public class HUD extends Module {
     private static int getHorizontalWaveDirectionSign() {
         return horizontalWaveDirection == null || (int) horizontalWaveDirection.getInput() == 0 ? -1 : 1;
     }
-
-    /**
-     * Accent color for HUD rows/outlines. Other modules can match HUD when enabled.
-     */
-    public static int getHudColor(double gradientOffset) {
+public static int getHudColor(double gradientOffset) {
         if (useTheme == null || useTheme.isToggled()) {
             return mindless.module.impl.theme.ThemeManager.getArrayListColor(gradientOffset);
         }

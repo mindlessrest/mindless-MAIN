@@ -95,9 +95,6 @@ public class TransformerMinecraft {
             ci.setCancelled(true);
             return;
         }
-        // Keep the injected Lunar path equivalent to the normal mixin path.
-        // Hit Select uses this mouse-over to distinguish a real entity hit
-        // from a missed swing; passing null made it cancel valid Aura clicks.
         Minecraft mc = (Minecraft) (Object) this;
         PreAttackEvent preAttackEvent = new PreAttackEvent(mc.objectMouseOver);
         MinecraftForge.EVENT_BUS.post(preAttackEvent);
@@ -173,7 +170,4 @@ public class TransformerMinecraft {
         if (event.isCanceled()) return;
         inventoryPlayer.changeCurrentItem(slot);
     }
-    // NOTE: The MixinMinecraft PUTFIELD redirect on InventoryPlayer.currentItem was
-    // dropped: CTarget has no opcode field, so we can't disambiguate GETFIELD/PUTFIELD.
-    // SlotUpdateEvent is now fired only via the changeCurrentItem redirect above.
 }

@@ -69,7 +69,6 @@ public class Gui extends Module {
     }
 
     public static mindless.clickgui.ClickGui getActiveGui() {
-        if (style != null && (int) style.getInput() == 1) return Mindless.framesGui;
         return Mindless.clickGui;
     }
 

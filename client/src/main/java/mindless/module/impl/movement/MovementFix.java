@@ -12,12 +12,10 @@ public class MovementFix extends Module {
 
     @Override
     public void disable() {
-        // Movement Fix is a client invariant, not a user-toggleable module.
     }
 
     @Override
     public void toggle() {
-        // Ignore keybind, GUI, command, and script toggle requests.
     }
 
     @Override

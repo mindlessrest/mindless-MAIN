@@ -43,12 +43,7 @@ public abstract class MixinEntity {
         }
         return flag;
     }
-
-    /**
-     * @author Mindless
-     * @reason Strafe event hook
-     */
-    @Overwrite
+@Overwrite
     public void moveFlying(float strafe, float forward, float friction) {
         StrafeEvent strafeEvent = new StrafeEvent(strafe, forward, friction, this.rotationYaw);
         if((Object) this == Minecraft.getMinecraft().thePlayer) {
@@ -84,12 +79,7 @@ public abstract class MixinEntity {
         MinecraftForge.EVENT_BUS.post(stepHeightEvent);
         return stepHeightEvent.stepHeight;
     }
-
-    /**
-     * @author Mindless
-     * @reason Client look event hook
-     */
-    @Overwrite
+@Overwrite
     protected final Vec3 getVectorForRotation(float pitch, float yaw) {
 
         ClientLookEvent event = new ClientLookEvent(yaw, pitch);

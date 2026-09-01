@@ -3,20 +3,13 @@ package mindless.runtime;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
-
-/** Cached reflective access that cannot live as fields on an already-loaded game class. */
 public final class EntityPlayerSPReflection {
     private static volatile java.lang.reflect.Method pushOutOfBlocksMethod;
     private static volatile java.lang.reflect.Field flyToggleTimerField;
     private static volatile java.lang.reflect.Field inPortalField;
 
     private EntityPlayerSPReflection() {}
-
-    /**
-     * Bytecode marker replaced with INVOKESPECIAL by MindlessTransformerManager.
-     * It must never survive into a transformed EntityPlayerSP method.
-     */
-    public static void callSuperOnLivingUpdateMarker(EntityPlayerSP self) {
+public static void callSuperOnLivingUpdateMarker(EntityPlayerSP self) {
         throw new AssertionError("super.onLivingUpdate marker was not rewritten");
     }
 
@@ -41,7 +34,6 @@ public final class EntityPlayerSPReflection {
             }
             method.invoke(entity, x, y, z);
         } catch (Throwable ignored) {
-            // Best effort: vanilla simply skips this collision nudge if reflection is blocked.
         }
     }
 
@@ -57,7 +49,6 @@ public final class EntityPlayerSPReflection {
         try {
             flyToggleTimerField().setInt(player, value);
         } catch (Throwable ignored) {
-            // Best effort.
         }
     }
 
@@ -73,7 +64,6 @@ public final class EntityPlayerSPReflection {
         try {
             inPortalField().setBoolean(entity, value);
         } catch (Throwable ignored) {
-            // Best effort.
         }
     }
 

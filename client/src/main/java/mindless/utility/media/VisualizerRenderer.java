@@ -13,44 +13,21 @@ import org.lwjgl.opengl.GL20;
 
 import java.awt.Color;
 import java.util.Arrays;
-
-/**
- * Draws the bars. The same code serves the mini player section and the standalone overlay, which
- * is the point: two drawings of the same signal that did not match would look like two features.
- *
- * <p>The engine publishes at its own rate and the game draws at another, so the heights here are
- * eased toward the published ones per frame using elapsed time rather than a fixed step. Without
- * that, the visualiser would visibly run at the engine's rate rather than the game's, and would
- * change character with the frame rate.
- */
 public final class VisualizerRenderer {
-    /** Bar heights actually on screen, chasing the engine's. */
-    private static float[] displayed = new float[0];
-    /** Where the bars are being eased toward. Reused rather than reallocated each frame. */
-    private static float[] targets = new float[0];
+private static float[] displayed = new float[0];
+private static float[] targets = new float[0];
     private static long lastFrameNanos;
-    /** Eases the whole thing in and out instead of popping when audio starts or stops. */
-    private static float presence;
-    /** Reused across frames; the bars are redrawn every frame and never outlive one. */
-    private static final QuadBatch QUAD_BATCH = new QuadBatch();
+private static float presence;
+private static final QuadBatch QUAD_BATCH = new QuadBatch();
 
     private VisualizerRenderer() {
     }
-
-    /** Forgets the animation state, so a re-shown visualiser starts from rest. */
-    public static void reset() {
+public static void reset() {
         displayed = new float[0];
         lastFrameNanos = 0L;
         presence = 0.0F;
     }
-
-    /**
-     * Draws the visualiser into the given rectangle.
-     *
-     * @param alphaScale overall fade applied on top of the configured opacity, for panels that
-     *                   animate in
-     */
-    public static void draw(float x, float y, float width, float height, float alphaScale) {
+public static void draw(float x, float y, float width, float height, float alphaScale) {
         AudioVisualizer module = AudioVisualizer.getInstance();
         if (module == null || width <= 1.0F || height <= 1.0F) {
             return;
@@ -59,10 +36,6 @@ public final class VisualizerRenderer {
         SpotifyVisualizerEngine engine = SpotifyVisualizerEngine.getInstance();
         engine.configure(module.barCount(), module.smoothing(), module.updateRate());
         engine.requestFrame();
-
-        // Read the clock exactly once. Every easing step this frame is measured against the
-        // same delta -- taking a fresh reading per step would leave all but the first with
-        // essentially no elapsed time, and those bars would sit still.
         float delta = advanceClock();
 
         SystemMediaInfo info = SystemMediaClient.getInstance().getCurrentInfo();
@@ -73,7 +46,6 @@ public final class VisualizerRenderer {
                 ? AudioVisualizer.BEHAVIOUR_REACT
                 : (paused ? module.pausedBehaviour() : module.idleBehaviour());
         if (behaviour == AudioVisualizer.BEHAVIOUR_HIDE) {
-            // Still ease out rather than vanishing between one frame and the next.
             presence = approach(presence, 0.0F, delta, 6.0F);
             if (presence <= 0.01F) return;
         }
@@ -91,16 +63,11 @@ public final class VisualizerRenderer {
         GlStateManager.enableBlend();
         GlStateManager.disableAlpha();
         drawBars(module, x, y, width, height, alpha);
-
-        // The rounded shader leaves a program bound; anything drawn after this without clearing it
-        // comes out wrong.
         GL20.glUseProgram(0);
         GlStateManager.enableTexture2D();
         GlStateManager.enableAlpha();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
-
-    // ------------------------------------------------------------------------------- bar values
 
     private static void resolveTargets(SpotifyVisualizerEngine engine, AudioVisualizer module,
                                        int behaviour, int count) {
@@ -114,8 +81,6 @@ public final class VisualizerRenderer {
             float intensity = module.intensity();
             for (int i = 0; i < count; i++) {
                 float value = i < bars.length ? bars[i] : 0.0F;
-                // Intensity is a curve rather than a multiplier: above 1 it holds the quiet bars
-                // down and lets the loud ones through, which is what "more intense" looks like.
                 if (intensity != 1.0F && value > 0.0F) {
                     value = (float) Math.pow(value, intensity);
                 }
@@ -126,8 +91,6 @@ public final class VisualizerRenderer {
         }
 
         if (behaviour == AudioVisualizer.BEHAVIOUR_WAVE) {
-            // A slow travelling swell, so a paused player still looks alive without pretending to
-            // be reacting to anything.
             double time = System.nanoTime() / 1000000000.0;
             for (int i = 0; i < count; i++) {
                 double phase = time * 1.15 - i * 0.34;
@@ -136,8 +99,6 @@ public final class VisualizerRenderer {
             }
             return;
         }
-
-        // Flat: everything falls away to the minimum height.
         Arrays.fill(targets, 0.0F);
     }
 
@@ -146,8 +107,6 @@ public final class VisualizerRenderer {
             displayed = new float[targets.length];
         }
         for (int i = 0; i < targets.length; i++) {
-            // Rising fast and falling slower is what a level meter does, and it reads far better
-            // than one rate for both: transients stay sharp while the decay stays smooth.
             float rate = targets[i] > displayed[i] ? 26.0F * speed : 11.0F * speed;
             displayed[i] = approach(displayed[i], targets[i], delta, rate);
         }
@@ -161,17 +120,12 @@ public final class VisualizerRenderer {
         }
         float delta = (now - lastFrameNanos) / 1000000000.0F;
         lastFrameNanos = now;
-        // A pause -- a loading screen, a stutter -- must not teleport every bar.
         return Math.max(0.0F, Math.min(0.1F, delta));
     }
-
-    /** Frame-rate independent easing: the same journey takes the same time at any frame rate. */
-    private static float approach(float current, float target, float delta, float rate) {
+private static float approach(float current, float target, float delta, float rate) {
         float factor = 1.0F - (float) Math.exp(-delta * rate);
         return current + (target - current) * factor;
     }
-
-    // ----------------------------------------------------------------------------------- drawing
 
 
     private static void drawBars(AudioVisualizer module, float x, float y, float width,
@@ -193,9 +147,6 @@ public final class VisualizerRenderer {
         float span = Math.max(0.0F, maxHeight - minHeight);
 
         if (module.baselineEnabled()) {
-            // Sits under the bars rather than around them, at the same weight as the rule above
-            // the lyrics, so the section reads as part of the card instead of a panel on top of
-            // it. The bars overlap it, which is what makes them look like they are standing on it.
             int baselineAlpha = Math.round(34 * alpha);
             if (baselineAlpha > 1) {
                 RenderUtils.drawRect(innerX, bottom, innerX + innerWidth, bottom + 0.75F,
@@ -207,19 +158,10 @@ public final class VisualizerRenderer {
         boolean mirror = module.mirrored();
         boolean gradient = module.gradientEnabled();
         boolean verticalGradient = module.gradientVertical();
-
-        // Every bar that comes out a plain quad goes into one batch. Drawn one at a time, each was
-        // its own tessellator pass wrapped in a dozen state calls, and at fifty-five bars that is
-        // fifty-five draws and the better part of a thousand calls to put up a shape the hardware
-        // finishes in microseconds. Every bar in a given style takes the same path -- barWidth does
-        // not vary between them -- so the batch either takes all of them or none, and nothing can
-        // land out of order with the rounded styles below.
         QuadBatch batch = QUAD_BATCH;
         batch.begin(gradient && verticalGradient);
 
         for (int i = 0; i < count; i++) {
-            // Mirroring folds the spectrum so bass sits at the centre and treble runs out to both
-            // edges -- the same data, read from the middle outwards.
             int source = mirror
                     ? (i < count / 2 ? (count / 2 - 1 - i) * 2 : (i - count / 2) * 2)
                     : i;
@@ -255,7 +197,6 @@ public final class VisualizerRenderer {
                     float dot = Math.min(barWidth, 3.5F);
                     RoundedUtils.drawRound(left + (barWidth - dot) * 0.5F, top, dot, dot,
                             dot * 0.5F, colorOf(baseColor, topAlpha));
-                    // A faint stem, so a quiet passage still shows where the bars are.
                     RenderUtils.drawRect(left + (barWidth - 1.0F) * 0.5F, top + dot,
                             left + (barWidth + 1.0F) * 0.5F, bottom,
                             withAlpha(baseColor, Math.max(8, topAlpha / 6)));
@@ -271,10 +212,6 @@ public final class VisualizerRenderer {
 
                 case AudioVisualizer.STYLE_ROUNDED:
                 default: {
-                    // Each rounded rect is its own shader bind, and at 128 bars that is 128 of
-                    // them per frame. Below about three pixels wide the rounding is not visible
-                    // anyway, so narrow bars take the plain-quad path -- which is exactly the
-                    // case where the bar count is high enough for the cost to matter.
                     if (barWidth < 3.0F) {
                         if (gradient && verticalGradient) {
                             batch.add(left, top, left + barWidth, top + barHeight,
@@ -304,15 +241,7 @@ public final class VisualizerRenderer {
 
         batch.end();
     }
-
-    /**
-     * Flat quads for a whole spectrum, submitted once.
-     *
-     * <p>Colour is per vertex so a gradient bar and a solid one live in the same batch; a solid
-     * one simply carries the same colour at both ends, which smooth shading interpolates to
-     * exactly itself.
-     */
-    private static final class QuadBatch {
+private static final class QuadBatch {
         private static final int MAX_QUADS = 512;
 
         private final float[] bounds = new float[MAX_QUADS * 4];
@@ -409,9 +338,7 @@ public final class VisualizerRenderer {
     private static int withAlpha(int rgb, int alpha) {
         return (Math.max(0, Math.min(255, alpha)) << 24) | (rgb & 0xFFFFFF);
     }
-
-    /** The colour the mini player should tint its section header with, for a matching look. */
-    public static int accentColor() {
+public static int accentColor() {
         AudioVisualizer module = AudioVisualizer.getInstance();
         return module == null ? HUD.getHudColor(0.0D) & 0xFFFFFF : module.barColor(0.0F);
     }

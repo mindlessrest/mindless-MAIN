@@ -13,18 +13,6 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-
-/**
- * One place to find out why something is not working.
- *
- * The game reports "OpenGL Error: 1282" and nothing else -- not which draw call raised it, not
- * which pass it belongs to -- which leaves the cause to be guessed at. Shader build failures were
- * worse than that: they produced no output at all, so a broken shader and a switched-off setting
- * looked identical from the outside.
- *
- * Everything here is inert unless the Diagnostics toggle is on, because {@link #gl} forces the
- * driver to flush the pipeline and would cost frames if it ran all the time.
- */
 public final class Diagnostics {
     private static final Map<String, Long> lastReported = new HashMap<String, Long>();
     private static final long REPEAT_INTERVAL_MS = 3000L;
@@ -48,14 +36,7 @@ public final class Diagnostics {
             return false;
         }
     }
-
-    /**
-     * Drains the GL error queue and attributes anything in it to {@code stage}.
-     *
-     * Errors are sticky and reported at the next query rather than at the offending call, so a
-     * marker after each step is what turns "something in this frame is wrong" into a named line.
-     */
-    public static void gl(String stage) {
+public static void gl(String stage) {
         if (!isEnabled()) return;
         int error;
         while ((error = GL11.glGetError()) != GL11.GL_NO_ERROR) {
@@ -67,9 +48,7 @@ public final class Diagnostics {
         if (!isEnabled()) return;
         report(category, message);
     }
-
-    /** Logged whether or not diagnostics are on: a shader that will not build is always worth saying. */
-    public static void always(String category, String message) {
+public static void always(String category, String message) {
         report(category, message);
     }
 
@@ -124,14 +103,7 @@ public final class Diagnostics {
             default: return String.valueOf(error);
         }
     }
-
-    /**
-     * Writes what the driver actually supports, plus the state of every shader we build.
-     *
-     * The limits matter more than they look: a sampler pointed past GL_MAX_TEXTURE_IMAGE_UNITS is
-     * a silent invalid-operation on every draw, and the number varies by driver.
-     */
-    public static void dumpEnvironment() {
+public static void dumpEnvironment() {
         always("env", "GL_VERSION   " + GL11.glGetString(GL11.GL_VERSION));
         always("env", "GL_RENDERER  " + GL11.glGetString(GL11.GL_RENDERER));
         always("env", "GL_VENDOR    " + GL11.glGetString(GL11.GL_VENDOR));

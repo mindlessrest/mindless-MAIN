@@ -34,12 +34,7 @@ public class GroupComponent extends Component {
         this.animationStartProgress = this.animationProgress;
         this.animationTargetProgress = this.animationProgress;
     }
-
-    /**
-     * Current live animation progress: 0 closed, 1 open.
-     * Used for height, indentation, and reveal during animation.
-     */
-    public float getAnimationProgress() {
+public float getAnimationProgress() {
         if (smoothTimer != null) {
             if (System.currentTimeMillis() - smoothTimer.last >= ANIMATION_DURATION + 30) {
                 smoothTimer = null;

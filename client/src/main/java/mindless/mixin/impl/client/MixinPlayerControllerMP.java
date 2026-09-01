@@ -69,12 +69,7 @@ public class MixinPlayerControllerMP {
         }
         return hardness * fm.getBreakSpeedMultiplier();
     }
-
-    /**
-     * Vanilla sets {@code blockHitDelay = 5} after creative click, creative mining tick, and survival block break
-     * ({@code PlayerControllerMP}). Override at assignment time when FastMine break delay &lt; 5 ticks.
-     */
-    @Unique
+@Unique
     private void mindless$fastMineApplyBreakDelaySlider() {
         BedAura bedAura = ModuleManager.bedAura;
         if (bedAura != null && bedAura.shouldOverrideFastMine()) {

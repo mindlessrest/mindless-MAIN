@@ -2,7 +2,6 @@ package mindless.module;
 
 import mindless.module.impl.client.HideModules;
 import mindless.module.impl.client.ChatCommands;
-import mindless.module.impl.client.CommandLine;
 import mindless.module.impl.client.Gui;
 import mindless.module.impl.client.Relationships;
 import mindless.module.impl.client.Settings;
@@ -43,7 +42,6 @@ public class ModuleManager {
     public static FastMine fastMine;
     public static AntiShuffle antiShuffle;
     public static MovementFix movementFix;
-    public static CommandLine commandLine;
     public static SpotifyMiniPlayer spotifyMiniPlayer;
     public static ThemeManager themeManager;
     public static LongJump longJump;
@@ -114,7 +112,6 @@ public class ModuleManager {
 
     public void register() {
         this.addModule(chatCommands = new ChatCommands());
-        this.addModule(commandLine = new CommandLine());
         this.addModule(new Gui());
         this.addModule(new Settings());
         this.addModule(new HideModules());
@@ -263,7 +260,6 @@ public class ModuleManager {
         this.addModule(new Animations());
         this.addModule(new AlwaysBlock());
         this.addModule(sexyESP = new SexyESP());
-        // Preserve profiles made before SexyESP became the sole Player ESP.
         modulesByName.put("SexyESP", sexyESP);
         modulesByNormalizedName.put(normalizeModuleName("SexyESP"), sexyESP);
         modulesByName.put("Outline ESP", sexyESP);
@@ -304,14 +300,7 @@ public class ModuleManager {
 
         return categoryModules;
     }
-
-    /**
-     * Names modules were saved under before they were renamed.
-     *
-     * Profiles key each module by its display name, so a rename would otherwise orphan every
-     * setting, keybind and position already stored against the old one.
-     */
-    private static final Map<String, String> LEGACY_MODULE_NAMES = buildLegacyModuleNames();
+private static final Map<String, String> LEGACY_MODULE_NAMES = buildLegacyModuleNames();
 
     private static Map<String, String> buildLegacyModuleNames() {
         Map<String, String> names = new HashMap<>();

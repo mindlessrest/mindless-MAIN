@@ -5,13 +5,6 @@ import net.minecraft.network.handshake.client.C00Handshake;
 import net.minecraft.network.login.client.C00PacketLoginStart;
 import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.util.MathHelper;
-
-/**
- * Last movement pose which passed every SendPacketEvent listener and is about
- * to be handed to NetworkManager. Buffered/cancelled packets never reach this
- * recorder, so placement code can distinguish a calculated look from one that
- * was actually released to the connection.
- */
 public final class SentPlayerState {
     private static boolean hasPosition;
     private static boolean hasLook;

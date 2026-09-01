@@ -18,10 +18,6 @@ public abstract class TransformerMovementInputFromOptions {
     @CShadow
     private GameSettings gameSettings;
 
-    // moveStrafe/moveForward/jump/sneak live on the MovementInput super class.
-    // ClassTransform's @CShadow requires the field to be declared directly on
-    // the target class, so we access them by casting `this` to MovementInput.
-
     @COverride("updatePlayerMoveState")
     public void updatePlayerMoveState() {
         net.minecraft.util.MovementInput self = (net.minecraft.util.MovementInput) (Object) this;

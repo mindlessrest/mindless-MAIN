@@ -199,7 +199,6 @@ final class CookieHttpClient {
             }
         }
         catch (Exception exception) {
-            // empty catch block
         }
         return description != null ? error + ": " + description : error;
     }

@@ -18,20 +18,13 @@ import java.util.function.Supplier;
 public final class FontManager {
     private static final String MINECRAFT = "Minecraft";
     private static final String RESOURCE_ROOT = "/assets/mindless/fonts/";
-    /** Large enough that HUD font-size drags + clickgui + nametags do not evict active renderers every frame. */
-    private static final int MAX_CACHED_RENDERERS = 512;
+private static final int MAX_CACHED_RENDERERS = 512;
     private static final float DEFAULT_HUD_FONT_SIZE = 10.0f;
-    // Render GUI glyphs slightly above their final display size, then let the
-    // existing UI scale them down. This produces cleaner curves and baselines
-    // than enlarging a tiny 10-12px glyph atlas, with no per-frame font work.
     private static final float DEFAULT_CLICK_GUI_HEADER_HEIGHT = 11.0f;
     private static final float DEFAULT_CLICK_GUI_SETTING_HEIGHT = 13.0f;
-    // Small font rasterised at exactly 9px — used at scale 1.0 so the atlas
-    // is never downsampled and glyphs stay crisp without bilinear blur.
     private static final float DEFAULT_CLICK_GUI_SMALL_HEIGHT = 9.0f;
     private static final float DEFAULT_NAMETAG_FONT_SIZE = 9.0f;
-    /** Nametags are magnified in world space after they are drawn; see getNametagRenderer. */
-    private static final float NAMETAG_ATLAS_BOOST = 2.5f;
+private static final float NAMETAG_ATLAS_BOOST = 2.5f;
     private static final BundledFont[] BUNDLED_FONTS = {
             new BundledFont("Sf-Regular", "Sf-Regular.ttf"),
             new BundledFont("Inter", "Inter.ttf"),
@@ -43,13 +36,6 @@ public final class FontManager {
             new BundledFont("Varela Round", "VarelaRound-Regular.ttf"),
             new BundledFont("Titillium Web", "TitilliumWeb-Regular.ttf"),
             new BundledFont("JetBrains Mono", "JetBrainsMono-Regular.ttf"),
-            // Appended rather than inserted. Every font picker in the client is a slider over this
-            // array and profiles store the chosen index, so putting a new family anywhere but the
-            // end would silently move everyone onto a different font.
-            //
-            // Both faces are subset to Latin plus the symbols the UI actually draws -- Hypixel's
-            // stars, the ESP heart, arrows, box-drawing. Shipped whole they are 1.9MB each against
-            // 76KB here, and nothing in the client asks for the 6800 glyphs that were dropped.
             new BundledFont("Google Sans", "GoogleSans-Regular.ttf"),
             new BundledFont("Google Sans Medium", "GoogleSans-Medium.ttf")
     };
@@ -81,17 +67,7 @@ public final class FontManager {
     public static MindlessFontRenderer getClickGuiSmallRenderer(String family) {
         return getRendererForPixelHeight(family, DEFAULT_CLICK_GUI_SMALL_HEIGHT);
     }
-
-    /**
-     * Nametags are the one place text is magnified after it is drawn.
-     *
-     * <p>Every other renderer is rasterised at roughly the size it ends up on screen. A nametag is
-     * drawn at a fixed nine units and then scaled into world space, so how many pixels a glyph
-     * actually covers depends on how far away the player is standing -- close up it is two or
-     * three times what the atlas holds, and a magnified atlas is a blurry one. The boost gives it
-     * that headroom. Metrics are divided back down by the same factor, so nothing moves.
-     */
-    public static MindlessFontRenderer getNametagRenderer(String family) {
+public static MindlessFontRenderer getNametagRenderer(String family) {
         float fontSize = DEFAULT_NAMETAG_FONT_SIZE;
         BundledFont bundledFont;
 
@@ -144,13 +120,7 @@ public final class FontManager {
             }
         });
     }
-
-    /**
-     * Renderer rasterised at an exact pixel height, for callers that draw at scale 1.0.
-     * Drawing a 13px atlas at 0.63x, or an 11px atlas at 1.33x, is what makes GUI text mushy;
-     * asking for the height actually needed keeps every glyph on its native grid.
-     */
-    public static MindlessFontRenderer getClickGuiRenderer(String family, float pixelHeight) {
+public static MindlessFontRenderer getClickGuiRenderer(String family, float pixelHeight) {
         return getRendererForPixelHeight(family, pixelHeight);
     }
 
@@ -265,9 +235,7 @@ public final class FontManager {
             return 1;
         }
     }
-
-    /** Fewer unique keys when sliders move smoothly; avoids LRU evicting live glyph textures every frame. */
-    private static float quantizeForCacheKey(float value) {
+private static float quantizeForCacheKey(float value) {
         return Math.round(value * 100.0f) / 100.0f;
     }
 

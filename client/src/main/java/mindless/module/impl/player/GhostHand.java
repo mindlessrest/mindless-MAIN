@@ -193,6 +193,5 @@ public class GhostHand extends Module {
     }
 
     public void overrideMouseOver(float partialTicks) {
-        // stub: transformer bridge for GhostHand entity targeting
     }
 }

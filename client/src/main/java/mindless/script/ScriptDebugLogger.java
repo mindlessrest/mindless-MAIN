@@ -9,8 +9,6 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-
-/** Opt-in file diagnostics for script lifecycle and API activity. */
 public final class ScriptDebugLogger {
     private static final long CALLBACK_LOG_INTERVAL_MS = 500L;
     private static final Map<String, Long> LAST_CALLBACKS = new HashMap<>();

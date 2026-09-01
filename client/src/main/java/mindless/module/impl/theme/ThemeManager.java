@@ -17,30 +17,8 @@ import java.awt.Color;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
-/**
- * Picks, animates and builds client-wide colour schemes.
- *
- * Nothing here paints anything itself. The client already funnels its colours through a small
- * number of settings -- {@link Gui#themeColor} and {@link Gui#themeTextColor} drive the ClickGUI
- * palette, {@link Gui#enabledColor}/{@link Gui#disabledColor} drive module toggle state, and
- * {@link Settings#defaultTheme} drives the HUD gradient -- so applying a theme is just writing
- * those, and every consumer picks the change up on its next frame.
- *
- * The module does not need to be enabled: {@link #poll()} is driven from both ClickGUIs' render
- * passes, which is also what makes the animated accent possible -- it rewrites the accent every
- * frame rather than once on selection.
- */
 public class ThemeManager extends Module {
-
-    /**
-     * A built-in scheme.
-     *
-     * {@code hudGradient} indexes {@link Theme} so the HUD gradient tracks the scheme instead of
-     * staying on whatever was set before. {@code gradFrom}/{@code gradTo} are the pair the accent
-     * cycles between when Gradient accent is on.
-     */
-    public enum ClientTheme {
+public enum ClientTheme {
         Lavender  (0x9F8FD2, 0xEBEAE6, 0xA893FF, 0x6E6980, 4, 0xC9B8FF, 0x6A5AA8, 0x0E0D14),
         Orchid    (0xC77DFF, 0xF1E9F7, 0xD08BFF, 0x7A6A85, 4, 0xE4A9FF, 0x8A3FD0, 0x120C16),
         Rose      (0xFF8FB1, 0xFBEAF0, 0xFF7CA8, 0x8A6B76, 1, 0xFFC2D4, 0xE0517E, 0x150C10),
@@ -71,8 +49,7 @@ public class ThemeManager extends Module {
     }
 
     private static final ClientTheme[] THEMES = ClientTheme.values();
-    /** Selecting this index reads the editor's colours instead of a preset. */
-    public static final int CUSTOM_INDEX = THEMES.length;
+public static final int CUSTOM_INDEX = THEMES.length;
     private static final String[] THEME_NAMES = names();
 
     public static ButtonSetting create;
@@ -85,46 +62,30 @@ public class ThemeManager extends Module {
     public static SliderSetting gradientSpeed;
     public static ButtonSetting applyOnSelect, applyText, applyToggleColors, applyHudGradient;
     public static ButtonSetting applySurfaces;
-
-    // Appearance -- one place for the settings that were scattered across Gui and HUD.
     public static SliderSetting font;
     public static SliderSetting blurSize;
     public static SliderSetting rounding;
-
-    // Per-element HUD colour overrides
     public static ButtonSetting customizeHud;
     public static ColorSetting hudArrayListColor1, hudArrayListColor2;
     public static ButtonSetting hudArrayListGradient;
     public static ColorSetting hudWatermarkColor1, hudWatermarkColor2;
     public static ButtonSetting hudWatermarkGradient;
     public static ColorSetting hudStatsLabel, hudStatsValue;
-
-    // Per-element colour overrides. When "Customize colors" is on these are used verbatim
-    // instead of anything derived from the theme, so nothing is locked to the accent.
     public static ButtonSetting customizeColors;
     public static ColorSetting colPanel, colPanelAlt, colRow, colRowHover;
     public static ColorSetting colControl, colControlHover, colBorder, colDivider;
     public static ColorSetting colDropdown, colDropdownBorder, colDropdownSelected;
-
-    /** Everything the Customize colors button shows and hides. */
-    private static final List<Setting> COLOURS = new ArrayList<>();
+private static final List<Setting> COLOURS = new ArrayList<>();
 
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
     private static int appliedFont = -1;
     private static double appliedBlur = -1;
-    /** False until the first sync has taken its values from Gui rather than imposing its own. */
-    private static boolean appearanceAdopted = false;
-
-    /** Everything the Create button shows and hides. */
-    private static final List<Setting> EDITOR = new ArrayList<>();
-
-    /** Last index written out, so a selection that has not moved costs nothing. */
-    private static int appliedIndex = -1;
+private static boolean appearanceAdopted = false;
+private static final List<Setting> EDITOR = new ArrayList<>();
+private static int appliedIndex = -1;
 
     public ThemeManager() {
         super("Theme Manager", category.theme);
-
-        // First box: opens the maker. Everything in EDITOR stays hidden until this is on.
         this.registerSetting(create = new ButtonSetting("Create custom theme", false));
 
         GroupSetting maker = new GroupSetting("Custom theme");
@@ -145,8 +106,6 @@ public class ThemeManager extends Module {
         Collections.addAll(EDITOR, maker, customAccent, customText, customEnabled, customDisabled,
                 customGradFrom, customGradTo, customSurface, customHudGradient, copyPreset, saveApply);
         for (Setting setting : EDITOR) setting.visible = false;
-
-        // ---- per-element HUD colour overrides
         this.registerSetting(customizeHud = new ButtonSetting("Customize HUD colors", false));
         GroupSetting hudColors = new GroupSetting("HUD Colors");
         this.registerSetting(hudColors);
@@ -158,8 +117,6 @@ public class ThemeManager extends Module {
         this.registerSetting(hudWatermarkGradient = new ButtonSetting(hudColors, "Watermark gradient", true));
         this.registerSetting(hudStatsLabel = new ColorSetting(hudColors, "HUD label color", 201, 184, 255));
         this.registerSetting(hudStatsValue = new ColorSetting(hudColors, "HUD value color", 255, 255, 255));
-
-        // ---- per-element colour overrides, behind their own toggle
         this.registerSetting(customizeColors = new ButtonSetting("Customize colors", false));
         GroupSetting colours = new GroupSetting("Colors");
         this.registerSetting(colours);
@@ -181,8 +138,6 @@ public class ThemeManager extends Module {
                 colControl, colControlHover, colBorder, colDivider,
                 colDropdown, colDropdownBorder, colDropdownSelected, seedColours);
         for (Setting setting : COLOURS) setting.visible = false;
-
-        // ---- appearance
         GroupSetting appearance = new GroupSetting("Appearance");
         this.registerSetting(appearance);
         this.registerSetting(font = new SliderSetting(appearance, "Font", defaultFontIndex(), FONT_OPTIONS));
@@ -198,8 +153,6 @@ public class ThemeManager extends Module {
         this.registerSetting(applyToggleColors = new ButtonSetting("Apply toggle colors", true));
         this.registerSetting(applyHudGradient = new ButtonSetting("Apply HUD gradient", true));
         this.registerSetting(new ButtonSetting("Apply now", ThemeManager::applyNow));
-
-        // Nothing to turn on -- the settings are the module.
         this.canBeEnabled = false;
     }
 
@@ -209,8 +162,6 @@ public class ThemeManager extends Module {
         out[THEMES.length] = "Custom";
         return out;
     }
-
-    // ------------------------------------------------------------------ selection accessors
 
     private static int index() {
         if (theme == null) return 0;
@@ -238,17 +189,10 @@ public class ThemeManager extends Module {
     private static Color disabled() { return custom() ? color(customDisabled, preset().disabled) : preset().disabled; }
     private static Color gradFrom() { return custom() ? color(customGradFrom, preset().gradFrom) : preset().gradFrom; }
     private static Color gradTo()   { return custom() ? color(customGradTo, preset().gradTo) : preset().gradTo; }
-
-    /**
-     * Whether the theme repaints panels, rows and borders as well as the accent.
-     * Read every frame by the ClickGUI, so it must stay null-safe during early startup.
-     */
-    public static boolean surfacesEnabled() {
+public static boolean surfacesEnabled() {
         return applySurfaces != null && applySurfaces.isToggled();
     }
-
-    /** Base tone the ClickGUI derives its panels, rows and controls from. */
-    public static Color surface() {
+public static Color surface() {
         return custom() ? color(customSurface, preset().surface) : preset().surface;
     }
 
@@ -256,34 +200,22 @@ public class ThemeManager extends Module {
         if (custom()) return customHudGradient == null ? 0 : (int) customHudGradient.getInput();
         return preset().hudGradient;
     }
-
-    // ------------------------------------------------------------------ per-frame work
-
-    /**
-     * Syncs editor visibility, applies a changed selection, and drives the animated accent.
-     * Cheap enough to call every frame; the selection branch no-ops when nothing moved.
-     */
-    public static void poll() {
+public static void poll() {
         syncEditorVisibility();
         syncAppearance();
 
         if (theme != null && applyOnSelect != null && applyOnSelect.isToggled() && index() != appliedIndex) {
             applyNow();
         }
-
-        // Animation has to be rewritten every frame, so it lives outside the change check.
         if (gradientAccent != null && gradientAccent.isToggled() && Gui.themeColor != null) {
             double speed = gradientSpeed == null ? 1.0 : Math.max(0.1, gradientSpeed.getInput());
             double phase = (Math.sin(System.currentTimeMillis() / (2400.0 / speed)) + 1.0) * 0.5;
             set(Gui.themeColor, Theme.convert(gradFrom(), gradTo(), phase));
         }
     }
-
-    /** Shows or hides the collapsible sections to match their toggles. */
-    private static void syncEditorVisibility() {
+private static void syncEditorVisibility() {
         Module module = ModuleManager.themeManager;
         if (module == null) return;
-        // setVisible is a no-op when already in the wanted state, so this is free per frame.
         if (create != null) {
             boolean open = create.isToggled();
             for (Setting setting : EDITOR) setting.setVisible(open, module);
@@ -304,16 +236,7 @@ public class ThemeManager extends Module {
             for (Setting setting : COLOURS) setting.setVisible(open, module);
         }
     }
-
-    /**
-     * Pushes the font and blur choices out to the modules that actually own them.
-     *
-     * The first pass adopts whatever those modules already hold instead of pushing. Without
-     * that, this module's defaults silently overwrote the user's real settings on load -- and
-     * since index 0 of the font list is Minecraft's bitmap font, that meant the whole GUI
-     * dropped to the pixel font the moment the client started.
-     */
-    private static void syncAppearance() {
+private static void syncAppearance() {
         if (!appearanceAdopted) {
             appearanceAdopted = true;
             if (font != null && Gui.font != null) font.setValueRaw(Gui.font.getInput());
@@ -327,7 +250,6 @@ public class ThemeManager extends Module {
             int index = (int) font.getInput();
             if (index != appliedFont) {
                 appliedFont = index;
-                // One font for everything: the ClickGUI and the HUD share the same option list.
                 Gui.font.setValueRaw(index);
                 if (HUD.font != null) HUD.font.setValueRaw(index);
             }
@@ -340,16 +262,12 @@ public class ThemeManager extends Module {
             }
         }
     }
-
-    /** First non-Minecraft entry in the font list, so the default is always a real typeface. */
-    private static int defaultFontIndex() {
+private static int defaultFontIndex() {
         for (int i = 0; i < FONT_OPTIONS.length; i++) {
             if (!"Minecraft".equalsIgnoreCase(FONT_OPTIONS[i])) return i;
         }
         return 0;
     }
-
-    // ------------------------------------------------------------------ read by the ClickGUI
 
     public static boolean isHudCustomized() {
         return customizeHud != null && customizeHud.isToggled();
@@ -386,14 +304,10 @@ public class ThemeManager extends Module {
         if (!isHudCustomized() || hudStatsValue == null) return 0xFFFFFFFF;
         return hudStatsValue.getRGB() | 0xFF000000;
     }
-
-    /** Corner-radius multiplier; 1.0 is the stock look. */
-    public static float roundingScale() {
+public static float roundingScale() {
         return rounding == null ? 1f : (float) Math.max(0d, rounding.getInput() / 100d);
     }
-
-    /** True while every surface colour is taken verbatim from the Colors section. */
-    public static boolean colorsOverridden() {
+public static boolean colorsOverridden() {
         return customizeColors != null && customizeColors.isToggled();
     }
 
@@ -412,11 +326,7 @@ public class ThemeManager extends Module {
     public static int dropdown()         { return argb(colDropdown, 0); }
     public static int dropdownBorder()   { return argb(colDropdownBorder, 0); }
     public static int dropdownSelected() { return argb(colDropdownSelected, 0); }
-
-    // ------------------------------------------------------------------ theme picker UI
-
-    /** Preset count plus the Custom slot. */
-    public static int themeCount() {
+public static int themeCount() {
         return THEMES.length + 1;
     }
 
@@ -455,16 +365,12 @@ public class ThemeManager extends Module {
     public static int selectedIndex() {
         return index();
     }
-
-    /** Picks a theme and pushes it out immediately, regardless of the Apply on select toggle. */
-    public static void select(int i) {
+public static void select(int i) {
         if (theme == null) return;
         theme.setValueRaw(Math.max(0, Math.min(CUSTOM_INDEX, i)));
         applyNow();
     }
-
-    /** Fills the Colors section from the current theme, so overriding starts from a match. */
-    public static void seedColours() {
+public static void seedColours() {
         Color base = surface();
         Color accent = accent();
         int r = base.getRed(), g = base.getGreen(), b = base.getBlue();
@@ -488,11 +394,7 @@ public class ThemeManager extends Module {
     private static void setRgba(ColorSetting setting, int r, int g, int b, int a) {
         if (setting != null) setting.setColor(r, g, b, a);
     }
-
-    // ------------------------------------------------------------------ actions
-
-    /** Writes the current selection into the settings the rest of the client reads. */
-    public static void applyNow() {
+public static void applyNow() {
         if (theme == null) return;
         appliedIndex = index();
 
@@ -506,9 +408,7 @@ public class ThemeManager extends Module {
             Settings.defaultTheme.setValueRaw(hudGradient());
         }
     }
-
-    /** Seeds the editor from whichever preset is selected, so a custom theme starts somewhere. */
-    public static void copyPreset() {
+public static void copyPreset() {
         ClientTheme source = preset();
         set(customAccent, source.accent);
         set(customText, source.text);
@@ -519,9 +419,7 @@ public class ThemeManager extends Module {
         set(customSurface, source.surface);
         if (customHudGradient != null) customHudGradient.setValueRaw(source.hudGradient);
     }
-
-    /** Switches the picker to Custom and pushes the editor's colours out. */
-    public static void saveCustom() {
+public static void saveCustom() {
         if (theme != null) theme.setValueRaw(CUSTOM_INDEX);
         applyNow();
     }

@@ -25,17 +25,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-
-/**
- * Works out whether an entity is a real player, on behalf of Target Filter.
- *
- * <p>Not a module of its own any more. Every consumer of this already had to keep Anti Bot and
- * Target Filter both switched on for either to do anything, because Target Filter's bot check
- * delegates here and this used to refuse to answer unless its own module was enabled. Two
- * switches for one behaviour is a trap, and the one people fell into was ticking the box in
- * Target Filter and getting nothing. There is one switch now, and it lives with the other target
- * filtering where it belongs.
- */
 public final class AntiBot {
     private static final Minecraft mc = Minecraft.getMinecraft();
     private static final HashMap<EntityPlayer, Long> entities = new HashMap();
@@ -48,7 +37,6 @@ public final class AntiBot {
     private static final Set<UUID> tablistUuidCache = new HashSet<>();
     private static final Set<Integer> npcEntityIdCache = new HashSet<>();
     private static final Set<Long> shopPositionCache = new HashSet<>();
-    // Slinky-style checks: track players that were invisible at spawn or never moved
     private static final Set<Integer> spawnedInvisible = new HashSet<>();
     private static final HashMap<Integer, double[]> spawnPositions = new HashMap<>();
     private static long tablistCacheTime;
@@ -56,9 +44,7 @@ public final class AntiBot {
     private static World npcCacheWorld;
 
     private AntiBot() {}
-
-    /** Hangs the detection settings off whichever module owns this. */
-    public static void registerSettings(Module owner) {
+public static void registerSettings(Module owner) {
         owner.registerSetting(new DescriptionSetting("Anti Bot"));
         owner.registerSetting(delay = new SliderSetting("Delay", " second", true, -1, 0.5, 15.0, 0.5));
         owner.registerSetting(pitSpawn = new SliderSetting("Pit spawn", true, -1, 70, 120, 1));
@@ -75,11 +61,9 @@ public final class AntiBot {
             if (e.entity instanceof EntityPlayer) {
                 EntityPlayer p = (EntityPlayer) e.entity;
                 int id = p.getEntityId();
-                // Always invisible check: record if invisible at spawn
                 if (p.isInvisible()) {
                     spawnedInvisible.add(id);
                 }
-                // Always stationary check: record spawn position
                 spawnPositions.put(id, new double[]{ p.posX, p.posZ });
             }
             if (printWorldJoin.isToggled()) {
@@ -96,9 +80,7 @@ public final class AntiBot {
             entities.values().removeIf(n -> n < cutoff);
         }
     }
-
-    /** Drops everything learned about the world we were in. */
-    public static void clear() {
+public static void clear() {
         entities.clear();
         tablistCache.clear();
         tablistUuidCache.clear();
@@ -151,45 +133,31 @@ public final class AntiBot {
             if (shopPositionCache.contains(shopPosHash(entityPlayer.posX, entityPlayer.posZ))) {
                 return true;
             }
-            // Sleeping check (Slinky): bots/NPCs are sometimes put into sleep state
             if (entityPlayer.isPlayerSleeping()) {
                 return true;
             }
-            // Always invisible check (Slinky): invisible since first spawn → bot
             if (spawnedInvisible.contains(entityId) && entityPlayer.isInvisible()) {
                 return true;
             }
-            // Entity age check (Slinky): spawned within last 2 ticks → likely bot spawn packet
             if (entityPlayer.ticksExisted <= 2) {
                 return true;
             }
-            // Always stationary check (Slinky): never moved horizontally since spawn
-            // Only applied when UUID is also invalid to avoid false positives on AFK players
             double[] spawnPos = spawnPositions.get(entityId);
             if (spawnPos != null && entityPlayer.ticksExisted > 60) {
                 double dx = entityPlayer.posX - spawnPos[0];
                 double dz = entityPlayer.posZ - spawnPos[1];
                 boolean neverMoved = (dx * dx + dz * dz) < 0.0001;
                 if (neverMoved) {
-                    // Invalid UUID check (Slinky): applied to stationary players
                     if (uuid != null && uuid.version() == 2) {
                         return true;
                     }
                 }
             }
         }
-        // A player's world entity can arrive before its tab entry. Give the
-        // client two seconds to synchronize, and fail open when the server's
-        // tab list is unavailable instead of hiding a real player forever.
         if (tablist.isToggled() && entityPlayer.ticksExisted > 40
                 && hasUsableTablist() && !isInTablist(entityPlayer)) {
             return true;
         }
-        // Do not use response time as bot evidence. Hypixel and proxy-backed
-        // servers can legitimately expose 0-1 ms for an entire lobby, which
-        // previously made ESP and combat modules drop real players after the
-        // three-second grace period. UUID/name membership above is the stable
-        // tab-list signal; uncertain cases deliberately fail open.
         if (pitSpawn.getInput() != -1 && entityPlayer.posY >= pitSpawn.getInput() && entityPlayer.posY <= 130 && entityPlayer.getDistance(0, 114, 0) <= 25) {
             if (Utils.isHypixel()) {
                 List<String> sidebarLines = Utils.getSidebarLines();
@@ -200,13 +168,7 @@ public final class AntiBot {
         }
         return false;
     }
-
-    /**
-     * Detects shop-style NPCs from their aligned hologram labels. The scan is
-     * intentionally tick-cached: AntiBot is queried from several combat and
-     * render modules, so walking loadedEntityList inside isBot would be costly.
-     */
-    private static void refreshNpcCache() {
+private static void refreshNpcCache() {
         if (!npcChecks.isToggled() || mc.theWorld == null || mc.thePlayer == null) {
             npcEntityIdCache.clear();
             npcCacheWorld = mc.theWorld;
@@ -239,8 +201,6 @@ public final class AntiBot {
 
         for (Entity entity : mc.theWorld.loadedEntityList) {
             if (!(entity instanceof EntityArmorStand) || !hasShopLabel(entity)) continue;
-            // Persist the shop position — survives chunk unloads and works
-            // for NPCs whose hologram chunk isn't loaded yet (distance fix).
             shopPositionCache.add(shopPosHash(entity.posX, entity.posZ));
             EntityPlayer alignedPlayer = findAlignedNpcPlayer((EntityArmorStand) entity);
             if (alignedPlayer != null) {
@@ -248,17 +208,12 @@ public final class AntiBot {
             }
         }
     }
-
-    /** Packs block-precision XZ into a long for O(1) lookup. */
-    private static long shopPosHash(double x, double z) {
+private static long shopPosHash(double x, double z) {
         return ((long) (int) Math.floor(x) & 0xFFFFFFFFL) << 32
              | ((long) (int) Math.floor(z) & 0xFFFFFFFFL);
     }
 
     private static EntityPlayer findAlignedNpcPlayer(EntityArmorStand label) {
-        // NPC holograms share almost the exact X/Z coordinate with the entity.
-        // A narrow horizontal pad prevents a real player merely standing near
-        // a shop from being classified as that shopkeeper.
         AxisAlignedBB searchBox = label.getEntityBoundingBox().expand(0.45D, 3.5D, 0.45D);
         EntityPlayer closest = null;
         double closestHorizontalSq = Double.MAX_VALUE;

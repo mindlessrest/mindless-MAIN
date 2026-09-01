@@ -23,8 +23,7 @@ public final class GlyphFontRenderer implements MindlessFontRenderer {
     private static final int GLYPH_MARGIN = 4;
     private static final float MIN_RENDER_SCALE = 2.0f;
     private static final float QUALITY_MULTIPLIER = 2.0f;
-    /** Ceiling on a boosted atlas, in pixels of rasterised font size. */
-    private static final float MAX_RASTERISED_GLYPH_SIZE = 64.0f;
+private static final float MAX_RASTERISED_GLYPH_SIZE = 64.0f;
     private static final String ALPHABET = "ABCDEFGHOKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private static final String COLOR_CODES = "0123456789abcdefklmnor";
     private static final GlyphData EMPTY_GLYPH = new GlyphData(null, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0);
@@ -46,26 +45,13 @@ public final class GlyphFontRenderer implements MindlessFontRenderer {
     public GlyphFontRenderer(Font sourceFont, boolean antiAlias) {
         this(sourceFont, antiAlias, 1.0f);
     }
-
-    /**
-     * @param qualityBoost extra atlas resolution, on top of what the UI scale already asks for.
-     *                     Everything this renderer reports -- advances, heights, the quads it
-     *                     draws -- is divided back down by the same factor, so a boost changes
-     *                     nothing about layout. It buys headroom for text that gets magnified
-     *                     after it is drawn, which is every nametag: they are drawn at a fixed
-     *                     nine units and then scaled up in world space, so at a few blocks away
-     *                     a glyph covers two or three times the pixels it was rasterised at.
-     */
-    public GlyphFontRenderer(Font sourceFont, boolean antiAlias, float qualityBoost) {
+public GlyphFontRenderer(Font sourceFont, boolean antiAlias, float qualityBoost) {
         float renderScale = boostedRenderScale(sourceFont, qualityBoost);
         this.drawScale = 1.0f / renderScale;
         this.rawScale = renderScale;
         this.renderFont = sourceFont.deriveFont(sourceFont.getStyle(), Math.max(1.0f, sourceFont.getSize2D() * renderScale));
         this.antiAlias = antiAlias;
         this.fontRenderContext = new FontRenderContext(new AffineTransform(), antiAlias, true);
-
-        // Rasterise the whole set before anything is packed: the atlas has to know the total area
-        // up front to pick a page size that holds every glyph in one texture.
         Raster[] rasters = new Raster[LAST_GLYPH + 1];
         List<int[]> sizes = new ArrayList<int[]>(LAST_GLYPH + 1);
 
@@ -286,14 +272,7 @@ public final class GlyphFontRenderer implements MindlessFontRenderer {
 
         return Math.round((drawX - startX) * drawScale);
     }
-
-    /**
-     * Positions arrive already divided down by the atlas scale rather than being left to a scaled
-     * modelview. A matrix push has to be paired with a pop around every string, and a batch cannot
-     * outlive the matrix its vertices were measured in -- flattening the scale here is what lets
-     * quads from separate drawString calls share a single draw.
-     */
-    private void renderGlyph(GlyphData glyph, float rawX, float rawY, int color) {
+private void renderGlyph(GlyphData glyph, float rawX, float rawY, int color) {
         GlyphAtlas.Region region = glyph.region;
         if (region == null) {
             return;
@@ -329,9 +308,7 @@ public final class GlyphFontRenderer implements MindlessFontRenderer {
 
         return commit(rasterise(character));
     }
-
-    /** Gives a rasterised glyph a home in the atlas. Glyphs with nothing visible are not packed. */
-    private GlyphData commit(Raster raster) {
+private GlyphData commit(Raster raster) {
         if (raster == null) {
             return EMPTY_GLYPH;
         }
@@ -456,16 +433,7 @@ public final class GlyphFontRenderer implements MindlessFontRenderer {
 
         return new int[]{top, bottom};
     }
-
-    /**
-     * The boosted scale, with a ceiling on how big a glyph is actually rasterised.
-     *
-     * <p>The whole glyph set shares one atlas page, so a boost costs its square in page area. Past
-     * around sixty pixels there is nothing more to be had for text that is only ever magnified two
-     * or three times, so the boost is taken up to that point and no further -- and never below what
-     * the UI scale asked for on its own.
-     */
-    private static float boostedRenderScale(Font sourceFont, float qualityBoost) {
+private static float boostedRenderScale(Font sourceFont, float qualityBoost) {
         float base = resolveRenderScale();
         float boosted = base * Math.max(1.0f, qualityBoost);
         float requestedSize = Math.max(1.0f, sourceFont.getSize2D());
@@ -550,9 +518,7 @@ public final class GlyphFontRenderer implements MindlessFontRenderer {
     private static boolean isFormattingArtifact(char character) {
         return character == '\u00c2' || character == '\u00c3' || character == '\u0082' || character == '\u201a';
     }
-
-    /** A glyph as the font produced it, before it has been given a home in the atlas. */
-    private static final class Raster {
+private static final class Raster {
         private final BufferedImage image;
         private final float rawAdvance;
         private final int visibleTop;

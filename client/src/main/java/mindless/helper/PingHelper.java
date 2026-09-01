@@ -1,6 +1,5 @@
 package mindless.helper;
 
-import mindless.utility.CommandHandler;
 import mindless.utility.Utils;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -27,16 +26,10 @@ public class PingHelper {
         if (isChat) {
             Utils.sendMessage("&7Checking ping...");
         }
-        else {
-            CommandHandler.print("§3Checking...", 1);
-        }
 
         if (sendChat) {
             if (isChat) {
                 Utils.sendMessage("&7Please wait before checking again.");
-            }
-            else {
-                CommandHandler.print("§cPlease wait.", 0);
             }
             return;
         }
@@ -60,9 +53,6 @@ public class PingHelper {
 
         if (isChat) {
             Utils.sendMessage("&7Your ping: &b" + ping + "&7ms.");
-        }
-        else {
-            CommandHandler.print("Your ping: " + ping + "ms", 0);
         }
         reset(isChat);
     }

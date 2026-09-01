@@ -92,14 +92,7 @@ final class TimedLyricsManager {
     public TimedLyrics getCurrentLyrics() {
         return currentLyrics;
     }
-
-    /**
-     * Called when the native bridge supplies lyrics directly (new bridge).
-     * Bypasses Java-side HTTP fetching — the DLL owns the fetch.
-     * When lyricsAvailable=false the DLL is still loading; show LOADING state.
-     * When lyricsAvailable=true and lines are non-empty, deliver them directly.
-     */
-    /**
+/**
      * How long an empty track key is tolerated before the lyrics are actually dropped. The
      * native side is polled every 50ms and occasionally returns nothing mid-transition; acting
      * on a single blank poll made the panel drop its lyrics and resize for one frame.
@@ -115,7 +108,6 @@ final class TimedLyricsManager {
             long now = System.currentTimeMillis();
             if (emptyTrackSince == 0L) emptyTrackSince = now;
             if (now - emptyTrackSince < EMPTY_TRACK_GRACE_MS) {
-                // Probably a blip between tracks: keep showing what we have.
                 return;
             }
             cancelPendingRequest();
@@ -129,23 +121,12 @@ final class TimedLyricsManager {
         boolean trackChanged = !trackKey.equals(activeTrackKey);
         if (trackChanged) nativeFallbackStartMs = 0L;
         activeTrackKey = trackKey;
-
-        // DLL owns lyrics fetching when it has results — cancel Java requests only if it delivered
         if (lyricsAvailable && lyricsLines != null && !lyricsLines.isEmpty()) {
             cancelPendingRequest();
             pendingTrackKey = "";
         }
 
         if (lyricsAvailable && lyricsLines != null && !lyricsLines.isEmpty()) {
-            // Reuse the existing instance when the track's lyrics have not actually changed.
-            //
-            // This used to build a new TimedLyrics on every poll, i.e. 20 times a second. The
-            // renderer caches its wrapped layout against the *identity* of this object, and for
-            // anything over 30 lines it wraps on a background thread and renders nothing until
-            // that finishes. So each poll invalidated the layout, the renderer drew an empty
-            // list, and the async result came back keyed to an object that had already been
-            // replaced -- never matching. That is the fast flicker, and it hit any song long
-            // enough to take the async path, which is most of them.
             TimedLyrics existing = cache.get(trackKey);
             if (existing != null && existing.isAvailable()
                     && existing.getLines().size() >= lyricsLines.size()) {
@@ -157,10 +138,6 @@ final class TimedLyricsManager {
             currentLyrics = lyrics;
             return;
         }
-
-        // Already fetched this track before: show it immediately rather than sitting on a
-        // loading state until the DLL gets round to reporting it again. This path never
-        // consulted the cache, so every repeat of a song re-waited for the fetch.
         TimedLyrics cached = cache.get(trackKey);
         if (cached != null && cached.isAvailable()) {
             currentLyrics = cached;
@@ -170,8 +147,6 @@ final class TimedLyricsManager {
         if (trackChanged || !currentLyrics.isAvailable()) {
             currentLyrics = TimedLyrics.loading();
         }
-
-        // Fallback: if native bridge hasn't delivered lyrics after 3 seconds, try Java HTTP providers (LRCLIB + Netease)
         if (trackKey.equals(pendingTrackKey) || pendingRequest != null) {
             return;
         }
