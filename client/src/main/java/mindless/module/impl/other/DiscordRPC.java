@@ -131,16 +131,20 @@ private static final long BUILD_INTERVAL_MS = 150L;
         HypixelPresence.reset();
         HypixelPresence.resetParty();
     }
-@SubscribeEvent(priority = EventPriority.HIGHEST, receiveCanceled = true)
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST, receiveCanceled = true)
     public void onChat(ClientChatReceivedEvent event) {
         if (event.type != 0 || event.message == null || !scrapeHypixel()) {
             return;
         }
-        if (HypixelPresence.onChat(event.message.getFormattedText(), event.message.getUnformattedText())) {
-            event.setCanceled(true);
+         if (HypixelPresence.onChat(event.message.getFormattedText(), event.message.getUnformattedText())) {
+            if (event.isCancelable()) {
+                event.setCanceled(true);
+            }
             lastBuildAt = 0L;
         }
     }
+
 private boolean scrapeHypixel() {
         if (!hypixelStats.isToggled()) {
             return false;

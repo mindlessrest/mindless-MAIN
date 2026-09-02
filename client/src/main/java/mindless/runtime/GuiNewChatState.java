@@ -6,6 +6,7 @@ import net.minecraft.client.gui.ChatLine;
 import net.minecraft.util.MathHelper;
 
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -83,20 +84,31 @@ public static void drawPlayerHead(String name, float x, float y, float size, int
     public static final int PANEL_FILL_COLOR = 0x55000000;
     public static final float PANEL_BLUR_OPACITY = 0.85f;
 
-    public static final Map<Object, Long> messageBirths = new IdentityHashMap<Object, Long>();
+    public static final Map<ChatLine, Long> messageBirths = new IdentityHashMap<ChatLine, Long>();
     public static long lastAnimationCleanup;
 
     private GuiNewChatState() {}
 
     public static void updateMessageAnimations(List<ChatLine> drawnChatLines, long now) {
-        for (ChatLine line : drawnChatLines) {
+        List<ChatLine> snapshot = new java.util.ArrayList<ChatLine>(drawnChatLines);
+
+        for (ChatLine line : snapshot) {
             if (line != null && !messageBirths.containsKey(line)) {
                 messageBirths.put(line, now);
             }
         }
 
         if (now - lastAnimationCleanup >= 1000L) {
-            messageBirths.keySet().retainAll(drawnChatLines);
+            Iterator<ChatLine> iterator = messageBirths.keySet().iterator();
+
+            while (iterator.hasNext()) {
+                Object key = iterator.next();
+
+                if (!snapshot.contains(key)) {
+                    iterator.remove();
+                }
+            }
+
             lastAnimationCleanup = now;
         }
     }
