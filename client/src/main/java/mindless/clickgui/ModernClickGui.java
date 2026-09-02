@@ -600,6 +600,7 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
         float hp = animate(hoverAnimation, module, hover ? 1f : 0f, 17f);
         float sp = animate(selectedAnimation, module, selected ? 1f : 0f, 19f);
         int rowColor = mixColor(ROW, ROW_HOVER, hp);
+        if (module.isEnabled()) rowColor = mixColor(withAlpha(TEXT, 34), withAlpha(TEXT, 48), hp);
         rowColor = mixColor(rowColor, withAlpha(ACCENT, 55), sp);
         if (scriptManager) rowColor = mixColor(rowColor, withAlpha(ACCENT, 62), .42f);
         rounded(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f, rowColor);
