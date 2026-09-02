@@ -79,11 +79,13 @@ public class HypixelBedWars {
         public final long bedsBroken;
         public final long bedsLost;
         public final double bedsBrokenLostRatio;
+        public final long winstreak;   // added
 
         public ModeStats(long wins, long losses, long gamesPlayed, double winLossRatio,
                          long finalKills, long finalDeaths, double finalKillDeathRatio,
                          long kills, long deaths, double killDeathRatio,
-                         long bedsBroken, long bedsLost, double bedsBrokenLostRatio) {
+                         long bedsBroken, long bedsLost, double bedsBrokenLostRatio,
+                         long winstreak) {
             this.wins = wins;
             this.losses = losses;
             this.gamesPlayed = gamesPlayed;
@@ -97,6 +99,7 @@ public class HypixelBedWars {
             this.bedsBroken = bedsBroken;
             this.bedsLost = bedsLost;
             this.bedsBrokenLostRatio = bedsBrokenLostRatio;
+            this.winstreak = winstreak;
         }
     }
 
@@ -212,22 +215,26 @@ public class HypixelBedWars {
     private static ModeStats parseMode(JsonObject stats, String modePrefix) {
         String p = (modePrefix != null && !modePrefix.isEmpty()) ? modePrefix + "_" : "";
 
-        long wins = getLong(stats, p + "wins_bedwars");
-        long losses = getLong(stats, p + "losses_bedwars");
-        long finalKills = getLong(stats, p + "final_kills_bedwars");
+        long wins        = getLong(stats, p + "wins_bedwars");
+        long losses      = getLong(stats, p + "losses_bedwars");
+        long finalKills  = getLong(stats, p + "final_kills_bedwars");
         long finalDeaths = getLong(stats, p + "final_deaths_bedwars");
-        long kills = getLong(stats, p + "kills_bedwars");
-        long deaths = getLong(stats, p + "deaths_bedwars");
-        long bedsBroken = getLong(stats, p + "beds_broken_bedwars");
-        long bedsLost = getLong(stats, p + "beds_lost_bedwars");
+        long kills       = getLong(stats, p + "kills_bedwars");
+        long deaths      = getLong(stats, p + "deaths_bedwars");
+        long bedsBroken  = getLong(stats, p + "beds_broken_bedwars");
+        long bedsLost    = getLong(stats, p + "beds_lost_bedwars");
         long gamesPlayedRaw = getLong(stats, p + "games_played_bedwars");
         long gamesPlayed = gamesPlayedRaw > 0 ? gamesPlayedRaw : (wins + losses);
+        // winstreak key is unprefixed for overall, prefixed for modes
+        String wsKey     = p.isEmpty() ? "winstreak" : p + "winstreak";
+        long winstreak   = getLong(stats, wsKey);
 
         return new ModeStats(
                 wins, losses, gamesPlayed, ratio(wins, losses),
                 finalKills, finalDeaths, ratio(finalKills, finalDeaths),
                 kills, deaths, ratio(kills, deaths),
-                bedsBroken, bedsLost, ratio(bedsBroken, bedsLost)
+                bedsBroken, bedsLost, ratio(bedsBroken, bedsLost),
+                winstreak
         );
     }
 
@@ -278,7 +285,7 @@ public class HypixelBedWars {
 
         String displayName = raw.has("displayname") ? raw.get("displayname").getAsString() : "";
         Date firstLogin = raw.has("firstLogin") ? new Date(raw.get("firstLogin").getAsLong()) : null;
-        Date lastLogin = raw.has("lastLogin") ? new Date(raw.get("lastLogin").getAsLong()) : null;
+        Date lastLogin  = raw.has("lastLogin")  ? new Date(raw.get("lastLogin").getAsLong())  : null;
 
         return new BedwarsPlayer(
                 raw.get("uuid").getAsString(),
