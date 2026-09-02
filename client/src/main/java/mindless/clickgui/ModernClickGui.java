@@ -219,7 +219,8 @@ private static float guiDragOffsetX = 0f;
     private float saveHover;
     private boolean uiTextureLoadAttempted;
     private ResourceLocation logoTexture;
-    private ResourceLocation mascotTexture;
+    private ResourceLocation mascotTextureCat;
+    private ResourceLocation mascotTextureMindless;
     private final Map<Module.category, ResourceLocation> categoryIcons = new IdentityHashMap<Module.category, ResourceLocation>();
 
     @Override
@@ -342,15 +343,22 @@ private float pixelScale() {
     }
 
     private void drawMascot() {
+        if (Gui.mascot == null) return;
 
-        if (Gui.mascot == null || (int) Gui.mascot.getInput() != 0) return;
+        int input = (int) Gui.mascot.getInput();
+        if (input != 0 && input != 1) return;
+
         ensureUiTextures();
-        if (mascotTexture == null) return;
+
+        ResourceLocation targetTexture = (input == 0) ? mascotTextureMindless : mascotTextureCat;
+        if (targetTexture == null) return;
+
         float mascotH = panelH * 0.75f;
         float mascotW = mascotH;
         float mx = width - mascotW - 50f;
         float my = height - mascotH - 50f;
-        drawTextureRegion(mascotTexture, mx, my, mascotW, mascotH,
+
+        drawTextureRegion(targetTexture, mx, my, mascotW, mascotH,
                 0, 0, 1, 1, 1, 1, 1f, 1f, 1f, 1f);
     }
 
@@ -2179,7 +2187,8 @@ private static float corner(float radius, float w, float h) {
         uiTextureLoadAttempted = true;
         logoTexture = loadBundledTexture("mindless_modern_logo", LOGO_RESOURCE, true,
                 LOGO_RASTER_W, LOGO_RASTER_H);
-        mascotTexture = loadBundledTexture("mindless_mascot_0", "/assets/mindless/textures/gui/mascot_0.png", true);
+        mascotTextureCat = loadBundledTexture("mindless_mascot_0", "/assets/mindless/textures/gui/mascot_0.png", true);
+        mascotTextureMindless = loadBundledTexture("mindless_mascot_1", "/assets/mindless/textures/gui/mascot_1.png", true);
         for (Module.category cat : Module.category.values()) {
             String iconName = categoryIconName(cat);
             String path = "/assets/mindless/textures/gui/icons/" + iconName + ".png";
