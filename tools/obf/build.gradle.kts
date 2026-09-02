@@ -17,6 +17,11 @@ dependencies {
     implementation("org.ow2.asm:asm-tree:9.7.1")
     implementation("org.ow2.asm:asm-commons:9.7.1")
     implementation("com.google.code.gson:gson:2.11.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 application {

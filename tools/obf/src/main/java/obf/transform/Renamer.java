@@ -1,10 +1,16 @@
 package obf.transform;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import obf.*;
 import obf.util.NameGen;
+import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
 import org.objectweb.asm.tree.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class Renamer implements Transform {
@@ -21,6 +27,7 @@ public class Renamer implements Transform {
         Map<String, String> classMap = ctx.classMapping();
         Map<String, String> fieldMap = ctx.fieldMapping();
         Map<String, String> methodMap = ctx.methodMapping();
+        Set<String> protectedClasses = findMixinClasses(ctx);
 
         // Phase 1: build class rename mapping
         if (cfg.renameClasses) {
@@ -29,7 +36,7 @@ public class Renamer implements Transform {
             Map<String, String> pkgMap = new HashMap<>();
 
             for (String name : ctx.classes().keySet()) {
-                if (ctx.isExcluded(name)) continue;
+                if (ctx.isExcluded(name) || protectedClasses.contains(name)) continue;
 
                 // Map old package to a new obfuscated sub-package under prefix
                 int lastSlash = name.lastIndexOf('/');
@@ -59,7 +66,7 @@ public class Renamer implements Transform {
         if (cfg.renameFields) {
             NameGen fieldGen = new NameGen(10, 20);
             for (ClassNode cn : ctx.classes().values()) {
-                if (ctx.isExcluded(cn.name)) continue;
+                if (ctx.isExcluded(cn.name) || protectedClasses.contains(cn.name)) continue;
                 for (FieldNode fn : cn.fields) {
                     String key = cn.name + "." + fn.name;
                     fieldMap.put(key, fieldGen.next());
@@ -73,7 +80,7 @@ public class Renamer implements Transform {
                 "main", "<init>", "<clinit>", "values", "valueOf"
             ));
             for (ClassNode cn : ctx.classes().values()) {
-                if (ctx.isExcluded(cn.name)) continue;
+                if (ctx.isExcluded(cn.name) || protectedClasses.contains(cn.name)) continue;
                 for (MethodNode mn : cn.methods) {
                     if (noRename.contains(mn.name)) continue;
                     // Don't rename overrides of library methods
@@ -136,6 +143,60 @@ public class Renamer implements Transform {
 
         System.out.println("  [renamer] " + classMap.size() + " classes, "
             + fieldMap.size() + " fields, " + methodMap.size() + " methods renamed");
+    }
+
+    private Set<String> findMixinClasses(ObfContext ctx) {
+        Set<String> result = new HashSet<>();
+        for (ClassNode cn : ctx.classes().values()) {
+            if (hasMixinAnnotation(cn.visibleAnnotations) || hasMixinAnnotation(cn.invisibleAnnotations)) {
+                result.add(cn.name);
+            }
+        }
+        for (Map.Entry<String, byte[]> entry : ctx.resources().entrySet()) {
+            if (!entry.getKey().endsWith(".json")) continue;
+            try {
+                JsonElement parsed = JsonParser.parseString(new String(entry.getValue(), StandardCharsets.UTF_8));
+                if (!parsed.isJsonObject()) continue;
+                JsonObject object = parsed.getAsJsonObject();
+                if (!object.has("package")) continue;
+                String packageName = object.get("package").getAsString().replace('.', '/');
+                addMixinEntries(result, object, packageName, "mixins");
+                addMixinEntries(result, object, packageName, "client");
+                addMixinEntries(result, object, packageName, "server");
+                if (object.has("plugin") && !object.get("plugin").isJsonNull()) {
+                    result.add(object.get("plugin").getAsString().replace('.', '/'));
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        boolean changed;
+        do {
+            changed = false;
+            for (String name : ctx.classes().keySet()) {
+                int inner = name.indexOf('$');
+                if (inner > 0 && result.contains(name.substring(0, inner))) {
+                    changed |= result.add(name);
+                }
+            }
+        } while (changed);
+        return result;
+    }
+
+    private void addMixinEntries(Set<String> result, JsonObject object, String packageName, String key) {
+        if (!object.has(key) || !object.get(key).isJsonArray()) return;
+        JsonArray entries = object.getAsJsonArray(key);
+        for (JsonElement entry : entries) {
+            String relativeName = entry.getAsString().replace('.', '/');
+            result.add(packageName.isEmpty() ? relativeName : packageName + "/" + relativeName);
+        }
+    }
+
+    private boolean hasMixinAnnotation(List<AnnotationNode> annotations) {
+        if (annotations == null) return false;
+        for (AnnotationNode annotation : annotations) {
+            if ("Lorg/spongepowered/asm/mixin/Mixin;".equals(annotation.desc)) return true;
+        }
+        return false;
     }
 
     private boolean isLibraryOverride(ObfContext ctx, ClassNode cn, MethodNode mn) {

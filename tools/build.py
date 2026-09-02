@@ -413,8 +413,13 @@ def detect_voyager():
 
 
 def build_obf_jar(jdk):
-    """Build the MindlessObf tool if the jar doesn't exist."""
-    if OBF_JAR.is_file():
+    """Build the MindlessObf tool when its source is newer than the jar."""
+    inputs = list((OBF_DIR / "src").rglob("*")) + [
+        OBF_DIR / "build.gradle.kts",
+        OBF_DIR / "settings.gradle.kts",
+    ]
+    inputs = [path for path in inputs if path.is_file()]
+    if OBF_JAR.is_file() and all(path.stat().st_mtime <= OBF_JAR.stat().st_mtime for path in inputs):
         return True
     section("Building MindlessObf")
     gradlew = CLIENT_DIR / "gradlew.bat"
