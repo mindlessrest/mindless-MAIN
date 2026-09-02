@@ -102,6 +102,7 @@ public class ModuleManager {
     public static Displace displace;
     public static ShopHelper shopHelper;
     public static BedTracker bedTracker;
+    public static Overlay overlay;
     public static ResourceTracker resourceTracker;
     public static EventTimers eventTimers;
     public static Autoblock autoBlock;
@@ -158,6 +159,7 @@ public class ModuleManager {
         this.addModule(resourceTracker = new ResourceTracker());
         this.addModule(eventTimers = new EventTimers());
         this.addModule(bedwars = new BedWars());
+        this.addModule(overlay);
         this.addModule(shopHelper = new ShopHelper());
 
         this.addModule(movementFix = new MovementFix());
