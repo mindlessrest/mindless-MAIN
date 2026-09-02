@@ -43,12 +43,20 @@ private:
     // Auth
     std::thread authThread_;
     std::atomic<bool> authDone_{false};
+    std::string pendingAuthToken_;
+    std::string pendingAuthHwid_;
+    std::string pendingAuthError_;
+    bool pendingAuthComplete_ = false;
     HANDLE authSection_ = nullptr;
 
     // DLL download (deferred to injection time)
     std::thread downloadThread_;
     std::atomic<bool> downloadDone_{false};
     bool downloadStarted_ = false;
+    std::vector<uint8_t> pendingDllBytes_;
+    std::string pendingDownloadStatus_;
+    std::string pendingDownloadSolution_;
+    bool pendingDownloadFailed_ = false;
 
     void start_download();
 

@@ -8,13 +8,83 @@
 #include "resource.h"
 #include "ui/theme.hpp"
 #include <authclient/authclient.hpp>
+#include <authclient/crypto.hpp>
 #include <authclient/hwid.hpp>
 #include <chrono>
 #include <cmath>
+#include <curl/curl.h>
+#include <nlohmann/json.hpp>
 #include <shellapi.h>
 
 namespace mindless
 {
+
+struct SoftwareFile
+{
+    std::string id;
+    std::string name;
+};
+
+static size_t append_response(void* data, size_t size, size_t count, void* output)
+{
+    size_t total = size * count;
+    static_cast<std::string*>(output)->append(static_cast<char*>(data), total);
+    return total;
+}
+
+static std::vector<SoftwareFile> list_software_files(const std::string& api,
+                                                     const std::string& token,
+                                                     const std::string& hwid)
+{
+    CURL* curl = curl_easy_init();
+    if (!curl) throw std::runtime_error("Unable to initialize file request");
+
+    std::string response;
+    std::string url = api + "/software/files";
+    auto nonce = authclient::crypto::toHex(authclient::crypto::randomBytes(32));
+    auto now = std::chrono::system_clock::now();
+    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+    curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, ("Authorization: Bearer " + token).c_str());
+    headers = curl_slist_append(headers, "X-Client-Type: software");
+    headers = curl_slist_append(headers, ("X-HWID: " + hwid).c_str());
+    headers = curl_slist_append(headers, ("X-Request-Nonce: " + nonce).c_str());
+    headers = curl_slist_append(headers, ("X-Request-Timestamp: " + std::to_string(timestamp)).c_str());
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_response);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+    CURLcode result = curl_easy_perform(curl);
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (result != CURLE_OK) throw std::runtime_error(curl_easy_strerror(result));
+
+    auto body = nlohmann::json::parse(response, nullptr, false);
+    if (status < 200 || status >= 300)
+    {
+        if (body.is_object() && body.contains("error"))
+            throw std::runtime_error(body["error"].get<std::string>());
+        throw std::runtime_error("File request failed with HTTP " + std::to_string(status));
+    }
+    if (!body.is_object() || !body.contains("data") || !body["data"].contains("files"))
+        throw std::runtime_error("Invalid file list response");
+
+    std::vector<SoftwareFile> files;
+    for (const auto& file : body["data"]["files"])
+    {
+        if (!file.contains("id") || !file.contains("name")) continue;
+        files.push_back({ file["id"].get<std::string>(), file["name"].get<std::string>() });
+    }
+    return files;
+}
 
 static std::pair<const void*, size_t> get_resource(int id, const wchar_t* type)
 {
@@ -111,6 +181,10 @@ void Application::start_auth()
 {
     if (authThread_.joinable()) authThread_.join();
     authDone_ = false;
+    pendingAuthToken_.clear();
+    pendingAuthHwid_.clear();
+    pendingAuthError_.clear();
+    pendingAuthComplete_ = false;
 
     std::string user = state_.username.text;
     std::string pass = state_.password.text;
@@ -118,7 +192,7 @@ void Application::start_auth()
     authThread_ = std::thread([this, user, pass] {
         if (user.empty() || pass.empty())
         {
-            state_.authError = "Please enter username and password";
+            pendingAuthError_ = "Please enter username and password";
             authDone_ = true;
             return;
         }
@@ -137,25 +211,25 @@ void Application::start_auth()
             auto session = client.validateSession();
             if (!session.valid)
             {
-                state_.authError = "Session invalid after login";
+                pendingAuthError_ = "Session invalid after login";
                 authDone_ = true;
                 return;
             }
 
-            state_.authToken = login.token;
-            state_.authHwid  = hwid;
-            state_.authComplete = true;
+            pendingAuthToken_ = login.token;
+            pendingAuthHwid_ = hwid;
+            pendingAuthComplete_ = true;
         }
         catch (const authclient::AuthException& e)
         {
-            state_.authError = e.message().empty() ? e.code() : e.message();
+            pendingAuthError_ = e.message().empty() ? e.code() : e.message();
             char dbg[512];
             snprintf(dbg, sizeof(dbg), "[MindlessLoader] Auth failed: %s (%s)\n", e.code().c_str(), e.message().c_str());
             OutputDebugStringA(dbg);
         }
         catch (const std::exception& e)
         {
-            state_.authError = e.what();
+            pendingAuthError_ = e.what();
             char dbg[512];
             snprintf(dbg, sizeof(dbg), "[MindlessLoader] Exception: %s\n", e.what());
             OutputDebugStringA(dbg);
@@ -169,22 +243,28 @@ void Application::start_download()
     if (downloadThread_.joinable()) downloadThread_.join();
     downloadDone_ = false;
     downloadStarted_ = true;
+    pendingDllBytes_.clear();
+    pendingDownloadStatus_.clear();
+    pendingDownloadSolution_.clear();
+    pendingDownloadFailed_ = false;
 
-    downloadThread_ = std::thread([this] {
+    std::string token = state_.authToken;
+    std::string hwid = state_.authHwid;
+
+    downloadThread_ = std::thread([this, token, hwid] {
         try
         {
             OutputDebugStringA("[Mindless] Download: creating client\n");
             const char* api = XORSTR("https://api.mindless.rest");
             authclient::AuthClient client(api);
-            client.setToken(state_.authToken);
-            std::string hwid = state_.authHwid;
+            client.setToken(token);
             if (!hwid.empty()) client.setHWID(hwid);
 
             OutputDebugStringA("[Mindless] Download: listing files\n");
-            auto fileList = client.listFiles();
+            auto files = list_software_files(api, token, hwid);
 
             std::string fileId;
-            for (const auto& f : fileList.files)
+            for (const auto& f : files)
             {
                 if (f.name == "mindless-native" || f.name == "MindlessNative.dll" || f.name == "mindless")
                 {
@@ -192,9 +272,9 @@ void Application::start_download()
                     break;
                 }
             }
-            if (fileId.empty() && !fileList.files.empty())
+            if (fileId.empty() && !files.empty())
             {
-                for (const auto& f : fileList.files)
+                for (const auto& f : files)
                 {
                     if (f.name != "loader") { fileId = f.id; break; }
                 }
@@ -202,9 +282,9 @@ void Application::start_download()
             if (fileId.empty())
             {
                 OutputDebugStringA("[Mindless] Download: no matching file found\n");
-                state_.statusText = "Payload not found";
-                state_.solutionText = "Upload MindlessNative.dll to the panel.";
-                state_.loadFailed = true;
+                pendingDownloadStatus_ = "Payload not found";
+                pendingDownloadSolution_ = "Upload MindlessNative.dll to the panel.";
+                pendingDownloadFailed_ = true;
                 downloadDone_ = true;
                 return;
             }
@@ -222,13 +302,13 @@ void Application::start_download()
 
             if (dllBytes.empty())
             {
-                state_.statusText = "Payload not found";
-                state_.solutionText = "Upload MindlessNative.dll to the panel.";
-                state_.loadFailed = true;
+                pendingDownloadStatus_ = "Payload not found";
+                pendingDownloadSolution_ = "Upload MindlessNative.dll to the panel.";
+                pendingDownloadFailed_ = true;
             }
             else
             {
-                state_.dllBytes = std::move(dllBytes);
+                pendingDllBytes_ = std::move(dllBytes);
             }
         }
         catch (const authclient::AuthException& e)
@@ -237,18 +317,18 @@ void Application::start_download()
             snprintf(dbg, sizeof(dbg), "[Mindless] Download AuthException: %s (%s)\n",
                      e.code().c_str(), e.message().c_str());
             OutputDebugStringA(dbg);
-            state_.statusText = "Download failed";
-            state_.solutionText = e.message().empty() ? e.code() : e.message();
-            state_.loadFailed = true;
+            pendingDownloadStatus_ = "Download failed";
+            pendingDownloadSolution_ = e.message().empty() ? e.code() : e.message();
+            pendingDownloadFailed_ = true;
         }
         catch (const std::exception& e)
         {
             char dbg[512];
             snprintf(dbg, sizeof(dbg), "[Mindless] Download exception: %s\n", e.what());
             OutputDebugStringA(dbg);
-            state_.statusText = "Download failed";
-            state_.solutionText = e.what();
-            state_.loadFailed = true;
+            pendingDownloadStatus_ = "Download failed";
+            pendingDownloadSolution_ = e.what();
+            pendingDownloadFailed_ = true;
         }
         downloadDone_ = true;
     });
@@ -291,6 +371,10 @@ int Application::run()
                     // Thread just finished — process the result
                     authThread_.join();
                     state_.authInProgress = false;
+                    state_.authToken = std::move(pendingAuthToken_);
+                    state_.authHwid = std::move(pendingAuthHwid_);
+                    state_.authError = std::move(pendingAuthError_);
+                    state_.authComplete = pendingAuthComplete_;
 
                     if (state_.authComplete && state_.authError.empty())
                     {
@@ -345,6 +429,10 @@ int Application::run()
             if (downloadStarted_ && downloadDone_ && !state_.loadFailed)
             {
                 if (downloadThread_.joinable()) downloadThread_.join();
+                state_.dllBytes = std::move(pendingDllBytes_);
+                state_.statusText = std::move(pendingDownloadStatus_);
+                state_.solutionText = std::move(pendingDownloadSolution_);
+                state_.loadFailed = pendingDownloadFailed_;
                 downloadStarted_ = false;
             }
 
