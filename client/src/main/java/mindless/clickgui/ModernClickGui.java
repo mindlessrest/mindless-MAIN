@@ -610,32 +610,44 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             roundedCorners(x1, barTop, x1 + 2.5f, barBot,
                     0f, 1.25f, 1.25f, 0f, withAlpha(ACCENT, (int) (255 * sp)));
         }
-        float toggleX = x2 - 88;
-        float availableTextWidth = Math.max(42f, toggleX - x1 - 18f);
+        boolean profile = module instanceof ProfileModule;
+        boolean manager = module instanceof Manager || scriptManager;
+        float toggleX = profile || manager ? x2 - 88 : x2 - 47;
+        float availableTextWidth = Math.max(42f, x2 - 106f - x1);
         drawText(trim(module.getName(), availableTextWidth, .73f, true),
                 x1 + 10, y + 4.5f, mixColor(MUTED, TEXT, Math.max(hp * .5f, sp)), .73f, sp > .5f);
         drawSmallText(trimSmall(moduleDescription(module), availableTextWidth),
                 x1 + 10, y + 16f, mixColor(argb(255, 132, 134, 133), MUTED,
                         Math.max(hp * .42f, sp * .62f)));
 
-        if (module instanceof ProfileModule) {
+        if (profile) {
             boolean active = module.isEnabled();
             boolean unsaved = active && !((ProfileModule) module).saved;
             drawCenteredV(active ? (unsaved ? "Unsaved" : "Active") : "Load",
                     toggleX - 4, toggleX + 34, y, y + MODULE_ROW_HEIGHT,
                     active ? GOLD : MUTED, unsaved ? .55f : .62f, active);
-        } else if (module instanceof Manager || module instanceof mindless.script.Manager) {
+        } else if (manager) {
             String action = module instanceof mindless.script.Manager ? "Manage" : "Create";
             drawCenteredV(action, toggleX - 8, toggleX + 38, y, y + MODULE_ROW_HEIGHT, MUTED, .6f, false);
         } else {
             drawToggle(toggleX, y + 5, module.isEnabled(), module);
         }
-        float bindX = x2 - 52;
-        if (!(module instanceof Manager)) {
-            String bindText = binding == module ? "..." : module.getKeycode() == 0 ? "None" : keyName(module.getKeycode());
-            float bindScale = textWidth(bindText, .61f, false) > 34f ? .52f : .61f;
-            drawCenteredV(bindText, bindX, x2 - 14, y, y + MODULE_ROW_HEIGHT,
-                    binding == module ? GOLD : DIM, bindScale, false);
+        if (!manager) {
+            boolean editingBind = binding == module;
+            boolean hasBind = module.getKeycode() != 0;
+            if (!profile && (editingBind || hasBind || hover)) {
+                String bindText = editingBind ? "..." : hasBind ? keyName(module.getKeycode()) : "Bind";
+                float bindX = x2 - 91;
+                float bindScale = textWidth(bindText, .61f, false) > 34f ? .52f : .61f;
+                drawCenteredV(bindText, bindX, x2 - 53, y, y + MODULE_ROW_HEIGHT,
+                        editingBind ? GOLD : hasBind ? DIM : withAlpha(DIM, (int) (150 * hp)), bindScale, false);
+            } else if (profile && (editingBind || hasBind)) {
+                String bindText = editingBind ? "..." : keyName(module.getKeycode());
+                float bindX = x2 - 52;
+                float bindScale = textWidth(bindText, .61f, false) > 34f ? .52f : .61f;
+                drawCenteredV(bindText, bindX, x2 - 14, y, y + MODULE_ROW_HEIGHT,
+                        editingBind ? GOLD : DIM, bindScale, false);
+            }
         }
         drawTextVCentered(">", x2 - 8, y, y + MODULE_ROW_HEIGHT, selected ? GOLD : withAlpha(DIM, (int)(80 + 175 * hp)), .72f, false);
     }
@@ -1260,7 +1272,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
                     }
                 } else if (module instanceof Manager || module instanceof mindless.script.Manager) {
                     openModule(module);
-                } else if (mx >= x2 - 55 && mx <= x2 - 16) {
+                } else if (mx >= x2 - 94 && mx <= x2 - 50) {
                     binding = module;
                 } else if (mouseButton == 1) {
                     if (module == selectedModule) selectModule(null);
