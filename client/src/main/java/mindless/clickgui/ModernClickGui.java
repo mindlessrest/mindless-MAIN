@@ -444,6 +444,7 @@ private static boolean isPinnedCategory(Module.category category) {
             return;
         }
         List<Module> modules = filteredModules();
+        Module scriptManager = stickyScriptManager() ? detachScriptManager(modules) : null;
         drawText(search.trim().isEmpty() ? categoryName(selectedCategory) : "Search results",
                 centerX + 18, baseY + 18, TEXT, 1.45f, true);
         drawText(modules.size() + (modules.size() == 1 ? " module" : " modules"), centerX + 18, baseY + 40, MUTED, .82f, false);
@@ -458,6 +459,10 @@ private static boolean isPinnedCategory(Module.category category) {
         line(centerX + 17, baseY + 55, centerX + centerW - 17, baseY + 55, withAlpha(DIVIDER, 46));
         float top = baseY + 61f;
         float bottom = baseY + panelH - 12f;
+        if (scriptManager != null) {
+            drawModuleRow(scriptManager, top, mx, my);
+            top += MODULE_ROW_STEP;
+        }
         scissor(centerX + 8, top, centerX + centerW - 8, bottom, true);
         float y = top + moduleScroll;
         for (Module module : modules) {
@@ -589,13 +594,16 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
 
     private void drawModuleRow(Module module, float y, int mx, int my) {
         float x1 = centerX + 14, x2 = centerX + centerW - 14;
+        boolean scriptManager = module instanceof mindless.script.Manager;
         boolean selected = module == selectedModule;
         boolean hover = inside(mx, my, x1, y, x2, y + MODULE_ROW_HEIGHT);
         float hp = animate(hoverAnimation, module, hover ? 1f : 0f, 17f);
         float sp = animate(selectedAnimation, module, selected ? 1f : 0f, 19f);
         int rowColor = mixColor(ROW, ROW_HOVER, hp);
         rowColor = mixColor(rowColor, withAlpha(ACCENT, 55), sp);
+        if (scriptManager) rowColor = mixColor(rowColor, withAlpha(ACCENT, 62), .42f);
         rounded(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f, rowColor);
+        if (scriptManager) outline(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f, withAlpha(ACCENT, 68));
         if (sp > .01f) {
             float barTop = y + 5 + (1f - sp) * 4f;
             float barBot = y + MODULE_ROW_HEIGHT - 5 - (1f - sp) * 4f;
@@ -616,8 +624,9 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             drawCenteredV(active ? (unsaved ? "Unsaved" : "Active") : "Load",
                     toggleX - 4, toggleX + 34, y, y + MODULE_ROW_HEIGHT,
                     active ? GOLD : MUTED, unsaved ? .55f : .62f, active);
-        } else if (module instanceof Manager) {
-            drawCenteredV("Create", toggleX - 4, toggleX + 34, y, y + MODULE_ROW_HEIGHT, MUTED, .6f, false);
+        } else if (module instanceof Manager || module instanceof mindless.script.Manager) {
+            String action = module instanceof mindless.script.Manager ? "Manage" : "Create";
+            drawCenteredV(action, toggleX - 8, toggleX + 38, y, y + MODULE_ROW_HEIGHT, MUTED, .6f, false);
         } else {
             drawToggle(toggleX, y + 5, module.isEnabled(), module);
         }
@@ -1226,8 +1235,17 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
 
 
         float top = baseY + 61f;
+        List<Module> modules = filteredModules();
+        Module scriptManager = stickyScriptManager() ? detachScriptManager(modules) : null;
+        if (scriptManager != null) {
+            if (inside(mx, my, centerX + 14, top, centerX + centerW - 14, top + MODULE_ROW_HEIGHT)) {
+                openModule(scriptManager);
+                return;
+            }
+            top += MODULE_ROW_STEP;
+        }
         float y = top + moduleScroll;
-        for (Module module : filteredModules()) {
+        for (Module module : modules) {
             if (inside(mx, my, centerX + 14, y, centerX + centerW - 14, y + MODULE_ROW_HEIGHT)) {
                 float x2 = centerX + centerW - 14;
                 if (module instanceof ProfileModule) {
@@ -1240,7 +1258,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
                     } else {
                         activateProfile((ProfileModule) module);
                     }
-                } else if (module instanceof Manager) {
+                } else if (module instanceof Manager || module instanceof mindless.script.Manager) {
                     openModule(module);
                 } else if (mx >= x2 - 55 && mx <= x2 - 16) {
                     binding = module;
@@ -1445,6 +1463,14 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
             closeDashboard();
             return;
         }
+        if (keyCode == Keyboard.KEY_F && (Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)
+                || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL))) {
+            searchFocused = true;
+            searchCaret = searchSelectionAnchor = search.length();
+            activeText = null;
+            activeList = null;
+            return;
+        }
         if (editingSliderValue != null) {
             editSliderValue(typedChar, keyCode);
             return;
@@ -1466,7 +1492,22 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
             clearSuggestions();
             return;
         }
-        if (keyCode == Keyboard.KEY_ESCAPE) { closeDashboard(); return; }
+        if (keyCode == Keyboard.KEY_ESCAPE) {
+            if (openDropdown != null) {
+                closeDropdownState();
+                return;
+            }
+            if (selectedModule != null) {
+                selectModule(null);
+                return;
+            }
+            if (!search.isEmpty()) {
+                search = "";
+                searchCaret = searchSelectionAnchor = 0;
+                return;
+            }
+            closeDashboard();
+        }
     }
 
     private void closeDashboard() {
@@ -1485,7 +1526,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     }
 
     private boolean beginScrollbarDrag(int mx, int my) {
-        if (beginScrollbarDrag(1, mx, my, centerX + centerW - 7, baseY + 61,
+        if (beginScrollbarDrag(1, mx, my, centerX + centerW - 7, moduleScrollTop(),
                 baseY + panelH - 12, moduleScroll, modulesContentHeight)) return true;
         return beginScrollbarDrag(2, mx, my, detailX + detailW - 7, baseY + 59,
                 baseY + panelH - 12, settingScroll, settingsContentHeight);
@@ -1507,7 +1548,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
 
     private void updateScrollbarDrag(int mouseY) {
         boolean modules = draggingScrollbar == 1;
-        float top = baseY + (modules ? 57f : 59f);
+        float top = modules ? moduleScrollTop() : baseY + 59f;
         float bottom = baseY + panelH - (modules ? 12f : 52f);
         float content = modules ? modulesContentHeight : settingsContentHeight;
         float viewport = bottom - top;
@@ -1567,6 +1608,23 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
                 return;
             }
         }
+    }
+
+    private boolean stickyScriptManager() {
+        return selectedCategory == Module.category.scripts && search.trim().isEmpty();
+    }
+
+    private static Module detachScriptManager(List<Module> modules) {
+        for (int i = 0; i < modules.size(); i++) {
+            if (modules.get(i) instanceof mindless.script.Manager) {
+                return modules.remove(i);
+            }
+        }
+        return null;
+    }
+
+    private float moduleScrollTop() {
+        return baseY + 61f + (stickyScriptManager() ? MODULE_ROW_STEP : 0f);
     }
 @Override
     public void resetPositions() {
@@ -1803,7 +1861,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     }
 
     private void clampScrolls() {
-        float moduleViewport = Math.max(1, panelH - 73);
+        float moduleViewport = Math.max(1, baseY + panelH - 12f - moduleScrollTop());
         float settingViewport = Math.max(1, panelH - 71);
         moduleScrollTarget = Math.min(0, Math.max(moduleViewport - modulesContentHeight, moduleScrollTarget));
         settingScrollTarget = Math.min(0, Math.max(settingViewport - settingsContentHeight, settingScrollTarget));
@@ -2578,6 +2636,7 @@ private String trim(String text, float maxWidth, float scale, boolean bold) {
 
     private String moduleDescription(Module module) {
         if (module instanceof ProfileModule) return module.isEnabled() ? "Currently active configuration." : "Click the row or Load to apply this configuration.";
+        if (module instanceof mindless.script.Manager) return "Create, reload, and organize scripts.";
         String name = module.getName().toLowerCase(Locale.ROOT);
         if (module.script != null) return module.script.error ? "Script failed to compile." : "Loaded Mindless script module.";
 

@@ -129,10 +129,10 @@ private final List<Entry> entries = new ArrayList<Entry>();
         if (hideInGui.isToggled() && mc.currentScreen != null) return;
 
         ScaledResolution resolution = ScaledResolutionCache.get();
-        if (!LunarEventBridge.isDirectLunar() || projectionContext == null) {
+        if (!LunarEventBridge.isDirectLunar()) {
             AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, event.partialTicks, 0);
-            projectionContext = RenderUtils.captureProjectionContext(projectionContext, resolution.getScaleFactor());
         }
+        projectionContext = RenderUtils.captureProjectionContext(projectionContext, resolution.getScaleFactor());
         if (projectionContext == null) return;
 
         project(event.partialTicks);
@@ -168,9 +168,9 @@ private void collect() {
             if (matched == null || matched.setting == null || !matched.setting.isToggled()) continue;
 
             if (stack) {
-                long cell = (((long) Math.floor(entity.posX / 3.0) & 0x1FFFFF) << 42)
-                        | (((long) Math.floor(entity.posY / 3.0) & 0x1FFFFF) << 21)
-                        | ((long) Math.floor(entity.posZ / 3.0) & 0x1FFFFF);
+                long cell = (((long) Math.floor(entity.posX / 1.25) & 0x1FFFFF) << 42)
+                        | (((long) Math.floor(entity.posY / 1.25) & 0x1FFFFF) << 21)
+                        | ((long) Math.floor(entity.posZ / 1.25) & 0x1FFFFF);
                 long key = cell * 31L + matched.ordinal();
                 Entry existing = groups.get(key);
                 if (existing != null) {
@@ -194,6 +194,7 @@ private void project(float partialTicks) {
             Entry entry = entries.get(i);
             Entity anchor = entry.anchor;
             if (anchor == null || anchor.isDead) continue;
+            if (!RenderUtils.isInViewFrustum(anchor.getEntityBoundingBox().expand(0.2D, 0.2D, 0.2D))) continue;
 
             double x = anchor.lastTickPosX + (anchor.posX - anchor.lastTickPosX) * partialTicks;
             double y = anchor.lastTickPosY + (anchor.posY - anchor.lastTickPosY) * partialTicks;

@@ -587,6 +587,9 @@ private void restoreFlatOverlayState() {
     }
 
     private void runOutlinePass(float partialTicks) {
+        float glowSize = (float) outlineGlowSize.getInput();
+        boolean drawEdge = outlineEdge.isToggled();
+        if (glowSize <= 0.0f && !drawEdge) return;
         if (mindless.utility.Diagnostics.isEnabled() && !glowBloomShader.isValid()) {
             mindless.utility.Diagnostics.log("esp", "glow shader unavailable, falling back to bloom");
         }
@@ -621,39 +624,41 @@ private void restoreFlatOverlayState() {
         int oB = outCol & 0xFF;
         boolean useTeamColorOutline = outlineTeamColor.isToggled();
 
-        for (int i = 0; i < outlineCandidates.size(); i++) {
-            EntityPlayer player = outlineCandidates.get(i);
-            int pR = oR, pG = oG, pB = oB;
-            if (useTeamColorOutline) {
-                int teamCol = Utils.getColorFromEntity(player);
-                if (teamCol != -1) {
-                    pR = (teamCol >> 16) & 0xFF;
-                    pG = (teamCol >> 8) & 0xFF;
-                    pB = teamCol & 0xFF;
+        glowShader.use();
+        try {
+            for (int i = 0; i < outlineCandidates.size(); i++) {
+                EntityPlayer player = outlineCandidates.get(i);
+                int pR = oR, pG = oG, pB = oB;
+                if (useTeamColorOutline) {
+                    int teamCol = Utils.getColorFromEntity(player);
+                    if (teamCol != -1) {
+                        pR = (teamCol >> 16) & 0xFF;
+                        pG = (teamCol >> 8) & 0xFF;
+                        pB = teamCol & 0xFF;
+                    }
+                }
+                glowShader.setColor(pR, pG, pB, 255);
+                boolean invis = player.isInvisible();
+                try {
+                    if (showInvisible.isToggled()) player.setInvisible(false);
+                    mc.getRenderManager().renderEntityStatic(player, partialTicks, true);
+                }
+                finally {
+                    player.setInvisible(invis);
                 }
             }
-            glowShader.use();
-            mindless.utility.Diagnostics.gl("esp: bound glow program");
-            glowShader.setColor(pR, pG, pB, 255);
-            mindless.utility.Diagnostics.gl("esp: set silhouette colour");
-            boolean invis = player.isInvisible();
-            if (showInvisible.isToggled()) player.setInvisible(false);
-            mc.getRenderManager().renderEntityStatic(player, partialTicks, true);
-            player.setInvisible(invis);
-            if (mindless.utility.Diagnostics.isEnabled()) {
-                mindless.utility.Diagnostics.gl("esp: drew silhouette for " + player.getName());
-            }
+        }
+        finally {
             glowShader.stop();
+            renderingOutlinePass = false;
+            outlineCandidates.clear();
         }
         mindless.utility.Diagnostics.gl("esp: silhouette pass");
-        renderingOutlinePass = false;
-        outlineCandidates.clear();
 
         mc.gameSettings.entityShadows = shadows;
         mc.entityRenderer.disableLightmap();
         mc.entityRenderer.setupOverlayRendering();
         mc.getFramebuffer().bindFramebuffer(true);
-        float glowSize = (float) outlineGlowSize.getInput();
         if (glowSize > 0.0f && glowBloomShader.isValid()) {
             mc.getFramebuffer().bindFramebuffer(false);
             glowBloomShader.render(outlineFramebuffer, glowSize * 4.0f,
@@ -664,7 +669,7 @@ private void restoreFlatOverlayState() {
                     Math.max(1, Math.round(glowSize)), glowSize);
         }
         mc.getFramebuffer().bindFramebuffer(false);
-        if (outlineEdge.isToggled()) {
+        if (drawEdge) {
             mc.getFramebuffer().bindFramebuffer(false);
             separableOutlineShader.render(outlineFramebuffer);
         }

@@ -328,14 +328,12 @@ private static void drawLyricStrip(List<String> lines, MindlessFontRenderer font
             cursor += lineHeight;
         }
     }
-private static void drawWash(ResourceLocation wash, float x, float y, float width,
+    private static void drawWash(ResourceLocation wash, float x, float y, float width,
                                  float height, float radius, float alpha) {
+        RoundedUtils.drawRound(x, y, width, height, radius,
+                new Color(14, 14, 18, Math.round(242 * alpha)));
         if (wash != null) {
             drawTexturedRound(wash, x, y, width, height, radius, alpha * WASH_ALPHA, true);
-        }
-        else {
-            RoundedUtils.drawRound(x, y, width, height, radius,
-                    new Color(18, 18, 22, Math.round(232 * alpha)));
         }
 
         RoundedUtils.drawGradientCornerLR(x, y, width, height, radius,
