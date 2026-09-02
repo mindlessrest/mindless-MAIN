@@ -5,6 +5,7 @@ import mindless.module.Module;
 import mindless.module.impl.render.HUD;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.module.setting.impl.TextSetting;
 import mindless.utility.HypixelBedWars;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
@@ -30,6 +31,7 @@ public class Overlay extends Module {
     private static final float PAD_Y = 6.0f;
     private static final float LINE_GAP = 2.0f;
 
+    private final TextSetting apiKey;
     private final SliderSetting scale;
     private final SliderSetting maxPlayers;
     private final ButtonSetting showTeammates;
@@ -39,20 +41,16 @@ public class Overlay extends Module {
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
 
     private HypixelBedWars api;
+    private String currentKey = "";
     private float relativeX = 0.05f;
     private float relativeY = 0.10f;
 
     public Overlay() {
         super("Overlay", category.bedwars);
+        this.registerSetting(apiKey = new TextSetting("API Key", "Paste key...", "", 64));
         this.registerSetting(scale = new SliderSetting("Scale", "x", 1.0, 0.5, 1.5, 0.05));
         this.registerSetting(maxPlayers = new SliderSetting("Max Players", "", 12, 4, 24, 1));
         this.registerSetting(showTeammates = new ButtonSetting("Show Teammates", false));
-    }
-
-    public void setApiKey(String apiKey) {
-        if (apiKey != null && !apiKey.isEmpty()) {
-            this.api = new HypixelBedWars(apiKey);
-        }
     }
 
     @Override
@@ -61,9 +59,20 @@ public class Overlay extends Module {
         pendingFetches.clear();
     }
 
+    private void updateApiInstance() {
+        String key = apiKey.getText();
+        if (key != null && !key.trim().isEmpty() && !key.equals(currentKey)) {
+            this.currentKey = key;
+            this.api = new HypixelBedWars(key);
+            cache.clear();
+        }
+    }
+
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !this.isEnabled() || !Utils.nullCheck()) return;
+
+        updateApiInstance();
 
         if (Utils.getBedwarsStatus() != 2) {
             if (!cache.isEmpty()) cache.clear();
@@ -72,7 +81,6 @@ public class Overlay extends Module {
 
         if (mc.getNetHandler() == null) return;
 
-        // Fetch names directly from connection info (tablist) without sending chat commands
         Collection<NetworkPlayerInfo> playerInfoMap = mc.getNetHandler().getPlayerInfoMap();
         for (NetworkPlayerInfo info : playerInfoMap) {
             if (info.getGameProfile() == null) continue;
@@ -80,7 +88,6 @@ public class Overlay extends Module {
             String name = info.getGameProfile().getName();
             if (name == null || name.isEmpty()) continue;
 
-            // Ignore NPCs/Nicks or fake player profiles (version 2 UUIDs)
             if (info.getGameProfile().getId() != null && info.getGameProfile().getId().version() == 2) continue;
 
             if (name.equalsIgnoreCase(mc.thePlayer.getName()) && !showTeammates.isToggled()) continue;
@@ -104,7 +111,6 @@ public class Overlay extends Module {
                     cache.put(key, data);
                 }
             } catch (Exception ignored) {
-                // Ignore nicks or failed requests
             } finally {
                 pendingFetches.remove(key);
             }
@@ -175,8 +181,8 @@ public class Overlay extends Module {
         List<String> lines = new ArrayList<>();
         lines.add(ChatFormatting.GOLD + "★ BedWars Players");
 
-        if (api == null) {
-            lines.add(ChatFormatting.RED + "API Key required");
+        if (apiKey.getText() == null || apiKey.getText().trim().isEmpty()) {
+            lines.add(ChatFormatting.RED + "Set API Key in settings!");
             return lines;
         }
 
