@@ -119,6 +119,7 @@ target_link_options(MindlessLoader PRIVATE "${RES_FILE}")
 target_include_directories(MindlessLoader
     PRIVATE
         src
+        ${CMAKE_SOURCE_DIR}/..
         ${CMAKE_SOURCE_DIR}/external
         ${CMAKE_CURRENT_BINARY_DIR}   # so resource.h is found from the generated .rc
         ${Stb_INCLUDE_DIR}

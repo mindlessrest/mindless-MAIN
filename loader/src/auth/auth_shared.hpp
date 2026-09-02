@@ -3,16 +3,12 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include "shared/mindless_auth_shared.h"
 
 namespace mindless
 {
 
-struct AuthSharedData
-{
-    char token[512];
-    char api_url[256];
-    char hwid[256];
-};
+using AuthSharedData = MindlessAuthSharedData;
 
 inline std::wstring auth_section_name(uint32_t pid)
 {

@@ -33,6 +33,7 @@ bool target_is_x64(HANDLE process)
 InjectionSession::~InjectionSession()
 {
     if (injectThread_.joinable()) injectThread_.join();
+    close_progress_channel();
 }
 
 bool InjectionSession::start(uint32_t processId, const void* dllData, size_t dllSize)
@@ -41,7 +42,9 @@ bool InjectionSession::start(uint32_t processId, const void* dllData, size_t dll
 
     targetProcessId_ = processId;
     phase_ = InjectionPhase::Injecting;
-    status_ = "Injecting";
+    status_ = "Connecting to Minecraft";
+    progress_ = 0.02f;
+    startedAt_ = std::chrono::steady_clock::now();
 
     if (!validate_target())
     {
@@ -53,6 +56,12 @@ bool InjectionSession::start(uint32_t processId, const void* dllData, size_t dll
     {
         fail("The selected client session is not valid",
              "Select a Minecraft process running in your Windows session.");
+        return false;
+    }
+    if (!open_progress_channel())
+    {
+        fail("Could not create the loading channel",
+             "Close the loader and Minecraft, then try again.");
         return false;
     }
     if (dllData && dllSize > 0)
@@ -77,6 +86,7 @@ bool InjectionSession::start(uint32_t processId, const void* dllData, size_t dll
 void InjectionSession::reset()
 {
     if (injectThread_.joinable()) injectThread_.join();
+    close_progress_channel();
 
     phase_ = InjectionPhase::Idle;
     status_ = "Idle";
@@ -84,6 +94,7 @@ void InjectionSession::reset()
     injectError_.clear();
     injectDone_ = false;
     injectSuccess_ = false;
+    progress_ = 0.0f;
     dllData_ = nullptr;
     dllSize_ = 0;
 }
@@ -119,16 +130,28 @@ bool InjectionSession::inject_remote()
 void InjectionSession::tick()
 {
     if (phase_ != InjectionPhase::Injecting) return;
+    poll_progress();
+
+    if (phase_ != InjectionPhase::Injecting) return;
+    if (!validate_target())
+    {
+        fail("Minecraft closed while loading",
+             "Keep Minecraft open until Mindless finishes loading.");
+        return;
+    }
+
+    if (std::chrono::steady_clock::now() - startedAt_ > std::chrono::seconds(90))
+    {
+        fail("Mindless took too long to start",
+             "Restart Minecraft and try again. Check mindless-native.log if it repeats.");
+        return;
+    }
+
     if (!injectDone_) return;
 
     if (injectThread_.joinable()) injectThread_.join();
 
-    if (injectSuccess_)
-    {
-        phase_ = InjectionPhase::Complete;
-        status_ = "Ready";
-    }
-    else
+    if (!injectSuccess_)
     {
         fail("Could not load Mindless", injectError_);
     }
@@ -139,11 +162,76 @@ float InjectionSession::progress() const
     switch (phase_)
     {
     case InjectionPhase::Idle:      return 0.0f;
-    case InjectionPhase::Injecting: return 0.5f;
+    case InjectionPhase::Injecting: return progress_;
     case InjectionPhase::Complete:  return 1.0f;
     case InjectionPhase::Failed:    return 0.0f;
     }
     return 0.0f;
+}
+
+bool InjectionSession::open_progress_channel()
+{
+    close_progress_channel();
+    std::wstring name = auth_section_name(targetProcessId_);
+    progressSection_ = OpenFileMappingW(FILE_MAP_READ, FALSE, name.c_str());
+    if (!progressSection_) return false;
+    progressView_ = static_cast<const AuthSharedData*>(MapViewOfFile(
+        progressSection_, FILE_MAP_READ, 0, 0, sizeof(AuthSharedData)));
+    if (!progressView_)
+    {
+        CloseHandle(progressSection_);
+        progressSection_ = nullptr;
+        return false;
+    }
+    return true;
+}
+
+void InjectionSession::close_progress_channel()
+{
+    if (progressView_)
+    {
+        UnmapViewOfFile(progressView_);
+        progressView_ = nullptr;
+    }
+    if (progressSection_)
+    {
+        CloseHandle(progressSection_);
+        progressSection_ = nullptr;
+    }
+}
+
+void InjectionSession::poll_progress()
+{
+    if (!progressView_) return;
+
+    LONG before = progressView_->progress_sequence;
+    if ((before & 1) != 0) return;
+    MemoryBarrier();
+    LONG state = progressView_->progress_state;
+    LONG milli = progressView_->progress_milli;
+    LONG error = progressView_->error_code;
+    char status[sizeof(progressView_->progress_status)] = {};
+    strncpy_s(status, sizeof(status), progressView_->progress_status, _TRUNCATE);
+    MemoryBarrier();
+    LONG after = progressView_->progress_sequence;
+    if (before != after || (after & 1) != 0) return;
+
+    if (milli >= 0 && milli <= 1000) progress_ = static_cast<float>(milli) / 1000.0f;
+    if (status[0] != '\0') status_ = status;
+
+    if (state == MINDLESS_PROGRESS_COMPLETE)
+    {
+        phase_ = InjectionPhase::Complete;
+        status_ = "Ready";
+        progress_ = 1.0f;
+        close_progress_channel();
+    }
+    else if (state == MINDLESS_PROGRESS_FAILED)
+    {
+        fail("Mindless failed to start",
+             "Native bootstrap error " + std::to_string(error) + ". Check mindless-native.log.");
+        close_progress_channel();
+    }
 }
 
 bool InjectionSession::validate_target() const
@@ -181,6 +269,7 @@ bool InjectionSession::validate_session() const
 
 void InjectionSession::fail(std::string status, std::string solution)
 {
+    close_progress_channel();
     phase_ = InjectionPhase::Failed;
     status_ = std::move(status);
     solution_ = std::move(solution);

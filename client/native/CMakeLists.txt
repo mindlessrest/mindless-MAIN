@@ -94,6 +94,7 @@ set_target_properties(MindlessNative PROPERTIES
     C_STANDARD 11)
 target_include_directories(MindlessNative PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../.."
     ${JNI_INCLUDE_DIRS})
 target_link_libraries(MindlessNative PRIVATE user32 advapi32)
 if(MSVC)

@@ -1,4 +1,5 @@
 #include "mindless_native.h"
+#include "shared/mindless_auth_shared.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,8 +8,64 @@
 JavaVM   *g_vm     = NULL;
 jvmtiEnv *g_jvmti  = NULL;
 HMODULE   g_module = NULL;
+static HANDLE g_progress_mapping = NULL;
+static MindlessAuthSharedData *g_progress_data = NULL;
+
+static void open_progress_channel(void) {
+    wchar_t section_name[128];
+    _snwprintf_s(section_name, sizeof(section_name) / sizeof(section_name[0]),
+            _TRUNCATE, L"Local\\MindlessAuth_%lu",
+            (unsigned long)GetCurrentProcessId());
+    g_progress_mapping = OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE,
+            FALSE, section_name);
+    if (g_progress_mapping == NULL) return;
+    g_progress_data = (MindlessAuthSharedData *)MapViewOfFile(
+            g_progress_mapping, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0,
+            sizeof(MindlessAuthSharedData));
+    if (g_progress_data == NULL) {
+        CloseHandle(g_progress_mapping);
+        g_progress_mapping = NULL;
+    }
+}
+
+static void close_progress_channel(void) {
+    if (g_progress_data != NULL) {
+        UnmapViewOfFile(g_progress_data);
+        g_progress_data = NULL;
+    }
+    if (g_progress_mapping != NULL) {
+        CloseHandle(g_progress_mapping);
+        g_progress_mapping = NULL;
+    }
+}
+
 static void send_progress(float progress, const char *status) {
-    (void)progress; (void)status;
+    LONG state;
+    if (g_progress_data == NULL) return;
+    if (progress < 0.0f) progress = 0.0f;
+    if (progress > 1.0f) progress = 1.0f;
+    state = progress >= 1.0f
+            ? MINDLESS_PROGRESS_COMPLETE : MINDLESS_PROGRESS_RUNNING;
+    InterlockedIncrement(&g_progress_data->progress_sequence);
+    g_progress_data->progress_milli = (LONG)(progress * 1000.0f + 0.5f);
+    g_progress_data->progress_state = state;
+    g_progress_data->error_code = 0;
+    strncpy_s(g_progress_data->progress_status,
+            sizeof(g_progress_data->progress_status), status, _TRUNCATE);
+    MemoryBarrier();
+    InterlockedIncrement(&g_progress_data->progress_sequence);
+}
+
+static void send_failure(DWORD error_code) {
+    if (g_progress_data == NULL) return;
+    InterlockedIncrement(&g_progress_data->progress_sequence);
+    g_progress_data->progress_state = MINDLESS_PROGRESS_FAILED;
+    g_progress_data->error_code = (LONG)error_code;
+    strncpy_s(g_progress_data->progress_status,
+            sizeof(g_progress_data->progress_status),
+            "Mindless failed to start", _TRUNCATE);
+    MemoryBarrier();
+    InterlockedIncrement(&g_progress_data->progress_sequence);
 }
 
 #define MINDLESS_FORGE_PAYLOAD_RESOURCE_ID 421
@@ -1357,6 +1414,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     HMODULE worker_module = (HMODULE)parameter;
     DWORD exit_code = 1;
 
+    open_progress_channel();
     Sleep(150);
     send_progress(0.21f, "Waiting for Java runtime");
     for (attempt = 0; attempt < 600; ++attempt) {
@@ -1552,6 +1610,7 @@ if (!validate_required_forge_api(env, loader)) {
     exit_code = 0;
 
 cleanup:
+    if (exit_code != 0) send_failure(exit_code);
     if (exit_code != 0
             && InterlockedCompareExchange(&g_hook_registered, 0, 0) != 0) {
         if (!disable_class_file_load_hook()) {
@@ -1573,6 +1632,7 @@ cleanup:
         g_game_loader = NULL;
     }
     if (attached) (*vm)->DetachCurrentThread(vm);
+    close_progress_channel();
     if (exit_code != 0 && worker_module != NULL) {
         if (module_pinned) {
             vape_log(L"bootstrap failed (%lu); DLL remains pinned for callback safety",

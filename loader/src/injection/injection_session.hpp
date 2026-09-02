@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 #include <thread>
+#include <chrono>
+#include "auth/auth_shared.hpp"
 
 namespace mindless
 {
@@ -46,10 +48,17 @@ private:
     std::atomic<bool> injectDone_{false};
     bool injectSuccess_ = false;
     std::string injectError_;
+    HANDLE progressSection_ = nullptr;
+    const AuthSharedData* progressView_ = nullptr;
+    float progress_ = 0.0f;
+    std::chrono::steady_clock::time_point startedAt_;
 
     bool validate_target() const;
     bool validate_session() const;
     bool inject_remote();
+    bool open_progress_channel();
+    void close_progress_channel();
+    void poll_progress();
     void fail(std::string status, std::string solution);
 };
 
