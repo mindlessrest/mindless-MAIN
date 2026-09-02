@@ -27,7 +27,7 @@ public class AntiKnockback extends Module {
     public boolean disable;
 
     public AntiKnockback() {
-        super("AntiKnockback", category.combat);
+        super("AntiKnockback", "Overrides your knockback", category.combat);
         this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Overrides Velocity."));
         this.registerSetting(horizontal = new SliderSetting("Horizontal", 0.0, 0.0, 100.0, 1.0));

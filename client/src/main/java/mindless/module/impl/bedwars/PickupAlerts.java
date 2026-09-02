@@ -28,7 +28,7 @@ public class PickupAlerts extends Module {
     private final Map<UUID, Long> lastAlert = new HashMap<UUID, Long>();
 
     public PickupAlerts() {
-        super("Pickup Alerts", category.bedwars);
+        super("Pickup Alerts", "Alerts you when a certain item is picked up", category.bedwars);
         this.registerSetting(cooldown = new SliderSetting("Cooldown", " second", 2, 0, 10, 1));
         this.registerSetting(pingSound = new ButtonSetting("Ping sound", true));
         this.registerSetting(iron = new ButtonSetting("Iron", false));

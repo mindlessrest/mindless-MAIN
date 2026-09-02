@@ -54,6 +54,7 @@ private static final double HUD_WAVE_HORIZONTAL_X_SCALE = 0.35;
     public static SliderSetting fontSize;
     private static SliderSetting outline;
     public static ButtonSetting alphabeticalSort;
+    public static ButtonSetting NoSpaces;
     private static ButtonSetting drawBackground;
     private static SliderSetting backgroundMode;
     private static ButtonSetting roundedBackground;
@@ -126,6 +127,7 @@ private static final int[][] OUTLINE_OFFSETS = {
         this.registerSetting(shadowStyle = new SliderSetting("Shadow style", 0, SHADOW_STYLES));
         this.registerSetting(shadowOpacity = new SliderSetting("Shadow opacity", 100.0, 5.0, 100.0, 5.0));
         this.registerSetting(lowercase = new ButtonSetting("Lowercase", false));
+        this.registerSetting(NoSpaces = new ButtonSetting("No spaces", false));
         this.registerSetting(showInfo = new ButtonSetting("Show module info", true));
         this.registerSetting(infoSeparator = new SliderSetting("Info separator", 0, INFO_SEPARATORS));
         this.registerSetting(infoMatchName = new ButtonSetting("Info matches name color", false));
@@ -521,12 +523,20 @@ public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY)
         if (lowercase != null && lowercase.isToggled()) {
             moduleName = moduleName.toLowerCase();
         }
+
+        if (NoSpaces != null && NoSpaces.isToggled()) {
+            // high iq
+            moduleName = moduleName.replace(" ", "");
+        }
+
         return moduleName;
     }
 
+    // !!!
     public static String getHudRenderText(Module module) {
         return getHudText(module) + getHudInfoText(module);
     }
+
 private static String getHudInfoText(Module module) {
         if (showInfo == null || !showInfo.isToggled()) {
             return "";

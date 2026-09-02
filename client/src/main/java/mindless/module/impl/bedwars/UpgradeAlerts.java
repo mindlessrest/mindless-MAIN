@@ -25,7 +25,7 @@ private static final int SCAN_INTERVAL = 20;
     private int ticks;
 
     public UpgradeAlerts() {
-        super("Upgrade Alerts", category.bedwars);
+        super("Upgrade Alerts", "Alerts you when a team buys a specific upgrade", category.bedwars);
         this.registerSetting(pingSound = new ButtonSetting("Ping sound", true));
     }
 

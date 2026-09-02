@@ -77,7 +77,7 @@ public class Overlay extends Module {
     // ─────────────────────────────────────────────────────────────────────────
 
     public Overlay() {
-        super("Overlay", category.bedwars);
+        super("Overlay", "Displays information about the players in your game", category.bedwars);
         this.registerSetting(apiKey       = new TextSetting("API Key",        "Paste key...", "", 64));
         this.registerSetting(scale        = new SliderSetting("Scale",        "x", 1.0, 0.5, 2.0, 0.05));
         this.registerSetting(maxPlayers   = new SliderSetting("Max Players",  "",  16,  4,  32, 1));

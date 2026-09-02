@@ -35,9 +35,8 @@ public class Gui extends Module {
     public static SliderSetting mascot;
 
     public Gui() {
-        super("Gui", category.client, 54);
+        super("Gui", "The interface", category.client, 54);
         this.liteModule = true;
-        this.registerSetting(style = new SliderSetting("Style", 0, new String[]{"Central", "Frames"}));
         this.registerSetting(guiScale = new SliderSetting("Gui scale", "x", 1.0, 0.5, 2.0, 0.01));
         this.registerSetting(font = new SliderSetting("Font", 0, GUI_FONT_OPTIONS));
         this.registerSetting(backgroundBlur = new SliderSetting("Background blur", "%", 0, 0, 100, 1));

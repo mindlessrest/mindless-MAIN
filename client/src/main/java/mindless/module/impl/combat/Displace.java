@@ -157,7 +157,7 @@ private final BlockPos.MutableBlockPos voidMinCorner = new BlockPos.MutableBlock
     }
 
     public Displace() {
-        super("Displace", category.combat);
+        super("Knockback Displacement", "Displaces knockback of your target", category.combat);
         this.liteModule = true;
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(yawOffset = new SliderSetting("Yaw offset", 90, 0, 180, 1));

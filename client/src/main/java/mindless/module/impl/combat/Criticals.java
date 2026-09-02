@@ -13,7 +13,7 @@ public class Criticals extends Module {
     private final SliderSetting mode;
 
     public Criticals() {
-        super("Criticals", category.combat);
+        super("Criticals", "Makes your hits critical", category.combat);
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
     }
 

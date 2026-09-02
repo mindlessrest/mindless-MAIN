@@ -36,7 +36,7 @@ public class HitBox extends Module {
     private MovingObjectPosition mv;
 
     public HitBox() {
-        super("Hitboxes", category.combat, 0);
+        super("Hitboxes", "Expands hitboxes", category.combat, 0);
         this.registerSetting(multiplier = new SliderSetting("Multiplier", "x", 1.2, 1.0, 5.0, 0.05));
         this.registerSetting(playersOnly = new ButtonSetting("Players only", true));
         this.registerSetting(showHitbox = new ButtonSetting("Show new hitbox", false));

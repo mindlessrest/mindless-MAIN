@@ -47,7 +47,7 @@ public class AimAssist extends Module {
     private String[] SORT_MODES = new String[]{"Health", "Angle", "Hurt time", "Distance"};
 
     public AimAssist() {
-        super("Aim Assist", category.combat);
+        super("Aim Assist", "Helps you aim", category.combat);
         this.liteModule = true;
         this.registerSetting(mode = new SliderSetting("Mode", 0, AIM_MODES));
         this.registerSetting(aimAxis = new SliderSetting("Axis", 0, AIM_AXIS_MODES));

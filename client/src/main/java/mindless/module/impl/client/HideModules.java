@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 public class HideModules extends Module {
     public HideModules() {
-        super("Hide", category.client);
+        super("Hide", "Allows you to hide modules from arraylist", category.client);
         this.canBeEnabled = false;
         registerSetting(new ButtonSetting("Select modules", new Runnable() {
             @Override

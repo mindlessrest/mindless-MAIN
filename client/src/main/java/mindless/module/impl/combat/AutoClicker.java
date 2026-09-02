@@ -43,7 +43,7 @@ public class AutoClicker extends Module {
     private static Field hoveredSlotField;
 
     public AutoClicker() {
-        super("Auto Clicker", category.combat, 0);
+        super("Auto Clicker", "Automatically clicks for you", category.combat, 0);
         this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Best with delay remover."));
         this.registerSetting(targetCPS = new SliderSetting("Target CPS", 10.0, 1.0, 20.0, 0.5));

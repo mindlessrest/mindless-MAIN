@@ -51,7 +51,7 @@ public static SliderSetting lyricsPosX;
     public static SliderSetting lyricsScale;
 
     public SpotifyMiniPlayer() {
-        super("Spotify Info", category.render);
+        super("Spotify Info", "Displays currently playing song", category.render);
         this.registerSetting(widgetStyle = new SliderSetting("Mode", 0, new String[]{"Modern", "Old"}));
         this.registerSetting(widgetFont = new SliderSetting("Font", 0, FONT_OPTIONS));
         this.registerSetting(showAlbumArt = new ButtonSetting("Show album art", true));

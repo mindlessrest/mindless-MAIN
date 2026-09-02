@@ -35,7 +35,6 @@ public class Settings extends Module {
     public static ButtonSetting sendMessage;
     public static ButtonSetting autoSaveProfiles;
 
-
     public static SliderSetting offset;
     public static SliderSetting timeMultiplier;
     public static SliderSetting defaultTheme;
@@ -46,7 +45,7 @@ public class Settings extends Module {
     public static ButtonSetting chatGlow;
 
     public Settings() {
-        super("Settings", category.client, 0);
+        super("Settings", "Configure the client", category.client, 0);
         this.registerSetting(new ButtonSetting("Uninject", () -> Mindless.uninject()));
         this.registerSetting(new DescriptionSetting("Diagnostics"));
         this.registerSetting(diagnostics = new ButtonSetting("Diagnostics", false));
