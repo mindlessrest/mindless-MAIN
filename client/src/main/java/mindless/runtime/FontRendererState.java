@@ -22,6 +22,9 @@ public final class FontRendererState {
 
     public static String rewrite(String string) {
         if (string == null) return null;
+        if (ModuleManager.bedwars != null && ModuleManager.bedwars.isEnabled()) {
+            string = ModuleManager.bedwars.filterScoreboardLine(string);
+        }
         if (ModuleManager.nameHider != null && ModuleManager.nameHider.isEnabled()) {
             string = NameHider.getFakeName(string);
         }

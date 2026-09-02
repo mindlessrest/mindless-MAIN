@@ -32,6 +32,7 @@ public class InvMove extends Module {
     private static final int LEGIT_SLOW_RELEASE_TICKS = 5;
 
     public SliderSetting inventory;
+    private ButtonSetting delayOpenPacket;
     private SliderSetting chestAndOthers;
     private SliderSetting motion;
     private ButtonSetting modifyMotionPost;
@@ -46,6 +47,7 @@ public class InvMove extends Module {
     private int legitCloseReleaseTicks;
     private boolean legitInventorySession;
     private boolean restoreMovementAfterLegitClose;
+    private C16PacketClientStatus delayedOpenPacket;
     private Packet legitClosePacket;
 
     private final ConcurrentLinkedQueue<Packet> blinkedPackets = new ConcurrentLinkedQueue<>();
@@ -57,6 +59,7 @@ public class InvMove extends Module {
     public InvMove() {
         super("InvMove", category.movement);
         this.registerSetting(inventory = new SliderSetting("Inventory", true, 0, INVENTORY_MODES));
+        this.registerSetting(delayOpenPacket = new ButtonSetting("Delay open packet", false));
         this.registerSetting(chestAndOthers = new SliderSetting("Chest & others", true, 0, CHEST_AND_OTHER_MODES));
         this.registerSetting(motion = new SliderSetting("Motion", "x", 1, 0.05, 1, 0.01));
         this.registerSetting(modifyMotionPost = new ButtonSetting("Modify motion after click", false));
@@ -67,15 +70,24 @@ public class InvMove extends Module {
     }
 
     @Override
+    public void guiUpdate() {
+        delayOpenPacket.setVisible(isLegitInventoryMode(), this);
+    }
+
+    @Override
     public void onDisable() {
         reset();
         releasePackets();
         releaseLegitPackets();
         releaseLegitClosePacket();
+        releaseDelayedOpenPacket();
     }
 
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent e) {
+        if (delayedOpenPacket != null && !shouldDelayOpenPacket()) {
+            releaseDelayedOpenPacket();
+        }
         if (!guiCheck()) {
             reset();
             return;
@@ -162,7 +174,14 @@ public class InvMove extends Module {
 
     @SubscribeEvent
     public void onSendPacket(SendPacketEvent e) {
-        if (e.getPacket() instanceof C0EPacketClickWindow) {
+        if (e.getPacket() instanceof C16PacketClientStatus) {
+            C16PacketClientStatus packet = (C16PacketClientStatus)e.getPacket();
+            if (shouldDelayOpenPacket() && packet.getStatus() == C16PacketClientStatus.EnumState.OPEN_INVENTORY_ACHIEVEMENT) {
+                delayedOpenPacket = packet;
+                e.setCanceled(true);
+            }
+        }
+        else if (e.getPacket() instanceof C0EPacketClickWindow) {
             boolean inventoryManagerClick = ModuleManager.invManager != null && ModuleManager.invManager.isSendingInventoryClick();
             if (isLegitInventoryMode() && mc.currentScreen instanceof GuiInventory) {
                 legitInventorySession = true;
@@ -170,6 +189,7 @@ public class InvMove extends Module {
                 releaseMovementKeys();
                 legitPackets.add(e.getPacket());
                 e.setCanceled(true);
+                releaseDelayedOpenPacket();
             }
             if (modifyMotionPost.isToggled() || (slowWhenNecessary.isToggled() && !canBlink())) {
                 setMotion = true;
@@ -181,6 +201,15 @@ public class InvMove extends Module {
             }
         }
         else if (e.getPacket() instanceof C0DPacketCloseWindow) {
+            if (delayedOpenPacket != null && shouldDelayOpenPacket() && mc.currentScreen instanceof GuiInventory) {
+                delayedOpenPacket = null;
+                legitInventorySession = false;
+                e.setCanceled(true);
+                return;
+            }
+            if (delayedOpenPacket != null) {
+                releaseDelayedOpenPacket();
+            }
             boolean pendingLegitClick = !legitPackets.isEmpty();
             boolean legitInventoryClose = isLegitInventoryMode() && (mc.currentScreen instanceof GuiInventory || legitInventorySession);
             if (legitInventoryClose || pendingLegitClick || legitClosePacket != null) {
@@ -244,6 +273,10 @@ public class InvMove extends Module {
 
     private boolean isLegitInventoryMode() {
         return inventory.getInput() == INVENTORY_MODE_LEGIT || inventory.getInput() == INVENTORY_MODE_LEGIT_SLOW;
+    }
+
+    private boolean shouldDelayOpenPacket() {
+        return isLegitInventoryMode() && delayOpenPacket.isToggled();
     }
 
     private int getMovementReleaseTicks() {
@@ -311,6 +344,15 @@ public class InvMove extends Module {
         while ((packet = legitPackets.poll()) != null) {
             PacketUtils.sendPacketNoEvent(packet);
         }
+    }
+
+    private void releaseDelayedOpenPacket() {
+        C16PacketClientStatus packet = delayedOpenPacket;
+        if (packet == null) {
+            return;
+        }
+        delayedOpenPacket = null;
+        PacketUtils.sendPacketNoEvent(packet);
     }
 
     private boolean releaseLegitClosePacket() {

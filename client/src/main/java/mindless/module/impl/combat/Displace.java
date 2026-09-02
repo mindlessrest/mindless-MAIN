@@ -247,6 +247,9 @@ private void equipKnockbackItem() {
         if (!autoSwap.isToggled() || !Utils.nullCheck() || mc.currentScreen != null) {
             return;
         }
+        if (ModuleManager.killAura != null && ModuleManager.killAura.isEnabled() && KillAura.target != null) {
+            return;
+        }
         if (EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0) {
             return;
         }
@@ -878,6 +881,10 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
 
     private boolean isOverrideAttackEnabled() {
         return overrideAttack.isToggled();
+    }
+
+    public boolean shouldDeferKillAuraAttack() {
+        return isEnabled() && !isOverrideAttackEnabled() && active && displaceThisTick;
     }
 
     private boolean isOverrideTargetValid(EntityPlayer target) {
@@ -1850,6 +1857,13 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
         int currentTick = tickCounter;
         pruneTargetDelayStates();
 
+        boolean killAuraHasTarget = ModuleManager.killAura != null
+                && ModuleManager.killAura.isEnabled()
+                && KillAura.target != null;
+        if (killAuraHasTarget) {
+            restoreSwappedItem();
+        }
+
         boolean passesItemCondition = (!onlyKnockbackItems.isToggled()
                 || EnchantmentHelper.getKnockbackModifier(mc.thePlayer) > 0)
                 && (!weaponOnly.isToggled() || Utils.holdingWeapon());
@@ -1864,9 +1878,6 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
         }
 
         EntityPlayer target = null;
-        boolean killAuraHasTarget = ModuleManager.killAura != null
-                && ModuleManager.killAura.isEnabled()
-                && KillAura.target != null;
         if (killAuraHasTarget) {
             target = CombatTargeting.asValidPlayer(KillAura.target, 9.0);
         } else if (Mouse.isButtonDown(0)) {
@@ -1946,7 +1957,7 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
 
         showArrow(target, displaceYaw);
 
-        if (!displaceThisTick && wasDisplacingLastTick) {
+        if (!displaceThisTick && wasDisplacingLastTick && !killAuraHasTarget) {
             int key = mc.gameSettings.keyBindAttack.getKeyCode();
             if (key != 0) {
                 KeyBinding.onTick(key);

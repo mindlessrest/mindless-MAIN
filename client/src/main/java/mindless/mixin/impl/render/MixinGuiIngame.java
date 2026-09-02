@@ -1,5 +1,6 @@
 package mindless.mixin.impl.render;
 
+import mindless.module.ModuleManager;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import mindless.module.impl.client.Settings;
@@ -111,6 +112,9 @@ public abstract class MixinGuiIngame {
             ScorePlayerTeam team = scoreboard.getPlayersTeam(score.getPlayerName());
             String line =
                     ScorePlayerTeam.formatPlayerName(team, score.getPlayerName());
+            if (ModuleManager.bedwars != null && ModuleManager.bedwars.isEnabled()) {
+                line = ModuleManager.bedwars.filterScoreboardLine(line);
+            }
             mindless$visibleLines.add(line);
             GuiIngameState.visibleScores.add(score);
             GuiIngameState.visibleLines.add(line);

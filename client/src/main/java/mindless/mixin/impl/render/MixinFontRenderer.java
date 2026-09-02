@@ -17,6 +17,9 @@ public class MixinFontRenderer {
     private String renderString(String string) {
         if (string == null)
             return null;
+        if (ModuleManager.bedwars != null && ModuleManager.bedwars.isEnabled()) {
+            string = ModuleManager.bedwars.filterScoreboardLine(string);
+        }
         if ((ModuleManager.nameHider != null) && ModuleManager.nameHider.isEnabled()) {
             string = NameHider.getFakeName(string);
         }
@@ -31,6 +34,9 @@ public class MixinFontRenderer {
     private String getStringWidth(String string) {
         if (string == null)
             return null;
+        if (ModuleManager.bedwars != null && ModuleManager.bedwars.isEnabled()) {
+            string = ModuleManager.bedwars.filterScoreboardLine(string);
+        }
         if ((ModuleManager.nameHider != null) && ModuleManager.nameHider.isEnabled()) {
             string = NameHider.getFakeName(string);
         }
@@ -41,4 +47,3 @@ public class MixinFontRenderer {
         return string;
     }
 }
-

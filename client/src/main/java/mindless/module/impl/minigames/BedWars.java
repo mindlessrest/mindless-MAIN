@@ -38,6 +38,7 @@ import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.StringUtils;
 import net.minecraft.util.Vec3;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
@@ -56,6 +57,8 @@ import java.nio.FloatBuffer;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class BedWars extends Module {
     private static final String[] CLOSEST_ENEMY_MODES = new String[]{"Bed", "Player"};
@@ -63,12 +66,14 @@ public class BedWars extends Module {
     private static final long CLOSEST_ENEMY_ANIMATION_DURATION_MS = 100L;
     private static final long CLOSEST_ENEMY_FADE_DURATION_MS = 150L;
     private static final FloatBuffer ITEM_ALPHA_COLOR = BufferUtils.createFloatBuffer(4);
+    private static final Pattern SCOREBOARD_DATE = Pattern.compile("\\d{1,2}/\\d{1,2}/\\d{2,4}");
 
 
 
     private final SliderSetting closestEnemy;
     private final SliderSetting alertInterval;
     private final ButtonSetting magicMilkTimer;
+    private final ButtonSetting removeGameId;
 
     private ButtonSetting bow;
     private ButtonSetting diamondArmor;
@@ -116,6 +121,7 @@ public class BedWars extends Module {
         super("Bed Wars", category.bedwars);
         this.liteModule = true;
         this.registerSetting(closestEnemy = new SliderSetting("Closest enemy", true, 0, CLOSEST_ENEMY_MODES));
+        this.registerSetting(removeGameId = new ButtonSetting("Remove game id", false));
         this.registerSetting(magicMilkTimer = new ButtonSetting("Magic milk timer", true));
         this.registerSetting(new ButtonSetting("Edit positions", () -> mc.displayGuiScreen(new EditPositionsScreen())));
         this.registerSetting(new DescriptionSetting("Game alerts"));
@@ -133,6 +139,35 @@ public class BedWars extends Module {
         this.registerSetting(ignoreTeammate = new ButtonSetting("Ignore teammate", false));
         this.registerSetting(shouldPing = new ButtonSetting("Should ping", true));
         this.closetModule = true;
+    }
+
+    public String filterScoreboardLine(String line) {
+        if (!removeGameId.isToggled()) {
+            return line;
+        }
+
+        String visibleLine = StringUtils.stripControlCodes(line);
+        Matcher date = SCOREBOARD_DATE.matcher(visibleLine);
+        if (!date.find() || visibleLine.substring(date.end()).trim().isEmpty()) {
+            return line;
+        }
+
+        int bedWarsStatus = Utils.getBedwarsStatus();
+        if (bedWarsStatus != 1 && bedWarsStatus != 2) {
+            return line;
+        }
+
+        int rawIndex = 0;
+        int visibleIndex = 0;
+        while (rawIndex < line.length() && visibleIndex < date.end()) {
+            if (line.charAt(rawIndex) == '\u00a7' && rawIndex + 1 < line.length()) {
+                rawIndex += 2;
+            } else {
+                rawIndex++;
+                visibleIndex++;
+            }
+        }
+        return line.substring(0, rawIndex);
     }
 
     @Override

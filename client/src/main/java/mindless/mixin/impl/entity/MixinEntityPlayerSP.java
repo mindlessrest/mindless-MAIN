@@ -137,12 +137,6 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
         restoreInterpolationState(interpolationState);
     }
 
-    @Inject(method = "closeScreen", at = @At("HEAD"))
-    private void mindless$beforeCloseScreen(CallbackInfo callbackInfo) {
-        if (ModuleManager.invManager != null) {
-            ModuleManager.invManager.handlePreInventoryClose("EntityPlayerSP.closeScreen");
-        }
-    }
 @Overwrite
     public void onUpdateWalkingPlayer() {
         PreMotionEvent.setRotations = false;

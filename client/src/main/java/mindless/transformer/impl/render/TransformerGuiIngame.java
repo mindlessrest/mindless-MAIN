@@ -79,6 +79,10 @@ public abstract class TransformerGuiIngame {
         for (Score score : GuiIngameState.visibleScores) {
             ScorePlayerTeam team = scoreboard.getPlayersTeam(score.getPlayerName());
             String line = ScorePlayerTeam.formatPlayerName(team, score.getPlayerName());
+            if (mindless.module.ModuleManager.bedwars != null
+                    && mindless.module.ModuleManager.bedwars.isEnabled()) {
+                line = mindless.module.ModuleManager.bedwars.filterScoreboardLine(line);
+            }
 
             GuiIngameState.visibleLines.add(line);
             contentWidth = Math.max(contentWidth, HudTextRenderer.width(customFont, font, line));

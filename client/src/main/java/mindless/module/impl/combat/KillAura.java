@@ -244,6 +244,9 @@ public class KillAura extends Module {
 
     @SubscribeEvent
     public void onPrePlayerInteract(PrePlayerInteractEvent e) {
+        if (ModuleManager.displace != null && ModuleManager.displace.shouldDeferKillAuraAttack()) {
+            return;
+        }
         if (!Utils.nullCheck() || target == null || targetDistance > swingRange.getInput()
                 || !basicCondition() || !settingCondition()
                 || (notUsingItem.isToggled() && !autoBlock.isToggled() && mc.thePlayer.isUsingItem())) {

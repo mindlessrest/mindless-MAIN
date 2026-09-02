@@ -3,6 +3,7 @@ package mindless.module.impl.player;
 import mindless.event.PreSlotScrollEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.event.PostProfileLoadEvent;
+import mindless.event.SendPacketEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
@@ -11,6 +12,7 @@ import mindless.module.setting.impl.KeySetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ItemSearchIndex;
 import mindless.utility.Utils;
+import net.minecraft.block.BlockRailBase;
 import net.minecraft.client.gui.inventory.GuiChest;
 import net.minecraft.client.gui.inventory.GuiInventory;
 import net.minecraft.enchantment.EnchantmentHelper;
@@ -33,21 +35,18 @@ import net.minecraft.item.ItemSnowball;
 import net.minecraft.item.ItemSpade;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
+import net.minecraft.network.play.client.C0EPacketClickWindow;
 import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.DamageSource;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
-import net.minecraft.network.play.server.S32PacketConfirmTransaction;
-import mindless.event.ReceivePacketEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.List;
 
 public class InvManager extends Module {
-private static final long CONFIRMATION_TIMEOUT_MS = 1500L;
     private static final int HOTBAR_SIZE = InventoryPlayer.getHotbarSize();
     private static final int AUTO_SORT_DISABLED = -1;
     private static final int AUTO_SORT_NORMAL = 0;
@@ -119,15 +118,16 @@ private static final long CONFIRMATION_TIMEOUT_MS = 1500L;
     private int cursorRecoveryInventoryIndex = -1;
     private double windowClickBudget;
     private boolean sessionOpen;
-    private boolean sendingInventoryClick;
-private int pendingClickCount;
-    private long pendingClickSentAt;
     private SessionState sessionState = SessionState.ACTIVE;
     private long ticks = 0L;
     private long nextDelay = 0L;
     private boolean closeGui;
     private boolean closeInventoryGui;
     private boolean inventoryActionPerformed;
+    private boolean inventoryScreenReady;
+    private boolean preUpdatePacketWindow;
+    private boolean sendingInventoryClick;
+    private boolean externalInventoryClickPending;
     private final CurrentArmor[] armorArr = CurrentArmor.values();
 
     public InvManager() {
@@ -182,19 +182,24 @@ private int pendingClickCount;
         closeGui = false;
         closeInventoryGui = false;
         inventoryActionPerformed = false;
+        inventoryScreenReady = false;
+        preUpdatePacketWindow = false;
+        sendingInventoryClick = false;
+        externalInventoryClickPending = false;
         resetRuntimeState();
     }
 
     @Override
     public void onDisable() {
-        if (isManagedInventoryOpen() && ownsCarriedStack()) {
-            recoverCarriedStackImmediately(InventorySnapshot.capture(), false);
-        }
         ticks = 0L;
         nextDelay = 0L;
         closeGui = false;
         closeInventoryGui = false;
         inventoryActionPerformed = false;
+        inventoryScreenReady = false;
+        preUpdatePacketWindow = false;
+        sendingInventoryClick = false;
+        externalInventoryClickPending = false;
         resetRuntimeState();
     }
 
@@ -239,12 +244,33 @@ private int pendingClickCount;
         }
     }
 
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onSendPacket(SendPacketEvent event) {
+        if (event.getPacket() instanceof C0EPacketClickWindow
+                && mc.currentScreen instanceof GuiInventory
+                && !sendingInventoryClick) {
+            externalInventoryClickPending = true;
+            closeInventoryGui = false;
+        }
+    }
+
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent event) {
+        preUpdatePacketWindow = true;
+        try {
+            handlePreUpdate();
+        } finally {
+            preUpdatePacketWindow = false;
+        }
+    }
+
+    private void handlePreUpdate() {
         if (!Utils.nullCheck()) {
             closeGui = false;
             closeInventoryGui = false;
             inventoryActionPerformed = false;
+            inventoryScreenReady = false;
+            externalInventoryClickPending = false;
             closeSession();
             return;
         }
@@ -252,11 +278,25 @@ private int pendingClickCount;
         if (mc.currentScreen == null) {
             closeInventoryGui = false;
             inventoryActionPerformed = false;
+            inventoryScreenReady = false;
+            externalInventoryClickPending = false;
             closeSession();
             return;
         }
 
+        if (!(mc.currentScreen instanceof GuiInventory)) {
+            inventoryScreenReady = false;
+            externalInventoryClickPending = false;
+        }
+
         if (shouldPauseForLobby()) {
+            inventoryScreenReady = false;
+            closeSession();
+            return;
+        }
+
+        if (externalInventoryClickPending) {
+            externalInventoryClickPending = false;
             closeSession();
             return;
         }
@@ -276,6 +316,11 @@ private int pendingClickCount;
         }
 
         if (mc.currentScreen instanceof GuiInventory) {
+            if (!inventoryScreenReady) {
+                inventoryScreenReady = true;
+                closeSession();
+                return;
+            }
             handleInventoryScreen();
             return;
         }
@@ -547,10 +592,6 @@ private int pendingClickCount;
                 sessionState = SessionState.EXECUTING;
             }
         }
-        if (awaitingServerConfirmation()) {
-            return true;
-        }
-
         int clickBudget = consumeWindowClickBudget();
         if (clickBudget <= 0) {
             return true;
@@ -819,7 +860,8 @@ private int pendingClickCount;
                     ItemStack currentBlocks = playerData.inventory.getStackInSlot(targetSlot);
                     if (currentBlocks == null
                         || !(currentBlocks.getItem() instanceof ItemBlock)
-                        || chestStack.stackSize > currentBlocks.stackSize) {
+                        || (((ItemBlock)item).getBlock() != ((ItemBlock)currentBlocks.getItem()).getBlock()
+                        && chestStack.stackSize > currentBlocks.stackSize)) {
                         normalChestClick(chestSlot, targetSlot, 2);
                         return;
                     }
@@ -990,7 +1032,7 @@ private int pendingClickCount;
 
         Item item = itemStack.getItem();
         return (isAutoSortMode(AUTO_SORT_CUSTOM) && items.matches(itemStack))
-            || (item instanceof ItemBlock && !(((ItemBlock) item).getBlock() instanceof net.minecraft.block.BlockRailBase))
+            || (item instanceof ItemBlock && !(((ItemBlock)item).getBlock() instanceof BlockRailBase))
             || item instanceof ItemAppleGold
             || item instanceof ItemSnowball
             || item instanceof ItemEgg
@@ -1118,19 +1160,6 @@ private int pendingClickCount;
             && currentAction != null;
     }
 
-    public void handlePreInventoryClose(String source) {
-        if (!isEnabled() || !Utils.nullCheck() || !isManagedInventoryOpen() || !ownsCarriedStack()) {
-            return;
-        }
-
-        InventorySnapshot snapshot = InventorySnapshot.capture();
-        if (snapshot.carried == null) {
-            return;
-        }
-
-        recoverCarriedStackImmediately(snapshot, true);
-    }
-
     private void resetRuntimeState() {
         currentAction = null;
         cursorRecoveryInventoryIndex = -1;
@@ -1160,7 +1189,6 @@ private int pendingClickCount;
         cursorRecoveryInventoryIndex = -1;
         windowClickBudget = 0.0;
         sessionState = SessionState.ACTIVE;
-        pendingClickCount = 0;
     }
 
     private boolean ownsCarriedStack() {
@@ -2107,42 +2135,37 @@ private int pendingClickCount;
 
         return -1;
     }
-private SlotAssignment[] resolveAssignments(InventorySnapshot snapshot) {
+    private SlotAssignment[] resolveAssignments(InventorySnapshot snapshot) {
         SlotAssignment[] assignments = new SlotAssignment[HOTBAR_SIZE];
         List<String> orderedItems = items.getItems();
-        Map<String, Integer> remainingStacks = new HashMap<String, Integer>();
 
         for (int priorityIndex = 0; priorityIndex < orderedItems.size(); priorityIndex++) {
             String storageId = orderedItems.get(priorityIndex);
-            int hotbarSlot = items.getAssignedSlot(priorityIndex) - 1;
+            Integer assignedSlot = items.getAssignedSlot(storageId);
+            if (assignedSlot == null) {
+                continue;
+            }
+
+            int hotbarSlot = assignedSlot - 1;
             if (hotbarSlot < 0 || hotbarSlot >= HOTBAR_SIZE || assignments[hotbarSlot] != null) {
                 continue;
             }
 
-            Integer remaining = remainingStacks.get(storageId);
-            if (remaining == null) {
-                remaining = countMatchingStacks(snapshot, storageId);
+            if (hasMatchingStack(snapshot, storageId)) {
+                assignments[hotbarSlot] = new SlotAssignment(hotbarSlot, storageId, priorityIndex);
             }
-            if (remaining <= 0) {
-                remainingStacks.put(storageId, 0);
-                continue;
-            }
-
-            remainingStacks.put(storageId, remaining - 1);
-            assignments[hotbarSlot] = new SlotAssignment(hotbarSlot, storageId, priorityIndex);
         }
 
         return assignments;
     }
 
-    private int countMatchingStacks(InventorySnapshot snapshot, String storageId) {
-        int count = 0;
+    private boolean hasMatchingStack(InventorySnapshot snapshot, String storageId) {
         for (int inventoryIndex = 0; inventoryIndex < InventorySnapshot.INVENTORY_SIZE; inventoryIndex++) {
             if (ItemSearchIndex.matches(storageId, snapshot.getSlot(inventoryIndex))) {
-                count++;
+                return true;
             }
         }
-        return count;
+        return false;
     }
 
     private boolean isCorrectHotbarSlot(SnapshotContext context, int hotbarSlot) {
@@ -2212,38 +2235,15 @@ private SlotAssignment[] resolveAssignments(InventorySnapshot snapshot) {
     }
 
     private void click(int slotId, int button, int mode) {
+        if (!preUpdatePacketWindow) {
+            return;
+        }
         inventoryActionPerformed = true;
         sendingInventoryClick = true;
         try {
             mc.playerController.windowClick(mc.thePlayer.openContainer.windowId, slotId, button, mode, mc.thePlayer);
-            pendingClickCount++;
-            pendingClickSentAt = System.currentTimeMillis();
         } finally {
             sendingInventoryClick = false;
-        }
-    }
-private boolean awaitingServerConfirmation() {
-        if (pendingClickCount <= 0) {
-            return false;
-        }
-        if (System.currentTimeMillis() - pendingClickSentAt > CONFIRMATION_TIMEOUT_MS) {
-            pendingClickCount = 0;
-            return false;
-        }
-        return true;
-    }
-
-    @SubscribeEvent
-    public void onInventoryConfirmation(ReceivePacketEvent event) {
-        if (!(event.getPacket() instanceof S32PacketConfirmTransaction)) {
-            return;
-        }
-
-        S32PacketConfirmTransaction packet = (S32PacketConfirmTransaction) event.getPacket();
-        pendingClickCount = Math.max(0, pendingClickCount - 1);
-        if (!packet.func_148888_e()) {
-            pendingClickCount = 0;
-            closeSession();
         }
     }
 
