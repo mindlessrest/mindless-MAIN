@@ -84,6 +84,7 @@ public class ModuleManager {
     public static InvManager invManager;
     public static NoCameraClip noCameraClip;
     public static BedWars bedwars;
+    public static Overlay overlay;
     public static Speed speed;
     public static NoHurtCam noHurtCam;
     public static AutoTool autoTool;
@@ -102,7 +103,6 @@ public class ModuleManager {
     public static Displace displace;
     public static ShopHelper shopHelper;
     public static BedTracker bedTracker;
-    public static Overlay overlay;
     public static ResourceTracker resourceTracker;
     public static EventTimers eventTimers;
     public static Autoblock autoBlock;
@@ -159,7 +159,7 @@ public class ModuleManager {
         this.addModule(resourceTracker = new ResourceTracker());
         this.addModule(eventTimers = new EventTimers());
         this.addModule(bedwars = new BedWars());
-        this.addModule(overlay);
+        this.addModule(overlay = new Overlay());
         this.addModule(shopHelper = new ShopHelper());
 
         this.addModule(movementFix = new MovementFix());
