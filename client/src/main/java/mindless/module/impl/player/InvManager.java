@@ -819,8 +819,7 @@ private int pendingClickCount;
                     ItemStack currentBlocks = playerData.inventory.getStackInSlot(targetSlot);
                     if (currentBlocks == null
                         || !(currentBlocks.getItem() instanceof ItemBlock)
-                        || (((ItemBlock)item).getBlock() != ((ItemBlock)currentBlocks.getItem()).getBlock()
-                        && chestStack.stackSize > currentBlocks.stackSize)) {
+                        || chestStack.stackSize > currentBlocks.stackSize) {
                         normalChestClick(chestSlot, targetSlot, 2);
                         return;
                     }

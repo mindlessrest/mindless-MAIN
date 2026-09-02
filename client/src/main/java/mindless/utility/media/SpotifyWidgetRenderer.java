@@ -382,27 +382,15 @@ private static List<String> collectLyrics(SystemMediaInfo info) {
         long position = info.getLivePositionMs()
                 + (SpotifyMiniPlayer.lyricSyncOffset == null
                         ? 0L : (long) SpotifyMiniPlayer.lyricSyncOffset.getInput());
-        int active = lyrics.findLineIndex(position);
-        if (active < 0) {
-            active = 0;
-        }
+        int active = lyrics.findVisibleLineIndex(position);
+        if (active < 0) return empty;
 
         List<TimedLyrics.LyricsLine> all = lyrics.getLines();
-        java.util.List<String> out = new java.util.ArrayList<String>(3);
+        java.util.List<String> out = new java.util.ArrayList<String>(1);
         activeLyricIndex = 0;
-        for (int i = active - 1; i <= active + 1; i++) {
-            if (i < 0 || i >= all.size()) {
-                continue;
-            }
-            String text = all.get(i).getText();
-            if (text == null || text.trim().isEmpty()) {
-                continue;
-            }
-            if (i == active) {
-                activeLyricIndex = out.size();
-            }
-            out.add(text.trim());
-        }
+        String text = all.get(active).getText();
+        if (text == null || text.trim().isEmpty()) return empty;
+        out.add(text.trim());
         String key = out.toString() + "@" + activeLyricIndex;
         if (!key.equals(lyricKey)) {
             lyricKey = key;

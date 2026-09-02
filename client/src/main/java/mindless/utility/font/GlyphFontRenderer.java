@@ -24,7 +24,7 @@ public final class GlyphFontRenderer implements MindlessFontRenderer {
     private static final float MIN_RENDER_SCALE = 2.0f;
     private static final float QUALITY_MULTIPLIER = 2.0f;
 private static final float MAX_RASTERISED_GLYPH_SIZE = 64.0f;
-    private static final String ALPHABET = "ABCDEFGHOKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    private static final String ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private static final String COLOR_CODES = "0123456789abcdefklmnor";
     private static final GlyphData EMPTY_GLYPH = new GlyphData(null, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0);
 

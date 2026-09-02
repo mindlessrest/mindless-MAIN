@@ -103,7 +103,7 @@ public abstract class MixinGuiNewChat {
         if (ChatModule.drawBackground()) {
             GlStateManager.pushMatrix();
             GlStateManager.translate(0.0f, -(sr.getScaledHeight() - 48.0f), 0.0f);
-            GuiNewChatState.drawGlass(bgX, bgY, bgW, bgH, false,
+            GuiNewChatState.drawGlass(bgX, bgY, bgW, bgH, chatOpen,
                     sr.getScaledWidth(), sr.getScaledHeight());
             GlStateManager.popMatrix();
         }

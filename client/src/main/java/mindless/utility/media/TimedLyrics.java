@@ -72,6 +72,15 @@ public final class TimedLyrics {
         return activeIndex;
     }
 
+    public int findVisibleLineIndex(long positionMs) {
+        int activeIndex = findLineIndex(positionMs);
+        if (activeIndex < 0) {
+            return -1;
+        }
+        LyricsLine line = lines.get(activeIndex);
+        return line.getText().isEmpty() ? -1 : activeIndex;
+    }
+
     public LyricsLine getLine(int index) {
         if (index < 0 || index >= lines.size()) {
             return null;
@@ -97,5 +106,4 @@ public final class TimedLyrics {
         }
     }
 }
-
 

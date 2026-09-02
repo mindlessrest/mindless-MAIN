@@ -15,6 +15,7 @@ public class TargetFilter extends Module {
     private static ButtonSetting serverTeamCheck;
     private static ButtonSetting colorTeamCheck;
     private static ButtonSetting friends;
+    private static boolean preGameLobby;
 
     public TargetFilter() {
         super("Target Filter", Module.category.world, 0);
@@ -40,19 +41,24 @@ public static boolean isAntiBotActive() {
 
     @Override
     public void onUpdate() {
+        preGameLobby = Utils.getBedwarsStatus() == 1 || Utils.getSkyWarsStatus() == 1;
         AntiBot.onUpdate();
     }
 
     @Override
     public void onDisable() {
+        preGameLobby = false;
         AntiBot.clear();
     }
 
     public static boolean shouldFilter(Entity entity) {
-        if (!ModuleManager.targetFilter.isEnabled()) {
+        if (ModuleManager.targetFilter == null || !ModuleManager.targetFilter.isEnabled()) {
             return false;
         }
         if (entity == null || entity == mc.thePlayer) {
+            return true;
+        }
+        if (preGameLobby) {
             return true;
         }
         if (AntiBot.isBot(entity)) {

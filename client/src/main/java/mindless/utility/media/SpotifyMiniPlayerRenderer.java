@@ -1,6 +1,5 @@
 package mindless.utility.media;
 
-import mindless.Mindless;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.SpotifyMiniPlayer;
 import mindless.module.impl.render.AudioVisualizer;
@@ -26,7 +25,6 @@ import java.awt.Color;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.Future;
 
 public final class SpotifyMiniPlayerRenderer {
     private static final Minecraft mc = Minecraft.getMinecraft();
@@ -62,19 +60,12 @@ public final class SpotifyMiniPlayerRenderer {
     private static TimedLyrics cachedLyricsSource;
     private static String cachedLyricsLayoutKey = "";
     private static List<WrappedLyric> cachedWrappedLyrics = Collections.emptyList();
-    private static volatile List<WrappedLyric> asyncWrappedLyrics;
-    private static volatile String asyncWrappedLayoutKey;
-    private static volatile TimedLyrics asyncWrappedSource;
-    private static Future<?> asyncWrappedTask;
     private static String cachedAdaptiveFontKey = "";
 private static float lastLyricLineAdvance;
 private static List<WrappedLyric> overflowSource;
 private static float overflowLines;
 private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
     private static MindlessFontRenderer cachedAdaptiveLyricFont;
-    private static volatile String asyncAdaptiveFontKey;
-    private static volatile MindlessFontRenderer asyncAdaptiveLyricFont;
-    private static Future<?> asyncAdaptiveFontTask;
     private static String marqueeTitle = "";
     private static long marqueeStartedAt;
     private static float animatedPanelHeight = -1.0F;
@@ -493,7 +484,7 @@ private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
         long lyricOffsetMs = SpotifyMiniPlayer.lyricSyncOffset == null
                 ? 0L : Math.round(SpotifyMiniPlayer.lyricSyncOffset.getInput());
         long lyricLookupPositionMs = Math.max(0L, livePositionMs + LYRIC_RENDER_LEAD_MS + lyricOffsetMs);
-        int activeIndex = timedLyrics.findLineIndex(lyricLookupPositionMs);
+        int activeIndex = timedLyrics.findVisibleLineIndex(lyricLookupPositionMs);
         boolean rewound = lastLyricsPositionMs >= 0L
                 && livePositionMs + LYRIC_REWIND_TOLERANCE_MS < lastLyricsPositionMs;
         boolean seeked = trackChanged || rewound
@@ -528,7 +519,7 @@ private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
         int activeIndex = Math.max(-1, Math.min(timeline.activeIndex, lyrics.size() - 1));
         boolean fullLyricsView = SpotifyMiniPlayer.fullLyricsView != null
                 && SpotifyMiniPlayer.fullLyricsView.isToggled();
-        if (activeIndex < 0 && !fullLyricsView) {
+        if (activeIndex < 0) {
             return;
         }
         int focusIndex = activeIndex < 0 ? 0 : activeIndex;
@@ -553,8 +544,8 @@ private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
 
         long now = animationTimeMs();
         float scrollOffset = getLyricScrollOffset(now);
-        int firstIndex = fullLyricsView ? 0 : Math.max(0, activeIndex - 1);
-        int lastIndex  = fullLyricsView ? lyrics.size() - 1 : Math.min(lyrics.size() - 1, activeIndex + 1);
+        int firstIndex = fullLyricsView ? 0 : activeIndex;
+        int lastIndex  = fullLyricsView ? lyrics.size() - 1 : activeIndex;
         RenderUtils.scissorPushGui(textX - 2.0F, lyricY - 1.0F, textWidth + 4.0F, viewportHeight + 2.0F);
         try {
             for (int i = firstIndex; i <= lastIndex; i++) {
@@ -715,46 +706,11 @@ private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
             return cachedWrappedLyrics;
         }
 
-        if (asyncWrappedLyrics != null && asyncWrappedLayoutKey != null
-                && asyncWrappedLayoutKey.equals(layoutKey) && asyncWrappedSource == timedLyrics) {
-            cachedLyricsSource = timedLyrics;
-            cachedLyricsLayoutKey = layoutKey;
-            cachedWrappedLyrics = asyncWrappedLyrics;
-            asyncWrappedLyrics = null;
-            asyncWrappedLayoutKey = null;
-            asyncWrappedSource = null;
-            return cachedWrappedLyrics;
-        }
-
-        int lineCount = timedLyrics.getLines().size();
-        if (lineCount <= 30) {
-            List<WrappedLyric> wrapped = computeWrappedLyrics(font, timedLyrics, textWidth, lineAdvance);
-            cachedLyricsSource = timedLyrics;
-            cachedLyricsLayoutKey = layoutKey;
-            cachedWrappedLyrics = Collections.unmodifiableList(wrapped);
-            return cachedWrappedLyrics;
-        }
-
-        if (asyncWrappedTask == null || asyncWrappedTask.isDone()) {
-            final TimedLyrics lyricsRef = timedLyrics;
-            final String keyRef = layoutKey;
-            final MindlessFontRenderer fontRef = font;
-            final float tw = textWidth;
-            final float la = lineAdvance;
-            asyncWrappedTask = Mindless.getCachedExecutor().submit(new Runnable() {
-                @Override
-                public void run() {
-                    List<WrappedLyric> result = computeWrappedLyrics(fontRef, lyricsRef, tw, la);
-                    asyncWrappedLyrics = Collections.unmodifiableList(result);
-                    asyncWrappedLayoutKey = keyRef;
-                    asyncWrappedSource = lyricsRef;
-                }
-            });
-        }
-        if (layoutKey.equals(cachedLyricsLayoutKey) && !cachedWrappedLyrics.isEmpty()) {
-            return cachedWrappedLyrics;
-        }
-        return Collections.emptyList();
+        List<WrappedLyric> wrapped = computeWrappedLyrics(font, timedLyrics, textWidth, lineAdvance);
+        cachedLyricsSource = timedLyrics;
+        cachedLyricsLayoutKey = layoutKey;
+        cachedWrappedLyrics = Collections.unmodifiableList(wrapped);
+        return cachedWrappedLyrics;
     }
 
     private static List<WrappedLyric> computeWrappedLyrics(MindlessFontRenderer font, TimedLyrics timedLyrics,
@@ -782,38 +738,18 @@ private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
             return cachedAdaptiveLyricFont;
         }
 
-        if (asyncAdaptiveLyricFont != null && key.equals(asyncAdaptiveFontKey)) {
-            cachedAdaptiveFontKey = key;
-            cachedAdaptiveLyricFont = asyncAdaptiveLyricFont;
-            asyncAdaptiveFontKey = null;
-            asyncAdaptiveLyricFont = null;
-            return cachedAdaptiveLyricFont;
+        float fitMultiplier = 1.0F;
+        MindlessFontRenderer candidate = getLyricFontRenderer(requestedScale);
+        if (timedLyrics != null && timedLyrics.isAvailable()) {
+            int maxWidth = Math.max(18, Math.round(textWidth));
+            while (fitMultiplier > 0.78F && hasLyricsWiderThanTwoLines(candidate, timedLyrics, maxWidth)) {
+                fitMultiplier = Math.max(0.78F, fitMultiplier - 0.055F);
+                candidate = getLyricFontRenderer(requestedScale * fitMultiplier);
+            }
         }
-
-        if (asyncAdaptiveFontTask == null || asyncAdaptiveFontTask.isDone()) {
-            final float rs = requestedScale;
-            final TimedLyrics lyricsRef = timedLyrics;
-            final float tw = textWidth;
-            final String keyRef = key;
-            asyncAdaptiveFontTask = Mindless.getCachedExecutor().submit(new Runnable() {
-                @Override
-                public void run() {
-                    float fitMultiplier = 1.0F;
-                    MindlessFontRenderer candidate = getLyricFontRenderer(rs);
-                    if (lyricsRef != null && lyricsRef.isAvailable()) {
-                        int maxWidth = Math.max(18, Math.round(tw));
-                        while (fitMultiplier > 0.78F && hasLyricsWiderThanTwoLines(candidate, lyricsRef, maxWidth)) {
-                            fitMultiplier = Math.max(0.78F, fitMultiplier - 0.055F);
-                            candidate = getLyricFontRenderer(rs * fitMultiplier);
-                        }
-                    }
-                    asyncAdaptiveFontKey = keyRef;
-                    asyncAdaptiveLyricFont = candidate;
-                }
-            });
-        }
-
-        return cachedAdaptiveLyricFont != null ? cachedAdaptiveLyricFont : getLyricFontRenderer(requestedScale);
+        cachedAdaptiveFontKey = key;
+        cachedAdaptiveLyricFont = candidate;
+        return candidate;
     }
 
     private static boolean hasLyricsWiderThanTwoLines(MindlessFontRenderer font, TimedLyrics timedLyrics,
@@ -917,19 +853,6 @@ private static final int MAX_LYRIC_OVERFLOW_LINES = 2;
         cachedAdaptiveLyricFont = null;
         cachedUiFontKey = "";
         cachedUiFont = null;
-        asyncAdaptiveFontKey = null;
-        asyncAdaptiveLyricFont = null;
-        if (asyncAdaptiveFontTask != null) {
-            asyncAdaptiveFontTask.cancel(true);
-            asyncAdaptiveFontTask = null;
-        }
-        asyncWrappedLyrics = null;
-        asyncWrappedLayoutKey = null;
-        asyncWrappedSource = null;
-        if (asyncWrappedTask != null) {
-            asyncWrappedTask.cancel(true);
-            asyncWrappedTask = null;
-        }
         lyricScrollOffset = 0.0F;
         lyricScrollStartOffset = 0.0F;
         lyricScrollTargetOffset = 0.0F;

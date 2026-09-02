@@ -3,6 +3,7 @@ package mindless.module.impl.render;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.world.AntiBot;
+import mindless.module.impl.world.TargetFilter;
 import mindless.module.setting.impl.ButtonSetting;
 import net.minecraft.entity.Entity;
 import org.lwjgl.opengl.GL11;
@@ -31,6 +32,9 @@ public static boolean onRenderPlayerPre(Entity entity) {
 
         boolean self = entity == mc.thePlayer;
         if (self && (!chams.renderSelf.isToggled() || mc.currentScreen != null)) {
+            return false;
+        }
+        if (!self && TargetFilter.shouldFilter(entity)) {
             return false;
         }
         if (chams.hidePlayers.isToggled() && !(self && chams.renderSelf.isToggled())) {
