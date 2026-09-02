@@ -421,7 +421,7 @@ int Application::run()
             // Step 1: kick off DLL download if we don't have it yet
             if (!downloadStarted_ && state_.dllBytes.empty() && !state_.loadFailed)
             {
-                state_.statusText = "Downloading";
+                state_.statusText = "Gathering resources";
                 start_download();
             }
 
@@ -481,9 +481,9 @@ int Application::run()
             if (downloading)
             {
                 // Preparing: 0% → 50% (slow asymptotic crawl so it never stalls visually)
-                if (state_.statusText != "Preparing")
+                if (state_.statusText != "Gathering resources")
                 {
-                    state_.statusText = "Preparing";
+                    state_.statusText = "Gathering resources";
                     state_.statusFade.reset(0.16f);
                 }
                 target = 0.45f;
@@ -491,9 +491,12 @@ int Application::run()
             else
             {
                 injection_.tick();
-                if (state_.statusText != injection_.status())
+                const std::string visibleStatus = injection_.phase() == InjectionPhase::Injecting
+                    ? "Transforming layers"
+                    : injection_.status();
+                if (state_.statusText != visibleStatus)
                 {
-                    state_.statusText = injection_.status();
+                    state_.statusText = visibleStatus;
                     state_.statusFade.reset(0.16f);
                 }
                 state_.solutionText = injection_.solution();
@@ -502,7 +505,7 @@ int Application::run()
 
                 // Injecting: 50% → 85%, Complete: 85% → 100%
                 if (injection_.phase() == InjectionPhase::Injecting)
-                    target = 0.50f + injection_.progress() * 0.35f;
+                    target = 0.48f + injection_.progress() * 0.50f;
                 else if (injection_.phase() == InjectionPhase::Complete)
                     target = 1.0f;
                 else

@@ -49,7 +49,7 @@ static void draw_sweep_bar(DrawList& dl, Rect r, float elapsed,
     float radius = r.h * 0.5f;
     dl.fill_rounded_rect(r, track.with_alpha(track.a * alpha), radius);
 
-    const float period = 1.35f;
+    const float period = 3.4f;
     float segW  = r.w * 0.34f;
     float phase = std::fmod(elapsed, period) / period;
 
@@ -67,6 +67,29 @@ static void draw_sweep_bar(DrawList& dl, Rect r, float elapsed,
     dl.fill_rounded_rect_gradient(seg, { segX, r.y, segW * 0.5f, r.h }, edge, peak, radius);
     dl.fill_rounded_rect_gradient(seg, { mid,  r.y, segW * 0.5f, r.h }, peak, edge, radius);
     dl.pop_clip();
+}
+
+static void draw_loading_status(DrawList& dl, FontAtlas& font,
+                                const std::string& status, float cx,
+                                float lineTopY, Color color, float elapsed)
+{
+    bool animated = status == "Gathering resources" || status == "Transforming layers";
+    if (!animated)
+    {
+        draw_text_centered(dl, font, status, cx, lineTopY, color);
+        return;
+    }
+
+    int dotCount = static_cast<int>(elapsed / 0.72f) % 4;
+    std::string dots(static_cast<size_t>(dotCount), '.');
+    std::string widest = status + "...";
+    float startX = cx - font.measure_text_width(widest.c_str()) * 0.5f;
+    dl.draw_text(status, { startX, lineTopY }, color, font);
+    if (!dots.empty())
+    {
+        float dotX = startX + font.measure_text_width(status.c_str());
+        dl.draw_text(dots, { dotX, lineTopY }, color, font);
+    }
 }
 
 static bool draw_button(DrawList& dl, FontAtlas& fn, Rect r, std::string_view label,
@@ -875,7 +898,8 @@ static void draw_loading_content(DrawList& dl, AppState& state,
                        cx, top, t.textSecond.with_alpha(alpha));
 
     float statusY = top + fn.lineHeight() + 4.0f;
-    draw_text_centered(dl, fn, state.statusText, cx, statusY, t.text.with_alpha(alpha));
+    draw_loading_status(dl, fn, state.statusText, cx, statusY,
+                        t.text.with_alpha(alpha), state.spinElapsed);
 
     float barY = statusY + fn.lineHeight() + 20.0f;
     draw_sweep_bar(dl, { barX, barY, barW, t.progressH }, state.spinElapsed,
