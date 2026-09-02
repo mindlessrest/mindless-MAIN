@@ -128,8 +128,12 @@ public class BridgeAssist extends Module {
             }
         }
 
-        SimulatedPlayer sim = SimulatedPlayer.fromClientPlayer(mc.thePlayer.movementInput);
-        sim.movementInput.sneak = false;
+        net.minecraft.util.MovementInput currentInput = new net.minecraft.util.MovementInput();
+        currentInput.moveForward = e.getForward();
+        currentInput.moveStrafe = e.getStrafe();
+        currentInput.jump = e.isJump();
+        currentInput.sneak = false;
+        SimulatedPlayer sim = SimulatedPlayer.fromClientPlayer(currentInput);
         sim.tick();
 
         double offset = computeEdgeOffset(sim.getEntityBoundingBox());
