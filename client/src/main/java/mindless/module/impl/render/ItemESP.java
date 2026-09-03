@@ -75,7 +75,7 @@ private enum Category {
     private final ButtonSetting hideInGui;
 private static final double STACK_RADIUS_SQ = 9.0D;
     private static final double TIGHT_RADIUS_SQ = 2.25D;
-    private static final float SPREAD_GAP = 12.0F;
+    private static final float SPREAD_GAP = 4.0F;
 
     private final List<Entry> entries = new ArrayList<Entry>();
     private final List<Card> cards = new ArrayList<Card>();
