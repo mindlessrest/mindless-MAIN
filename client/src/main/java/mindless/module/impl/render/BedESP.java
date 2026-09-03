@@ -78,6 +78,9 @@ public class BedESP extends Module {
     private ButtonSetting defenseAutoScale;
     private boolean lastDefenseToolMode;
     private boolean pausedForLobby;
+    private static final int LOBBY_DEBOUNCE_TICKS = 20;
+    private boolean lobbyReading;
+    private int lobbyReadingTicks;
 
     private final List<BlockPos[]> lastRenderedBedPairs = new ArrayList<>();
 
@@ -184,6 +187,7 @@ public class BedESP extends Module {
     public void onEnable() {
         SharedBlockHighlightCache cache = SharedBlockHighlightCache.get();
         cache.addUpdateListener(defenseUpdateListener);
+        seedLobbyReading();
         pausedForLobby = shouldPauseForLobby();
         if (pausedForLobby) {
             cache.detachBed();
@@ -206,6 +210,7 @@ public class BedESP extends Module {
     @SubscribeEvent
     public void onEntityJoin(EntityJoinWorldEvent e) {
         if (e.entity == mc.thePlayer) {
+            seedLobbyReading();
             clearRenderedState();
         }
     }
@@ -222,6 +227,7 @@ public class BedESP extends Module {
             return;
         }
 
+        updateLobbyReading();
         boolean pauseForLobby = shouldPauseForLobby();
         if (pauseForLobby != pausedForLobby) {
             setPausedForLobby(pauseForLobby);
@@ -357,8 +363,35 @@ public class BedESP extends Module {
         lastRenderedBedPairs.addAll(pairsToRender);
     }
 
+    /**
+     * Reads the debounced lobby state, never the raw one.
+     *
+     * Pausing tears the whole bed index down (detachBed clears it) and coming back re-scans every
+     * loaded chunk at the scan budget, which is seconds of no beds. Utils.isLobby re-reads the
+     * sidebar whenever it changes, and Hypixel rebuilds the sidebar by removing and re-adding
+     * lines -- a tick that lands mid-rebuild sees the lines shifted and can read line 1 as a lobby
+     * id. One such tick was enough to wipe the index and start the whole scan over, which is what
+     * made beds vanish and come back on their own.
+     */
     private boolean shouldPauseForLobby() {
-        return disableInLobby != null && disableInLobby.isToggled() && Utils.nullCheck() && Utils.isLobby();
+        return disableInLobby != null && disableInLobby.isToggled() && lobbyReading;
+    }
+
+    private void updateLobbyReading() {
+        boolean raw = Utils.nullCheck() && Utils.isLobby();
+        if (raw == lobbyReading) {
+            lobbyReadingTicks = 0;
+            return;
+        }
+        if (++lobbyReadingTicks >= LOBBY_DEBOUNCE_TICKS) {
+            lobbyReading = raw;
+            lobbyReadingTicks = 0;
+        }
+    }
+
+    private void seedLobbyReading() {
+        lobbyReading = Utils.nullCheck() && Utils.isLobby();
+        lobbyReadingTicks = 0;
     }
 
     private void setPausedForLobby(boolean paused) {

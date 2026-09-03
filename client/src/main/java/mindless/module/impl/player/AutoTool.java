@@ -47,6 +47,7 @@ public class AutoTool extends Module {
     private final BlockListSetting blockBlacklist;
 
     private boolean hasSwapped;
+    private boolean manualOverride;
     public int previousSlot = -1;
     private int tickCounter;
     private int leftMouseDownSinceTick = -1;
@@ -100,14 +101,23 @@ public class AutoTool extends Module {
         resetState(true);
     }
 
+    /**
+     * Hands the slot back to the player.
+     *
+     * Both of these used to swallow the change outright, so a swap made while the tool was equipped
+     * did nothing until the swap-back fired -- reaching for a sword mid-mine left the tool in hand
+     * and looked like the module re-equipping it. With "Override swap back" on, the player's pick is
+     * meant to win, so let it through and stand down until the mining action ends; otherwise keep
+     * holding the tool as before.
+     */
     @SubscribeEvent
     public void onScrollSlot(PreSlotScrollEvent e) {
         if (!hasSwapped) {
             return;
         }
         if (overrideSwapBack.isToggled()) {
-            int slot = Integer.compare(e.slot, 0);
-            previousSlot = Math.floorMod(mc.thePlayer.inventory.currentItem - slot, 9);
+            yieldToManualSwap();
+            return;
         }
         e.setCanceled(true);
     }
@@ -118,9 +128,17 @@ public class AutoTool extends Module {
             return;
         }
         if (overrideSwapBack.isToggled()) {
-            previousSlot = e.slot;
+            yieldToManualSwap();
+            return;
         }
         e.setCanceled(true);
+    }
+
+    private void yieldToManualSwap() {
+        manualOverride = true;
+        hasSwapped = false;
+        previousSlot = -1;
+        resetNextHover();
     }
 
     @SubscribeEvent
@@ -138,6 +156,14 @@ public class AutoTool extends Module {
         int currentTick = ++tickCounter;
         boolean leftMouseDown = Mouse.isButtonDown(0);
         updateLeftMouseState(leftMouseDown, currentTick);
+
+        // Stay out of the way for the rest of the swing the player took the slot on.
+        if (manualOverride) {
+            if (leftMouseDown) {
+                return;
+            }
+            manualOverride = false;
+        }
 
         if (!mc.inGameHasFocus || mc.currentScreen != null || mc.thePlayer.isDead || !mc.thePlayer.capabilities.allowEdit) {
             resetState(true);
@@ -332,6 +358,7 @@ public class AutoTool extends Module {
             leftMouseDownSinceTick = -1;
             hoverStartTick = -1;
         }
+        manualOverride = false;
         resetSlot();
     }
 

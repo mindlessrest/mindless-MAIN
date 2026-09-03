@@ -3,6 +3,7 @@ package mindless.mixin.impl.render;
 import mindless.module.ModuleManager;
 import mindless.module.impl.render.DamageTint;
 import mindless.module.impl.render.MobESP;
+import mindless.module.impl.render.Nametags;
 import mindless.module.impl.other.NameHider;
 import mindless.module.impl.render.SexyESP;
 import mindless.module.impl.render.Slow;
@@ -117,6 +118,10 @@ public abstract class MixinRendererLivingEntity<T extends EntityLivingBase> exte
     @Inject(method = "canRenderName(Lnet/minecraft/entity/EntityLivingBase;)Z", at = @At("HEAD"), cancellable = true)
     private void suppressNameDuringOutlinePass(T entity, CallbackInfoReturnable<Boolean> cir) {
         if (SexyESP.renderingOutlinePass || MobESP.renderingOutlinePass) {
+            cir.setReturnValue(false);
+            return;
+        }
+        if (SexyESP.replacesStandaloneNametags() || Nametags.shouldHideVanillaFor(entity)) {
             cir.setReturnValue(false);
         }
     }
