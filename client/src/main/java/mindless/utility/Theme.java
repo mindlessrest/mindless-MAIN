@@ -29,7 +29,7 @@ public enum Theme {
     public static int getGradient(int index, double delay) {
         if (index == 10) return getGradient((int) Settings.defaultTheme.getInput(), delay);
         if (index > 0)
-            return convert(values()[index].firstGradient, values()[index].secondGradient, (Math.sin(System.currentTimeMillis() / 1.0E8 * Settings.timeMultiplier.getInput() * 400000.0 + delay * Settings.offset.getInput()) + 1.0) * 0.5).getRGB();
+            return convert(VALUES[index].firstGradient, VALUES[index].secondGradient, (Math.sin(System.currentTimeMillis() / 1.0E8 * Settings.timeMultiplier.getInput() * 400000.0 + delay * Settings.offset.getInput()) + 1.0) * 0.5).getRGB();
         else if (index == 0)
             return getChromaOffset(2, (long) delay);
         return -1;
@@ -53,7 +53,7 @@ public enum Theme {
 
     public static int[] getGradients(int index) {
         if (index == 10) index = (int) Settings.defaultTheme.getInput();
-        Theme[] values = values();
+        Theme[] values = VALUES;
         if (values != null && index >= 0 && index < values.length && values[index] != null) {
             Color fg = values[index].firstGradient, sg = values[index].secondGradient;
             if (fg != null && sg != null) return new int[]{fg.getRGB(), sg.getRGB()};
@@ -61,6 +61,9 @@ public enum Theme {
         }
         return new int[]{0, 0};
     }
+
+    // values() clones the backing array on every call, and these run per element per frame.
+    private static final Theme[] VALUES = values();
 
     public static String[] THEMES_SETTING = new String[]{"Rainbow","Cherry","Cotton candy","Flare","Flower","Gold","Grayscale","Royal","Sky","Vine","Default"};
     public static String[] THEMES_STRING  = new String[]{"Rainbow","Cherry","Cotton candy","Flare","Flower","Gold","Grayscale","Royal","Sky","Vine"};

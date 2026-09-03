@@ -132,17 +132,23 @@ public class Debug extends Command {
 
         String settings = alloc ? "profile" : "default";
 
-        String[] args = {
-                "name=" + RECORDING_NAME,
-                "settings=" + settings,
-                "duration=" + durationSec + "s",
-                "maxsize=1g",
-                "disk=true",
-                "dumponexit=true",
-                "filename=" + activeFilePath
-        };
+        java.util.List<String> args = new java.util.ArrayList<String>();
+        args.add("name=" + RECORDING_NAME);
+        args.add("settings=" + settings);
+        args.add("duration=" + durationSec + "s");
+        args.add("maxsize=1g");
+        args.add("disk=true");
+        args.add("dumponexit=true");
+        args.add("filename=" + activeFilePath);
+        if (alloc) {
+            // Neither profile nor default records thrown exceptions, so a path that throws and
+            // swallows hundreds a second shows up only as an unattributed count in
+            // ExceptionStatistics. With these on, the recording names the throw site.
+            args.add("jdk.JavaExceptionThrow#enabled=true");
+            args.add("jdk.JavaExceptionThrow#stackTrace=true");
+        }
 
-        invokeDiagnosticCommand("jfrStart", args);
+        invokeDiagnosticCommand("jfrStart", args.toArray(new String[0]));
     }
 
     private static void stopRecording() throws Exception {

@@ -36,11 +36,24 @@ public class PacketUtils implements IMinecraftInstance {
     }
 
     public static void sendPacketNoEvent(Packet packet) {
-        if (packet == null || packet.getClass().getSimpleName().startsWith("S")) {
+        if (packet == null || isClientboundPacket(packet)) {
             return;
         }
         skipSendEvent.add(packet);
         Mindless.mc.thePlayer.sendQueue.addToSendQueue(packet);
+    }
+
+    /**
+     * Clientbound packet types are the ones whose class name starts with S.
+     *
+     * getSimpleName builds a fresh String on every call, and this runs on every packet any module
+     * sends without an event -- it was the largest single allocation site in the client.
+     * getName is interned on the Class, so reading a character out of it costs nothing.
+     */
+    private static boolean isClientboundPacket(Packet packet) {
+        String className = packet.getClass().getName();
+        int start = className.lastIndexOf('.') + 1;
+        return start < className.length() && className.charAt(start) == 'S';
     }
 
     public static void receivePacketNoEvent(Packet packet) {
