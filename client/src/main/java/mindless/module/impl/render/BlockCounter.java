@@ -9,6 +9,7 @@ import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.font.ModuleFont;
+import mindless.utility.gui.MindlessButton;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
@@ -568,16 +569,17 @@ public class BlockCounter extends Module {
         private boolean dragging;
         private float ax, ay, lax, lay;
         private int lmx, lmy;
-        private GuiButton resetBtn;
+        private MindlessButton resetBtn;
 
         @Override
         public void initGui() {
             super.initGui();
-            // Plain GuiButton, never Forge's GuiButtonExt: its drawButton reads
+            // MindlessButton, never Forge's GuiButtonExt: GuiButtonExt.drawButton reads
             // GuiButton.packedFGColour, a field Forge patches into the vanilla class. Lunar runs
             // unpatched vanilla, so that read is a NoSuchFieldError the moment this screen paints
-            // -- which is what crashed the game on opening Edit position.
-            buttonList.add(resetBtn = new GuiButton(1, width - 90, height - 25, 85, 20, "Reset"));
+            // -- which is what crashed the game on opening Edit position. Every other edit screen
+            // already uses this button for the same reason.
+            buttonList.add(resetBtn = new MindlessButton(1, width - 90, height - 25, 85, 20, "Reset position"));
             syncPosition(new ScaledResolution(mc));
             ax = posX;
             ay = posY;
