@@ -2,6 +2,7 @@ package mindless.module.impl.render;
 
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
+import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.runtime.AccessorBridge;
@@ -63,6 +64,15 @@ private enum Category {
         }
     }
 
+    private static final String[] STYLES = {"Card", "Icon only", "Text only"};
+    private static final int STYLE_CARD = 0;
+    private static final int STYLE_ICON_ONLY = 1;
+    private static final int STYLE_TEXT_ONLY = 2;
+
+    private static final String[] COUNT_FORMATS = {"64", "x64", "64x"};
+    private static final String[] NAME_STYLES = {"Full", "Short"};
+
+    private final SliderSetting style;
     private final SliderSetting font;
     private final SliderSetting maxDistance;
     private final SliderSetting iconScale;
@@ -70,8 +80,14 @@ private enum Category {
     private final ButtonSetting stackLayout;
     private final ButtonSetting outline;
     private final ButtonSetting showName;
+    private final SliderSetting nameStyle;
+    private final ColorSetting nameColor;
     private final ButtonSetting showDistance;
+    private final ColorSetting distanceColor;
     private final ButtonSetting showCount;
+    private final SliderSetting countFormat;
+    private final ButtonSetting hideSingleCount;
+    private final ColorSetting countColor;
     private final ButtonSetting hideInGui;
 private static final double STACK_RADIUS_SQ = 9.0D;
     private static final double TIGHT_RADIUS_SQ = 2.25D;
@@ -96,10 +112,17 @@ private static final double STACK_RADIUS_SQ = 9.0D;
 
         GroupSetting card = new GroupSetting("Card");
         registerSetting(card);
+        registerSetting(style = new SliderSetting(card, "Style", STYLE_CARD, STYLES));
         registerSetting(font = new SliderSetting(card, "Font", 0, ModuleFont.options()));
         registerSetting(showCount = new ButtonSetting(card, "Show count", true));
+        registerSetting(countFormat = new SliderSetting(card, "Count format", 0, COUNT_FORMATS));
+        registerSetting(hideSingleCount = new ButtonSetting(card, "Hide count of 1", false));
+        registerSetting(countColor = new ColorSetting(card, "Count color", 255, 255, 255));
         registerSetting(showName = new ButtonSetting(card, "Show name", false));
+        registerSetting(nameStyle = new SliderSetting(card, "Name style", 0, NAME_STYLES));
+        registerSetting(nameColor = new ColorSetting(card, "Name color", 255, 255, 255));
         registerSetting(showDistance = new ButtonSetting(card, "Show distance", false));
+        registerSetting(distanceColor = new ColorSetting(card, "Distance color", 204, 204, 204));
         registerSetting(outline = new ButtonSetting(card, "Outline", true));
         registerSetting(iconScale = new SliderSetting(card, "Icon scale", "x", 1.0, 0.0, 2.0, 0.05));
         registerSetting(backgroundAlpha = new SliderSetting(card, "Background alpha", 170, 0, 255, 5));
@@ -107,6 +130,66 @@ private static final double STACK_RADIUS_SQ = 9.0D;
         registerSetting(stackLayout = new ButtonSetting("Stack layout", true));
         registerSetting(hideInGui = new ButtonSetting("Hide in GUI", true));
         registerSetting(maxDistance = new SliderSetting("Max distance", 128.0, 16.0, 512.0, 8.0));
+    }
+
+    @Override
+    public void guiUpdate() {
+        int mode = (int) style.getInput();
+        boolean icon = mode != STYLE_TEXT_ONLY;
+        boolean chrome = mode == STYLE_CARD;
+
+        iconScale.setVisible(icon, this);
+        outline.setVisible(chrome, this);
+        backgroundAlpha.setVisible(chrome, this);
+
+        boolean count = showCount.isToggled();
+        countFormat.setVisible(count, this);
+        hideSingleCount.setVisible(count, this);
+        countColor.setVisible(count, this);
+
+        boolean name = showName.isToggled();
+        nameStyle.setVisible(name, this);
+        nameColor.setVisible(name, this);
+
+        distanceColor.setVisible(showDistance.isToggled(), this);
+    }
+
+    /**
+     * Icon-only drops every text row as well as the panel, so the drop reads as the item and
+     * nothing else. Text-only keeps the rows and drops the icon.
+     */
+    private boolean drawIcons() {
+        return (int) style.getInput() != STYLE_TEXT_ONLY;
+    }
+
+    private boolean drawChrome() {
+        return (int) style.getInput() == STYLE_CARD;
+    }
+
+    private boolean drawLabels() {
+        return (int) style.getInput() != STYLE_ICON_ONLY;
+    }
+
+    private String countLabel(int count) {
+        if (hideSingleCount.isToggled() && count <= 1) return "";
+        switch ((int) countFormat.getInput()) {
+            case 1: return "x" + count;
+            case 2: return count + "x";
+            default: return String.valueOf(count);
+        }
+    }
+
+    /**
+     * "Short" keeps the last word of the display name -- "Diamond Sword" becomes "Sword" -- which
+     * is what tells two drops apart in a pile without a name wider than the card under it.
+     */
+    private String nameLabel(ItemStack stack) {
+        if (stack == null) return "";
+        String name = stack.getDisplayName();
+        if (name == null) return "";
+        if ((int) nameStyle.getInput() != 1) return name;
+        int cut = name.lastIndexOf(' ');
+        return cut >= 0 && cut < name.length() - 1 ? name.substring(cut + 1) : name;
     }
 
     @Override
@@ -234,16 +317,18 @@ private final List<Card> cardPool = new ArrayList<Card>();
 
     private void draw(ScaledResolution resolution) {
         MindlessFontRenderer text = FontManager.getHudRenderer(ModuleFont.nameOf(font), 1.0f);
-        float scale = (float) iconScale.getInput();
+        boolean labels = drawLabels();
+        boolean chrome = drawChrome();
+        float scale = drawIcons() ? (float) iconScale.getInput() : 0f;
         float icon = 16f * scale;
-        float padding = Math.max(2f, 3f * scale);
+        float padding = chrome ? Math.max(2f, 3f * scale) : 0f;
         float gap = icon > 0f ? Math.max(2f, 3f * scale) : 0f;
         float fontHeight = text.getFontHeight();
-        int alpha = (int) backgroundAlpha.getInput();
-        boolean drawOutline = outline.isToggled();
-        boolean drawCount = showCount.isToggled();
-        boolean drawName = showName.isToggled();
-        boolean drawDistance = showDistance.isToggled();
+        int alpha = chrome ? (int) backgroundAlpha.getInput() : 0;
+        boolean drawOutline = chrome && outline.isToggled();
+        boolean drawCount = labels && showCount.isToggled();
+        boolean drawName = labels && showName.isToggled();
+        boolean drawDistance = labels && showDistance.isToggled();
 
         float screenW = resolution.getScaledWidth();
         float screenH = resolution.getScaledHeight();
@@ -283,19 +368,19 @@ private final List<Card> cardPool = new ArrayList<Card>();
                 drawIcon(card.icon, left + padding, card.screenY - icon / 2f, scale);
             }
 
-            if (drawCount) {
+            if (drawCount && !card.label.isEmpty()) {
                 text.drawString(card.label, left + padding + icon + gap,
-                        card.screenY - fontHeight / 2f, 0xFFFFFFFF, true);
+                        card.screenY - fontHeight / 2f, 0xFF000000 | countColor.getRGB(), true);
             }
             if (drawName) {
-                String name = card.icon.getDisplayName();
+                String name = nameLabel(card.icon);
                 text.drawString(name, card.screenX - text.getStringWidth(name) / 2f,
-                        top - fontHeight - 1f, 0xFFFFFFFF, true);
+                        top - fontHeight - 1f, 0xFF000000 | nameColor.getRGB(), true);
             }
             if (drawDistance) {
                 String distance = ((int) card.distance) + "m";
                 text.drawString(distance, card.screenX - text.getStringWidth(distance) / 2f,
-                        top + height + 1f, 0xFFCCCCCC, true);
+                        top + height + 1f, 0xFF000000 | distanceColor.getRGB(), true);
             }
         }
 
@@ -314,14 +399,15 @@ private final List<Card> cardPool = new ArrayList<Card>();
                               boolean drawDistance) {
         for (int i = 0; i < cards.size(); i++) {
             Card card = cards.get(i);
-            card.label = drawCount ? String.valueOf(card.count) : "";
-            float labelW = drawCount ? text.getStringWidth(card.label) : 0f;
-            card.width = padding * 2f + icon + (drawCount ? gap + labelW : 0f);
+            card.label = drawCount ? countLabel(card.count) : "";
+            boolean hasLabel = !card.label.isEmpty();
+            float labelW = hasLabel ? text.getStringWidth(card.label) : 0f;
+            card.width = padding * 2f + icon + (hasLabel ? gap + labelW : 0f);
             card.height = Math.max(icon, fontHeight) + padding * 2f;
 
             float extent = card.width;
             if (drawName && card.icon != null) {
-                extent = Math.max(extent, text.getStringWidth(card.icon.getDisplayName()));
+                extent = Math.max(extent, text.getStringWidth(nameLabel(card.icon)));
             }
             if (drawDistance) {
                 extent = Math.max(extent, text.getStringWidth(((int) card.distance) + "m"));
