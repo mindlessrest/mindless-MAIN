@@ -6,7 +6,7 @@ import net.minecraft.client.gui.ChatLine;
 import net.minecraft.util.MathHelper;
 
 import java.util.IdentityHashMap;
-import java.util.Iterator;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 
@@ -85,32 +85,39 @@ public static void drawPlayerHead(String name, float x, float y, float size, int
     public static final float PANEL_BLUR_OPACITY = 0.85f;
 
     public static final Map<ChatLine, Long> messageBirths = new IdentityHashMap<ChatLine, Long>();
+    private static final Set<ChatLine> liveLines =
+            java.util.Collections.newSetFromMap(new IdentityHashMap<ChatLine, Boolean>());
     public static long lastAnimationCleanup;
 
     private GuiNewChatState() {}
 
     public static void updateMessageAnimations(List<ChatLine> drawnChatLines, long now) {
-        List<ChatLine> snapshot = new java.util.ArrayList<ChatLine>(drawnChatLines);
-
-        for (ChatLine line : snapshot) {
+        // Indexed, so a line added mid-iteration cannot throw, and no copy of the list per frame.
+        for (int i = 0; i < drawnChatLines.size(); i++) {
+            ChatLine line = drawnChatLines.get(i);
             if (line != null && !messageBirths.containsKey(line)) {
                 messageBirths.put(line, now);
             }
         }
 
-        if (now - lastAnimationCleanup >= 1000L) {
-            Iterator<ChatLine> iterator = messageBirths.keySet().iterator();
-
-            while (iterator.hasNext()) {
-                Object key = iterator.next();
-
-                if (!snapshot.contains(key)) {
-                    iterator.remove();
-                }
-            }
-
-            lastAnimationCleanup = now;
+        if (now - lastAnimationCleanup < 1000L) {
+            return;
         }
+        lastAnimationCleanup = now;
+        if (messageBirths.size() <= drawnChatLines.size()) {
+            return;
+        }
+
+        // retainAll against the list itself was a linear scan per tracked line. Against an identity
+        // set it is a lookup.
+        liveLines.clear();
+        for (int i = 0; i < drawnChatLines.size(); i++) {
+            ChatLine line = drawnChatLines.get(i);
+            if (line != null) {
+                liveLines.add(line);
+            }
+        }
+        messageBirths.keySet().retainAll(liveLines);
     }
 
     public static double getAnimationProgress(ChatLine line, long now) {
@@ -124,9 +131,26 @@ public static void drawPlayerHead(String name, float x, float y, float size, int
         return 1.0 - remaining * remaining * remaining;
     }
 
+    /**
+     * True when drawGlass already laid the input bar down this frame.
+     *
+     * drawGlass draws the input bar as part of the chat panel so the two share one blur pass. The
+     * GuiChat overlay drew the same rect again with a second full-screen blur behind it, which both
+     * stacked two translucent bars at the same place and doubled the panel's cost for every frame
+     * the chat was open.
+     */
+    public static boolean inputSurfaceDrawn() {
+        return inputSurfaceFrame == BlurUtils.getFrameSerial();
+    }
+
+    private static long inputSurfaceFrame = Long.MIN_VALUE;
+
     public static void drawGlass(float x, float y, float w, float h, boolean includeInput,
                                    int screenWidth, int screenHeight) {
         if (w <= 0.0f || h <= 0.0f) return;
+        if (includeInput) {
+            inputSurfaceFrame = BlurUtils.getFrameSerial();
+        }
         float maskLeft = x - 2.0f;
         float maskTop = y - 2.0f;
         float maskRight = x + w + 2.0f;

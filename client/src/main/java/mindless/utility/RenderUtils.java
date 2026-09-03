@@ -13,6 +13,7 @@ import net.minecraft.client.renderer.*;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.client.resources.model.IBakedModel;
 import net.minecraft.client.shader.Framebuffer;
@@ -214,11 +215,29 @@ public static void scissor(double x, double y, double width, double height) {
         return isInViewFrustum(entity.getEntityBoundingBox()) || entity.ignoreFrustumCheck;
     }
 
+    /**
+     * Frustum-tests a world-space box against the camera the frame was actually drawn from.
+     *
+     * The clipping planes come from the live modelview/projection, so they are relative to the
+     * render camera. Positioning the frustum at the view entity's feet instead left a constant
+     * error of the eye height in first person, and of the whole third-person pull-back -- up to
+     * four blocks -- whenever Freelook was up. Chunk-sized boxes absorb that; a bed or a player's
+     * projected box does not, so overlays flicked in and out near the screen edges and dropped out
+     * wholesale in Freelook.
+     */
     public static boolean isInViewFrustum(final AxisAlignedBB bb) {
         if (bb == null) return false;
         Entity view = mc.getRenderViewEntity();
         if (view == null) return true;
-        frustum.setPosition(view.posX, view.posY, view.posZ);
+        Vec3 cameraOffset = ActiveRenderInfo.getPosition();
+        if (cameraOffset == null) {
+            frustum.setPosition(view.posX, view.posY, view.posZ);
+        } else {
+            RenderManager renderManager = mc.getRenderManager();
+            frustum.setPosition(renderManager.viewerPosX + cameraOffset.xCoord,
+                    renderManager.viewerPosY + cameraOffset.yCoord,
+                    renderManager.viewerPosZ + cameraOffset.zCoord);
+        }
         return frustum.isBoundingBoxInFrustum(bb);
     }
 

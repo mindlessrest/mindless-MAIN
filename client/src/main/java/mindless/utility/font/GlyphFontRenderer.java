@@ -29,6 +29,7 @@ private static final float MAX_RASTERISED_GLYPH_SIZE = 64.0f;
     private static final GlyphData EMPTY_GLYPH = new GlyphData(null, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0);
 
     private final Font renderFont;
+    private Font fallbackFont;
     private final boolean antiAlias;
     private final FontRenderContext fontRenderContext;
     private final GlyphAtlas atlas;
@@ -335,7 +336,13 @@ private GlyphData commit(Raster raster) {
         String glyphText = String.valueOf(character);
         Font glyphFont = renderFont;
         if (!renderFont.canDisplay(character)) {
-            glyphFont = new Font(Font.SANS_SERIF, renderFont.getStyle(), renderFont.getSize());
+            // Fall back to a font that has the character; if nothing does, draw nothing. Handing an
+            // undisplayable character to Graphics2D anyway paints the missing-glyph box, which is
+            // where the black rectangles after names in Hypixel display names came from.
+            glyphFont = fallbackFont();
+            if (!glyphFont.canDisplay(character)) {
+                return null;
+            }
         }
 
         BufferedImage metricsImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
@@ -369,6 +376,15 @@ private GlyphData commit(Raster raster) {
         finally {
             metricsGraphics.dispose();
         }
+    }
+
+    private Font fallbackFont() {
+        Font cached = fallbackFont;
+        if (cached == null) {
+            cached = new Font(Font.SANS_SERIF, renderFont.getStyle(), renderFont.getSize());
+            fallbackFont = cached;
+        }
+        return cached;
     }
 
     private float computeRawTextTop() {

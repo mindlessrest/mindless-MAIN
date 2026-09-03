@@ -50,6 +50,9 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
     @Inject(method = "drawScreen", at = @At("HEAD"))
     private void mindless$beforeDrawScreen(int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
         inputField.setEnableBackgroundDrawing(false);
+        if (GuiNewChatState.inputSurfaceDrawn()) {
+            return;
+        }
 
         int left = 3;
         int top = this.height - 15;
