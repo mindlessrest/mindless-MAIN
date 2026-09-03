@@ -52,7 +52,7 @@ private static final float NAMETAG_ATLAS_BOOST = 2.5f;
     }
 
     public static MindlessFontRenderer getHudRenderer(String family, float scale) {
-        float safeScale = Math.max(0.5f, Math.min(2.0f, scale));
+        float safeScale = snapFontScale(Math.max(0.5f, Math.min(2.0f, scale)));
         return getRenderer(family, DEFAULT_HUD_FONT_SIZE * safeScale);
     }
 
@@ -80,7 +80,7 @@ public static MindlessFontRenderer getNametagRenderer(String family) {
             return getMinecraftRenderer(fontSize);
         }
 
-        String key = family + "#nametag#" + quantizeForCacheKey(fontSize) + "#" + getUiScale();
+        String key = family + "#nametag#" + fontSize + "#" + getUiScale();
         return getCachedRenderer(key, new Supplier<MindlessFontRenderer>() {
             @Override
             public MindlessFontRenderer get() {
@@ -95,7 +95,7 @@ public static MindlessFontRenderer getNametagRenderer(String family) {
     }
 
     private static MindlessFontRenderer getRenderer(String family, float fontSize) {
-        float safeFontSize = Math.max(1.0f, fontSize);
+        float safeFontSize = snapFontSize(Math.max(1.0f, fontSize));
         BundledFont bundledFont;
 
         if (family == null || isMinecraftFont(family)) {
@@ -107,7 +107,7 @@ public static MindlessFontRenderer getNametagRenderer(String family) {
             return getMinecraftRenderer(safeFontSize);
         }
 
-        String key = family + "#" + quantizeForCacheKey(safeFontSize) + "#" + getUiScale();
+        String key = family + "#" + safeFontSize + "#" + getUiScale();
         return getCachedRenderer(key, new Supplier<MindlessFontRenderer>() {
             @Override
             public MindlessFontRenderer get() {
@@ -125,7 +125,7 @@ public static MindlessFontRenderer getClickGuiRenderer(String family, float pixe
     }
 
     private static MindlessFontRenderer getRendererForPixelHeight(String family, float targetHeight) {
-        float safeTargetHeight = Math.max(1.0f, targetHeight);
+        float safeTargetHeight = snapFontSize(Math.max(1.0f, targetHeight));
         BundledFont bundledFont;
 
         if (family == null || isMinecraftFont(family)) {
@@ -137,7 +137,7 @@ public static MindlessFontRenderer getClickGuiRenderer(String family, float pixe
             return getMinecraftRenderer(safeTargetHeight);
         }
 
-        String key = family + "#height#" + quantizeForCacheKey(safeTargetHeight) + "#" + getUiScale();
+        String key = family + "#height#" + safeTargetHeight + "#" + getUiScale();
         return getCachedRenderer(key, new Supplier<MindlessFontRenderer>() {
             @Override
             public MindlessFontRenderer get() {
@@ -173,8 +173,8 @@ public static MindlessFontRenderer getClickGuiRenderer(String family, float pixe
 
     private static MindlessFontRenderer getMinecraftRenderer(float fontSize) {
         float vanillaHeight = Math.max(1.0f, Minecraft.getMinecraft().fontRendererObj.FONT_HEIGHT);
-        float scale = Math.max(0.5f, Math.min(2.0f, fontSize / vanillaHeight));
-        String key = MINECRAFT + "#" + quantizeForCacheKey(scale);
+        float scale = snapFontScale(Math.max(0.5f, Math.min(2.0f, fontSize / vanillaHeight)));
+        String key = MINECRAFT + "#" + scale;
         return getCachedRenderer(key, new Supplier<MindlessFontRenderer>() {
             @Override
             public MindlessFontRenderer get() {
@@ -235,8 +235,23 @@ public static MindlessFontRenderer getClickGuiRenderer(String family, float pixe
             return 1;
         }
     }
-private static float quantizeForCacheKey(float value) {
-        return Math.round(value * 100.0f) / 100.0f;
+/**
+     * Snaps a font size to a quarter of a pixel.
+     *
+     * Every distinct size is a separate GlyphFontRenderer: the whole alphabet rasterised through
+     * Graphics2D and uploaded as its own atlas texture. Keying at a hundredth of a pixel meant an
+     * animated caller -- a widget easing its size, anything driven by an eased scale -- asked for a
+     * size nothing had built yet on almost every frame, so it built one, and the 512-entry LRU
+     * evicted and destroyed somebody else's to make room. A quarter pixel is below what a 6-20px
+     * face resolves, and it collapses that range to a few dozen renderers that stay warm.
+     */
+    private static float snapFontSize(float value) {
+        return Math.round(value * 4.0f) / 4.0f;
+    }
+
+    /** Scales multiply a base size, so they need finer steps than a size does. */
+    private static float snapFontScale(float value) {
+        return Math.round(value * 20.0f) / 20.0f;
     }
 
     private static byte[] readFontData(String fileName) {
