@@ -56,6 +56,22 @@ private static final float NAMETAG_ATLAS_BOOST = 2.5f;
         return getRenderer(family, DEFAULT_HUD_FONT_SIZE * safeScale);
     }
 
+    /**
+     * A HUD renderer that may go past the usual 2x ceiling.
+     *
+     * Overlays that scale themselves used to rasterise at the capped size and then stretch the
+     * result with a modelview scale, which is what made large text look soft. Asking for the
+     * glyphs at the size they will actually occupy keeps them sharp instead.
+     *
+     * Only pass a size that comes from a discrete setting. snapFontScale quantises to 0.05, so a
+     * slider's worth of values costs a bounded handful of cache entries; a value that changes
+     * every frame would miss the cache constantly and rebuild a 256-glyph atlas each time.
+     */
+    public static MindlessFontRenderer getLargeHudRenderer(String family, float scale) {
+        float safeScale = snapFontScale(Math.max(0.5f, Math.min(4.0f, scale)));
+        return getRenderer(family, DEFAULT_HUD_FONT_SIZE * safeScale);
+    }
+
     public static MindlessFontRenderer getClickGuiHeaderRenderer(String family) {
         return getRendererForPixelHeight(family, DEFAULT_CLICK_GUI_HEADER_HEIGHT);
     }

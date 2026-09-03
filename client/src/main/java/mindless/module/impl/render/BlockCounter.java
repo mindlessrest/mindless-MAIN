@@ -17,7 +17,6 @@ import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
-import net.minecraftforge.fml.client.config.GuiButtonExt;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.opengl.GL20;
@@ -264,11 +263,16 @@ public class BlockCounter extends Module {
     private void drawOverlay(ItemStack badgeStack, int blocks, float bps, float left, float top, float popScale) {
         advanceOverlayCounters(blocks, bps);
 
-        float scale = Math.max(0.0F, popScale) * overlayUserScale();
+        float scale = Math.max(0.0F, popScale);
         if (scale <= 0.001F) return;
 
-        MindlessFontRenderer countFont = countFont();
-        MindlessFontRenderer labelFont = HUD.getHudFontRenderer();
+        // The user scale is baked into the glyph size rather than applied as a modelview scale,
+        // so the text is rasterised at the size it is drawn at instead of being stretched from a
+        // smaller atlas. Only the pop animation still goes through the matrix -- it is transient,
+        // and feeding a per-frame value into the font cache is what makes atlases thrash.
+        float ui = overlayUserScale();
+        MindlessFontRenderer countFont = countFont(ui);
+        MindlessFontRenderer labelFont = labelFont(ui);
 
         // The number is read, not watched -- show the real one. Only the bar and the rate are
         // eased, where a moving value is the point.
@@ -276,20 +280,34 @@ public class BlockCounter extends Module {
         String rateText = String.format("%.1f", displayedBps);
         String rateSuffix = " BPS";
 
-        float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
-        float layoutWidth = PANEL_PAD_X * 2.0F + badgeSpan + overlayContentWidth(countFont, labelFont, countText);
-        float layoutHeight = overlayHeight(countFont, labelFont);
+        float badgeSize = BADGE_SIZE * ui;
+        float badgeGap = BADGE_GAP * ui;
+        float padX = PANEL_PAD_X * ui;
+        float padY = PANEL_PAD_Y * ui;
+        float labelGap = LABEL_GAP * ui;
+        float barGap = BAR_GAP * ui;
+        float barHeight = BAR_HEIGHT * ui;
+
+        float badgeSpan = badgeStack == null ? 0.0F : badgeSize + badgeGap;
+        float layoutWidth = padX * 2.0F + badgeSpan
+                + overlayContentWidth(countFont, labelFont, countText, ui);
+        float layoutHeight = overlayHeight(countFont, labelFont, ui);
 
         // RoundedUtils resolves its shapes against gl_FragCoord, so the geometry has to arrive
         // already scaled -- a modelview scale would move the quad and leave the shape behind.
         // Only text and the item icon go inside a scaled matrix.
+        // Whole-pixel origin. Half-pixel placement smears every glyph in the panel, which reads
+        // as a low-resolution font even when the atlas is fine.
+        left = Math.round(left);
+        top = Math.round(top);
+
         float centerX = left + layoutWidth * 0.5F;
         float centerY = top + layoutHeight * 0.5F;
         float width = layoutWidth * scale;
         float height = layoutHeight * scale;
         float panelLeft = centerX - width * 0.5F;
         float panelTop = centerY - height * 0.5F;
-        float radius = 9.0F * mindless.module.impl.theme.ThemeManager.roundingScale() * scale;
+        float radius = 9.0F * mindless.module.impl.theme.ThemeManager.roundingScale() * ui * scale;
 
         int accent = countColour(blocks);
 
@@ -306,25 +324,25 @@ public class BlockCounter extends Module {
         GlStateManager.enableBlend();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
 
-        float contentX = left + PANEL_PAD_X + badgeSpan;
-        float contentRight = left + layoutWidth - PANEL_PAD_X;
-        float countY = top + PANEL_PAD_Y;
-        float labelY = countY + countFont.getFontHeight() + LABEL_GAP;
-        float barY = labelY + labelFont.getFontHeight() + BAR_GAP;
+        float contentX = left + padX + badgeSpan;
+        float contentRight = left + layoutWidth - padX;
+        float countY = top + padY;
+        float labelY = countY + countFont.getFontHeight() + labelGap;
+        float barY = labelY + labelFont.getFontHeight() + barGap;
 
         if (showBar.isToggled()) {
             // Bar is a rounded rect, so it is placed in screen space like the panel.
             drawCapacityBar(panelLeft + (contentX - left) * scale,
                     panelTop + (barY - top) * scale,
                     (contentRight - contentX) * scale,
-                    BAR_HEIGHT * scale,
+                    barHeight * scale,
                     accent);
         }
         if (badgeStack != null) {
             drawHeldBlockBadge(badgeStack,
-                    panelLeft + PANEL_PAD_X * scale,
-                    panelTop + (layoutHeight - BADGE_SIZE) * 0.5F * scale,
-                    scale);
+                    panelLeft + padX * scale,
+                    panelTop + (layoutHeight - badgeSize) * 0.5F * scale,
+                    badgeSize * scale, ui * scale);
         }
 
         GlStateManager.pushMatrix();
@@ -354,34 +372,40 @@ public class BlockCounter extends Module {
     }
 
     private float overlayContentWidth(MindlessFontRenderer countFont,
-                                      MindlessFontRenderer labelFont, String countText) {
+                                      MindlessFontRenderer labelFont, String countText, float ui) {
         float rateW = showRate.isToggled()
                 ? labelFont.getStringWidth("0.0") + labelFont.getStringWidth(" BPS") : 0.0F;
         float countW = countFont.getStringWidth(countText);
         float labelW = labelFont.getStringWidth("BLOCKS");
-        return Math.max(MIN_CONTENT_WIDTH, Math.max(countW, labelW) + 14.0F + rateW);
+        return Math.max(MIN_CONTENT_WIDTH * ui, Math.max(countW, labelW) + 14.0F * ui + rateW);
     }
 
-    private float overlayHeight(MindlessFontRenderer countFont, MindlessFontRenderer labelFont) {
-        float content = countFont.getFontHeight() + LABEL_GAP + labelFont.getFontHeight();
-        if (showBar.isToggled()) content += BAR_GAP + BAR_HEIGHT;
-        return Math.max(BADGE_SIZE, content) + PANEL_PAD_Y * 2.0F;
+    private float overlayHeight(MindlessFontRenderer countFont, MindlessFontRenderer labelFont, float ui) {
+        float content = countFont.getFontHeight() + LABEL_GAP * ui + labelFont.getFontHeight();
+        if (showBar.isToggled()) content += (BAR_GAP + BAR_HEIGHT) * ui;
+        return Math.max(BADGE_SIZE * ui, content) + PANEL_PAD_Y * 2.0F * ui;
     }
 
     private float[] overlaySize(ItemStack badgeStack) {
-        MindlessFontRenderer countFont = countFont();
-        MindlessFontRenderer labelFont = HUD.getHudFontRenderer();
+        float ui = overlayUserScale();
+        MindlessFontRenderer countFont = countFont(ui);
+        MindlessFontRenderer labelFont = labelFont(ui);
         String countText = Integer.toString(Math.max(0, getBlockCount()));
-        float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
-        float scale = overlayUserScale();
+        float badgeSpan = badgeStack == null ? 0.0F : (BADGE_SIZE + BADGE_GAP) * ui;
         return new float[]{
-                (PANEL_PAD_X * 2.0F + badgeSpan + overlayContentWidth(countFont, labelFont, countText)) * scale,
-                overlayHeight(countFont, labelFont) * scale};
+                PANEL_PAD_X * 2.0F * ui + badgeSpan
+                        + overlayContentWidth(countFont, labelFont, countText, ui),
+                overlayHeight(countFont, labelFont, ui)};
     }
 
-    private MindlessFontRenderer countFont() {
-        return FontManager.getHudRenderer(ModuleFont.nameOf(counterFont),
-                Math.min(2.0F, HUD.getSelectedFontScale() * 1.55F));
+    private MindlessFontRenderer countFont(float ui) {
+        return FontManager.getLargeHudRenderer(ModuleFont.nameOf(counterFont),
+                HUD.getSelectedFontScale() * 1.55F * ui);
+    }
+
+    private MindlessFontRenderer labelFont(float ui) {
+        return FontManager.getLargeHudRenderer(ModuleFont.nameOf(counterFont),
+                HUD.getSelectedFontScale() * ui);
     }
 
     private static int countColour(int blocks) {
@@ -438,12 +462,13 @@ public class BlockCounter extends Module {
         return best;
     }
 
-    private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY, float scale) {
+    private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY,
+                                    float badgeSize, float scale) {
         if (stack == null) {
             return;
         }
 
-        float size = BADGE_SIZE * scale;
+        float size = badgeSize;
         Color edge = new Color(255, 255, 255, 24);
         RoundedUtils.drawRound(badgeX, badgeY, size, size, BADGE_RADIUS * scale, BADGE_COLOUR);
         RoundedUtils.drawRoundOutline(badgeX, badgeY, size, size, BADGE_RADIUS * scale, 1.0F, edge, edge);
@@ -543,12 +568,16 @@ public class BlockCounter extends Module {
         private boolean dragging;
         private float ax, ay, lax, lay;
         private int lmx, lmy;
-        private GuiButtonExt resetBtn;
+        private GuiButton resetBtn;
 
         @Override
         public void initGui() {
             super.initGui();
-            buttonList.add(resetBtn = new GuiButtonExt(1, width - 90, height - 25, 85, 20, "Reset"));
+            // Plain GuiButton, never Forge's GuiButtonExt: its drawButton reads
+            // GuiButton.packedFGColour, a field Forge patches into the vanilla class. Lunar runs
+            // unpatched vanilla, so that read is a NoSuchFieldError the moment this screen paints
+            // -- which is what crashed the game on opening Edit position.
+            buttonList.add(resetBtn = new GuiButton(1, width - 90, height - 25, 85, 20, "Reset"));
             syncPosition(new ScaledResolution(mc));
             ax = posX;
             ay = posY;
