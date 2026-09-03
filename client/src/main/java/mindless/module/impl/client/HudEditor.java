@@ -479,24 +479,45 @@ private void beginResize(Element element, int handle) {
                 }
             }
 
-            if (ModuleManager.watermark != null) {
-                final DynamicIsland wm = ModuleManager.watermark;
+            if (ModuleManager.dynamicIsland != null) {
+                final DynamicIsland island = ModuleManager.dynamicIsland;
                 elements.add(new Element("Watermark") {
                     @Override
                     void render() {
-                        setBounds(wm.getTextBounds());
+                        setBounds(island.isIslandMode() ? null : island.getTextBounds());
                     }
 
                     @Override
                     void moveTo(float left, float top) {
-                        wm.textPosX = left;
-                        wm.textPosY = top;
-                        setBounds(wm.getTextBounds());
+                        island.textPosX = left;
+                        island.textPosY = top;
+                        setBounds(island.getTextBounds());
                     }
 
                     @Override
                     void reset() {
-                        wm.resetPosition();
+                        island.resetPosition();
+                    }
+                });
+
+                // Only grabbable on the Custom anchor; the presets place it themselves and a
+                // handle that snaps back the moment you let go is worse than none.
+                elements.add(new Element("Dynamic Island") {
+                    @Override
+                    void render() {
+                        setBounds(island.isCustomAnchored() ? island.getIslandBounds() : null);
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        island.islandPosX = left;
+                        island.islandPosY = top;
+                        setBounds(island.getIslandBounds());
+                    }
+
+                    @Override
+                    void reset() {
+                        island.resetPosition();
                     }
                 });
             }

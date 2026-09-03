@@ -1,4 +1,4 @@
-#include "application.hpp"
+﻿#include "application.hpp"
 #include "app/screens.hpp"
 #include "app/process_list.hpp"
 #include "auth/xorstr.hpp"
@@ -391,6 +391,9 @@ int Application::run()
                         //protection::erase_pe_headers();
 
                         save_credentials(state_.username.text, state_.password.text, state_.rememberMe);
+                        // Written on every successful sign-in, independent of "remember me" --
+                        // the client reads it to show who is logged in.
+                        mindless::save_session_username(state_.username.text);
                         state_.statusText = "Authenticated";
                         state_.transition_to(Screen::ProcessSelect, 1.0f);
                     }

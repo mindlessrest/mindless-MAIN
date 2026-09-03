@@ -70,7 +70,7 @@ public class ModuleManager {
     public static TargetHUD targetHUD;
     public static StatsHUD statsHUD;
     public static Radar radar;
-    public static DynamicIsland watermark;
+    public static DynamicIsland dynamicIsland;
     public static NoFall noFall;
     public static SexyESP sexyESP;
     public static MobESP mobESP;
@@ -235,7 +235,7 @@ public class ModuleManager {
         this.addModule(freelook = new Freelook());
         this.addModule(new FallView());
         this.addModule(new Holdlook());
-        this.addModule(watermark = new DynamicIsland());
+        this.addModule(dynamicIsland = new DynamicIsland());
         this.addModule(sessionInfo = new SessionInfo());
         this.addModule(hud = new HUD());
         this.addModule(new Notifications());

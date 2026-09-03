@@ -97,3 +97,6 @@ client/native_build/
 # ---------------------------------------------------------------
 loader/CMakePresets.json
 .build_tools_cache.json
+
+# Unrelated tooling dropped in the repo root
+Xtools_Package_*/
