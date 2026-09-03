@@ -45,6 +45,18 @@ public class KillAura extends Module {
     private SliderSetting speed;
     private SliderSetting sortMode;
     private SliderSetting switchDelay;
+    private SliderSetting weightDistance;
+    private SliderSetting weightHealth;
+    private SliderSetting weightThreat;
+    private SliderSetting weightAngle;
+    private SliderSetting switchThreshold;
+    private SliderSetting commitTime;
+    private ButtonSetting finishLowHealth;
+    private SliderSetting finishBelow;
+    private ButtonSetting avoidHurtTime;
+
+    private int smartTargetId = -1;
+    private long smartTargetSince;
     private SliderSetting targets;
     private ButtonSetting attackMobs;
     private ButtonSetting targetInvis;
@@ -62,7 +74,7 @@ public class KillAura extends Module {
     private boolean blocking;
 
     private String[] rotationModes = new String[]{"Silent", "Lock view", "None"};
-    private String[] sortModes = new String[]{"Distance", "Health", "Hurt time", "Yaw"};
+    private String[] sortModes = new String[]{"Distance", "Health", "Hurt time", "Yaw", "Smart"};
 
     public static EntityLivingBase target;
     public static EntityLivingBase attackingEntity;
@@ -98,6 +110,15 @@ public class KillAura extends Module {
         this.registerSetting(speed = new SliderSetting("Speed", 10, 1, 30, 1));
         this.registerSetting(sortMode = new SliderSetting("Sort mode", 0, sortModes));
         this.registerSetting(switchDelay = new SliderSetting("Switch delay", "ms", 200.0, 50.0, 1000.0, 25.0));
+        this.registerSetting(weightDistance = new SliderSetting("Weight: distance", 40, 0, 100, 5));
+        this.registerSetting(weightHealth = new SliderSetting("Weight: health", 30, 0, 100, 5));
+        this.registerSetting(weightThreat = new SliderSetting("Weight: threat", 20, 0, 100, 5));
+        this.registerSetting(weightAngle = new SliderSetting("Weight: angle", 10, 0, 100, 5));
+        this.registerSetting(switchThreshold = new SliderSetting("Switch threshold", "%", 15, 0, 60, 1));
+        this.registerSetting(commitTime = new SliderSetting("Commit time", "ms", 400, 0, 2000, 50));
+        this.registerSetting(finishLowHealth = new ButtonSetting("Finish low health", true));
+        this.registerSetting(finishBelow = new SliderSetting("Finish below", " HP", 4.0, 1.0, 10.0, 0.5));
+        this.registerSetting(avoidHurtTime = new ButtonSetting("Avoid hurt time", true));
         this.registerSetting(targets = new SliderSetting("Targets", 3.0, 1.0, 10.0, 1.0));
         this.registerSetting(targetInvis = new ButtonSetting("Target invis", true));
         this.registerSetting(attackMobs = new ButtonSetting("Attack mobs", false));
@@ -363,7 +384,14 @@ public class KillAura extends Module {
             }
         }
 
-        candidates.sort(getTargetComparator().thenComparingDouble(c -> c.distance));
+        if (smartSorting()) {
+            final double scoreRange = Math.max(attackRange.getInput(), aimRange.getInput());
+            candidates.sort(Comparator.comparingDouble((KillAuraTarget c) -> -smartScore(c, scoreRange))
+                    .thenComparingDouble(c -> c.distance));
+        }
+        else {
+            candidates.sort(getTargetComparator().thenComparingDouble(c -> c.distance));
+        }
 
         double attackRangeValue = attackRange.getInput();
         List<KillAuraTarget> attackTargets = new ArrayList<>();
@@ -374,7 +402,9 @@ public class KillAura extends Module {
         }
 
         if (!attackTargets.isEmpty()) {
-            KillAuraTarget selectedAttackTarget = selectAttackTarget(attackTargets);
+            KillAuraTarget selectedAttackTarget = smartSorting()
+                    ? selectSmartTarget(attackTargets, attackRangeValue)
+                    : selectAttackTarget(attackTargets);
             if (selectedAttackTarget != null) {
                 setTarget(selectedAttackTarget.entity);
                 return;
@@ -468,7 +498,10 @@ public class KillAura extends Module {
                 entity.hurtTime,
                 RotationUtils.distanceFromYaw(entity, false),
                 entity.getEntityId(),
-                isEnemyPlayer
+                isEnemyPlayer,
+                Math.max(1.0f, entity.getMaxHealth()),
+                entity.getTotalArmorValue(),
+                isFacingUs(entity)
         );
     }
 
@@ -484,6 +517,143 @@ public class KillAura extends Module {
             default:
                 return Comparator.comparingDouble(target -> target.distance);
         }
+    }
+
+    @Override
+    public void guiUpdate() {
+        boolean smart = smartSorting();
+        weightDistance.setVisible(smart, this);
+        weightHealth.setVisible(smart, this);
+        weightThreat.setVisible(smart, this);
+        weightAngle.setVisible(smart, this);
+        switchThreshold.setVisible(smart, this);
+        commitTime.setVisible(smart, this);
+        finishLowHealth.setVisible(smart, this);
+        finishBelow.setVisible(smart && finishLowHealth.isToggled(), this);
+        avoidHurtTime.setVisible(smart, this);
+        switchDelay.setVisible(!smart, this);
+    }
+
+    private boolean smartSorting() {
+        return (int) sortMode.getInput() == 4;
+    }
+
+    /**
+     * Whether the target's own yaw points back at us, within about 50 degrees.
+     *
+     * Someone squared up on you is about to hit you; someone facing away is running or busy with
+     * a bed. Only their yaw is used -- pitch says almost nothing at melee range.
+     */
+    private boolean isFacingUs(EntityLivingBase entity) {
+        double dx = mc.thePlayer.posX - entity.posX;
+        double dz = mc.thePlayer.posZ - entity.posZ;
+        float wanted = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
+        return Math.abs(net.minecraft.util.MathHelper.wrapAngleTo180_float(wanted - entity.rotationYaw)) <= 50.0f;
+    }
+
+    /**
+     * One 0..1 score per candidate instead of a single sort key.
+     *
+     * Sorting on distance alone flips between two players standing the same distance away, and
+     * sorting on health alone abandons whoever you are mid-combo the moment somebody weaker walks
+     * past. Every term below is normalised so the weights are comparable, and the caller applies
+     * hysteresis on top so a marginal winner does not steal the target.
+     */
+    private double smartScore(KillAuraTarget candidate, double maxRange) {
+        double wDistance = weightDistance.getInput();
+        double wHealth = weightHealth.getInput();
+        double wThreat = weightThreat.getInput();
+        double wAngle = weightAngle.getInput();
+        double total = wDistance + wHealth + wThreat + wAngle;
+        if (total <= 0.0) {
+            return 0.0;
+        }
+
+        double closeness = 1.0 - Math.min(1.0, candidate.distance / Math.max(0.01, maxRange));
+        // Effective health, so a target in full diamond does not read as easy just because the
+        // bar is short. Armour points cap at 20 and cut damage by up to 80%.
+        double effective = candidate.health * (1.0 + Math.min(20, candidate.armor) / 12.5);
+        double weakness = 1.0 - Math.min(1.0, effective / (candidate.maxHealth * 2.6));
+        double threat = candidate.facingUs ? 1.0 : 0.0;
+        if (candidate.isEnemy) {
+            threat = Math.min(1.0, threat + 0.35);
+        }
+        double aim = 1.0 - Math.min(1.0, candidate.yawDelta / 180.0);
+
+        double score = (closeness * wDistance + weakness * wHealth + threat * wThreat + aim * wAngle) / total;
+
+        // A target still flashing red takes no damage from the next hit, so it is worth less right
+        // now even when it wins on every other count.
+        if (avoidHurtTime.isToggled() && candidate.hurttime > 0) {
+            score *= 1.0 - 0.35 * (candidate.hurttime / 10.0);
+        }
+        return score;
+    }
+
+    /**
+     * Picks by score, but keeps the target it already has unless the challenger clearly wins.
+     *
+     * The incumbent has to lose by more than the threshold, and it is never dropped inside the
+     * commit window, so the aura finishes what it starts rather than trading half-combos between
+     * two people. A target about to die overrides both, because a kill is worth more than any
+     * amount of chip damage spread around.
+     */
+    private KillAuraTarget selectSmartTarget(List<KillAuraTarget> attackTargets, double maxRange) {
+        if (attackTargets.isEmpty()) {
+            smartTargetId = -1;
+            return null;
+        }
+
+        long now = System.currentTimeMillis();
+
+        if (finishLowHealth.isToggled()) {
+            KillAuraTarget finisher = null;
+            for (KillAuraTarget candidate : attackTargets) {
+                if (candidate.health > finishBelow.getInput()) continue;
+                if (finisher == null || candidate.health < finisher.health) {
+                    finisher = candidate;
+                }
+            }
+            if (finisher != null) {
+                if (finisher.entityId != smartTargetId) {
+                    smartTargetId = finisher.entityId;
+                    smartTargetSince = now;
+                }
+                return finisher;
+            }
+        }
+
+        KillAuraTarget best = null;
+        double bestScore = -1.0;
+        KillAuraTarget incumbent = null;
+        double incumbentScore = -1.0;
+
+        for (KillAuraTarget candidate : attackTargets) {
+            double score = smartScore(candidate, maxRange);
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+            if (candidate.entityId == smartTargetId) {
+                incumbent = candidate;
+                incumbentScore = score;
+            }
+        }
+
+        if (incumbent != null) {
+            if (now - smartTargetSince < commitTime.getInput()) {
+                return incumbent;
+            }
+            if (bestScore - incumbentScore < switchThreshold.getInput() / 100.0) {
+                return incumbent;
+            }
+        }
+
+        if (best != null && best.entityId != smartTargetId) {
+            smartTargetId = best.entityId;
+            smartTargetSince = now;
+        }
+        return best;
     }
 
     private KillAuraTarget selectAttackTarget(List<KillAuraTarget> attackTargets) {
@@ -689,8 +859,13 @@ public class KillAura extends Module {
         final double yawDelta;
         final int entityId;
         final boolean isEnemy;
+        final float maxHealth;
+        final int armor;
+        final boolean facingUs;
 
-        public KillAuraTarget(EntityLivingBase entity, double distance, float health, int hurttime, double yawDelta, int entityId, boolean isEnemy) {
+        public KillAuraTarget(EntityLivingBase entity, double distance, float health, int hurttime,
+                              double yawDelta, int entityId, boolean isEnemy,
+                              float maxHealth, int armor, boolean facingUs) {
             this.entity = entity;
             this.distance = distance;
             this.health = health;
@@ -698,6 +873,9 @@ public class KillAura extends Module {
             this.yawDelta = yawDelta;
             this.entityId = entityId;
             this.isEnemy = isEnemy;
+            this.maxHealth = maxHealth;
+            this.armor = armor;
+            this.facingUs = facingUs;
         }
     }
 }
