@@ -1,0 +1,152 @@
+package mindless.runtime;
+
+import mindless.module.impl.render.ChatModule;
+import mindless.utility.font.MindlessFontRenderer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.FontRenderer;
+import net.minecraft.client.gui.GuiUtilRenderComponents;
+import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.IChatComponent;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Word wrapping for chat, measured with the font the chat is actually drawn in.
+ *
+ * GuiNewChat.setChatLine wraps every incoming message with mc.fontRendererObj and stores the
+ * result, so once ChatModule swaps in a wider face the stored lines are all too long: they run out
+ * past the panel and off the right of the screen. Nothing downstream re-measures them, because by
+ * draw time they are already committed to drawnChatLines.
+ *
+ * This mirrors GuiUtilRenderComponents.splitText -- same greedy fill, same break-on-last-space,
+ * same carrying of the format code onto the continuation -- with the width taken from the custom
+ * renderer instead. With no custom font selected it hands straight back to vanilla so the vanilla
+ * path stays byte-identical.
+ */
+public final class ChatWrapping {
+
+    private ChatWrapping() {
+    }
+
+    public static List<IChatComponent> split(IChatComponent component, int wrapWidth,
+                                             FontRenderer vanillaFont, boolean spaceAtEnd,
+                                             boolean keepFormatting) {
+        MindlessFontRenderer font = ChatModule.getCustomFont();
+        if (font == null) {
+            return GuiUtilRenderComponents.splitText(component, wrapWidth, vanillaFont, spaceAtEnd, keepFormatting);
+        }
+        return splitWith(font, component, wrapWidth, spaceAtEnd, keepFormatting);
+    }
+
+    private static List<IChatComponent> splitWith(MindlessFontRenderer font, IChatComponent component,
+                                                  int wrapWidth, boolean spaceAtEnd, boolean keepFormatting) {
+        int used = 0;
+        IChatComponent line = new ChatComponentText("");
+        List<IChatComponent> lines = new ArrayList<IChatComponent>();
+        List<IChatComponent> pending = new ArrayList<IChatComponent>();
+        for (IChatComponent sibling : component) {
+            pending.add(sibling);
+        }
+
+        for (int i = 0; i < pending.size(); i++) {
+            IChatComponent part = pending.get(i);
+            String raw = part.getUnformattedTextForChat();
+            boolean breakHere = false;
+
+            int newline = raw.indexOf('\n');
+            if (newline >= 0) {
+                ChatComponentText rest = new ChatComponentText(raw.substring(newline + 1));
+                rest.setChatStyle(part.getChatStyle().createShallowCopy());
+                pending.add(i + 1, rest);
+                raw = raw.substring(0, newline + 1);
+                breakHere = true;
+            }
+
+            String styled = stripColoursIfDisabled(part.getChatStyle().getFormattingCode() + raw, keepFormatting);
+            String text = styled.endsWith("\n") ? styled.substring(0, styled.length() - 1) : styled;
+            int width = font.getStringWidth(text);
+
+            ChatComponentText piece = new ChatComponentText(text);
+            piece.setChatStyle(part.getChatStyle().createShallowCopy());
+
+            if (used + width > wrapWidth) {
+                String head = trimToWidth(font, styled, wrapWidth - used);
+                String tail = head.length() < styled.length() ? styled.substring(head.length()) : null;
+
+                if (tail != null && tail.length() > 0) {
+                    int lastSpace = head.lastIndexOf(' ');
+                    if (lastSpace >= 0 && font.getStringWidth(styled.substring(0, lastSpace)) > 0) {
+                        head = styled.substring(0, lastSpace);
+                        tail = styled.substring(spaceAtEnd ? lastSpace + 1 : lastSpace);
+                    }
+                    else if (used > 0 && !styled.contains(" ")) {
+                        head = "";
+                        tail = styled;
+                    }
+                    ChatComponentText carried = new ChatComponentText(FontRenderer.getFormatFromString(head) + tail);
+                    carried.setChatStyle(part.getChatStyle().createShallowCopy());
+                    pending.add(i + 1, carried);
+                }
+
+                width = font.getStringWidth(head);
+                piece = new ChatComponentText(head);
+                piece.setChatStyle(part.getChatStyle().createShallowCopy());
+                breakHere = true;
+            }
+
+            if (used + width <= wrapWidth) {
+                used += width;
+                line.appendSibling(piece);
+            }
+            else {
+                breakHere = true;
+            }
+
+            if (breakHere) {
+                lines.add(line);
+                used = 0;
+                line = new ChatComponentText("");
+            }
+        }
+
+        lines.add(line);
+        return lines;
+    }
+
+    /**
+     * The custom-font equivalent of FontRenderer.trimStringToWidth: the longest prefix that still
+     * fits, with a section sign and the code after it treated as zero width and never split apart.
+     */
+    private static String trimToWidth(MindlessFontRenderer font, String text, int maxWidth) {
+        if (maxWidth <= 0 || text.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder kept = new StringBuilder(text.length());
+        int width = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '§' && i + 1 < text.length()) {
+                kept.append(c).append(text.charAt(i + 1));
+                i++;
+                continue;
+            }
+            width += font.getStringWidth(String.valueOf(c));
+            if (width > maxWidth) {
+                break;
+            }
+            kept.append(c);
+        }
+        return kept.toString();
+    }
+
+    private static String stripColoursIfDisabled(String text, boolean keepFormatting) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (keepFormatting || mc.gameSettings == null || mc.gameSettings.chatColours) {
+            return text;
+        }
+        return EnumChatFormatting.getTextWithoutFormattingCodes(text);
+    }
+}

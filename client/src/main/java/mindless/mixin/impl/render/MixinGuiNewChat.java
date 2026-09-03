@@ -7,13 +7,16 @@ import mindless.utility.TextGlowUtils;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import mindless.utility.ScaledResolutionCache;
+import mindless.runtime.ChatWrapping;
 import mindless.runtime.GuiNewChatState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ChatLine;
+import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiNewChat;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.IChatComponent;
 import net.minecraft.util.MathHelper;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -22,6 +25,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.lwjgl.opengl.GL11;
 
@@ -64,6 +68,21 @@ public abstract class MixinGuiNewChat {
 
     @Shadow
     public abstract int getChatWidth();
+
+    /**
+     * Wraps incoming lines with the font they will be drawn in.
+     *
+     * setChatLine splits with mc.fontRendererObj and stores the result, so a wider custom face
+     * left every stored line too long -- text ran past the panel and off the screen edge, and
+     * nothing downstream re-measures it. With no custom font this hands straight back to vanilla.
+     */
+    @Redirect(method = "setChatLine", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/gui/GuiUtilRenderComponents;splitText(Lnet/minecraft/util/IChatComponent;ILnet/minecraft/client/gui/FontRenderer;ZZ)Ljava/util/List;"))
+    private List<IChatComponent> mindless$splitChatLine(IChatComponent component, int wrapWidth,
+                                                        FontRenderer font, boolean spaceAtEnd,
+                                                        boolean keepFormatting) {
+        return ChatWrapping.split(component, wrapWidth, font, spaceAtEnd, keepFormatting);
+    }
 
     @Inject(method = "drawChat", at = @At("HEAD"), cancellable = true)
     private void mindless$renderChat(int updateCounter, CallbackInfo ci) {

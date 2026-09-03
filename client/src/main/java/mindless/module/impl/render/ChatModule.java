@@ -51,6 +51,39 @@ public class ChatModule extends Module {
         }
     }
 
+    @Override
+    public void onEnable() {
+        rewrapChat();
+    }
+
+    @Override
+    public void onDisable() {
+        rewrapChat();
+    }
+
+    @Override
+    public void onSlide(SliderSetting setting) {
+        if (setting == font || setting == fontScale) {
+            rewrapChat();
+        }
+    }
+
+    /**
+     * Lines are wrapped once, when they arrive, against whatever font was selected then. Changing
+     * the face or its scale afterwards leaves every line in the buffer wrapped to the old metrics,
+     * so the backlog has to be split again.
+     */
+    private static void rewrapChat() {
+        net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getMinecraft();
+        if (minecraft == null || minecraft.ingameGUI == null) {
+            return;
+        }
+        net.minecraft.client.gui.GuiNewChat chat = minecraft.ingameGUI.getChatGUI();
+        if (chat != null) {
+            chat.refreshChat();
+        }
+    }
+
     private static boolean active() {
         return instance != null && instance.isEnabled();
     }

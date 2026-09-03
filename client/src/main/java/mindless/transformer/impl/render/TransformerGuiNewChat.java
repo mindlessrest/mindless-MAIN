@@ -13,6 +13,7 @@ import net.lenni0451.classtransform.annotations.CShadow;
 import net.lenni0451.classtransform.annotations.CTarget;
 import net.lenni0451.classtransform.annotations.CTransformer;
 import net.lenni0451.classtransform.annotations.injection.CInject;
+import net.lenni0451.classtransform.annotations.injection.CRedirect;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ChatLine;
 import net.minecraft.client.gui.GuiNewChat;
@@ -24,7 +25,10 @@ import org.lwjgl.opengl.GL11;
 
 import java.util.List;
 
+import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
+import net.minecraft.util.IChatComponent;
+import mindless.runtime.ChatWrapping;
 
 @CTransformer(GuiNewChat.class)
 public abstract class TransformerGuiNewChat {
@@ -52,6 +56,20 @@ public abstract class TransformerGuiNewChat {
 
     @CShadow
     public abstract int getChatWidth();
+
+    /**
+     * The Lunar half of the chat wrapping fix; see MixinGuiNewChat for why it is needed.
+     */
+    @CInline
+    @CRedirect(method = "setChatLine",
+            target = @CTarget(value = "INVOKE",
+                    target = "Lnet/minecraft/client/gui/GuiUtilRenderComponents;splitText(Lnet/minecraft/util/IChatComponent;ILnet/minecraft/client/gui/FontRenderer;ZZ)Ljava/util/List;",
+                    optional = true))
+    private List<IChatComponent> mindless$splitChatLine(IChatComponent component, int wrapWidth,
+                                                        FontRenderer font, boolean spaceAtEnd,
+                                                        boolean keepFormatting) {
+        return ChatWrapping.split(component, wrapWidth, font, spaceAtEnd, keepFormatting);
+    }
 
     @CInline
     @CInject(method = "drawChat", target = @CTarget("HEAD"), cancellable = true)
