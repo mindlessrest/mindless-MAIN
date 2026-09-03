@@ -87,7 +87,7 @@ private static final float CLOCK_GAP = 16.0f;
     }
 
     public Notifications() {
-        super("Notifications", category.render);
+        super("Notifications", "Pops a toast when a module is toggled.", category.render);
         instance = this;
         this.registerSetting(duration     = new SliderSetting("Duration", "s", 3.0, 0.5, 8.0, 0.1));
         this.registerSetting(showEnabled  = new ButtonSetting("Show enabled",  true));

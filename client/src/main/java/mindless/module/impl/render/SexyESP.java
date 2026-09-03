@@ -100,7 +100,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
     private final GlowShader glowShader = new GlowShader();
 
     public SexyESP() {
-        super("Player ESP", category.render, 0);
+        super("Player ESP", "Shows players, and items, through walls.", category.render, 0);
         instance = this;
 
         GroupSetting boxGroup = new GroupSetting("Box");

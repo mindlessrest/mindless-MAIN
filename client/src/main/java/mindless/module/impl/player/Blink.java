@@ -35,7 +35,7 @@ public class Blink extends Module {
     private long enableTime;
 
     public Blink() {
-        super("Blink", category.player);
+        super("Blink", "Holds packets, then releases them at once.", category.player);
         this.registerSetting(mode = new SliderSetting("Mode", 1, MODE_LABELS));
         this.registerSetting(maxDuration = new ButtonSetting("Max duration", false));
         this.registerSetting(disableAfterMs = new SliderSetting("Disable after", "ms", 500.0, 50.0, 20000.0, 50.0));

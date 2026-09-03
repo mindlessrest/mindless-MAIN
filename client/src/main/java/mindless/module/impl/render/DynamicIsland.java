@@ -87,7 +87,7 @@ public class DynamicIsland extends Module {
     public float islandPosY = -1.0f;
 
     public DynamicIsland() {
-        super("Dynamic Island", category.render);
+        super("Dynamic Island", "A pill with your account, FPS and client info.", category.render);
 
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(anchor = new SliderSetting("Anchor", 0, ANCHORS));

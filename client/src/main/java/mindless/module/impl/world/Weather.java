@@ -53,7 +53,7 @@ public class Weather extends Module {
     public SliderSetting vignette;
 
     public Weather() {
-        super("Atmosphere", category.world);
+        super("Atmosphere", "Overrides sky, fog, lighting and weather.", category.world);
         this.liteModule = true;
         this.registerSetting(customTime = new ButtonSetting("Custom time", true));
         this.registerSetting(time = new SliderSetting("Time", 0, 0, 24, 0.1));

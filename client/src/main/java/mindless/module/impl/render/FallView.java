@@ -50,7 +50,7 @@ public class FallView extends Module {
     private boolean recalculateAfterTeleport;
 
     public FallView() {
-        super("Fall View", category.render);
+        super("Fall View", "Shows your fall distance and the damage.", category.render);
         this.registerSetting(new DescriptionSetting("Shows fall distance damage."));
         this.registerSetting(damageThreshold = new SliderSetting("Damage threshold", "%", 0.0, 0.0, 100.0, 5.0));
         this.registerSetting(disableWhileFlying = new ButtonSetting("Disable while flying", true));

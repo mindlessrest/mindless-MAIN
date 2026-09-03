@@ -8,7 +8,7 @@ public class NoRotate extends Module {
     private float prevYaw = 0f;
 
     public NoRotate() {
-        super("NoRotate", category.player);
+        super("No Rotate", "Ignores forced rotations from the server.", category.player);
     }
 
     public void handlePlayerPosLookPre() {

@@ -26,7 +26,7 @@ public class Teleport extends Module {
     private ArrayList<Vec3> path = new ArrayList<>();
 
     public Teleport() {
-        super("Teleport", category.movement);
+        super("Teleport", "Moves you to the block you right click.", category.movement);
         this.registerSetting(rightClick = new ButtonSetting("Right click teleport", true));
         this.registerSetting(highlightTarget = new ButtonSetting("Highlight target", true));
         this.registerSetting(highlightPath = new ButtonSetting("Highlight path", false));

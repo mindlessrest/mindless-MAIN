@@ -217,7 +217,7 @@ private void beginResize(Element element, int handle) {
         private void buildElements() {
             elements.clear();
 
-            elements.add(new Element("ArrayList") {
+            elements.add(new Element("Array List") {
                 @Override
                 void render() {
                     setBounds(HUD.renderDesignerPreview());
@@ -419,7 +419,7 @@ private void beginResize(Element element, int handle) {
 
             if (ModuleManager.targetHUD != null) {
                 final TargetHUD targetHud = ModuleManager.targetHUD;
-                elements.add(new Element("TargetHUD") {
+                elements.add(new Element("Target HUD") {
                     @Override
                     void render() {
                         setBounds(targetHud.renderPreview());
@@ -481,7 +481,7 @@ private void beginResize(Element element, int handle) {
 
             if (ModuleManager.dynamicIsland != null) {
                 final DynamicIsland island = ModuleManager.dynamicIsland;
-                elements.add(new Element("Watermark") {
+                elements.add(new Element("Island Text") {
                     @Override
                     void render() {
                         setBounds(island.isIslandMode() ? null : island.getTextBounds());

@@ -72,7 +72,7 @@ private int reportedStatus = SpotifyVisualizerEngine.STATUS_STOPPED;
     private float posY = Float.NaN;
 
     public AudioVisualizer() {
-        super("Audio Visualizer", category.render);
+        super("Audio Visualizer", "Bars that move with whatever you play.", category.render);
         instance = this;
 
         this.registerSetting(placement = new SliderSetting("Placement", PLACEMENT_MINI_PLAYER,

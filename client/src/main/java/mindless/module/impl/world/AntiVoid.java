@@ -27,7 +27,7 @@ public class AntiVoid extends Module {
     private final List<C03PacketPlayer> heldPackets = new ArrayList<>();
 
     public AntiVoid() {
-        super("Anti Void", category.world);
+        super("Anti Void", "Catches you before you fall into the void.", category.world);
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(fallDistance = new SliderSetting("Fall distance", " blocks", 4.0, 1.0, 10.0, 0.5));
     }

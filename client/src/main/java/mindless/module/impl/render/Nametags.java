@@ -118,7 +118,7 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
     }
 
     public Nametags() {
-        super("Nametags", category.render, 0);
+        super("Nametags", "Nametags with health, armour and distance.", category.render, 0);
         this.liteModule = true;
         instance = this;
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.1, 2.0, 0.1));

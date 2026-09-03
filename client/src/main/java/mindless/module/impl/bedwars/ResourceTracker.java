@@ -30,7 +30,7 @@ public class ResourceTracker extends BedwarsHud {
     private final Map<Item, Integer> chest = new LinkedHashMap<Item, Integer>();
 
     public ResourceTracker() {
-        super("Resource Tracker", 0.02f, 0.42f);
+        super("Resource Tracker", "Counts the resources you are carrying.", 0.02f, 0.42f);
         this.registerSetting(iron = new ButtonSetting("Iron", true));
         this.registerSetting(gold = new ButtonSetting("Gold", true));
         this.registerSetting(diamond = new ButtonSetting("Diamonds", true));

@@ -71,7 +71,7 @@ public class LongJump extends Module {
     private int firstSlot = -1;
 
     public LongJump() {
-        super("Long Jump", category.movement);
+        super("Long Jump", "Throws you further than a normal jump.", category.movement);
         this.registerSetting(mode = new SliderSetting("Mode", 0, modes));
 
         this.registerSetting(manual = new ButtonSetting("Manual", false));

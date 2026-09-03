@@ -28,7 +28,7 @@ public class Reach extends Module {
     public static ButtonSetting hitThroughBlocks;
 
     public Reach() {
-        super("Reach", category.combat, 0);
+        super("Reach", "Extends how far you can land a hit.", category.combat, 0);
         this.liteModule = true;
         this.registerSetting(min = new SliderSetting("Min", 3.1D, 3.0D, 6.0D, 0.05D));
         this.registerSetting(max = new SliderSetting("Max", 3.3D, 3.0D, 6.0D, 0.05D));

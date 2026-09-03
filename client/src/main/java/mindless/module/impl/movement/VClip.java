@@ -10,7 +10,7 @@ public class VClip extends Module {
     private ButtonSetting sendMessage;
 
     public VClip() {
-        super("VClip", category.movement, 0);
+        super("VClip", "Clips you up or down through blocks.", category.movement, 0);
         this.registerSetting(distance = new SliderSetting("Distance", 3.0, -20.0, 20.0, 0.5));
         this.registerSetting(sendMessage = new ButtonSetting("Send message", true));
     }

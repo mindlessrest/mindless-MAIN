@@ -26,7 +26,7 @@ public class NoFall extends Module {
     private boolean isFalling;
 
     public NoFall() {
-        super("NoFall", category.player);
+        super("No Fall", "Cancels the fall damage you would take.", category.player);
         this.registerSetting(mode = new SliderSetting("Mode", 2, modes));
         this.registerSetting(minFallDistance = new SliderSetting("Minimum fall distance", 3, 0, 10, 0.1));
         this.registerSetting(disableAdventure = new ButtonSetting("Disable adventure", false));

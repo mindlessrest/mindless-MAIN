@@ -12,7 +12,7 @@ public class ExtendCamera extends Module {
     private float lastDistance;
 
     public ExtendCamera() {
-        super("ExtendCamera", category.render);
+        super("Extend Camera", "Pushes the third person camera back.", category.render);
         this.registerSetting(new DescriptionSetting("Extends camera in third person."));
         this.registerSetting(new DescriptionSetting("Default is 4 blocks."));
         this.registerSetting(distance = new SliderSetting("Distance", " block", 4, 1, 40, 0.5));

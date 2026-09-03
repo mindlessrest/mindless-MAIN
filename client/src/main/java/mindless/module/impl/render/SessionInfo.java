@@ -90,7 +90,7 @@ private static final long RESULT_COOLDOWN_MS = 20_000L;
     private static SliderSetting font;
 
     public SessionInfo() {
-        super("Session Info", category.render);
+        super("Session Info", "Kills, deaths, wins and KDR this session.", category.render);
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(font = new SliderSetting("Font", 0, ModuleFont.options()));
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.6, 1.6, 0.05));

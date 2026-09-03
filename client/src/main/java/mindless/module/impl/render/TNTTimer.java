@@ -34,7 +34,7 @@ public class TNTTimer extends Module {
     private boolean trackedBedwars = false;
 
     public TNTTimer() {
-        super("TNT Timer", category.render, 0);
+        super("TNT Timer", "Counts down the fuse above primed TNT.", category.render, 0);
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.5, 3.0, 0.1));
     }
 

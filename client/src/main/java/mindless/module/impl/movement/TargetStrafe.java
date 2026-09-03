@@ -19,7 +19,7 @@ public class TargetStrafe extends Module {
     private int direction = 1;
 
     public TargetStrafe() {
-        super("Target Strafe", category.movement);
+        super("Target Strafe", "Circles your target on its own.", category.movement);
         this.registerSetting(radius = new SliderSetting("Radius", 2.0, 0.5, 4.0, 0.1));
         this.registerSetting(speed = new SliderSetting("Speed", "x", 1.0, 0.5, 2.0, 0.05));
         this.registerSetting(onlyWhileJumping = new ButtonSetting("Only in air", false));

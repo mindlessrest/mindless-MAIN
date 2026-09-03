@@ -30,7 +30,7 @@ public class StatsHUD extends Module {
     private final StatPanel pingPanel = new StatPanel(0.005f, 0.065f);
 
     public StatsHUD() {
-        super("HUD", category.render);
+        super("Stats HUD", "Shows your FPS, BPS and ping.", category.render);
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.6, 1.6, 0.05));
         this.registerSetting(showFps = new ButtonSetting("Show FPS", true));
         this.registerSetting(showBps = new ButtonSetting("Show BPS", true));

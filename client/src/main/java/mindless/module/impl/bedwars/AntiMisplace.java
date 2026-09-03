@@ -18,7 +18,7 @@ public class AntiMisplace extends Module {
     private final ButtonSetting notify;
 
     public AntiMisplace() {
-        super("Anti Misplace", "Disables ability to place certain blocks if not near bed", category.bedwars);
+        super("Anti Misplace", "Blocks misplaces when you are away from a bed.", category.bedwars);
         this.registerSetting(endStone = new ButtonSetting("Include end stone", false));
         this.registerSetting(notify = new ButtonSetting("Chat message", true));
     }

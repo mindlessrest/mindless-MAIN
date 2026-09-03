@@ -16,7 +16,7 @@ public class Sprint extends Module {
     private final ButtonSetting allowInInventory;
 
     public Sprint() {
-        super("Sprint", category.movement, 0);
+        super("Sprint", "Sprints without holding the sprint key.", category.movement, 0);
         this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Allow while"));
         this.registerSetting(allowUsingItem = new ButtonSetting("Using item", false));

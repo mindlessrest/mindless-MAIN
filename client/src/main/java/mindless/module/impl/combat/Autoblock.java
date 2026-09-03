@@ -92,7 +92,7 @@ public class Autoblock extends Module {
     private long manualReleaseTime;
 
     public Autoblock() {
-        super("Auto Block", "Automatically blocks for you", category.combat);
+        super("Auto Block", "Blocks your sword right before a hit lands.", category.combat);
         this.liteModule = true;
 
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));

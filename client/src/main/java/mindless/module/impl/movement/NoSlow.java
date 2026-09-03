@@ -32,7 +32,7 @@ public class NoSlow extends Module {
     private boolean setJump;
 
     public NoSlow() {
-        super("NoSlow", category.movement, 0);
+        super("No Slow", "Removes the slowdown from using items.", category.movement, 0);
         this.registerSetting(new DescriptionSetting("Default is 80% motion reduction."));
         this.registerSetting(mode = new SliderSetting("Mode", 0, NOSLOW_MODES));
         this.registerSetting(slowed = new SliderSetting("Slow %", 80.0D, 0.0D, 80.0D, 1.0D));

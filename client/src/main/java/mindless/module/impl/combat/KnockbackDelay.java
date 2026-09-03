@@ -36,7 +36,7 @@ public class KnockbackDelay extends Module {
     private LagRequest inboundLagRequest;
 
     public KnockbackDelay() {
-        super("Knockback Delay", category.combat);
+        super("Knockback Delay", "Delays the knockback you take.", category.combat);
         this.registerSetting(distanceToTarget = new SliderSetting("Distance to target", 6.0, 3.0, 12.0, 0.1));
         this.registerSetting(chance = new SliderSetting("Chance", "%", 100.0, 0.0, 100.0, 1.0));
         this.registerSetting(maximumDelay = new SliderSetting("Maximum delay", "ms", 200.0, 50.0, 1000.0, 10.0));

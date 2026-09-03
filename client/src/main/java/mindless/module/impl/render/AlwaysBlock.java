@@ -7,7 +7,7 @@ public class AlwaysBlock extends Module {
     private static AlwaysBlock instance;
 
     public AlwaysBlock() {
-        super("Always Block", category.render);
+        super("Always Block", "Keeps the blocking animation on screen.", category.render);
         instance = this;
     }
 

@@ -47,7 +47,7 @@ public class Speed extends Module {
     private int grimAirTicks;
 
     public Speed() {
-        super("Speed", category.movement, 0);
+        super("Speed", "Moves you faster than vanilla.", category.movement, 0);
         this.registerSetting(speed = new SliderSetting("Speed", 0, MODES));
         this.registerSetting(multiplier = new SliderSetting("Multiplier", "x", 1.2D, 1.0D, 1.5D, 0.01D));
         this.registerSetting(speedSetting = new SliderSetting("BHop Speed", 2.0, 0.8, 1.2, 0.01));

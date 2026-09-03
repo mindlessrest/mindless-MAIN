@@ -87,7 +87,7 @@ public class KillAura extends Module {
     private float lastAttackedHealth = -1f;
 
     public KillAura() {
-        super("Kill Aura", category.combat);
+        super("Kill Aura", "Attacks players in range for you.", category.combat);
         this.liteModule = true;
         this.registerSetting(targetCPS = new SliderSetting("Target CPS", 10.0, 1.0, 20.0, 0.5));
         this.registerSetting(fov = new SliderSetting("FOV", "°", 360.0, 30.0, 360.0, 4.0));

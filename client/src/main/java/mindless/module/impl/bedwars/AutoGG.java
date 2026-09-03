@@ -11,7 +11,7 @@ public class AutoGG extends Module {
     private final SliderSetting delay;
 
     public AutoGG() {
-        super("Auto GG", "Automatically sends a message at the end of the game", category.bedwars);
+        super("Auto GG", "Sends your chosen message when the game ends.", category.bedwars);
         this.registerSetting(message = new TextSetting("Message", "gg", "gg", 64));
         this.registerSetting(delay = new SliderSetting("Delay (ms)", 500, 0, 3000, 100));
     }

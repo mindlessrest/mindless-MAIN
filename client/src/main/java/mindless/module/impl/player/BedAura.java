@@ -78,7 +78,7 @@ private static final double AIM_FACE_INSET = 0.12;
 
 
     public BedAura() {
-        super("BedAura", category.player);
+        super("Bed Aura", "Breaks a nearby bed for you.", category.player);
         this.registerSetting(mode = new SliderSetting("Mode", 1, MODES));
         this.registerSetting(breakSpeed = new SliderSetting("Break speed", "x", 1.0, 1.0, 2.0, 0.02));
         this.registerSetting(breakDelay = new SliderSetting("Break delay", "ms", 250.0, 0.0, 250.0, 50.0));

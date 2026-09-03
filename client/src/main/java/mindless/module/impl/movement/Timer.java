@@ -9,7 +9,7 @@ public class Timer extends Module {
     private SliderSetting speed;
 
     public Timer() {
-        super("Timer", category.movement);
+        super("Timer", "Speeds up or slows down the whole game.", category.movement);
         this.registerSetting(speed = new SliderSetting("Speed", 1.0D, 0.0D, 2.0D, 0.1D));
     }
 

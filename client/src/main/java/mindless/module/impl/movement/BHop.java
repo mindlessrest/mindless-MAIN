@@ -25,7 +25,7 @@ public class BHop extends Module {
     public boolean hopping, lowhop, didMove, setRotation;
 
     public BHop() {
-        super("BHop", Module.category.movement);
+        super("BHop", "Bunny hops to move faster than walking.", Module.category.movement);
         this.registerSetting(mode = new SliderSetting("Mode", 0, modes));
         this.registerSetting(speedSetting = new SliderSetting("Speed", 2.0, 0.8, 1.2, 0.01));
         this.registerSetting(liquidDisable = new ButtonSetting("Disable in liquid", true));

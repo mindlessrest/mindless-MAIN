@@ -28,7 +28,7 @@ public class BreakProgress extends Module {
     private String progressStr;
 
     public BreakProgress() {
-        super("BreakProgress", category.render);
+        super("Break Progress", "Shows how far the block you are mining is.", category.render);
         this.liteModule = true;
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(manual = new ButtonSetting("Show manual", true));

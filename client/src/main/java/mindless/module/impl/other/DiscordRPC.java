@@ -52,7 +52,7 @@ private static final long BUILD_INTERVAL_MS = 150L;
     private int tickCounter;
 
     public DiscordRPC() {
-        super("Discord RPC", Module.category.other);
+        super("Discord RPC", "Shows your server and game in Discord.", Module.category.other);
         this.registerSetting(showServer = new ButtonSetting("Show Server", true));
         this.registerSetting(hypixelStats = new ButtonSetting("Hypixel Stats", true));
         this.registerSetting(forceHypixel = new ButtonSetting("Force Hypixel", false));

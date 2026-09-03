@@ -19,7 +19,7 @@ public class Stasis extends Module {
     private boolean sendPositionNextTick;
 
     public Stasis() {
-        super("Air Stuck", category.movement);
+        super("Stasis", "Freezes you by resending your old position.", category.movement);
     }
 
     @Override

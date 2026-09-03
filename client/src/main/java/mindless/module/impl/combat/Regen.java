@@ -12,7 +12,7 @@ public class Regen extends Module {
     private final SliderSetting health;
 
     public Regen() {
-        super("Regen", category.combat);
+        super("Regen", "Spams packets to heal faster at low health.", category.combat);
         this.registerSetting(speed = new SliderSetting("Packets/tick", 50, 1, 100, 1));
         this.registerSetting(health = new SliderSetting("Health trigger", 18, 1, 20, 1));
     }

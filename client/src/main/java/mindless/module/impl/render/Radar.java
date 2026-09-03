@@ -33,7 +33,7 @@ public class Radar extends Module {
     private float relativePosY = Float.NaN;
 
     public Radar() {
-        super("Radar", category.render);
+        super("Radar", "A small map of the players around you.", category.render);
         this.registerSetting(range = new SliderSetting("Range", " block", 20, 8, 256, 1));
         this.registerSetting(radarScale = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.1));
         this.registerSetting(tracerLines = new ButtonSetting("Show tracer lines", false));

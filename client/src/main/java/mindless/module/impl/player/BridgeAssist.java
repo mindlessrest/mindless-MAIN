@@ -49,7 +49,7 @@ public class BridgeAssist extends Module {
     private int unsneakStartTick = -1;
 
     public BridgeAssist() {
-        super("Bridge Assist", category.player);
+        super("Bridge Assist", "Sneaks at the edge so you bridge safely.", category.player);
 
         this.registerSetting(prePlace = new ButtonSetting("Pre place", false));
         this.registerSetting(disableHotbarScrolling = new ButtonSetting("Disable hotbar scrolling", false));

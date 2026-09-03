@@ -170,7 +170,7 @@ public class Indicators extends Module {
     private String[] arrowTypes = new String[] { "Caret", "Greater than", "Triangle" };
 
     public Indicators() {
-        super("Indicators", category.render);
+        super("Indicators", "Marks incoming projectiles near your crosshair.", category.render);
         this.liteModule = true;
         this.registerSetting(items = new GroupSetting("Items"));
         this.registerSetting(renderArrows = new ButtonSetting(items, "Render arrows", true));

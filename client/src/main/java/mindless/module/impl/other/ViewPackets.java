@@ -32,7 +32,7 @@ public class ViewPackets extends Module {
     public static long tick;
 
     public ViewPackets() {
-        super("View Packets", category.other);
+        super("View Packets", "Logs the packets you send and receive.", category.other);
         this.registerSetting(includeCancelled = new ButtonSetting("Include cancelled", true));
         this.registerSetting(singlePlayer = new ButtonSetting("Singleplayer", false));
         this.registerSetting(sent = new ButtonSetting("Sent", false));

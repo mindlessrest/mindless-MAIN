@@ -91,7 +91,7 @@ public class Clutch extends Module {
     private int prevHurtTime = -1;
 
     public Clutch() {
-        super("Clutch", category.player);
+        super("Clutch", "Drops a block under you before you fall.", category.player);
         this.registerSetting(reach = new SliderSetting("Reach", " block", 4.5, 0.5, 4.5, 0.1));
         this.registerSetting(speed = new SliderSetting("Speed", 8, 0, 100, 1));
         this.registerSetting(snapbackSpeed = new SliderSetting("Snapback Speed", 12, 0, 100, 1));

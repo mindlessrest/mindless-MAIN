@@ -45,7 +45,7 @@ public class Anticheat extends Module {
     private long lastClientBoundPacket;
 
     public Anticheat() {
-        super("Anticheat", category.other);
+        super("Cheat Detector", "Flags other players who look like cheaters.", category.other);
         this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Tries to detect cheaters."));
         this.registerSetting(interval = new SliderSetting("Flag interval", " second", 20.0, 0.0, 60.0, 1.0));

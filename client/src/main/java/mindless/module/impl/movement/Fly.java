@@ -27,7 +27,7 @@ public class Fly extends Module {
     private AxisAlignedBB FULL_ABB = new AxisAlignedBB(0, 0, 0, 1.0D,1.0D,1.0D);
 
     public Fly() {
-        super("Fly", category.movement);
+        super("Fly", "Lets you fly at your own speed.", category.movement);
         this.registerSetting(mode = new SliderSetting("Fly", 0, modes));
         this.registerSetting(horizontalSpeed = new SliderSetting("Horizontal speed", 2.0, 1.0, 9.0, 0.1));
         this.registerSetting(verticalSpeed = new SliderSetting("Vertical speed", 2.0, 1.0, 9.0, 0.1));

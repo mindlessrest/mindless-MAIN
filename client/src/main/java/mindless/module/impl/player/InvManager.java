@@ -136,7 +136,7 @@ public class InvManager extends Module {
     private final CurrentArmor[] armorArr = CurrentArmor.values();
 
     public InvManager() {
-        super("InvManager", category.player);
+        super("Inventory Manager", "Sorts your hotbar, armour and chest loot.", category.player);
         this.liteModule = true;
         this.registerSetting(closeChest = new ButtonSetting("Close chest", false));
         this.registerSetting(closeInventory = new ButtonSetting("Close inventory", false));

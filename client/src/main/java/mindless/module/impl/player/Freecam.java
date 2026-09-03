@@ -32,7 +32,7 @@ public class Freecam extends Module {
     private float[] sAng = new float[]{0.0F, 0.0F};
 
     public Freecam() {
-        super("Freecam", category.player);
+        super("Freecam", "Flies the camera while your body stays put.", category.player);
         this.registerSetting(speed = new SliderSetting("Speed", 2.5D, 0.5D, 10.0D, 0.5D));
         this.registerSetting(disableOnDamage = new ButtonSetting("Disable on damage", true));
         this.registerSetting(allowDigging = new ButtonSetting("Allow digging", false));

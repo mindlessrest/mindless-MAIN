@@ -100,7 +100,7 @@ private static final int[][] OUTLINE_OFFSETS = {
     private float lastHudFontScale = -1.0f;
 
     public HUD() {
-        super("Array List", Module.category.render);
+        super("Array List", "The list of your enabled modules.", Module.category.render);
         this.registerSetting(useTheme = new ButtonSetting("Use theme", true));
         this.registerSetting(colorMode = new SliderSetting("Color mode", 0, COLOR_MODES));
         this.registerSetting(hudColor = new ColorSetting("Color", 255, 255, 255));

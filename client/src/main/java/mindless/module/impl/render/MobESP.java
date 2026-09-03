@@ -91,7 +91,7 @@ public class MobESP extends Module {
     }
 
     public MobESP() {
-        super("MobESP", category.render);
+        super("Mob ESP", "Shows mobs, flashing red as they take damage.", category.render);
         this.registerSetting(espTypes = new GroupSetting("Types"));
         this.registerSetting(twoD = new ButtonSetting(espTypes, "2D", false));
         this.registerSetting(box = new ButtonSetting(espTypes, "Box", false));

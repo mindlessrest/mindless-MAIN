@@ -17,7 +17,7 @@ public class FastMine extends Module {
 private int passiveBlockHitLastSeen;
 
     public FastMine() {
-        super("Fast Mine", category.player);
+        super("Fast Mine", "Breaks blocks faster than vanilla.", category.player);
         this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Vanilla is 250ms delay & 1x speed."));
         this.registerSetting(delay = new SliderSetting("Break delay", "ms", 250.0, 0.0, 250.0, 50.0));

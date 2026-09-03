@@ -37,7 +37,7 @@ public class ChestESP extends Module {
 
 
     public ChestESP() {
-        super("ChestESP", Module.category.render, 0);
+        super("Chest ESP", "Shows chests through walls.", Module.category.render, 0);
         this.liteModule = true;
         chestSettingsByKind.put(ChestKind.NORMAL, registerChestSettings("Chest", 198, 132, 56));
         chestSettingsByKind.put(ChestKind.TRAPPED, registerChestSettings("Trapped chest", 176, 64, 64));

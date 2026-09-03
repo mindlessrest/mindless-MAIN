@@ -101,7 +101,7 @@ private float displayedBlocks = Float.NaN;
 private int previousSlot = -1;
 
     public Scaffold() {
-        super("Scaffold", category.player);
+        super("Scaffold", "Bridges by placing blocks under your feet.", category.player);
         this.registerSetting(counterFont = new SliderSetting("Counter font", 0, ModuleFont.options()));
         this.registerSetting(counterScale = new SliderSetting("Counter scale", "x", 1.0, 0.5, 3.0, 0.05));
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));

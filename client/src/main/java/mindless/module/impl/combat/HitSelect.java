@@ -55,7 +55,7 @@ public class HitSelect extends Module {
     private int tickCounter;
 
     public HitSelect() {
-        super("Hit Select",  category.combat);
+        super("Hit Select", "Drops clicks to cut CPS and keep knockback.", category.combat);
         this.liteModule = true;
 
         this.registerSetting(new DescriptionSetting("Filters unnecessary clicks."));

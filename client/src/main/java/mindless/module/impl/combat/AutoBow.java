@@ -13,7 +13,7 @@ public class AutoBow extends Module {
     private final ButtonSetting fullCharge;
 
     public AutoBow() {
-        super("AutoBow", "Automatically shoots for you", category.combat, 0);
+        super("Auto Bow", "Fires your bow for you.", category.combat, 0);
         this.registerSetting(fullCharge = new ButtonSetting("Full charge only", true));
     }
 

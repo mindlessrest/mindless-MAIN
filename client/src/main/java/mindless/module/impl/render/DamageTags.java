@@ -116,7 +116,7 @@ public class DamageTags extends Module {
     }
 
     public DamageTags() {
-        super("Damage Tags", category.render, 0);
+        super("Damage Tags", "Pops damage numbers above whoever you hit.", category.render, 0);
         this.registerSetting(duration = new SliderSetting("Duration", " ms", 1200, 0, 2000, 100));
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.5, 3.0, 0.1));
         this.registerSetting(font = new SliderSetting("Font", 0, FONT_OPTIONS));

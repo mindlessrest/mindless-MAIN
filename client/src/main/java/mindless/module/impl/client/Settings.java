@@ -45,7 +45,7 @@ public class Settings extends Module {
     public static ButtonSetting chatGlow;
 
     public Settings() {
-        super("Settings", "Configure the client", category.client, 0);
+        super("Settings", "Client options that span every module.", category.client, 0);
         this.registerSetting(new ButtonSetting("Uninject", () -> Mindless.uninject()));
         this.registerSetting(new DescriptionSetting("Diagnostics"));
         this.registerSetting(diagnostics = new ButtonSetting("Diagnostics", false));

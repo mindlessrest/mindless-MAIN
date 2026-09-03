@@ -30,7 +30,7 @@ public class WaterBucket extends Module {
     private int lastSlot = -1;
 
     public WaterBucket() {
-        super("Water Bucket", category.player);
+        super("Water Bucket", "Drops water to break your fall, then takes it.", category.player);
         this.liteModule = true;
         this.registerSetting(pickupWater = new ButtonSetting("Pickup water", true));
         this.registerSetting(silentAim = new ButtonSetting("Silent aim", true));

@@ -28,7 +28,7 @@ public class Tracers extends Module {
     private int trackedEntityCount = 0;
 
     public Tracers() {
-        super("Tracers", category.render);
+        super("Tracers", "Lines from your screen to nearby players.", category.render);
         this.registerSetting(showInvis = new ButtonSetting("Show invis", true));
         this.registerSetting(lineWidth = new SliderSetting("Line Width", 1.0D, 1.0D, 5.0D, 1.0D));
         this.registerSetting(color = new ColorSetting("Color", 0, 255, 0));

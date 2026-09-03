@@ -57,7 +57,7 @@ public class InvMove extends Module {
     private final String[] CHEST_AND_OTHER_MODES = new String[] { "Vanilla", "Blink" };
 
     public InvMove() {
-        super("InvMove", category.movement);
+        super("Inventory Move", "Move around with your inventory open.", category.movement);
         this.registerSetting(inventory = new SliderSetting("Inventory", true, 0, INVENTORY_MODES));
         this.registerSetting(delayOpenPacket = new ButtonSetting("Delay open packet", false));
         this.registerSetting(chestAndOthers = new SliderSetting("Chest & others", true, 0, CHEST_AND_OTHER_MODES));

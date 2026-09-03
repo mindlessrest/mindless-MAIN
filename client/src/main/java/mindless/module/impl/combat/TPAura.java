@@ -18,7 +18,7 @@ public class TPAura extends Module {
     private double y = 0;
 
     public TPAura() {
-        super("TPAura", category.combat);
+        super("TP Aura", "Teleports to targets so you can reach them.", category.combat);
         this.registerSetting(range = new SliderSetting("Range", 0, 0, 50, 1));
         this.registerSetting(weaponOnly = new ButtonSetting("Weapon only", false));
     }

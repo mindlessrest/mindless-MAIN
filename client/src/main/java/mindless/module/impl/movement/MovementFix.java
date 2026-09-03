@@ -6,7 +6,7 @@ import mindless.module.setting.impl.DescriptionSetting;
 public class MovementFix extends Module {
 
     public MovementFix() {
-        super("Movement Fix", category.movement);
+        super("Movement Fix", "Keeps input aligned while modules rotate you.", category.movement);
         this.registerSetting(new DescriptionSetting("Aligns input with rotations"));
     }
 

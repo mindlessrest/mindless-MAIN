@@ -27,7 +27,7 @@ public class KeepSprint extends Module {
     private boolean hitThisTick;
 
     public KeepSprint() {
-        super("Keep Sprint", Module.category.movement, 0);
+        super("Keep Sprint", "Keeps momentum instead of dropping sprint.", Module.category.movement, 0);
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(new DescriptionSetting(new String("Default is 40% motion reduction.")));
         this.registerSetting(slow = new SliderSetting("Slow %", 40.0D, 0.0D, 40.0D, 1.0D));

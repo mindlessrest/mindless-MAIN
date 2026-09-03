@@ -21,7 +21,7 @@ public class ChatModule extends Module {
     private static SliderSetting lineSpacing;
 
     public ChatModule() {
-        super("Chat", category.render);
+        super("Chat", "Restyles chat with a font, panel and heads.", category.render);
         this.registerSetting(background = new ButtonSetting("Background", true));
         this.registerSetting(backgroundOpacity = new SliderSetting("Background opacity", 85.0, 0.0, 100.0, 1.0));
         this.registerSetting(cornerRadius = new SliderSetting("Corner radius", 8.0, 0.0, 14.0, 0.5));

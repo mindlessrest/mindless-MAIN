@@ -15,7 +15,7 @@ public class ChatCommands extends Module {
     public final TextSetting prefix;
 
     public ChatCommands() {
-        super("Chat Commands", "Enables chat commands", category.client);
+        super("Chat Commands", "Runs client commands from the chat box.", category.client);
         this.liteModule = true;
         this.registerSetting(prefix = new TextSetting("Prefix", DEFAULT_PREFIX, "Type one character...", 1) {
             @Override

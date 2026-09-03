@@ -56,7 +56,7 @@ public class AutoTool extends Module {
     private int nextHoverSlot = -1;
 
     public AutoTool() {
-        super("Auto Tool", category.player);
+        super("Auto Tool", "Switches to the best tool for the block.", category.player);
         this.liteModule = true;
 
         this.registerSetting(timingGroup = new GroupSetting("Timing"));

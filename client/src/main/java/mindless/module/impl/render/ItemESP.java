@@ -85,7 +85,7 @@ private static final double STACK_RADIUS_SQ = 9.0D;
     private RenderUtils.ProjectionContext projectionContext;
 
     public ItemESP() {
-        super("ItemESP", category.render);
+        super("Item ESP", "Shows dropped items, grouped by type.", category.render);
         this.liteModule = true;
 
         GroupSetting items = new GroupSetting("Items");

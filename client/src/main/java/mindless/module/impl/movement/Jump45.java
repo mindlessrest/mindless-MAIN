@@ -42,7 +42,7 @@ public class Jump45 extends Module {
     private boolean rotateTakeoffPacket;
 
     public Jump45() {
-        super("45 Jump", category.movement);
+        super("45 Jump", "Angles diagonal sprint jumps for extra distance.", category.movement);
         this.registerSetting(holdingBlocks = new ButtonSetting("Holding blocks", true));
         this.registerSetting(holdingThrowable = new ButtonSetting("Holding throwable", true));
         this.registerSetting(holdingRod = new ButtonSetting("Holding rod", true));

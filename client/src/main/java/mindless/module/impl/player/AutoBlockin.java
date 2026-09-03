@@ -88,7 +88,7 @@ public class AutoBlockin extends Module {
     private float lastFillTargetCount = -1;
 
     public AutoBlockin() {
-        super("AutoBlockin", category.player);
+        super("Auto Block In", "Boxes you in on its own, no bind held.", category.player);
         this.liteModule = true;
         this.registerSetting(speed = new SliderSetting("Speed", 10, 1, 30, 1));
         this.registerSetting(randomization = new SliderSetting("Randomization", "%", 10, 0, 100, 1));

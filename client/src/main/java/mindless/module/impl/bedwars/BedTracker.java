@@ -34,7 +34,7 @@ private static final long SETTLE_MS = 6000L;
     private boolean warnedOutOfRange;
 
     public BedTracker() {
-        super("Bed Tracker",0.02f, 0.34f);
+        super("Bed Tracker", "Tracks which beds are still standing.", 0.02f, 0.34f);
         this.registerSetting(frequency = new SliderSetting("Alert interval", " second", 10, 5, 30, 1));
         this.registerSetting(distance = new SliderSetting("Max distance", " block", 50, 10, 100, 5));
         this.registerSetting(pingSound = new ButtonSetting("Ping sound", true));

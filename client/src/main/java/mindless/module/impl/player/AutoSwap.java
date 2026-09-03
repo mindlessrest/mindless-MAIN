@@ -38,7 +38,7 @@ public class AutoSwap extends Module {
     private long lastSwapTime;
 
     public AutoSwap() {
-        super("Auto Swap", category.player);
+        super("Auto Swap", "Refills your hand when the stack runs out.", category.player);
         this.liteModule = true;
         this.registerSetting(allowedTypes = new SliderSetting("Allowed types", EXACT, ALLOWED_TYPES));
         this.registerSetting(swapOnRmb = new ButtonSetting("Swap on RMB", true));

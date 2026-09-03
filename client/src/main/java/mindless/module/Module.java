@@ -2,7 +2,6 @@ package mindless.module;
 
 import mindless.Mindless;
 import mindless.helper.MouseHelper;
-import mindless.module.impl.combat.AntiKnockback;
 import mindless.module.setting.Setting;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -219,9 +218,6 @@ public class Module {
     public String getDescription() { return this.moduleDescription != null ? this.moduleDescription : ""; }
 
     public String getNameInHud() {
-        if (this instanceof AntiKnockback) {
-            return "Velocity";
-        }
         return this.moduleName;
     }
 

@@ -20,7 +20,7 @@ private static final int URGENT_SECONDS = 30;
     private String remaining = "";
 
     public EventTimers() {
-        super("Event Timers", 0.02f, 0.50f);
+        super("Event Timers", "Counts down to the next game event.", 0.02f, 0.50f);
         this.registerSetting(dynamicColour = new ButtonSetting("Colour by urgency", true));
     }
 

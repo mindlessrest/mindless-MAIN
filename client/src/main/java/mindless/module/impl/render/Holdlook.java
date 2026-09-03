@@ -16,7 +16,7 @@ public class Holdlook extends Module {
     private int savedPerspective;
 
     public Holdlook() {
-        super("Hold Look", category.render);
+        super("Hold Look", "Rear or front camera while a key is held.", category.render);
         this.registerSetting(rearCamKey = new KeySetting("Rear cam", 0));
         this.registerSetting(frontCamKey = new KeySetting("Front cam", 0));
     }

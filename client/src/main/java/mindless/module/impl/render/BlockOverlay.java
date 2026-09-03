@@ -60,7 +60,7 @@ public class BlockOverlay extends Module {
     private final ButtonSetting hidePlants;
 
     public BlockOverlay() {
-        super("Block Overlay", category.render);
+        super("Block Overlay", "Restyles the outline on the block you face.", category.render);
         this.registerSetting(renderMode = new SliderSetting("Mode", 2, RENDER_MODES));
         this.registerSetting(overlayGroup = new GroupSetting("Overlay"));
         this.registerSetting(overlayVisible = new ButtonSetting(overlayGroup, "Visible", true));

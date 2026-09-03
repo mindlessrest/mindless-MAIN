@@ -18,7 +18,7 @@ public class Relationships extends Module {
         Mindless.playerRelationsManager != null && Mindless.playerRelationsManager.isMiddleClickFriends());
 
     public Relationships() {
-        super("Relationships", category.client, 0);
+        super("Relationships", "Manages your friends and enemies.", category.client, 0);
 
         friendsGroup.setOpened(true);
         enemiesGroup.setOpened(true);

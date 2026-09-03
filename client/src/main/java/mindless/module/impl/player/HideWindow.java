@@ -45,7 +45,7 @@ public class HideWindow extends Module {
     private float relativePosY = Float.NaN;
 
     public HideWindow() {
-        super("Hide Window", category.player);
+        super("Hide Window", "Tucks an open container behind an icon.", category.player);
         this.registerSetting(iconColor = new ColorSetting("Icon color", 255, 255, 255));
         this.registerSetting(iconScale = new SliderSetting("Icon scale", 1.0, 0.5, 3.0, 0.1));
         this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));

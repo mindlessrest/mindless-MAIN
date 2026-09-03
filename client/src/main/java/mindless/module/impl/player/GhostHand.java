@@ -48,7 +48,7 @@ public class GhostHand extends Module {
     private ButtonSetting notSword;
 
     public GhostHand() {
-        super("Ghost Hand", category.player);
+        super("Ghost Hand", "Reaches blocks through the players in the way.", category.player);
         this.liteModule = true;
         this.registerSetting(interactGroup = new GroupSetting("Interact through"));
         this.registerSetting(throughNonPlayer = new ButtonSetting(interactGroup, "Non-player entities", true));

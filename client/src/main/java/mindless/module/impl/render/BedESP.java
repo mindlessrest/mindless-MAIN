@@ -129,7 +129,7 @@ public class BedESP extends Module {
     };
 
     public BedESP() {
-        super("BedESP", category.render);
+        super("Bed ESP", "Shows beds and their defence layers.", category.render);
         this.liteModule = true;
         this.registerSetting(colorMode = new SliderSetting("Color mode", 0, COLOR_MODES));
         this.registerSetting(theme = new SliderSetting("Theme", DEFAULT_THEME_INDEX, Theme.THEMES_SETTING));

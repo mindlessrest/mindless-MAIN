@@ -111,7 +111,7 @@ public class Trajectories extends Module {
     private ButtonSetting onlyWhenHolding;
 
     public Trajectories() {
-        super("Trajectories", category.render);
+        super("Trajectories", "Draws where your throw or shot will land.", category.render);
         this.liteModule = true;
         this.registerSetting(disableUnchargedBow = new ButtonSetting("Disable uncharged bow", true));
         this.registerSetting(highlightEntities = new ButtonSetting("Highlight on entity", true));

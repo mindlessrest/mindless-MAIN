@@ -26,7 +26,7 @@ public class JumpReset extends Module {
     private double lastFallDistance;
 
     public JumpReset() {
-        super("Jump Reset", category.combat);
+        super("Jump Reset", "Jumps as you are hit to cut knockback.", category.combat);
         this.liteModule = true;
         this.registerSetting(chance = new SliderSetting("Chance", "%", 80, 0, 100, 1));
         this.registerSetting(requireMouseDown = new ButtonSetting("Require mouse down", false));

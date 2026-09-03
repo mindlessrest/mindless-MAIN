@@ -77,7 +77,7 @@ private static final int[] DEFAULT_RING_COLORS = {
     private String[] modes = new String[]{ "Modern", "Legacy" };
 
     public TargetHUD() {
-        super("TargetHUD", category.render);
+        super("Target HUD", "A panel for whoever you are fighting.", category.render);
         this.liteModule = true;
         this.registerSetting(new DescriptionSetting("Works with KillAura and AimAssist."));
         this.registerSetting(mode = new SliderSetting("Mode", true, 1, modes));

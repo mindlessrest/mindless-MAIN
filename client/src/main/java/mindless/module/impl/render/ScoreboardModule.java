@@ -14,7 +14,7 @@ public class ScoreboardModule extends Module {
     private static SliderSetting fontScale;
 
     public ScoreboardModule() {
-        super("Scoreboard", category.render);
+        super("Scoreboard", "Restyles the scoreboard with your own font.", category.render);
         this.registerSetting(font = new SliderSetting("Font", 0, FONT_OPTIONS));
         this.registerSetting(fontScale = new SliderSetting("Font scale", 1.0, 0.5, 2.0, 0.05));
         instance = this;

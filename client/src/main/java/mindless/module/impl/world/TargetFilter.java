@@ -18,7 +18,7 @@ public class TargetFilter extends Module {
     private static boolean preGameLobby;
 
     public TargetFilter() {
-        super("Target Filter", Module.category.world, 0);
+        super("Target Filter", "Decides who counts as an enemy.", Module.category.world, 0);
         this.registerSetting(serverTeamCheck = new ButtonSetting("Server team check", true));
         this.registerSetting(colorTeamCheck = new ButtonSetting("Color team check", true));
         this.registerSetting(friends = new ButtonSetting("Friends", true));

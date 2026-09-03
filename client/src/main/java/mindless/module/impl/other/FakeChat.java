@@ -11,7 +11,7 @@ public class FakeChat extends Module {
     public static final String c4 = "&cInvalid message.";
 
     public FakeChat() {
-        super("Fake Chat", Module.category.other, 0);
+        super("Fake Chat", "Prints a message only you can see.", Module.category.other, 0);
         this.registerSetting(new DescriptionSetting("Command: '§e" + command + " [msg]§r'"));
     }
 

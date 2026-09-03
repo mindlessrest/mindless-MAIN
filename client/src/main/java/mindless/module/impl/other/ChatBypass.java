@@ -28,7 +28,7 @@ public class ChatBypass extends Module {
     private String replace_a = "\u00E1", replace_e = "\u00E9", replace_i = "\u00A1", replace_o = "\u00F3", replace_u = "\u00FA", replace_y = "\u00FF", replace_A = "\u00C1", replace_E = "\u00C9", replace_I = replace_i, replace_O = "\u00D3", replace_U = "\u00DA", replace_Y = replace_y;
 
     public ChatBypass() {
-        super("Chat Bypass", category.other);
+        super("Chat Bypass", "Reworks messages to slip past the filter.", category.other);
         this.registerSetting(filterKnownWords = new ButtonSetting("Only filter known words", true));
     }
 

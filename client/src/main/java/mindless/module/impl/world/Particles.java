@@ -43,7 +43,7 @@ public class Particles extends Module {
     private double windAngle;
 
     public Particles() {
-        super("Particles", category.world);
+        super("Particles", "Recolours and resizes hit particles.", category.world);
         this.registerSetting(mode = new SliderSetting("Mode", 0, new String[]{"Rain", "Snow", "Hearts", "Stars"}));
         this.registerSetting(count = new SliderSetting("Count", 200, 10, 1000, 10));
         this.registerSetting(size = new SliderSetting("Size", 0.5, 0.1, 2.0, 0.05));

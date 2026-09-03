@@ -27,7 +27,7 @@ public class LatencyAlerts extends Module {
     private Packet<?> lastPacket = null;
 
     public LatencyAlerts() {
-        super("Latency Alerts", category.other);
+        super("Latency Alerts", "Warns you about ping spikes and packet loss.", category.other);
         this.registerSetting(new DescriptionSetting("Detects packet loss."));
         this.registerSetting(interval = new SliderSetting("Alert interval", " second", 3.0, 0.0, 5.0, 0.1));
         this.registerSetting(highLatency = new SliderSetting("High latency", " second", 0.5, 0.1, 5.0, 0.1));

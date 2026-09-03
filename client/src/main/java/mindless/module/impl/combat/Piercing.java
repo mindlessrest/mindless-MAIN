@@ -26,7 +26,7 @@ public class Piercing extends Module {
     private String[] sortModes = new String[] { "Hurt time", "Health" };
 
     public Piercing() {
-        super("Piercing", category.combat);
+        super("Piercing", "Hits through blocks and the players in front.", category.combat);
         this.registerSetting(sortMode = new SliderSetting("Sort mode", 0, sortModes));
         this.registerSetting(ignoreBlocks = new ButtonSetting("Ignore blocks", false));
         this.registerSetting(ignoreNonPlayer = new ButtonSetting("Ignore non-players", true));

@@ -17,7 +17,7 @@ public class Dolphin extends Module {
     public ButtonSetting forwardOnly;
 
     public Dolphin() {
-        super("Dolphin", category.movement, 0);
+        super("Dolphin", "Speeds up your swimming.", category.movement, 0);
         this.registerSetting(horSpeed = new SliderSetting("Horizontal speed", 1.0, 1.0, 8.0, 0.1));
         this.registerSetting(verSpeed = new SliderSetting("Vertical speed", 1.0, 1.0, 8.0, 0.1));
         this.registerSetting(buoyant = new ButtonSetting("Buoyant", false));

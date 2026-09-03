@@ -6,7 +6,7 @@ public class Fullbright extends Module {
     private float prevGamma;
 
     public Fullbright() {
-        super("Fullbright", category.render);
+        super("Fullbright", "Lights the world so darkness hides nothing.", category.render);
     }
 
     @Override

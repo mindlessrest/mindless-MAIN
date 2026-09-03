@@ -24,7 +24,7 @@ public class WTap extends Module {
     public static boolean stopSprint = false;
 
     public WTap() {
-        super("WTap", category.combat);
+        super("Sprint Reset", "Taps back after a hit for full knockback.", category.combat);
         this.liteModule = true;
         this.registerSetting(chance = new SliderSetting("Chance", "%", 100, 0, 100, 1));
         this.registerSetting(delayBetweenReset = new SliderSetting("Delay between reset", "ms", 300, 0, 1000, 10));

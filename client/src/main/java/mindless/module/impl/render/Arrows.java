@@ -43,7 +43,7 @@ public class Arrows extends Module {
     private String[] arrowTypes = new String[] { "Caret", "Greater than", "Triangle" };
 
     public Arrows() {
-        super("Arrows", category.render);
+        super("Arrows", "Arrows around your crosshair point at players.", category.render);
         this.registerSetting(arrow = new SliderSetting("Arrow", 0, arrowTypes));
         this.registerSetting(radius = new SliderSetting("Circle radius", 50, 30, 200, 5));
         this.registerSetting(range = new SliderSetting("Range", " block", 200, 25, 300, 5));

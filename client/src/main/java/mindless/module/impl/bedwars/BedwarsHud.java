@@ -29,8 +29,8 @@ public abstract class BedwarsHud extends Module {
     private float posX = Float.NaN;
     private float posY = Float.NaN;
 
-    protected BedwarsHud(String name, float defaultX, float defaultY) {
-        super(name, category.bedwars);
+    protected BedwarsHud(String name, String description, float defaultX, float defaultY) {
+        super(name, description, category.bedwars);
         this.relativeX = defaultX;
         this.relativeY = defaultY;
         this.registerSetting(scale = new SliderSetting("Scale", "x", 1.0, 0.5, 1.5, 0.05));

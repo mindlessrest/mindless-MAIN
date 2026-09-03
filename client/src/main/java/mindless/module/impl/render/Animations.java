@@ -38,7 +38,7 @@ public class Animations extends Module {
     private final SliderSetting swingSpeedSetting;
 
     public Animations() {
-        super("Sword Animation", category.render);
+        super("Animations", "Reshapes how your held item and swing look.", category.render);
         instance = this;
         this.registerSetting(modeSetting = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(renderSetting = new SliderSetting("Render", 1, RENDER_MODES));

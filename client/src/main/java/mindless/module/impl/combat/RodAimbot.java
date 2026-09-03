@@ -23,7 +23,7 @@ public class RodAimbot extends Module {
     private EntityPlayer entity;
 
     public RodAimbot() {
-        super("RodAimbot", Module.category.combat, 0);
+        super("Rod Aimbot", "Aims your rod and leads the target.", Module.category.combat, 0);
         this.registerSetting(fov = new SliderSetting("FOV", 180, 30, 360, 4));
         this.registerSetting(predicatedTicks = new SliderSetting("Predicted ticks", 5.0, 0.0, 20.0, 1.0));
         this.registerSetting(distance = new SliderSetting("Distance", 6, 3, 30, 0.5));

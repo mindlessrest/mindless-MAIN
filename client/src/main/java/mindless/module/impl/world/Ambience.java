@@ -13,7 +13,7 @@ public class Ambience extends Module {
     private static final String[] timeNames = { "Normal", "Day", "Night", "Sunset" };
 
     public Ambience() {
-        super("Ambience", category.world);
+        super("Ambience", "Locks the time of day, with a dark mode.", category.world);
         this.registerSetting(timeMode = new SliderSetting("Time", 0, timeNames));
         this.registerSetting(darkMode = new ButtonSetting("Dark mode", false));
     }

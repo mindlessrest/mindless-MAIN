@@ -305,7 +305,17 @@ private static final Map<String, String> LEGACY_MODULE_NAMES = buildLegacyModule
 
     private static Map<String, String> buildLegacyModuleNames() {
         Map<String, String> names = new HashMap<>();
-        names.put("HUD", "ArrayList");
+        // Only renames that survive normalizeModuleName belong here; pure spacing and
+        // casing changes already resolve through modulesByNormalizedName.
+        names.put("HUD", "Stats HUD");
+        names.put("Hide", "Hide Modules");
+        names.put("WTap", "Sprint Reset");
+        names.put("Air Stuck", "Stasis");
+        names.put("InvMove", "Inventory Move");
+        names.put("InvManager", "Inventory Manager");
+        names.put("Anticheat", "Cheat Detector");
+        names.put("Sword Animation", "Animations");
+        names.put("Slow", "Slow Swing");
         return names;
     }
 

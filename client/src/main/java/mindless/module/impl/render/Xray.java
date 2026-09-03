@@ -36,7 +36,7 @@ public class Xray extends Module {
     private long lastCheck = 0L;
 
     public Xray() {
-        super("Xray", category.render);
+        super("X-Ray", "Hides terrain so only your ores show.", category.render);
         this.registerSetting(range = new SliderSetting("Range", 20, 5, 50, 1));
         this.registerSetting(rate = new SliderSetting("Rate", " second", 0.5, 0.1, 3.0, 0.1));
         this.registerSetting(coal = new ButtonSetting("Coal", true));

@@ -80,7 +80,7 @@ public class BlockIn extends Module {
     private boolean lastTargetAdjacent;
 
     public BlockIn() {
-        super("Block In", category.player);
+        super("Block In", "Places blocks around you to box you in.", category.player);
         this.registerSetting(speed = new SliderSetting("Speed", 10, 1, 30, 1));
         this.registerSetting(randomization = new SliderSetting("Randomization", "%", 10, 0, 100, 1));
         this.registerSetting(rotationTol = new SliderSetting("Rotation Tolerance", "\u00B0", 25, 20, 100, 1));

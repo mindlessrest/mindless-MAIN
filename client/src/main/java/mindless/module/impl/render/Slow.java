@@ -23,7 +23,7 @@ public class Slow extends Module {
     private final SliderSetting impactPoint;
 
     public Slow() {
-        super("Slow", category.render, 0);
+        super("Slow Swing", "Slows your swing and syncs it to your hits.", category.render, 0);
         instance = this;
         registerSetting(slowdown = new SliderSetting("Slowdown", "%", 200, 100, 600, 10));
         registerSetting(syncEffects = new ButtonSetting("Sync hit effects", true));

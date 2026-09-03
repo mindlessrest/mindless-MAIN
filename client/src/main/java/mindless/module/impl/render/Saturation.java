@@ -19,7 +19,7 @@ public class Saturation extends Module {
     private float lastSaturation = 1.0f;
 
     public Saturation() {
-        super("Saturation", category.render);
+        super("Saturation", "Adjusts how saturated the world looks.", category.render);
         this.registerSetting(saturationSlider = new SliderSetting("Saturation", 1.0, -1.0, 5.0, 0.05));
     }
 

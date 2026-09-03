@@ -18,7 +18,7 @@ public class NullMove extends Module {
     private int lastStrafeSign;
 
     public NullMove() {
-        super("Null Move", category.movement, 0);
+        super("Null Move", "Flips direction on opposing movement keys.", category.movement, 0);
     }
 
     @Override

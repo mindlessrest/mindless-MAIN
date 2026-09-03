@@ -85,7 +85,7 @@ private static final List<Setting> EDITOR = new ArrayList<>();
 private static int appliedIndex = -1;
 
     public ThemeManager() {
-        super("Theme Manager", category.theme);
+        super("Theme Manager", "Builds, saves and applies colour themes.", category.theme);
         this.registerSetting(create = new ButtonSetting("Create custom theme", false));
 
         GroupSetting maker = new GroupSetting("Custom theme");

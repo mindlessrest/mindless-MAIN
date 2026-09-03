@@ -56,7 +56,7 @@ public class PotionHUD extends Module {
     private float relativePosX = Float.NaN;
     private float relativePosY = Float.NaN;
     public PotionHUD() {
-        super("Potion HUD", category.render);
+        super("Potion HUD", "Lists your effects and the time each has left.", category.render);
         this.registerSetting(timeFormat = new SliderSetting("Time Format", 0, TIME_FORMAT_OPTIONS));
         this.registerSetting(sortMode = new SliderSetting("Sort By", 0, SORT_OPTIONS));
         this.registerSetting(sortDirection = new SliderSetting("Sort Direction", 0, SORT_DIRECTION_OPTIONS));

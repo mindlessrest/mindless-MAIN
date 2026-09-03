@@ -12,7 +12,7 @@ public class DamageTint extends Module {
     public final ButtonSetting fade;
 
     public DamageTint() {
-        super("Damage Tint", category.render, 0);
+        super("Damage Tint", "Tints the screen when you take damage.", category.render, 0);
         this.registerSetting(color = new ColorSetting("Tint color", 255, 0, 0, 76));
         this.registerSetting(fade = new ButtonSetting("Fade out", false));
     }

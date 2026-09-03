@@ -53,7 +53,7 @@ public class NameHider extends Module {
     private static String lastOutput;
 
     public NameHider() {
-        super("Name Hider", Module.category.other);
+        super("Name Hider", "Hides your name, or everyone's.", Module.category.other);
         this.liteModule = true;
         this.registerSetting(fakeNameSetting = new TextSetting("Fake name", fakeName, "Type a fake name...", 48) {
             @Override

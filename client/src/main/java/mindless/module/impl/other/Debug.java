@@ -51,7 +51,7 @@ public class Debug extends Module {
     private boolean sentFlying;
 
     public Debug() {
-        super("Debug", category.other);
+        super("Debug", "Developer tools for entities and events.", category.other);
         this.registerSetting(spawnDummy = new ButtonSetting("Spawn dummy", true));
         this.registerSetting(new DescriptionSetting("Visuals"));
         this.registerSetting(alertPost = new ButtonSetting("Alert post", false));

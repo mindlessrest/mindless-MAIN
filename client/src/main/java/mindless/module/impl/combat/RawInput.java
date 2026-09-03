@@ -20,7 +20,7 @@ public class RawInput extends Module {
     private RawMouseThread pollThread;
 
     public RawInput() {
-        super("Raw Input", category.combat, 0);
+        super("Raw Input", "Reads the mouse past OS acceleration.", category.combat, 0);
         this.registerSetting(new DescriptionSetting("Bypasses OS mouse acceleration."));
     }
 

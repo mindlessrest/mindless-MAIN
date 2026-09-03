@@ -51,7 +51,7 @@ public class FastPlace extends Module {
     private float previousAlpha;
 
     public FastPlace() {
-        super("Fast Place", Module.category.player, 0);
+        super("Fast Place", "Removes the delay between placements.", Module.category.player, 0);
         this.liteModule = true;
         this.registerSetting(tickDelay = new SliderSetting("Tick delay", 1.0, 0.0, 3.0, 1.0));
         this.registerSetting(activationTime = new SliderSetting("Activation time", "ms", 0.0, 0.0, 100.0, 5.0));

@@ -8,7 +8,7 @@ public class ExtraBobbing extends Module {
     private boolean viewBobbingEnabled;
 
     public ExtraBobbing() {
-        super("Extra Bobbing", category.render);
+        super("Extra Bobbing", "Exaggerates the vanilla view bobbing.", category.render);
         this.registerSetting(level = new SliderSetting("Level", 1.0D, 0.0D, 8.0D, 0.1D));
     }
 

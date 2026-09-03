@@ -15,7 +15,7 @@ public class Boost extends Module {
     private boolean timerDisabled = false;
 
     public Boost() {
-        super("Boost", category.movement);
+        super("Boost", "Multiplies your speed for a short burst.", category.movement);
         this.registerSetting(new DescriptionSetting("20 ticks are in 1 second"));
         this.registerSetting(multiplier = new SliderSetting("Multiplier", "x", 2.0D, 1.0D, 3.0D, 0.05D));
         this.registerSetting(time = new SliderSetting("Time", " tick", 15.0D, 1.0D, 80.0D, 1.0D));

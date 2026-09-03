@@ -9,7 +9,7 @@ public class ItemPhysics extends Module {
     public final SliderSetting rotationSpeed;
 
     public ItemPhysics() {
-        super("Item Physics", category.render, 0);
+        super("Item Physics", "Lays dropped items flat and spins them.", category.render, 0);
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 1.0, 0.0, 5.0, 0.1));
     }
 

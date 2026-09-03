@@ -31,7 +31,7 @@ public class BlockESP extends Module {
     private int prevListHash;
 
     public BlockESP() {
-        super("BlockESP", category.render);
+        super("Block ESP", "Shows your chosen blocks through walls.", category.render);
         this.registerSetting(blockList = new BlockListSetting("Blocks"));
         this.registerSetting(outline = new ButtonSetting("Outline", true));
         this.registerSetting(shade = new ButtonSetting("Shade", false));

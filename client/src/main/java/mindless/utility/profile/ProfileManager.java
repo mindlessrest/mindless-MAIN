@@ -627,7 +627,7 @@ private static void applyModulePosition(Module module, JsonObject moduleInformat
                     HUD.setAbsolutePosition(hudX, hudY);
                 }
             }
-            else if (module.getName().equals("TargetHUD")) {
+            else if (module.getName().equals("Target HUD")) {
                 if (moduleInformation.has("posX")) {
                     ModuleManager.targetHUD.posX = moduleInformation.get("posX").getAsInt();
                 }

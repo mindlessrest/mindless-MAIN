@@ -118,7 +118,7 @@ public class BedWars extends Module {
     private int obsidianColor = new Color(106, 13, 173).getRGB();
 
     public BedWars() {
-        super("Bed Wars", category.bedwars);
+        super("Bed Wars", "Game alerts, milk timer and closest enemy.", category.bedwars);
         this.liteModule = true;
         this.registerSetting(closestEnemy = new SliderSetting("Closest enemy", true, 0, CLOSEST_ENEMY_MODES));
         this.registerSetting(removeGameId = new ButtonSetting("Remove game id", false));

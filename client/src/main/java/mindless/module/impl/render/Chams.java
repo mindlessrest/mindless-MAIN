@@ -15,7 +15,7 @@ public class Chams extends Module {
 private static boolean offsetPushed;
 
     public Chams() {
-        super("Chams", Module.category.render, 0);
+        super("Chams", "Draws players through walls.", Module.category.render, 0);
         this.liteModule = true;
         this.registerSetting(ignoreBots = new ButtonSetting("Ignore bots", false));
         this.registerSetting(hidePlayers = new ButtonSetting("Hide players", false));

@@ -9,7 +9,7 @@ public class StopMotion extends Module {
     private ButtonSetting stopZ;
 
     public StopMotion() {
-        super("Stop Motion", Module.category.movement, 0);
+        super("Stop Motion", "Zeroes your motion on the axes you pick.", Module.category.movement, 0);
         this.registerSetting(stopX = new ButtonSetting("Stop X", true));
         this.registerSetting(stopY = new ButtonSetting("Stop Y", true));
         this.registerSetting(stopZ = new ButtonSetting("Stop Z", true));

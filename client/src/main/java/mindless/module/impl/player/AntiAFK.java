@@ -31,7 +31,7 @@ public class AntiAFK extends Module {
     public boolean stop = false;
 
     public AntiAFK() {
-        super("AntiAFK", category.player);
+        super("Anti AFK", "Moves at random so you are not kicked idle.", category.player);
         this.registerSetting(afk = new SliderSetting("AFK", 0, afkModes));
         this.registerSetting(jump = new ButtonSetting("Jump", false));
         this.registerSetting(jumpWhenCollided = new ButtonSetting("Jump only when collided", false));
