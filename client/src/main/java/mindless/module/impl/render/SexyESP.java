@@ -55,7 +55,16 @@ public class SexyESP extends Module {
     private final ButtonSetting outline;
     private final SliderSetting boxMode;
     private final ButtonSetting healthBar;
+    private final SliderSetting barColorMode;
+    private final ColorSetting barColor;
+    private final ColorSetting barColorLow;
+    private final ColorSetting barColorHigh;
+    private final SliderSetting barWidth;
+    private final SliderSetting barSide;
+    private final ColorSetting barBackground;
+    private final ButtonSetting barOutline;
     private final ButtonSetting absorption;
+    private final ColorSetting absorptionColor;
     private final ButtonSetting healthNumber;
     private final SliderSetting healthNumberMode;
     private final ButtonSetting armorBar;
@@ -64,7 +73,22 @@ public class SexyESP extends Module {
     private final ButtonSetting armorDurability;
     private final SliderSetting armorPosition;
     private final ButtonSetting tags;
+    private final SliderSetting nameColorMode;
+    private final ColorSetting nameColor;
+    private final ColorSetting friendColor;
+    private final ColorSetting enemyColor;
+    private final ButtonSetting tagDistance;
+    private final ButtonSetting tagPing;
     private final ButtonSetting tagBackground;
+    private final ColorSetting tagBackgroundColor;
+    private final SliderSetting tagBackgroundRadius;
+    private final SliderSetting tagPadding;
+
+    private final ButtonSetting playerStats;
+    private final SliderSetting statsLayout;
+    private final SliderSetting statsPosition;
+    private final SliderSetting statsScale;
+    private final ButtonSetting statsColorByFkdr;
     private final ButtonSetting itemTags;
     private final SliderSetting fontScale;
     private final ButtonSetting distanceTextScale;
@@ -83,6 +107,25 @@ public class SexyESP extends Module {
     private final ButtonSetting outlineEdge;
     private final ButtonSetting outlineTeamColor;
     private final ColorSetting outlineColor;
+
+    private static final String[] BAR_COLOR_MODES = {"Health gradient", "Static", "Custom gradient", "Array list"};
+    private static final int BAR_HSB = 0;
+    private static final int BAR_STATIC = 1;
+    private static final int BAR_CUSTOM = 2;
+    private static final int BAR_ARRAYLIST = 3;
+
+    private static final String[] NAME_COLOR_MODES = {"Team", "Friend / enemy", "Health", "Custom", "Array list"};
+    private static final int NAME_TEAM = 0;
+    private static final int NAME_RELATION = 1;
+    private static final int NAME_HEALTH = 2;
+    private static final int NAME_CUSTOM = 3;
+    private static final int NAME_ARRAYLIST = 4;
+
+    private static final String[] STATS_LAYOUTS = {"Star + FKDR", "FKDR", "Star", "Star + FKDR + WS"};
+    private static final int STATS_STAR_FKDR = 0;
+    private static final int STATS_FKDR = 1;
+    private static final int STATS_STAR = 2;
+    private static final int STATS_FULL = 3;
 
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
     private final SliderSetting font;
@@ -111,7 +154,16 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         GroupSetting healthGroup = new GroupSetting("Health");
         registerSetting(healthGroup);
         registerSetting(healthBar = new ButtonSetting(healthGroup, "Health bar", true));
+        registerSetting(barColorMode = new SliderSetting(healthGroup, "Bar color", BAR_HSB, BAR_COLOR_MODES));
+        registerSetting(barColor = new ColorSetting(healthGroup, "Bar static color", 85, 255, 85));
+        registerSetting(barColorLow = new ColorSetting(healthGroup, "Bar low color", 255, 60, 60));
+        registerSetting(barColorHigh = new ColorSetting(healthGroup, "Bar high color", 85, 255, 85));
+        registerSetting(barWidth = new SliderSetting(healthGroup, "Bar width", 1.0, 0.5, 5.0, 0.25));
+        registerSetting(barSide = new SliderSetting(healthGroup, "Bar side", 0, new String[]{"Left", "Right"}));
+        registerSetting(barBackground = new ColorSetting(healthGroup, "Bar background", 0, 0, 0, 120));
+        registerSetting(barOutline = new ButtonSetting(healthGroup, "Bar outline", false));
         registerSetting(absorption = new ButtonSetting(healthGroup, "Absorption", true));
+        registerSetting(absorptionColor = new ColorSetting(healthGroup, "Absorption color", 255, 215, 0));
         registerSetting(healthNumber = new ButtonSetting(healthGroup, "Health number", true));
         registerSetting(healthNumberMode = new SliderSetting(healthGroup, "Number mode", 0, new String[]{"Health", "Percent"}));
 
@@ -127,11 +179,28 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(tagGroup);
         registerSetting(tags = new ButtonSetting(tagGroup, "Names", true));
         registerSetting(font = new SliderSetting(tagGroup, "Font", 0, FONT_OPTIONS));
+        registerSetting(nameColorMode = new SliderSetting(tagGroup, "Name color", NAME_TEAM, NAME_COLOR_MODES));
+        registerSetting(nameColor = new ColorSetting(tagGroup, "Custom name color", 255, 255, 255));
+        registerSetting(friendColor = new ColorSetting(tagGroup, "Friend color", 85, 255, 85));
+        registerSetting(enemyColor = new ColorSetting(tagGroup, "Enemy color", 255, 85, 85));
+        registerSetting(tagDistance = new ButtonSetting(tagGroup, "Distance in name", false));
+        registerSetting(tagPing = new ButtonSetting(tagGroup, "Ping in name", false));
         registerSetting(tagBackground = new ButtonSetting(tagGroup, "Background", false));
+        registerSetting(tagBackgroundColor = new ColorSetting(tagGroup, "Background color", 0, 0, 0, 128));
+        registerSetting(tagBackgroundRadius = new SliderSetting(tagGroup, "Background radius", 2.0, 0.0, 8.0, 0.5));
+        registerSetting(tagPadding = new SliderSetting(tagGroup, "Background padding", 2.0, 0.0, 8.0, 0.5));
         registerSetting(itemTags = new ButtonSetting(tagGroup, "Held item", true));
         registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.5, 0.25, 1.0, 0.05));
         registerSetting(distanceTextScale = new ButtonSetting(tagGroup, "Distance scaling", true));
         registerSetting(textBorder = new ButtonSetting(tagGroup, "Black text outline", true));
+
+        GroupSetting statsGroup = new GroupSetting("Stats");
+        registerSetting(statsGroup);
+        registerSetting(playerStats = new ButtonSetting(statsGroup, "Player stats", false));
+        registerSetting(statsLayout = new SliderSetting(statsGroup, "Line", STATS_STAR_FKDR, STATS_LAYOUTS));
+        registerSetting(statsPosition = new SliderSetting(statsGroup, "Position", 0, new String[]{"Above name", "Below name"}));
+        registerSetting(statsScale = new SliderSetting(statsGroup, "Scale", "x", 0.8, 0.4, 1.5, 0.05));
+        registerSetting(statsColorByFkdr = new ButtonSetting(statsGroup, "Color by FKDR", true));
 
         GroupSetting outlineGroup = new GroupSetting("Outline");
         registerSetting(outlineGroup);
@@ -150,7 +219,55 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(color = new ColorSetting("Color", 255, 255, 255));
         registerSetting(maxDistance = new SliderSetting("Max distance", 128.0, 16.0, 512.0, 8.0));
     }
-public static boolean replacesStandaloneNametags() {
+@Override
+    public void guiUpdate() {
+        int barMode = (int) barColorMode.getInput();
+        boolean bar = healthBar.isToggled();
+        barColorMode.setVisible(bar, this);
+        barColor.setVisible(bar && barMode == BAR_STATIC, this);
+        barColorLow.setVisible(bar && barMode == BAR_CUSTOM, this);
+        barColorHigh.setVisible(bar && barMode == BAR_CUSTOM, this);
+        barWidth.setVisible(bar, this);
+        barSide.setVisible(bar, this);
+        barBackground.setVisible(bar, this);
+        barOutline.setVisible(bar, this);
+        absorption.setVisible(bar, this);
+        absorptionColor.setVisible(bar && absorption.isToggled(), this);
+        healthNumberMode.setVisible(healthNumber.isToggled(), this);
+
+        int nameMode = (int) nameColorMode.getInput();
+        boolean named = tags.isToggled();
+        nameColorMode.setVisible(named, this);
+        nameColor.setVisible(named && (nameMode == NAME_CUSTOM || nameMode == NAME_RELATION), this);
+        friendColor.setVisible(named && nameMode == NAME_RELATION, this);
+        enemyColor.setVisible(named && nameMode == NAME_RELATION, this);
+        tagDistance.setVisible(named, this);
+        tagPing.setVisible(named, this);
+        tagBackgroundColor.setVisible(tagBackground.isToggled(), this);
+        tagBackgroundRadius.setVisible(tagBackground.isToggled(), this);
+        tagPadding.setVisible(tagBackground.isToggled(), this);
+
+        boolean stats = playerStats.isToggled();
+        statsLayout.setVisible(stats, this);
+        statsPosition.setVisible(stats, this);
+        statsScale.setVisible(stats, this);
+        statsColorByFkdr.setVisible(stats && (int) statsLayout.getInput() != STATS_STAR, this);
+
+        armorBarMode.setVisible(armorBar.isToggled(), this);
+        armorDurability.setVisible(armorItems.isToggled(), this);
+        armorPosition.setVisible(armorItems.isToggled(), this);
+
+        boolean glow = outlineEnabled.isToggled();
+        outlineGlowSize.setVisible(glow, this);
+        outlineGlowStrength.setVisible(glow, this);
+        outlineEdge.setVisible(glow, this);
+        outlineTeamColor.setVisible(glow, this);
+        outlineColor.setVisible(glow && !outlineTeamColor.isToggled(), this);
+
+        color.setVisible((int) colorMode.getInput() == 0, this);
+    }
+
+    public static boolean replacesStandaloneNametags() {
         return instance != null && instance.isEnabled() && instance.tags.isToggled();
     }
 
@@ -350,13 +467,27 @@ public static boolean replacesStandaloneNametags() {
         double healthRatio = health / maxHealth;
         double healthY = b.bottom - b.height() * healthRatio;
 
+        boolean barOnRight = (int) barSide.getInput() == 1;
+        double width = Math.max(0.5, barWidth.getInput());
+        double trackOuter = barOnRight ? b.right + 1.5 + width + 1.0 : b.left - 1.5 - width - 1.0;
+        double trackInner = barOnRight ? b.right + 1.5 : b.left - 1.5;
+        double fillOuter = barOnRight ? trackInner + 0.5 : trackInner - 0.5;
+        double fillInner = barOnRight ? fillOuter + width : fillOuter - width;
+        double trackLeft = Math.min(trackOuter, trackInner);
+        double trackRight = Math.max(trackOuter, trackInner);
+        double fillLeft = Math.min(fillOuter, fillInner);
+        double fillRight = Math.max(fillOuter, fillInner);
+
         if (healthBar.isToggled()) {
-            drawFlatRect(b.left - 3.5, b.top - 0.5, b.left - 1.5, b.bottom + 0.5, 0x78000000);
-            int healthColor = Color.HSBtoRGB((float) (healthRatio / 3.0), 1.0F, 1.0F) | 0xFF000000;
-            drawFlatRect(b.left - 3, healthY, b.left - 2, b.bottom, healthColor);
+            drawFlatRect(trackLeft, b.top - 0.5, trackRight, b.bottom + 0.5, barBackground.getColor());
+            drawFlatRect(fillLeft, healthY, fillRight, b.bottom, healthBarColor(healthRatio, b));
             if (absorption.isToggled() && living.getAbsorptionAmount() > 0) {
                 double absorptionHeight = Math.min(b.height(), b.height() * living.getAbsorptionAmount() / maxHealth);
-                drawFlatRect(b.left - 3, b.bottom - absorptionHeight, b.left - 2, b.bottom, 0xFFFFD700);
+                drawFlatRect(fillLeft, b.bottom - absorptionHeight, fillRight, b.bottom,
+                        0xFF000000 | absorptionColor.getRGB());
+            }
+            if (barOutline.isToggled()) {
+                drawOutlinedRect(trackLeft, b.top - 0.5, trackRight, b.bottom + 0.5, 0xFF000000);
             }
         }
 
@@ -367,23 +498,150 @@ public static boolean replacesStandaloneNametags() {
                     ? healthFormat.format(health) + " \u00A7c\u2764"
                     : (int) (healthRatio * 100) + "%";
             double scale = fontScale.getInput();
-            drawScaledString(hpText, b.left - 5 - espFont().getStringWidth(hpText) * scale,
+            double numberX = barOnRight
+                    ? trackRight + 2.0
+                    : b.left - 5 - espFont().getStringWidth(hpText) * scale;
+            drawScaledString(hpText, numberX,
                     healthY - espFont().getFontHeight() * scale / 2.0, scale, false);
         }
 
         if (armorItems.isToggled() && b.height() > 32.0) drawArmorItems(living, b);
 
+        double tagScale = getTagScale(b);
+        double nameHeight = espFont().getFontHeight() * tagScale;
+        double nameY = b.top - 2 - nameHeight;
+        boolean statsAbove = (int) statsPosition.getInput() == 0;
+
         if (tags.isToggled()) {
-            String name = living.getDisplayName().getFormattedText();
-            double tagScale = getTagScale(b);
-            drawTag(name, b.left + b.width() / 2.0,
-                    b.top - 2 - espFont().getFontHeight() * tagScale,
-                    tagScale);
+            drawTag(nameLabel(living), b.left + b.width() / 2.0, nameY, tagScale,
+                    nameTagColor(living, healthRatio, b));
         }
+
+        if (playerStats.isToggled() && living instanceof EntityPlayer) {
+            String stats = statsLabel((EntityPlayer) living);
+            if (stats != null) {
+                double statsTagScale = tagScale * statsScale.getInput();
+                double statsHeight = espFont().getFontHeight() * statsTagScale;
+                double statsY = statsAbove ? nameY - statsHeight - 1.0 : nameY + nameHeight + 1.0;
+                drawTag(stats, b.left + b.width() / 2.0, statsY, statsTagScale, 0xFFFFFFFF);
+            }
+        }
+
         if (itemTags.isToggled() && living.getHeldItem() != null) {
             drawTag(living.getHeldItem().getDisplayName(), b.left + b.width() / 2.0,
-                    b.bottom + 2, getTagScale(b));
+                    b.bottom + 2, getTagScale(b), 0xFFFFFFFF);
         }
+    }
+
+    /**
+     * Array-list mode reads HUD.getHudColor with the bar's own screen position as the phase, so a
+     * wave or gradient running through the module list carries on across the bars rather than
+     * restarting at every player.
+     */
+    private int healthBarColor(double healthRatio, Bounds b) {
+        switch ((int) barColorMode.getInput()) {
+            case BAR_STATIC:
+                return 0xFF000000 | barColor.getRGB();
+            case BAR_CUSTOM:
+                return 0xFF000000 | lerpRgb(barColorLow.getRGB(), barColorHigh.getRGB(), (float) healthRatio);
+            case BAR_ARRAYLIST:
+                return 0xFF000000 | (HUD.getHudColor(HUD.hudWavePhase(0.0, b.left)) & 0xFFFFFF);
+            case BAR_HSB:
+            default:
+                return Color.HSBtoRGB((float) (healthRatio / 3.0), 1.0F, 1.0F) | 0xFF000000;
+        }
+    }
+
+    private int nameTagColor(EntityLivingBase living, double healthRatio, Bounds b) {
+        switch ((int) nameColorMode.getInput()) {
+            case NAME_RELATION:
+                if (living instanceof EntityPlayer) {
+                    EntityPlayer player = (EntityPlayer) living;
+                    if (Utils.isFriended(player)) return 0xFF000000 | friendColor.getRGB();
+                    if (Utils.isEnemy(player)) return 0xFF000000 | enemyColor.getRGB();
+                }
+                return 0xFF000000 | nameColor.getRGB();
+            case NAME_HEALTH:
+                return Color.HSBtoRGB((float) (healthRatio / 3.0), 1.0F, 1.0F) | 0xFF000000;
+            case NAME_CUSTOM:
+                return 0xFF000000 | nameColor.getRGB();
+            case NAME_ARRAYLIST:
+                return 0xFF000000 | (HUD.getHudColor(HUD.hudWavePhase(0.0, b.left)) & 0xFFFFFF);
+            case NAME_TEAM:
+            default:
+                return 0xFFFFFFFF;
+        }
+    }
+
+    /** The name plus whichever extras are switched on, as one line. */
+    private String nameLabel(EntityLivingBase living) {
+        StringBuilder label = new StringBuilder(living.getDisplayName().getFormattedText());
+        if (tagDistance.isToggled() && mc.thePlayer != null) {
+            label.append(" \u00A77").append((int) mc.thePlayer.getDistanceToEntity(living)).append('m');
+        }
+        if (tagPing.isToggled()) {
+            int ping = pingOf(living);
+            if (ping >= 0) {
+                label.append(" \u00A78").append(ping).append("ms");
+            }
+        }
+        return label.toString();
+    }
+
+    private int pingOf(EntityLivingBase living) {
+        if (!(living instanceof EntityPlayer) || mc.getNetHandler() == null) return -1;
+        net.minecraft.client.network.NetworkPlayerInfo info =
+                mc.getNetHandler().getPlayerInfo(living.getUniqueID());
+        return info == null ? -1 : info.getResponseTime();
+    }
+
+    /**
+     * Bed Wars stats, read from the cache the Overlay module already fills. Nothing is fetched
+     * unless an API key has been set over there, so this stays silent on other servers rather
+     * than opening a second connection per player.
+     */
+    private String statsLabel(EntityPlayer player) {
+        String name = player.getName();
+        if (name == null || name.isEmpty()) return null;
+        mindless.module.impl.bedwars.Overlay.requestStats(name);
+        mindless.utility.HypixelBedWars.BedwarsPlayer stats =
+                mindless.module.impl.bedwars.Overlay.statsFor(name);
+        if (stats == null) return null;
+
+        int star = stats.level == null ? 0 : stats.level.level;
+        double fkdr = stats.overall == null ? 0.0 : stats.overall.finalKillDeathRatio;
+        long streak = stats.overall == null ? 0L : stats.overall.winstreak;
+        String fkdrText = String.format("%.2f", fkdr);
+        String fkdrColored = statsColorByFkdr.isToggled() ? fkdrColor(fkdr) + fkdrText : fkdrText;
+
+        switch ((int) statsLayout.getInput()) {
+            case STATS_FKDR:
+                return fkdrColored;
+            case STATS_STAR:
+                return "\u00A76" + star + "\u272B";
+            case STATS_FULL:
+                return "\u00A76" + star + "\u272B \u00A7r" + fkdrColored + " \u00A7bWS " + streak;
+            case STATS_STAR_FKDR:
+            default:
+                return "\u00A76" + star + "\u272B \u00A7r" + fkdrColored;
+        }
+    }
+
+    private static String fkdrColor(double fkdr) {
+        if (fkdr < 1.0) return "\u00A77";
+        if (fkdr < 3.0) return "\u00A7a";
+        if (fkdr < 6.0) return "\u00A7e";
+        if (fkdr < 10.0) return "\u00A7c";
+        return "\u00A75";
+    }
+
+    private static int lerpRgb(int a, int b, float t) {
+        t = Math.max(0f, Math.min(1f, t));
+        int ar = (a >> 16) & 0xFF, ag = (a >> 8) & 0xFF, ab = a & 0xFF;
+        int br = (b >> 16) & 0xFF, bg = (b >> 8) & 0xFF, bb = b & 0xFF;
+        return ((int) (ar + (br - ar) * t) << 16)
+                | ((int) (ag + (bg - ag) * t) << 8)
+                | (int) (ab + (bb - ab) * t);
     }
 
     private void drawArmorBar(EntityLivingBase living, Bounds b) {
@@ -467,7 +725,7 @@ public static boolean replacesStandaloneNametags() {
             drawFlatRect(b.right + 2, b.bottom - b.height() * ratio, b.right + 3.5, b.bottom, 0xFF00FFFF);
         }
         if (itemTags.isToggled()) drawTag(stack.getDisplayName(), b.left + b.width() / 2.0,
-                b.bottom + 2, getTagScale(b));
+                b.bottom + 2, getTagScale(b), 0xFFFFFFFF);
     }
 
     private double getTagScale(Bounds b) {
@@ -478,15 +736,19 @@ public static boolean replacesStandaloneNametags() {
         return scale;
     }
 
-    private void drawTag(String text, double centerX, double y, double scale) {
+    private void drawTag(String text, double centerX, double y, double scale, int textColor) {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         MindlessFontRenderer tagFont = espFont();
         double width = tagFont.getStringWidth(text) * scale;
         if (tagBackground.isToggled()) {
-            double padX = 2.0 * scale;
-            double padY = 1.5 * scale;
-            drawFlatRect(centerX - width / 2 - padX, y - padY, centerX + width / 2 + padX,
-                    y + tagFont.getFontHeight() * scale + padY, 0x80000000);
+            double pad = tagPadding.getInput() * scale;
+            double padY = Math.max(0.5, pad * 0.75);
+            double left = centerX - width / 2 - pad;
+            double top = y - padY;
+            double right = centerX + width / 2 + pad;
+            double bottom = y + tagFont.getFontHeight() * scale + padY;
+            double radius = tagBackgroundRadius.getInput() * scale;
+            drawTagBackground(left, top, right, bottom, radius, tagBackgroundColor.getColor());
         }
         rectBatch.flush();
         GlStateManager.enableTexture2D();
@@ -505,9 +767,36 @@ public static boolean replacesStandaloneNametags() {
             tagFont.drawString(outlineText, 0, 1, border, false);
             tagFont.drawString(outlineText, 1, 1, border, false);
         }
-        tagFont.drawString(text, 0, 0, 0xFFFFFFFF, false);
+        tagFont.drawString(text, 0, 0, textColor, false);
         GlStateManager.popMatrix();
         GlStateManager.disableTexture2D();
+    }
+
+    /**
+     * Rounded corners are approximated by stacking inset bars rather than tessellating a disc --
+     * the tag batch is flat-rect only, and a shader round here would force a flush per nametag.
+     */
+    private void drawTagBackground(double left, double top, double right, double bottom,
+                                   double radius, int color) {
+        double r = Math.max(0.0, Math.min(radius, Math.min(right - left, bottom - top) / 2.0));
+        if (r <= 0.15) {
+            drawFlatRect(left, top, right, bottom, color);
+            return;
+        }
+        drawFlatRect(left, top + r, right, bottom - r, color);
+
+        // Four horizontal slices per cap, each inset to the circle at its widest edge. Enough to
+        // read as a curve at nametag scale without a shader round, which would cost a batch flush
+        // for every tag on screen.
+        final int steps = 4;
+        for (int i = 0; i < steps; i++) {
+            double y0 = r * i / steps;
+            double y1 = r * (i + 1) / steps;
+            double dy = r - y1;
+            double inset = r - Math.sqrt(Math.max(0.0, r * r - dy * dy));
+            drawFlatRect(left + inset, top + y0, right - inset, top + y1, color);
+            drawFlatRect(left + inset, bottom - y1, right - inset, bottom - y0, color);
+        }
     }
 
     private void drawScaledString(String text, double x, double y, double scale, boolean centered) {

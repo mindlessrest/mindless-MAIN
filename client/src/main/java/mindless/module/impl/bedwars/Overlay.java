@@ -57,12 +57,12 @@ public class Overlay extends Module {
     private final KeySetting     toggleKey;
 
     // ── State ─────────────────────────────────────────────────────────────────
-    private final Map<String, HypixelBedWars.BedwarsPlayer> cache = new ConcurrentHashMap<>();
-    private final Set<String> pendingFetches = Collections.synchronizedSet(new HashSet<>());
-    private final ExecutorService executor    = Executors.newFixedThreadPool(4);
+    private static final Map<String, HypixelBedWars.BedwarsPlayer> cache = new ConcurrentHashMap<>();
+    private static final Set<String> pendingFetches = Collections.synchronizedSet(new HashSet<>());
+    private static final ExecutorService executor    = Executors.newFixedThreadPool(4);
 
-    private HypixelBedWars api;
-    private String         currentKey  = "";
+    private static HypixelBedWars api;
+    private static String  currentKey  = "";
     private float          relativeX   = 0.02f;
     private float          relativeY   = 0.05f;
 
@@ -146,7 +146,30 @@ public class Overlay extends Module {
         cache.keySet().removeIf(player -> !currentTabNames.contains(player));
     }
 
+    /**
+     * Stats already fetched for this player, or null.
+     *
+     * The cache is shared rather than per-instance so Player ESP can label a nametag from
+     * whatever the overlay has already pulled instead of issuing its own request for the same
+     * player, and so both surfaces agree on what they are showing.
+     */
+    public static HypixelBedWars.BedwarsPlayer statsFor(String username) {
+        return username == null ? null : cache.get(username.toLowerCase());
+    }
+
+    /** Queues a fetch if one is not already cached or in flight. Safe to call every frame. */
+    public static void requestStats(String username) {
+        if (username == null || username.isEmpty() || api == null) return;
+        String key = username.toLowerCase();
+        if (cache.containsKey(key) || pendingFetches.contains(key)) return;
+        queueFetch(username);
+    }
+
     private void fetchPlayerStats(String username) {
+        queueFetch(username);
+    }
+
+    private static void queueFetch(String username) {
         String key = username.toLowerCase();
         if (pendingFetches.contains(key) || api == null) return;
         pendingFetches.add(key);
