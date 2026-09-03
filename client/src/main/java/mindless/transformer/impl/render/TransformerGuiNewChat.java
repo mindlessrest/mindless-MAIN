@@ -4,7 +4,6 @@ import mindless.module.impl.client.Settings;
 import mindless.module.impl.render.ChatModule;
 import mindless.runtime.GuiNewChatState;
 import mindless.runtime.HudTextRenderer;
-import mindless.utility.font.ChatWrapFontRenderer;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.ScaledResolutionCache;
@@ -14,10 +13,6 @@ import net.lenni0451.classtransform.annotations.CShadow;
 import net.lenni0451.classtransform.annotations.CTarget;
 import net.lenni0451.classtransform.annotations.CTransformer;
 import net.lenni0451.classtransform.annotations.injection.CInject;
-import net.lenni0451.classtransform.annotations.injection.CRedirect;
-import net.minecraft.client.gui.FontRenderer;
-import net.minecraft.client.gui.GuiUtilRenderComponents;
-import net.minecraft.util.IChatComponent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ChatLine;
 import net.minecraft.client.gui.GuiNewChat;
@@ -33,20 +28,6 @@ import net.minecraft.client.gui.Gui;
 
 @CTransformer(GuiNewChat.class)
 public abstract class TransformerGuiNewChat {
-
-    /**
-     * Wrap against the font the chat is actually drawn with, not the vanilla one.
-     */
-    @CRedirect(method = "setChatLine",
-            target = @CTarget(value = "INVOKE",
-                    target = "Lnet/minecraft/client/gui/GuiUtilRenderComponents;splitText(Lnet/minecraft/util/IChatComponent;ILnet/minecraft/client/gui/FontRenderer;ZZ)Ljava/util/List;",
-                    optional = true))
-    public List<IChatComponent> splitWithChatFont(IChatComponent component, int width,
-                                                  FontRenderer font, boolean p3, boolean p4) {
-        return GuiUtilRenderComponents.splitText(component, width,
-                ChatWrapFontRenderer.measuring(ChatModule.getCustomFont()), p3, p4);
-    }
-
 
     @CShadow
     private Minecraft mc;
@@ -137,14 +118,6 @@ public abstract class TransformerGuiNewChat {
             if (i > 0) y += insertionOffset;
             else y += (float) ((1.0 - eased) * 2.5);
             String text = chatLine.getChatComponent().getFormattedText();
-            // Backstop: however the line was wrapped, it is trimmed here against the font that is
-            // about to draw it, so nothing can run past the chat box.
-            if (chatFont != null) {
-                float available = chatWidth - textIndent;
-                if (available > 0f && chatFont.getStringWidth(text) > available) {
-                    text = ChatWrapFontRenderer.trim(chatFont, text, (int) available, false);
-                }
-            }
             int alpha = MathHelper.clamp_int((int) Math.round(255.0 * eased), 0, 255);
             int textColor = 0xFFFFFF | (alpha << 24);
 

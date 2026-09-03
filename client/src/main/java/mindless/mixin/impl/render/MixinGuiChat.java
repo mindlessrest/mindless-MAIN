@@ -51,14 +51,6 @@ public abstract class MixinGuiChat extends MixinGuiScreen {
     private void mindless$beforeDrawScreen(int mouseX, int mouseY, float partialTicks, CallbackInfo ci) {
         inputField.setEnableBackgroundDrawing(false);
 
-        // GuiNewChatState.drawGlass already lays the input bar down as part of the chat panel
-        // whenever the chat background is on, sharing one blur pass with it. Drawing it here as
-        // well stacked a second translucent bar over the first at the same rect. Only stand in
-        // for it when the panel is switched off and nothing else would draw it.
-        if (mindless.module.impl.render.ChatModule.drawBackground()) {
-            return;
-        }
-
         int left = 3;
         int top = this.height - 15;
         int right = this.width - 3;

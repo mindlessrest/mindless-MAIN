@@ -41,7 +41,7 @@ private static final float PAD = COVER * 0.17F;
     private static final float BAR_GAP = COVER * 0.09F;
     private static final float VISUALIZER_HEIGHT = COVER * 0.22F;
     private static final float LYRICS_GAP = COVER * 0.08F;
-private static final float SHADOW_SPREAD = 2.2F;
+private static final float SHADOW_SPREAD = 6.0F;
 private static final Color TRACK = new Color(31, 31, 31);
     private static final Color FILL = new Color(255, 255, 255);
 private static final String BOLD_FAMILY = "Sf-Bold";
@@ -226,13 +226,12 @@ public static float[] getCurrentRect() {
      */
     private static void dropShadow(float x, float y, float width, float height, float radius,
                                    float uiScale, float alpha) {
-        // Tight and dark rather than wide and faint. A soft falloff spread over tens of pixels
-        // never reads as a shadow -- it just tints a rectangle of the world behind the card, which
-        // is the translucent slab that keeps showing up. Keeping it close to the edge and nearly
-        // opaque makes it read as depth instead.
-        float softness = Math.max(1.5F, SHADOW_SPREAD * uiScale);
+        // Original softness and opacity, centred. Only the downward offset is gone -- that was the
+        // part that put a flat wedge of grey under the card. Tightening and darkening it instead
+        // just turned the falloff into a hard rim, which is worse.
+        float softness = Math.max(2.0F, SHADOW_SPREAD * uiScale);
         RoundedUtils.drawRoundShadow(x, y, width, height, radius,
-                softness, new Color(0, 0, 0, Math.round(215 * alpha)).getRGB());
+                softness, new Color(0, 0, 0, Math.round(150 * alpha)).getRGB());
     }
 
     private static void drawCover(ResourceLocation art, ResourceLocation wash, float x, float y,
