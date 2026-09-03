@@ -51,6 +51,9 @@ public class BlockCounter extends Module {
     private static final float MIN_CONTENT_WIDTH = 84.0F;
     private static final long POP_DURATION_MS = 200L;
 
+    private static final String[] BAR_MODES = {"Auto", "Fixed"};
+    private static final int BAR_AUTO = 0;
+
     private static BlockCounter instance;
 
     private static final String[] SHOW_MODES = {"While placing", "Holding blocks", "Always"};
@@ -62,6 +65,7 @@ public class BlockCounter extends Module {
     private final SliderSetting hideAfter;
     private final SliderSetting counterFont;
     private final SliderSetting counterScale;
+    private final SliderSetting barMode;
     private final SliderSetting barFull;
     private final ButtonSetting wholeInventory;
     private final ButtonSetting showBadge;
@@ -89,6 +93,7 @@ public class BlockCounter extends Module {
 
     private long lastPlacement;
     private long scriptHoldUntil;
+    private int peakBlocks;
 
     public BlockCounter() {
         super("Block Counter", "Counts your placeable blocks and how fast you place.", category.render);
@@ -101,6 +106,7 @@ public class BlockCounter extends Module {
         this.registerSetting(showBadge = new ButtonSetting("Show block icon", true));
         this.registerSetting(showRate = new ButtonSetting("Show place rate", true));
         this.registerSetting(showBar = new ButtonSetting("Show bar", true));
+        this.registerSetting(barMode = new SliderSetting("Bar scale", BAR_AUTO, BAR_MODES));
         this.registerSetting(barFull = new SliderSetting("Bar full at", " blocks", 128, 16, 512, 8));
         this.registerSetting(alwaysShow = new ButtonSetting("Show when empty", false));
         this.registerSetting(editPosition = new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));
@@ -112,7 +118,8 @@ public class BlockCounter extends Module {
 
     @Override
     public void guiUpdate() {
-        barFull.setVisible(showBar.isToggled(), this);
+        barMode.setVisible(showBar.isToggled(), this);
+        barFull.setVisible(showBar.isToggled() && (int) barMode.getInput() != BAR_AUTO, this);
         int mode = (int) showWhen.getInput();
         hideAfter.setVisible(mode == SHOW_PLACING, this);
         alwaysShow.setVisible(mode != SHOW_PLACING, this);
@@ -214,6 +221,7 @@ public class BlockCounter extends Module {
         lastOverlayNanos = 0L;
         lastPlacement = 0L;
         scriptHoldUntil = 0L;
+        peakBlocks = 0;
     }
 
     @Override
@@ -228,6 +236,7 @@ public class BlockCounter extends Module {
         if (mc.currentScreen != null) return;
 
         int blocks = getBlockCount();
+        trackPeak(blocks);
         boolean shouldShow = shouldShow();
 
         if (shouldShow && !overlayVisible) {
@@ -253,6 +262,32 @@ public class BlockCounter extends Module {
 
         syncPosition();
         drawOverlay(getDisplayBlock(), blocks, getBlocksPerSecond(), posX, posY, overlayScale);
+    }
+
+    /**
+     * Remembers the most you have been carrying so the bar has something true to measure against.
+     *
+     * A fixed full point cannot describe a stack it does not reach: at 256 blocks against a
+     * ceiling of 128 the bar simply pinned full and stopped moving, which is the opposite of what
+     * it is for. Restocking raises the mark, spending it drains the bar, and running dry clears
+     * it so the next stack starts from full again.
+     */
+    private void trackPeak(int blocks) {
+        if (blocks <= 0) {
+            peakBlocks = 0;
+            return;
+        }
+        if (blocks > peakBlocks) {
+            peakBlocks = blocks;
+        }
+    }
+
+    /** Blocks the bar treats as a full bar. */
+    private float barCapacity() {
+        if ((int) barMode.getInput() != BAR_AUTO) {
+            return Math.max(1.0F, (float) barFull.getInput());
+        }
+        return Math.max(1.0F, peakBlocks);
     }
 
     private static float easeOutBack(float t) {
@@ -419,13 +454,13 @@ public class BlockCounter extends Module {
     private void drawCapacityBar(float x, float y, float width, float barHeight, int fillColour) {
         if (width <= 1.0F || barHeight <= 0.1F) return;
 
-        float full = Math.max(1.0F, (float) barFull.getInput());
-        float fraction = Math.max(0.0F, Math.min(1.0F, displayedBlocks / full));
+        float fraction = Math.max(0.0F, Math.min(1.0F, displayedBlocks / barCapacity()));
         float radius = barHeight * 0.5F;
         RoundedUtils.drawRound(x, y, width, barHeight, radius, 0x26FFFFFF);
         float filled = width * fraction;
-        if (filled > barHeight) {
-            RoundedUtils.drawRound(x, y, filled, barHeight, radius, 0xE6000000 | fillColour);
+        if (filled > 0.05F) {
+            RoundedUtils.drawRound(x, y, Math.max(filled, barHeight * 0.35F), barHeight, radius,
+                    0xE6000000 | fillColour);
         }
         GL20.glUseProgram(0);
         GlStateManager.enableTexture2D();
