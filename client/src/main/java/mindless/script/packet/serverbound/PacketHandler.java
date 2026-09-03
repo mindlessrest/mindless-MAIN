@@ -6,7 +6,15 @@ import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.*;
 import net.minecraft.network.play.server.*;
 
+import java.lang.reflect.Constructor;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class PacketHandler {
+    private static final Map<Class<?>, Object> CLIENTBOUND_CONSTRUCTORS =
+            new ConcurrentHashMap<Class<?>, Object>();
+    private static final Object NO_CONSTRUCTOR = new Object();
+
     public static CPacket convertServerBound(net.minecraft.network.Packet packet) {
         if (packet == null || packet.getClass().getSimpleName().startsWith("S")) {
             return null;
@@ -49,11 +57,18 @@ public class PacketHandler {
                 newPacket = new S23((S23PacketBlockChange) packet, (byte) 0);
             }
             else {
-                try {
-                    newPacket = asClass.getConstructor(packet.getClass()).newInstance(packet);
-                }
-                catch (Exception e) {
+                Constructor<? extends SPacket> constructor =
+                        clientBoundConstructor(asClass, packet.getClass());
+                if (constructor == null) {
                     newPacket = new SPacket(packet);
+                }
+                else {
+                    try {
+                        newPacket = constructor.newInstance(packet);
+                    }
+                    catch (Exception e) {
+                        newPacket = new SPacket(packet);
+                    }
                 }
             }
         }
@@ -61,6 +76,29 @@ public class PacketHandler {
             newPacket = new SPacket(packet);
         }
         return newPacket;
+    }
+
+    /**
+     * Resolves the wrapper constructor once per packet type.
+     *
+     * Several mapped wrappers take more than the packet, so getConstructor missed and threw
+     * NoSuchMethodException for every packet of that type -- a reflective lookup and a filled-in
+     * stack trace per packet on the netty thread, sixteen a second in a Hypixel game.
+     */
+    @SuppressWarnings("unchecked")
+    private static Constructor<? extends SPacket> clientBoundConstructor(
+            Class<? extends SPacket> asClass, Class<?> packetClass) {
+        Object cached = CLIENTBOUND_CONSTRUCTORS.get(packetClass);
+        if (cached == null) {
+            try {
+                cached = asClass.getConstructor(packetClass);
+            }
+            catch (NoSuchMethodException missing) {
+                cached = NO_CONSTRUCTOR;
+            }
+            CLIENTBOUND_CONSTRUCTORS.put(packetClass, cached);
+        }
+        return cached == NO_CONSTRUCTOR ? null : (Constructor<? extends SPacket>) cached;
     }
 
     public static Packet convertCPacket(CPacket cPacket) {

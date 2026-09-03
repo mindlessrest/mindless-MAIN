@@ -74,6 +74,11 @@ public class ScriptEvents {
         if (e.isCanceled() || e.getPacket() == null) {
             return;
         }
+        // Wrapping runs for every packet the server sends. With no enabled script behind this
+        // module there is nothing to hand the wrapper to, so don't build one.
+        if (!Mindless.scriptManager.hasEnabledScript(module)) {
+            return;
+        }
         SPacket packet = PacketHandler.convertClientBound(e.getPacket());
         if (packet != null && Mindless.scriptManager.invokeBoolean("onPacketReceived", module, packet) == 0) {
             e.setCanceled(true);

@@ -666,6 +666,16 @@ private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<
         }
     }
 
+    public boolean hasEnabledScript(Module module) {
+        for (Map.Entry<Script, Module> entry : this.scripts.entrySet()) {
+            Module owner = entry.getValue();
+            if (owner.canBeEnabled() && owner.isEnabled() && owner.equals(module)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public int invokeBoolean(String methodName, Module module, Object... args) {
         for (Map.Entry<Script, Module> entry : this.scripts.entrySet()) {
             if (entry.getValue().canBeEnabled() && entry.getValue().isEnabled() && entry.getValue().equals(module)) {
