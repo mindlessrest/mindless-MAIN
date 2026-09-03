@@ -55,6 +55,7 @@ public class ModuleManager {
     public static Reach reach;
     public static NoRotate noRotate;
     public static BlockESP blockESP;
+    public static BlockCounter blockCounter;
     public static BedESP bedESP;
     public static Blink blink;
     public static Chams chams;
@@ -222,6 +223,7 @@ public class ModuleManager {
         this.addModule(new Arrows());
         this.addModule(bedESP = new BedESP());
         this.addModule(blockESP = new BlockESP());
+        this.addModule(blockCounter = new BlockCounter());
         this.addModule(new BlockOverlay());
 
         this.addModule(new BreakProgress());

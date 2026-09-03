@@ -13,6 +13,7 @@ import mindless.module.impl.client.Settings;
 import mindless.module.impl.minigames.BedWars;
 import mindless.module.impl.player.FastPlace;
 import mindless.module.impl.player.HideWindow;
+import mindless.module.impl.render.BlockCounter;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
 import mindless.module.impl.render.TargetHUD;
@@ -295,6 +296,13 @@ private static boolean isAutoSaveEnabled() {
             moduleInformation.addProperty("posY", fp.getPosY());
             moduleInformation.addProperty("relPosX", fp.getRelativePosX());
             moduleInformation.addProperty("relPosY", fp.getRelativePosY());
+        }
+        else if (module instanceof BlockCounter) {
+            BlockCounter counter = (BlockCounter) module;
+            moduleInformation.addProperty("posX", counter.getPosX());
+            moduleInformation.addProperty("posY", counter.getPosY());
+            moduleInformation.addProperty("relPosX", counter.getRelativePosX());
+            moduleInformation.addProperty("relPosY", counter.getRelativePosY());
         }
         else if (module instanceof BedWars) {
             BedWars bedWars = (BedWars) module;
@@ -698,6 +706,20 @@ private static void applyModulePosition(Module module, JsonObject moduleInformat
                     float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : fp.getPosX();
                     float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : fp.getPosY();
                     fp.setAbsolutePosition(posX, posY);
+                }
+            }
+            else if (module instanceof BlockCounter) {
+                BlockCounter counter = (BlockCounter) module;
+                if (moduleInformation.has("relPosX") && moduleInformation.has("relPosY")) {
+                    counter.setRelativePosition(
+                            moduleInformation.get("relPosX").getAsFloat(),
+                            moduleInformation.get("relPosY").getAsFloat()
+                    );
+                }
+                else if (moduleInformation.has("posX") || moduleInformation.has("posY")) {
+                    float posX = moduleInformation.has("posX") ? moduleInformation.get("posX").getAsFloat() : counter.getPosX();
+                    float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : counter.getPosY();
+                    counter.setAbsolutePosition(posX, posY);
                 }
             }
             else if (module instanceof BedWars) {

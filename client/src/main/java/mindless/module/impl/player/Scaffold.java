@@ -43,18 +43,12 @@ import java.io.IOException;
 
 public class Scaffold extends Module {
     private static final ItemBlock PLACEHOLDER = new ItemBlock(Blocks.tnt);
-    private static final int BPS_WINDOW_MS = 3000;
-    private static final int TIMESTAMP_RING = 512;
-private static SliderSetting counterFont;
-    private static SliderSetting counterScale;
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
     private final ButtonSetting keepY;
     private final ButtonSetting eagle;
     private final SliderSetting eagleSafety;
-    private final ButtonSetting showBlockCount;
     private final ButtonSetting switchBack;
-    private final ButtonSetting editPosition;
 
     private BlockPos previewPos;
     private EnumFacing previewFace;
@@ -72,46 +66,16 @@ private static SliderSetting counterFont;
     private float wdOverrideYaw = Float.NaN;
     private float wdOverrideSpeed = Float.NaN;
 
-    private final long[] timestamps = new long[TIMESTAMP_RING];
-    private int tsHead, tsCount;
-private static final float BADGE_SIZE = 24.0F;
-    private static final float BADGE_GAP = 9.0F;
-    private static final float BADGE_RADIUS = 7.0F;
-    private static final int BADGE_COLOUR = 0x59000000;
-    private static final float PANEL_PAD_X = 10.0F;
-    private static final float PANEL_PAD_Y = 8.0F;
-    private static final float BAR_HEIGHT = 3.0F;
-    private static final float BAR_GAP = 6.0F;
-    private static final float LABEL_GAP = 2.0F;
-    private static final float MIN_CONTENT_WIDTH = 84.0F;
-    private static final long POP_DURATION_MS = 200L;
-private static final int BAR_FULL_BLOCKS = 128;
-
-    private float overlayScale = 0f;
-    private long overlayPopStart = -1L;
-    private boolean overlayVisible = false;
-
-    private float posX = Float.NaN;
-    private float posY = Float.NaN;
-    private float relativePosX = Float.NaN;
-    private float relativePosY = Float.NaN;
-private float displayedBlocks = Float.NaN;
-    private float displayedBps;
-    private long lastOverlayNanos;
 private int previousSlot = -1;
 
     public Scaffold() {
         super("Scaffold", "Bridges by placing blocks under your feet.", category.player);
-        this.registerSetting(counterFont = new SliderSetting("Counter font", 0, ModuleFont.options()));
-        this.registerSetting(counterScale = new SliderSetting("Counter scale", "x", 1.0, 0.5, 3.0, 0.05));
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));
         this.registerSetting(sprint = new SliderSetting("Sprint", 0, new String[]{"Off", "Legit", "Watchdog"}));
         this.registerSetting(keepY = new ButtonSetting("Keep Y", false));
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
-        this.registerSetting(showBlockCount = new ButtonSetting("Show block count", false));
         this.registerSetting(switchBack = new ButtonSetting("Switch back", true));
-        this.registerSetting(editPosition = new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));
     }
 
     @Override
@@ -158,14 +122,6 @@ private void restorePreviousSlot() {
         }
 
         mc.thePlayer.inventory.currentItem = slot;
-    }
-
-    @Override
-    public void guiUpdate() {
-        boolean counter = showBlockCount.isToggled();
-        editPosition.setVisible(counter, this);
-        counterFont.setVisible(counter, this);
-        counterScale.setVisible(counter, this);
     }
 
     @SubscribeEvent
@@ -271,7 +227,6 @@ private void restorePreviousSlot() {
                             queuedPos, queuedFace, queuedVec);
                     mc.thePlayer.swingItem();
                     placed = true;
-                    recordPlacement();
                 }
             }
         }
@@ -324,234 +279,6 @@ private void restorePreviousSlot() {
         if (previewPos == null) return;
         int color = 0x4000AAFF;
         RenderUtils.renderBlock(previewPos, color, true, false);
-    }
-
-    @SubscribeEvent
-    public void onRenderTick(TickEvent.RenderTickEvent ev) {
-        if (ev.phase != TickEvent.Phase.END || !Utils.nullCheck()) return;
-        if (!showBlockCount.isToggled()) return;
-        if (mc.currentScreen != null) return;
-
-        int blocks = getTotalBlocks();
-        boolean shouldShow = blocks > 0;
-
-        if (shouldShow && !overlayVisible) {
-            overlayVisible = true;
-            overlayPopStart = System.currentTimeMillis();
-        } else if (!shouldShow && overlayVisible) {
-            if (overlayPopStart > 0 && overlayScale <= 0.01f) {
-                overlayVisible = false;
-                overlayPopStart = -1L;
-                return;
-            }
-            if (overlayPopStart > 0 && overlayScale > 0.99f) {
-                overlayPopStart = System.currentTimeMillis();
-            }
-        }
-
-        float targetScale = shouldShow ? 1f : 0f;
-        if (overlayPopStart > 0) {
-            float progress = Math.min(1f, (System.currentTimeMillis() - overlayPopStart) / (float) POP_DURATION_MS);
-            overlayScale = shouldShow ? easeOutBack(progress) : 1f - progress;
-        }
-        if (overlayScale <= 0.01f) return;
-
-        syncPosition();
-        drawOverlay(getDisplayBlock(), blocks, computeBps(), posX, posY, overlayScale);
-    }
-private static float easeOutBack(float t) {
-        float c1 = 1.70158f;
-        float c3 = c1 + 1f;
-        return 1f + c3 * (float) Math.pow(t - 1, 3) + c1 * (float) Math.pow(t - 1, 2);
-    }
-private void drawOverlay(ItemStack badgeStack, int blocks, float bps, float left, float top, float popScale) {
-        advanceOverlayCounters(blocks, bps);
-
-        float scale = Math.max(0.0F, popScale) * overlayUserScale();
-        if (scale <= 0.001F) return;
-
-        MindlessFontRenderer countFont = countFont();
-        MindlessFontRenderer labelFont = HUD.getHudFontRenderer();
-
-        // The number is read, not watched -- show the real one. Only the bar and the rate are
-        // eased, where a moving value is the point.
-        String countText = Integer.toString(Math.max(0, blocks));
-        String rateText = String.format("%.1f", displayedBps);
-        String rateSuffix = " BPS";
-
-        float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
-        float layoutWidth = PANEL_PAD_X * 2.0F + badgeSpan + overlayContentWidth(countFont, labelFont, countText);
-        float layoutHeight = overlayHeight(countFont, labelFont);
-
-        // RoundedUtils resolves its shapes against gl_FragCoord, so the geometry has to arrive
-        // already scaled -- a modelview scale would move the quad and leave the shape behind.
-        // Only text and the item icon go inside a scaled matrix.
-        float centerX = left + layoutWidth * 0.5F;
-        float centerY = top + layoutHeight * 0.5F;
-        float width = layoutWidth * scale;
-        float height = layoutHeight * scale;
-        float panelLeft = centerX - width * 0.5F;
-        float panelTop = centerY - height * 0.5F;
-        float radius = 9.0F * mindless.module.impl.theme.ThemeManager.roundingScale() * scale;
-
-        int accent = countColour(blocks);
-
-        RoundedUtils.drawRoundShadow(panelLeft, panelTop, width, height, radius, 5.0F * scale, 0x96000000);
-        RoundedUtils.drawRound(panelLeft, panelTop, width, height, radius, 0xF00E0E12);
-        RoundedUtils.drawGradientVertical(panelLeft, panelTop, width, height, radius,
-                new Color(255, 255, 255, 16), new Color(255, 255, 255, 0));
-        // One flat hairline. The old outline faded from transparent to white along its length,
-        // which read as a smeared edge rather than a border.
-        Color edge = new Color(255, 255, 255, 28);
-        RoundedUtils.drawRoundOutline(panelLeft, panelTop, width, height, radius, 1.0F, edge, edge);
-        GL20.glUseProgram(0);
-        GlStateManager.enableTexture2D();
-        GlStateManager.enableBlend();
-        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
-
-        float contentX = left + PANEL_PAD_X + badgeSpan;
-        float contentRight = left + layoutWidth - PANEL_PAD_X;
-        float countY = top + PANEL_PAD_Y;
-        float labelY = countY + countFont.getFontHeight() + LABEL_GAP;
-        float barY = labelY + labelFont.getFontHeight() + BAR_GAP;
-
-        // Bar is a rounded rect, so it is placed in screen space like the panel.
-        drawCapacityBar(panelLeft + (contentX - left) * scale,
-                panelTop + (barY - top) * scale,
-                (contentRight - contentX) * scale,
-                BAR_HEIGHT * scale,
-                accent);
-        if (badgeStack != null) {
-            drawHeldBlockBadge(badgeStack,
-                    panelLeft + PANEL_PAD_X * scale,
-                    panelTop + (layoutHeight - BADGE_SIZE) * 0.5F * scale,
-                    scale);
-        }
-
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(centerX, centerY, 0.0F);
-        GlStateManager.scale(scale, scale, 1.0F);
-        GlStateManager.translate(-centerX, -centerY, 0.0F);
-        try {
-            countFont.drawString(countText, contentX, countY, 0xFF000000 | accent, false);
-
-            float rateW = labelFont.getStringWidth(rateText);
-            float suffixW = labelFont.getStringWidth(rateSuffix);
-            float rateBaseline = countY + (countFont.getFontHeight() - labelFont.getFontHeight()) * 0.5F;
-            labelFont.drawString(rateText, contentRight - suffixW - rateW, rateBaseline, 0xFFF2F2F2, false);
-            labelFont.drawString(rateSuffix, contentRight - suffixW, rateBaseline, 0x73FFFFFF, false);
-
-            labelFont.drawString("BLOCKS", contentX, labelY, 0x66FFFFFF, false);
-        }
-        finally {
-            GlStateManager.popMatrix();
-        }
-    }
-
-    private static float overlayUserScale() {
-        return counterScale == null ? 1.0F : (float) counterScale.getInput();
-    }
-
-    private static float overlayContentWidth(MindlessFontRenderer countFont,
-                                             MindlessFontRenderer labelFont, String countText) {
-        float rateW = labelFont.getStringWidth("0.0") + labelFont.getStringWidth(" BPS");
-        float countW = countFont.getStringWidth(countText);
-        float labelW = labelFont.getStringWidth("BLOCKS");
-        return Math.max(MIN_CONTENT_WIDTH, Math.max(countW, labelW) + 14.0F + rateW);
-    }
-
-private float overlayHeight(MindlessFontRenderer countFont, MindlessFontRenderer labelFont) {
-        float content = countFont.getFontHeight() + LABEL_GAP + labelFont.getFontHeight()
-                + BAR_GAP + BAR_HEIGHT;
-        return Math.max(BADGE_SIZE, content) + PANEL_PAD_Y * 2.0F;
-    }
-private float[] overlaySize(ItemStack badgeStack) {
-        MindlessFontRenderer countFont = countFont();
-        MindlessFontRenderer labelFont = HUD.getHudFontRenderer();
-        String countText = Integer.toString(Math.max(0, getTotalBlocks()));
-        float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
-        float scale = overlayUserScale();
-        return new float[]{
-                (PANEL_PAD_X * 2.0F + badgeSpan + overlayContentWidth(countFont, labelFont, countText)) * scale,
-                overlayHeight(countFont, labelFont) * scale};
-    }
-private static MindlessFontRenderer countFont() {
-        return FontManager.getHudRenderer(ModuleFont.nameOf(counterFont),
-                Math.min(2.0F, HUD.getSelectedFontScale() * 1.55F));
-    }
-
-    private static int countColour(int blocks) {
-        if (blocks <= 16) return 0xFF5C5C;
-        if (blocks <= 32) return 0xFFA23D;
-        if (blocks <= 64) return 0xFFE04D;
-        return 0xF2F5FF;
-    }
-private void drawCapacityBar(float x, float y, float width, float barHeight, int fillColour) {
-        if (width <= 1.0F || barHeight <= 0.1F) return;
-
-        float fraction = Math.max(0.0F, Math.min(1.0F, displayedBlocks / (float) BAR_FULL_BLOCKS));
-        float radius = barHeight * 0.5F;
-        RoundedUtils.drawRound(x, y, width, barHeight, radius, 0x26FFFFFF);
-        float filled = width * fraction;
-        if (filled > barHeight) {
-            RoundedUtils.drawRound(x, y, filled, barHeight, radius, 0xE6000000 | fillColour);
-        }
-        GL20.glUseProgram(0);
-        GlStateManager.enableTexture2D();
-        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
-    }
-private void advanceOverlayCounters(int blocks, float bps) {
-        long now = System.nanoTime();
-        float delta = lastOverlayNanos == 0L ? 1.0F / 60.0F
-                : Math.max(0.0F, Math.min(0.25F, (now - lastOverlayNanos) / 1_000_000_000.0F));
-        lastOverlayNanos = now;
-
-        if (Float.isNaN(displayedBlocks) || Math.abs(blocks - displayedBlocks) > 48.0F) {
-            displayedBlocks = blocks;
-        }
-        else {
-            displayedBlocks += (blocks - displayedBlocks) * (1.0F - (float) Math.exp(-delta * 12.0F));
-        }
-        displayedBps += (bps - displayedBps) * (1.0F - (float) Math.exp(-delta * 9.0F));
-    }
-private ItemStack getDisplayBlock() {
-        ItemStack held = mc.thePlayer.inventory.getCurrentItem();
-        if (held != null && held.getItem() instanceof ItemBlock && held.stackSize > 0) {
-            return held;
-        }
-        int slot = getBestBlockSlot();
-        return slot == -1 ? null : mc.thePlayer.inventory.mainInventory[slot];
-    }
-private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY, float scale) {
-        if (stack == null) {
-            return;
-        }
-
-        float size = BADGE_SIZE * scale;
-        Color edge = new Color(255, 255, 255, 24);
-        RoundedUtils.drawRound(badgeX, badgeY, size, size, BADGE_RADIUS * scale, BADGE_COLOUR);
-        RoundedUtils.drawRoundOutline(badgeX, badgeY, size, size, BADGE_RADIUS * scale, 1.0F, edge, edge);
-        GL20.glUseProgram(0);
-
-        // renderItemAndEffectIntoGUI only takes integer coordinates, so the icon is scaled with a
-        // matrix and drawn at the origin.
-        float iconScale = scale * (BADGE_SIZE / 24.0F);
-        float iconX = badgeX + (size - 16.0F * iconScale) * 0.5F;
-        float iconY = badgeY + (size - 16.0F * iconScale) * 0.5F;
-
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(iconX, iconY, 0.0F);
-        GlStateManager.scale(iconScale, iconScale, 1.0F);
-        GlStateManager.enableDepth();
-        RenderHelper.enableGUIStandardItemLighting();
-        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
-        mc.getRenderItem().zLevel = 0.0F;
-        mc.getRenderItem().renderItemAndEffectIntoGUI(stack, 0, 0);
-        RenderHelper.disableStandardItemLighting();
-        GlStateManager.disableDepth();
-        GlStateManager.popMatrix();
-        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
-        GlStateManager.enableTexture2D();
     }
 
     private void updateEagle(boolean placedThisTick) {
@@ -937,77 +664,6 @@ private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY, flo
         return best;
     }
 
-    private void recordPlacement() {
-        long now = System.currentTimeMillis();
-        timestamps[tsHead % TIMESTAMP_RING] = now;
-        tsHead++;
-        tsCount = Math.min(tsCount + 1, TIMESTAMP_RING);
-    }
-
-    private float computeBps() {
-        if (tsCount == 0) return 0f;
-        long now = System.currentTimeMillis();
-        long cutoff = now - BPS_WINDOW_MS;
-        int inWindow = 0;
-        int total = Math.min(tsCount, TIMESTAMP_RING);
-        int start = tsHead - total;
-        if (start < 0) start += TIMESTAMP_RING;
-        for (int i = 0; i < total; i++) {
-            int idx = (start + i) % TIMESTAMP_RING;
-            if (timestamps[idx] > cutoff) inWindow++;
-        }
-        return inWindow / (BPS_WINDOW_MS / 1000f);
-    }
-
-    /**
-     * Counts only what the module can actually place: hotbar slots, which is all getBestBlockSlot
-     * ever looks at. Counting the whole inventory reported blocks the scaffold could never reach,
-     * so the number went on climbing while the bar it was meant to describe stood still.
-     */
-    private int getTotalBlocks() {
-        int count = 0;
-        for (int i = 0; i < 9; i++) {
-            ItemStack stack = mc.thePlayer.inventory.mainInventory[i];
-            if (stack != null && stack.getItem() instanceof ItemBlock && stack.stackSize > 0) {
-                count += stack.stackSize;
-            }
-        }
-        return count;
-    }
-
-    private void syncPosition() {
-        syncPosition(new ScaledResolution(mc));
-    }
-
-    private void syncPosition(ScaledResolution sr) {
-        int w = Math.max(1, sr.getScaledWidth());
-        int h = Math.max(1, sr.getScaledHeight());
-        if (Float.isNaN(relativePosX) || Float.isNaN(relativePosY)) {
-            if (Float.isNaN(posX) || Float.isNaN(posY)) {
-                posX = w / 2f - 20;
-                posY = h / 2f - 20;
-            }
-            relativePosX = posX / w;
-            relativePosY = posY / h;
-        }
-        posX = relativePosX * w;
-        posY = relativePosY * h;
-    }
-
-    public void setRelativePosition(float nx, float ny) {
-        relativePosX = nx;
-        relativePosY = ny;
-        syncPosition();
-    }
-
-    public void resetPosition() {
-        relativePosX = Float.NaN;
-        relativePosY = Float.NaN;
-        posX = Float.NaN;
-        posY = Float.NaN;
-        syncPosition();
-    }
-
     private static Vec3 computeHitVec(BlockPos pos, EnumFacing face) {
         return new Vec3(
                 pos.getX() + 0.5 + face.getFrontOffsetX() * 0.5,
@@ -1022,66 +678,4 @@ private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY, flo
         BlockData(BlockPos pos, EnumFacing face) { this.pos = pos; this.face = face; }
     }
 
-    private class EditScreen extends GuiScreen {
-        private boolean dragging;
-        private float ax, ay, lax, lay;
-        private int lmx, lmy;
-        private GuiButtonExt resetBtn;
-
-        @Override
-        public void initGui() {
-            super.initGui();
-            buttonList.add(resetBtn = new GuiButtonExt(1, width - 90, height - 25, 85, 20, "Reset"));
-            syncPosition(new ScaledResolution(mc));
-            ax = posX;
-            ay = posY;
-        }
-
-        @Override
-        public void drawScreen(int mx, int my, float pt) {
-            ScaledResolution sr = new ScaledResolution(mc);
-            if (!dragging) { syncPosition(sr); ax = posX; ay = posY; }
-            drawRect(0, 0, width, height, 0xB2000000);
-
-            posX = ax; posY = ay;
-            ItemStack badgeStack = getDisplayBlock();
-            int blocks = Math.max(1, getTotalBlocks());
-            drawOverlay(badgeStack, blocks, computeBps(), posX, posY, 1.0F);
-
-            try { handleInput(); } catch (IOException ignored) {}
-            super.drawScreen(mx, my, pt);
-        }
-
-        @Override
-        protected void mouseClickMove(int mx, int my, int btn, long time) {
-            super.mouseClickMove(mx, my, btn, time);
-            if (btn != 0) return;
-            if (dragging) {
-                ax = lax + (mx - lmx);
-                ay = lay + (my - lmy);
-            } else {
-                float[] size = overlaySize(getDisplayBlock());
-                float tw = size[0];
-                float th = size[1];
-                if (mx >= posX - 2 && mx <= posX + tw + 2 && my >= posY - 2 && my <= posY + th + 2) {
-                    dragging = true;
-                    lmx = mx; lmy = my; lax = ax; lay = ay;
-                }
-            }
-        }
-
-        @Override
-        protected void mouseReleased(int mx, int my, int state) {
-            super.mouseReleased(mx, my, state);
-            if (state == 0) dragging = false;
-        }
-
-        @Override
-        public void actionPerformed(GuiButton btn) {
-            if (btn == resetBtn) { resetPosition(); ax = posX; ay = posY; }
-        }
-
-        @Override
-        public boolean doesGuiPauseGame() { return false; }
-    }
 }

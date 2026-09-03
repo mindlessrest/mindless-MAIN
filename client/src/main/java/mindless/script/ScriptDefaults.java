@@ -941,6 +941,16 @@ public class ScriptDefaults {
             return ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled();
         }
 
+        /** Placeable blocks the Block Counter can see, hotbar-only unless it is set otherwise. */
+        public int getBlockCount() {
+            return ModuleManager.blockCounter == null ? 0 : ModuleManager.blockCounter.getBlockCount();
+        }
+
+        /** Blocks placed per second, averaged over the last three seconds. */
+        public float getBlocksPerSecond() {
+            return ModuleManager.blockCounter == null ? 0f : ModuleManager.blockCounter.getBlocksPerSecond();
+        }
+
         public boolean isTowering() {
             return false;
         }

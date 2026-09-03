@@ -392,6 +392,34 @@ private void beginResize(Element element, int handle) {
             }
 
 
+            if (ModuleManager.blockCounter != null && ModuleManager.blockCounter.isEnabled()) {
+                final mindless.module.impl.render.BlockCounter counter = ModuleManager.blockCounter;
+                elements.add(new Element("Block Counter") {
+                    @Override
+                    void render() {
+                        setBounds(counter.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        ScaledResolution sr = new ScaledResolution(mc);
+                        counter.setRelativePosition(left / Math.max(1, sr.getScaledWidth()),
+                                top / Math.max(1, sr.getScaledHeight()));
+                        setBounds(counter.renderPreview());
+                    }
+
+                    @Override
+                    void reset() {
+                        counter.resetPosition();
+                    }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return counter.scaleSetting();
+                    }
+                });
+            }
+
             if (ModuleManager.radar != null) {
                 final Radar radar = ModuleManager.radar;
                 elements.add(new Element("Radar") {
