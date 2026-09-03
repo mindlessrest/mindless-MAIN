@@ -1,15 +1,14 @@
 package mindless.mixin.impl.client;
 
 import mindless.module.ModuleManager;
+import mindless.module.impl.minigames.ShopHelper;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.inventory.GuiChest;
+import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.inventory.GuiContainer;
-import net.minecraft.inventory.ContainerChest;
 import net.minecraft.inventory.Slot;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -18,48 +17,42 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(GuiContainer.class)
 public abstract class MixinGuiContainerShop {
 
-    @Shadow
-    private Slot theSlot;
+    /**
+     * Lays the affordability tint down before the slot's item is drawn.
+     *
+     * This used to run from GuiScreenEvent.DrawScreenEvent.Post, which is after both the items and
+     * the tooltip, so the tint covered the icon it was meant to mark -- and that event is never
+     * posted on the Lunar path at all, so there it drew nothing whatsoever. drawSlot exists on both.
+     * Slot coordinates are already inside the guiLeft/guiTop translate here, so they are used raw.
+     */
+    @Inject(method = "drawSlot", at = @At("HEAD"))
+    private void mindless$shopHighlight(Slot slot, CallbackInfo ci) {
+        ShopHelper helper = ModuleManager.shopHelper;
+        if (helper == null || !helper.isEnabled() || slot == null || !slot.getHasStack()) return;
+        if (!helper.isShopOpen(Minecraft.getMinecraft().currentScreen)) return;
+
+        int colour = helper.highlightColour(slot.getStack());
+        if (colour == 0) return;
+
+        Gui.drawRect(slot.xDisplayPosition, slot.yDisplayPosition,
+                slot.xDisplayPosition + 16, slot.yDisplayPosition + 16, colour);
+    }
 
     @Inject(method = "handleMouseClick", at = @At("HEAD"), cancellable = true)
-    private void shopHelperClick(Slot slot, int slotId, int clickedButton, int clickType, CallbackInfo ci) {
-        if (ModuleManager.shopHelper == null || !ModuleManager.shopHelper.isEnabled()) return;
-        if (!(((Object) this) instanceof GuiChest)) return;
+    private void mindless$shopClick(Slot slot, int slotId, int clickedButton, int clickType,
+                                    CallbackInfo ci) {
+        ShopHelper helper = ModuleManager.shopHelper;
+        if (helper == null || !helper.isEnabled()) return;
 
-        GuiChest chest = (GuiChest) (Object) this;
-        if (!(chest.inventorySlots instanceof ContainerChest)) return;
-        ContainerChest container = (ContainerChest) chest.inventorySlots;
-        String name = container.getLowerChestInventory().getDisplayName().getUnformattedText();
-        if (!name.contains("Shop") && !name.contains("Item Shop") && !name.contains("Upgrades")) return;
+        GuiContainer self = (GuiContainer) (Object) this;
+        int decision = helper.decideClick(self, slot, clickType);
+        if (decision == ShopHelper.CLICK_ALLOW) return;
 
-        if (slot == null || !slot.getHasStack()) return;
-        int result = ModuleManager.shopHelper.onShopClick(slot, clickedButton, clickType);
+        ci.cancel();
+        if (decision != ShopHelper.CLICK_QUICK_MOVE) return;
 
-        if (result == 1) {
-            ci.cancel();
-            return;
-        }
-
-        if (result == 2) {
-            ci.cancel();
-            Minecraft.getMinecraft().playerController.windowClick(
-                    chest.inventorySlots.windowId,
-                    slot.slotNumber,
-                    2, // middle click button
-                    0, // normal click type
-                    Minecraft.getMinecraft().thePlayer
-            );
-            return;
-        }
-        if (ModuleManager.shopHelper.instantBuy.isToggled()) {
-            ci.cancel();
-            Minecraft.getMinecraft().playerController.windowClick(
-                    chest.inventorySlots.windowId,
-                    slot.slotNumber,
-                    clickedButton,
-                    0,
-                    Minecraft.getMinecraft().thePlayer
-            );
-        }
+        Minecraft mc = Minecraft.getMinecraft();
+        mc.playerController.windowClick(self.inventorySlots.windowId, slot.slotNumber,
+                clickedButton, 1, mc.thePlayer);
     }
 }

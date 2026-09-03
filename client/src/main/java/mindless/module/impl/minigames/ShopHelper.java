@@ -1,77 +1,81 @@
 package mindless.module.impl.minigames;
 
 import mindless.module.Module;
-import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
-import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.inventory.GuiChest;
 import net.minecraft.client.gui.inventory.GuiContainer;
-import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Items;
 import net.minecraft.inventory.ContainerChest;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.ItemSword;
 import net.minecraft.util.EnumChatFormatting;
-import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.opengl.GL11;
 
-import java.lang.reflect.Field;
-import java.util.*;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
+/**
+ * Reads the Hypixel Bedwars shop and marks what is worth buying.
+ *
+ * Cost comes out of the item's own lore rather than a hardcoded price table, so a balance patch
+ * does not silently break it. Tiered gear is tracked separately from raw affordability: an iron
+ * sword you can pay for is still not worth buying when a diamond one is already in the hotbar.
+ */
 public class ShopHelper extends Module {
+
+    /** Let the click through untouched. */
+    public static final int CLICK_ALLOW = 0;
+    /** Swallow the click entirely. */
+    public static final int CLICK_CANCEL = 1;
+    /** Send it as a quick-move instead, which buys without the pickup round trip. */
+    public static final int CLICK_QUICK_MOVE = 2;
+
+    /**
+     * The chest titles Hypixel gives the shop pages.
+     *
+     * The click hooks used to look for a title containing "Shop", which none of these do -- the
+     * word only appears on the villager's name tag, never on the GUI. That single mismatch is why
+     * nothing but the upgrades page ever reacted.
+     */
+    private static final String[] SHOP_PAGES = {
+            "Quick Buy", "Blocks", "Melee", "Armor", "Tools",
+            "Ranged", "Potions", "Utility", "Rotating Items"
+    };
+    private static final String UPGRADES_PAGE = "Upgrades & Traps";
+
+    private static final int IRON_TINT = 0xE8E8E8;
+    private static final int GOLD_TINT = 0xFFAA00;
+    private static final int DIAMOND_TINT = 0x55FFFF;
+    private static final int EMERALD_TINT = 0x00C24A;
+
+    private static final Map<Item, Gear> GEAR = new HashMap<Item, Gear>();
+    private static final Map<Item, Integer> TIER = new HashMap<Item, Integer>();
+
+    static {
+        // Worst to best, so a higher index is a better item.
+        registerTiers(Gear.SWORD, Items.wooden_sword, Items.stone_sword, Items.iron_sword, Items.diamond_sword);
+        registerTiers(Gear.ARMOR, Items.chainmail_boots, Items.iron_boots, Items.diamond_boots);
+        registerTiers(Gear.PICKAXE, Items.wooden_pickaxe, Items.iron_pickaxe, Items.golden_pickaxe, Items.diamond_pickaxe);
+        registerTiers(Gear.AXE, Items.wooden_axe, Items.stone_axe, Items.iron_axe, Items.diamond_axe);
+        registerTiers(Gear.SHEARS, Items.shears);
+    }
+
     public ButtonSetting instantBuy;
     public ButtonSetting highlightAffordable;
     public ButtonSetting replaceClicks;
     public ButtonSetting preventDuplicate;
+    public ButtonSetting onlyInGame;
+    public ButtonSetting announceBlocked;
     public SliderSetting opacity;
 
-    private static final Map<Item, Integer> INVENTORY_RESOURCES = new HashMap<>();
-    private static final Map<Item, ItemCategory> CATEGORY = new HashMap<>();
-    private static final Map<Item, Integer> PRIORITY = new HashMap<>();
-    private static final EnumMap<ItemCategory, Integer> BEST_ITEMS = new EnumMap<>(ItemCategory.class);
-
-    private static final String[] BEDWARS_SHOP = {
-            "Quick Buy", "Blocks", "Melee", "Armor", "Tools",
-            "Ranged", "Potions", "Utility", "Rotating Items", "Upgrades & Traps"
-    };
-
-    private static final int IRON_COLOR_BASE = 0xFFFFFF;
-    private static final int GOLD_COLOR_BASE = 0xFFAA00;
-    private static final int DIAMOND_COLOR_BASE = 0x55FFFF;
-    private static final int EMERALD_COLOR_BASE = 0x00AA00;
-
-    private static Field guiLeftField;
-    private static Field guiTopField;
-
-    static {
-        register(ItemCategory.SWORD, Items.wooden_sword, Items.stone_sword, Items.iron_sword, Items.diamond_sword);
-        register(ItemCategory.ARMOR, Items.chainmail_leggings, Items.iron_leggings, Items.diamond_leggings);
-        register(ItemCategory.PICKAXE, Items.wooden_pickaxe, Items.iron_pickaxe, Items.golden_pickaxe, Items.diamond_pickaxe);
-        register(ItemCategory.AXE, Items.wooden_axe, Items.stone_axe, Items.iron_axe, Items.diamond_axe);
-        register(ItemCategory.STICK, Items.stick);
-        register(ItemCategory.SHEARS, Items.shears);
-
-        try {
-            guiLeftField = GuiContainer.class.getDeclaredField("guiLeft");
-            guiLeftField.setAccessible(true);
-            guiTopField = GuiContainer.class.getDeclaredField("guiTop");
-            guiTopField.setAccessible(true);
-        } catch (NoSuchFieldException e) {
-            try {
-                guiLeftField = GuiContainer.class.getDeclaredField("field_147003_i");
-                guiLeftField.setAccessible(true);
-                guiTopField = GuiContainer.class.getDeclaredField("field_147009_r");
-                guiTopField.setAccessible(true);
-            } catch (NoSuchFieldException ignored) {}
-        }
-    }
+    private final Map<Item, Integer> resources = new HashMap<Item, Integer>();
+    private final EnumMap<Gear, Integer> owned = new EnumMap<Gear, Integer>(Gear.class);
 
     public ShopHelper() {
         super("ShopHelper", category.bedwars);
@@ -79,187 +83,223 @@ public class ShopHelper extends Module {
         this.registerSetting(highlightAffordable = new ButtonSetting("Highlight affordable", true));
         this.registerSetting(replaceClicks = new ButtonSetting("Replace clicks", true));
         this.registerSetting(preventDuplicate = new ButtonSetting("Prevent duplicate", true));
-        this.registerSetting(opacity = new SliderSetting("Opacity", 50, 10, 100, 5));
+        this.registerSetting(onlyInGame = new ButtonSetting("Only in game", true));
+        this.registerSetting(announceBlocked = new ButtonSetting("Announce blocked buys", true));
+        this.registerSetting(opacity = new SliderSetting("Opacity", "%", 50.0, 10.0, 100.0, 5.0));
         this.canBeEnabled = true;
     }
 
+    @Override
+    public void onDisable() {
+        resources.clear();
+        owned.clear();
+    }
+
+    // ------------------------------------------------------------------ state
+
+    /**
+     * Rebuilt every tick the shop is open.
+     *
+     * Armour lives in its own inventory array, so scanning only the main inventory left every
+     * armour tier looking unowned and every armour entry highlighted as an upgrade.
+     */
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
-        if (!Utils.nullCheck()) return;
-        if (!highlightAffordable.isToggled()) return;
-        if (!isBedwarsShopOpen()) return;
+        if (event.phase != TickEvent.Phase.END || !Utils.nullCheck()) return;
+        if (!isShopOpen(mc.currentScreen)) return;
 
-        INVENTORY_RESOURCES.clear();
-        BEST_ITEMS.clear();
+        resources.clear();
+        owned.clear();
 
-        for (ItemStack stack : mc.thePlayer.inventory.mainInventory) {
+        scan(mc.thePlayer.inventory.mainInventory);
+        scan(mc.thePlayer.inventory.armorInventory);
+    }
+
+    private void scan(ItemStack[] contents) {
+        if (contents == null) return;
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack stack = contents[i];
             if (stack == null) continue;
+
             Item item = stack.getItem();
             if (isResource(item)) {
-                INVENTORY_RESOURCES.put(item, INVENTORY_RESOURCES.getOrDefault(item, 0) + stack.stackSize);
+                Integer held = resources.get(item);
+                resources.put(item, (held == null ? 0 : held) + stack.stackSize);
             }
-            ItemCategory cat = CATEGORY.get(item);
-            if (cat != null) {
-                int prio = PRIORITY.get(item);
-                Integer best = BEST_ITEMS.get(cat);
-                if (best == null || prio > best) {
-                    BEST_ITEMS.put(cat, prio);
-                }
+
+            Gear gear = GEAR.get(item);
+            if (gear == null) continue;
+            Integer tier = TIER.get(item);
+            if (tier == null) continue;
+            Integer best = owned.get(gear);
+            if (best == null || tier > best) {
+                owned.put(gear, tier);
             }
         }
     }
 
-    @SubscribeEvent
-    public void onRenderGui(GuiScreenEvent.DrawScreenEvent.Post event) {
-        if (!Utils.nullCheck()) return;
-        if (!highlightAffordable.isToggled()) return;
-        if (!(mc.currentScreen instanceof GuiChest)) return;
+    // ------------------------------------------------------------------ queries
 
-        GuiChest chest = (GuiChest) mc.currentScreen;
-        if (!(chest.inventorySlots instanceof ContainerChest)) return;
-        ContainerChest container = (ContainerChest) chest.inventorySlots;
-        String title = container.getLowerChestInventory().getDisplayName().getUnformattedText();
-        if (!isBedwarsTitle(title)) return;
+    /** The tint to lay behind a shop slot, or 0 when it should be left alone. */
+    public int highlightColour(ItemStack stack) {
+        if (!highlightAffordable.isToggled() || stack == null) return 0;
+        if (onlyInGame.isToggled() && !inGame()) return 0;
 
-        int guiLeft = getGuiLeft(chest);
-        int guiTop = getGuiTop(chest);
-        if (guiLeft == -1) return;
+        Cost cost = costOf(stack);
+        if (cost == null || !canAfford(cost)) return 0;
+        if (isTieredDuplicate(stack)) return 0;
 
-        GlStateManager.disableLighting();
-        GlStateManager.disableDepth();
-        GL11.glColorMask(true, true, true, true);
-
-        int alpha = (int) (opacity.getInput() * 2.55);
-
-        for (int i = 0; i < container.inventorySlots.size(); i++) {
-            Slot slot = container.inventorySlots.get(i);
-            if (slot == null || !slot.getHasStack()) continue;
-
-            ItemStack stack = slot.getStack();
-            ItemCost cost = getCostFromLore(stack);
-            if (cost == null) continue;
-            if (!shouldHighlight(stack, cost)) continue;
-
-            int color = getResourceColor(cost.resourceType, alpha);
-            int x = guiLeft + slot.xDisplayPosition;
-            int y = guiTop + slot.yDisplayPosition;
-            Gui.drawRect(x, y, x + 16, y + 16, color);
-        }
-
-        GlStateManager.enableLighting();
-        GlStateManager.enableDepth();
+        int alpha = Math.round(255.0f * (float) (opacity.getInput() / 100.0));
+        return (Math.max(0, Math.min(255, alpha)) << 24) | tintFor(cost.resource);
     }
-public int onShopClick(Slot slot, int clickedButton, int clickType) {
-        if (!Utils.nullCheck()) return 0;
-        if (!(mc.currentScreen instanceof GuiChest)) return 0;
 
-        GuiChest chest = (GuiChest) mc.currentScreen;
-        if (!(chest.inventorySlots instanceof ContainerChest)) return 0;
-        ContainerChest container = (ContainerChest) chest.inventorySlots;
-        String title = container.getLowerChestInventory().getDisplayName().getUnformattedText();
-        if (!isBedwarsTitle(title)) return 0;
+    /** What to do with a click on a shop slot. */
+    public int decideClick(GuiContainer gui, Slot slot, int clickType) {
+        if (!Utils.nullCheck() || slot == null || !slot.getHasStack()) return CLICK_ALLOW;
+        if (onlyInGame.isToggled() && !inGame()) return CLICK_ALLOW;
 
-        if (slot == null || !slot.getHasStack()) return 0;
+        String title = titleOf(gui);
+        if (title == null) return CLICK_ALLOW;
+
+        boolean upgrades = title.equals(UPGRADES_PAGE);
+        if (!upgrades && !isShopPage(title)) return CLICK_ALLOW;
+
         ItemStack stack = slot.getStack();
-        Item item = stack.getItem();
-        if (preventDuplicate.isToggled() && !title.contains("Upgrades & Traps")) {
-            ItemCost cost = getCostFromLore(stack);
-            if (cost != null && !shouldHighlight(stack, cost)) {
-                if ((item instanceof ItemSword || item == Items.stick) && item != Items.golden_sword) {
-                    Utils.sendMessage(EnumChatFormatting.RED + "[ShopHelper] Prevented duplicate purchase!");
-                    return 1; // cancel
-                }
+
+        // A tier you already match or beat is never worth re-buying, whether or not you could
+        // afford it. The old check keyed off the highlight, so it also fired when the only problem
+        // was being short on iron.
+        if (preventDuplicate.isToggled() && !upgrades && isTieredDuplicate(stack)) {
+            if (announceBlocked.isToggled()) {
+                Utils.sendMessage(EnumChatFormatting.RED + "[ShopHelper] " + EnumChatFormatting.GRAY
+                        + "You already have " + stack.getDisplayName() + EnumChatFormatting.GRAY + " or better.");
             }
-        }
-        if (replaceClicks.isToggled() && clickType == 0 && !title.contains("Upgrades & Traps")) {
-            return 2; // replace with middle click
+            return CLICK_CANCEL;
         }
 
-        return 0; // allow
+        // Quick-move buys in one packet; a plain pickup leaves the stack on the cursor.
+        if ((replaceClicks.isToggled() || instantBuy.isToggled()) && clickType == 0) {
+            return CLICK_QUICK_MOVE;
+        }
+        return CLICK_ALLOW;
     }
 
-    public static ItemCost getCostFromLore(ItemStack stack) {
-        if (stack == null) return null;
-        EntityPlayer player = mc.thePlayer;
-        if (player == null) return null;
+    public boolean isShopOpen(Object screen) {
+        String title = titleOf(screen);
+        return title != null && (isShopPage(title) || title.equals(UPGRADES_PAGE));
+    }
 
-        List<String> lore = stack.getTooltip(player, false);
-        for (String line : lore) {
-            String clean = EnumChatFormatting.getTextWithoutFormattingCodes(line);
-            if (clean == null) continue;
-            String[] split = clean.split(" ");
+    private boolean inGame() {
+        return Utils.getBedwarsStatus() == 2;
+    }
 
-            Item resourceItem = null;
-            int amount = 0;
+    private static String titleOf(Object screen) {
+        if (!(screen instanceof GuiChest)) return null;
+        GuiChest chest = (GuiChest) screen;
+        if (!(chest.inventorySlots instanceof ContainerChest)) return null;
+        ContainerChest container = (ContainerChest) chest.inventorySlots;
+        if (container.getLowerChestInventory() == null) return null;
+        String title = container.getLowerChestInventory().getDisplayName().getUnformattedText();
+        return title == null ? null : EnumChatFormatting.getTextWithoutFormattingCodes(title).trim();
+    }
 
-            if (clean.contains("Cost:") && split.length >= 3) {
-                if (!isNumeric(split[1])) continue;
-                amount = Integer.parseInt(split[1]);
-                String type = split[2].toLowerCase();
-                if (type.contains("unlocked")) return null;
-                resourceItem = getResourceFromName(type);
-            } else if (clean.contains("Tier") && split.length >= 3) {
-                int commaIndex = clean.lastIndexOf(',');
-                if (commaIndex == -1 || commaIndex + 2 >= clean.length()) continue;
-                String costPart = clean.substring(commaIndex + 2);
-                String[] costSplit = costPart.split(" ");
-                if (costSplit.length < 2 || !isNumeric(costSplit[0])) continue;
-                amount = Integer.parseInt(costSplit[0]);
-                String type = costSplit[1].toLowerCase();
-                if (type.contains("unlocked")) return null;
-                resourceItem = getResourceFromName(type);
+    private static boolean isShopPage(String title) {
+        for (int i = 0; i < SHOP_PAGES.length; i++) {
+            if (SHOP_PAGES[i].equals(title)) return true;
+        }
+        return false;
+    }
+
+    private boolean canAfford(Cost cost) {
+        Integer held = resources.get(cost.resource);
+        return (held == null ? 0 : held) >= cost.amount;
+    }
+
+    /** True when the player already holds this gear category at an equal or better tier. */
+    private boolean isTieredDuplicate(ItemStack stack) {
+        if (stack == null) return false;
+        Gear gear = GEAR.get(stack.getItem());
+        if (gear == null) return false;
+        Integer tier = TIER.get(stack.getItem());
+        if (tier == null) return false;
+        Integer best = owned.get(gear);
+        return best != null && best >= tier;
+    }
+
+    // ------------------------------------------------------------------ lore
+
+    /**
+     * Pulls the price out of the tooltip.
+     *
+     * Shop entries read "Cost: 20 Iron"; upgrade entries put the price at the end of a tier line,
+     * "Tier 2, 4 Diamonds". Anything already bought says so instead of naming a price.
+     */
+    public Cost costOf(ItemStack stack) {
+        if (stack == null || mc.thePlayer == null) return null;
+
+        List<String> lore;
+        try {
+            lore = stack.getTooltip(mc.thePlayer, false);
+        } catch (Throwable unreadable) {
+            return null;
+        }
+        if (lore == null) return null;
+
+        for (int i = 0; i < lore.size(); i++) {
+            String line = EnumChatFormatting.getTextWithoutFormattingCodes(lore.get(i));
+            if (line == null) continue;
+            String lower = line.toLowerCase();
+
+            if (lower.contains("unlocked") || lower.contains("maxed")) {
+                return null;
             }
 
-            if (resourceItem != null) return new ItemCost(resourceItem, amount);
+            Cost cost = parseCost(line, lower);
+            if (cost != null) return cost;
         }
         return null;
     }
 
-    public static boolean shouldHighlight(ItemStack stack, ItemCost cost) {
-        if (stack == null || cost == null) return false;
-
-        int available = INVENTORY_RESOURCES.getOrDefault(cost.resourceType, 0);
-        boolean affordable = available >= cost.amount;
-        if (mc.currentScreen instanceof GuiChest) {
-            GuiChest chest = (GuiChest) mc.currentScreen;
-            if (chest.inventorySlots instanceof ContainerChest) {
-                String title = ((ContainerChest) chest.inventorySlots)
-                        .getLowerChestInventory().getDisplayName().getUnformattedText();
-                if (title.contains("Upgrades & Traps")) {
-                    return affordable;
-                }
-            }
-        }
-        if (cost.resourceType == Items.diamond) {
-            return affordable;
-        }
-        Item item = stack.getItem();
-        ItemCategory cat = CATEGORY.get(item);
-        if (cat != null) {
-            int priority = PRIORITY.get(item);
-            Integer bestOwned = BEST_ITEMS.get(cat);
-            int best = bestOwned != null ? bestOwned : -1;
-            return priority > best && affordable;
+    private static Cost parseCost(String line, String lower) {
+        int marker = lower.indexOf("cost:");
+        String tail;
+        if (marker >= 0) {
+            tail = line.substring(marker + 5).trim();
+        } else if (lower.startsWith("tier")) {
+            int comma = line.lastIndexOf(',');
+            if (comma < 0 || comma + 1 >= line.length()) return null;
+            tail = line.substring(comma + 1).trim();
+        } else {
+            return null;
         }
 
-        return affordable;
+        int space = tail.indexOf(' ');
+        if (space <= 0) return null;
+
+        int amount = parsePositiveInt(tail.substring(0, space));
+        if (amount < 0) return null;
+
+        Item resource = resourceNamed(tail.substring(space + 1).trim().toLowerCase());
+        return resource == null ? null : new Cost(resource, amount);
     }
 
-    private boolean isBedwarsShopOpen() {
-        if (!(mc.currentScreen instanceof GuiChest)) return false;
-        GuiChest chest = (GuiChest) mc.currentScreen;
-        if (!(chest.inventorySlots instanceof ContainerChest)) return false;
-        String title = ((ContainerChest) chest.inventorySlots)
-                .getLowerChestInventory().getDisplayName().getUnformattedText();
-        return isBedwarsTitle(title);
+    private static int parsePositiveInt(String value) {
+        if (value == null || value.isEmpty() || value.length() > 6) return -1;
+        int total = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char character = value.charAt(i);
+            if (character < '0' || character > '9') return -1;
+            total = total * 10 + (character - '0');
+        }
+        return total;
     }
 
-    private static boolean isBedwarsTitle(String title) {
-        for (String s : BEDWARS_SHOP) {
-            if (title.equals(s)) return true;
-        }
-        return false;
+    private static Item resourceNamed(String name) {
+        if (name.startsWith("iron")) return Items.iron_ingot;
+        if (name.startsWith("gold")) return Items.gold_ingot;
+        if (name.startsWith("diamond")) return Items.diamond;
+        if (name.startsWith("emerald")) return Items.emerald;
+        return null;
     }
 
     private static boolean isResource(Item item) {
@@ -267,64 +307,32 @@ public int onShopClick(Slot slot, int clickedButton, int clickType) {
                 || item == Items.diamond || item == Items.emerald;
     }
 
-    private static Item getResourceFromName(String type) {
-        if (type.startsWith("iron")) return Items.iron_ingot;
-        if (type.startsWith("gold")) return Items.gold_ingot;
-        if (type.startsWith("diamond")) return Items.diamond;
-        if (type.startsWith("emerald")) return Items.emerald;
-        return null;
+    private static int tintFor(Item resource) {
+        if (resource == Items.iron_ingot) return IRON_TINT;
+        if (resource == Items.gold_ingot) return GOLD_TINT;
+        if (resource == Items.diamond) return DIAMOND_TINT;
+        if (resource == Items.emerald) return EMERALD_TINT;
+        return 0xAAAAAA;
     }
 
-    private static int getResourceColor(Item item, int alpha) {
-        int rgb;
-        if (item == Items.iron_ingot) rgb = IRON_COLOR_BASE;
-        else if (item == Items.gold_ingot) rgb = GOLD_COLOR_BASE;
-        else if (item == Items.diamond) rgb = DIAMOND_COLOR_BASE;
-        else if (item == Items.emerald) rgb = EMERALD_COLOR_BASE;
-        else rgb = 0xAAAAAA;
-        return (alpha << 24) | rgb;
-    }
-
-    private static boolean isNumeric(String s) {
-        if (s == null || s.isEmpty()) return false;
-        for (int i = 0; i < s.length(); i++) {
-            if (!Character.isDigit(s.charAt(i))) return false;
-        }
-        return true;
-    }
-
-    private static void register(ItemCategory category, Item... items) {
+    private static void registerTiers(Gear gear, Item... items) {
         for (int i = 0; i < items.length; i++) {
-            CATEGORY.put(items[i], category);
-            PRIORITY.put(items[i], i);
+            GEAR.put(items[i], gear);
+            TIER.put(items[i], i);
         }
     }
 
-    private static int getGuiLeft(GuiContainer container) {
-        try {
-            if (guiLeftField != null) return guiLeftField.getInt(container);
-        } catch (Exception ignored) {}
-        return -1;
-    }
-
-    private static int getGuiTop(GuiContainer container) {
-        try {
-            if (guiTopField != null) return guiTopField.getInt(container);
-        } catch (Exception ignored) {}
-        return -1;
-    }
-
-    public static class ItemCost {
-        public final Item resourceType;
+    public static final class Cost {
+        public final Item resource;
         public final int amount;
 
-        public ItemCost(Item resourceType, int amount) {
-            this.resourceType = resourceType;
+        Cost(Item resource, int amount) {
+            this.resource = resource;
             this.amount = amount;
         }
     }
 
-    private enum ItemCategory {
-        SWORD, ARMOR, PICKAXE, AXE, STICK, SHEARS
+    private enum Gear {
+        SWORD, ARMOR, PICKAXE, AXE, SHEARS
     }
 }

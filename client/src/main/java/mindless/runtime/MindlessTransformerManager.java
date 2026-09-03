@@ -612,6 +612,7 @@ String findDanglingSelfMethodReference(byte[] transformedBytes) {
                 "mindless.transformer.impl.client.TransformerBlock",
                 "mindless.transformer.impl.client.TransformerGameSettings",
                 "mindless.transformer.impl.client.TransformerGuiContainer",
+                "mindless.transformer.impl.client.TransformerGuiContainerShop",
                 "mindless.transformer.impl.client.TransformerItemStack",
                 "mindless.transformer.impl.client.TransformerMovementInputFromOptions",
                 "mindless.transformer.impl.client.TransformerPlayerControllerMP",
