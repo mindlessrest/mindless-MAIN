@@ -13,6 +13,10 @@ import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.EmptyChunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
@@ -32,6 +36,7 @@ public final class SharedBlockHighlightCache {
     private final Queue<Long> scanQueue = new ConcurrentLinkedQueue<>();
     private final Set<Long> queuedChunks = ConcurrentHashMap.newKeySet();
     private final Set<Long> scannedChunks = ConcurrentHashMap.newKeySet();
+    private final List<Long> pendingSweep = new ArrayList<>();
 
     private BlockListHighlightMatcher blockListMatcher;
     private boolean bedAttached;
@@ -146,17 +151,7 @@ public final class SharedBlockHighlightCache {
         if (mc.theWorld == null || mc.thePlayer == null) {
             return;
         }
-        int rd = mc.gameSettings.renderDistanceChunks;
-        int pcx = (int) mc.thePlayer.posX >> 4;
-        int pcz = (int) mc.thePlayer.posZ >> 4;
-        for (int cx = pcx - rd; cx <= pcx + rd; cx++) {
-            for (int cz = pcz - rd; cz <= pcz + rd; cz++) {
-                Chunk chunk = mc.theWorld.getChunkFromChunkCoords(cx, cz);
-                if (chunk != null && !(chunk instanceof EmptyChunk)) {
-                    enqueueChunk(cx, cz);
-                }
-            }
-        }
+        enqueueAroundPlayer(false);
     }
 
     public void tickScan(int maxSections) {
@@ -198,24 +193,55 @@ public final class SharedBlockHighlightCache {
         if (!anyConsumerActive() || mc.theWorld == null || mc.thePlayer == null) {
             return;
         }
+        enqueueAroundPlayer(true);
+    }
+
+    /**
+     * Queues the chunks around the player closest-first.
+     *
+     * Both callers used to raster from the far corner of the render distance inwards, so the ring
+     * of chunks actually near the player was scanned last on every pass. With a small scan budget
+     * that is minutes of the nearest beds being the last ones found -- they only appeared once
+     * everything behind them had been done.
+     */
+    private void enqueueAroundPlayer(boolean skipScanned) {
+        final int pcx = (int) Math.floor(mc.thePlayer.posX) >> 4;
+        final int pcz = (int) Math.floor(mc.thePlayer.posZ) >> 4;
         int rd = mc.gameSettings.renderDistanceChunks;
-        int pcx = (int) Math.floor(mc.thePlayer.posX) >> 4;
-        int pcz = (int) Math.floor(mc.thePlayer.posZ) >> 4;
+
+        pendingSweep.clear();
         for (int cx = pcx - rd; cx <= pcx + rd; cx++) {
             for (int cz = pcz - rd; cz <= pcz + rd; cz++) {
                 long k = key(cx, cz);
-                if (scannedChunks.contains(k) || queuedChunks.contains(k)) {
+                if (queuedChunks.contains(k) || (skipScanned && scannedChunks.contains(k))) {
                     continue;
                 }
                 Chunk chunk = mc.theWorld.getChunkFromChunkCoords(cx, cz);
                 if (chunk == null || chunk instanceof EmptyChunk) {
                     continue;
                 }
-                if (queuedChunks.add(k)) {
-                    scanQueue.add(k);
-                }
+                pendingSweep.add(k);
             }
         }
+
+        Collections.sort(pendingSweep, new Comparator<Long>() {
+            @Override
+            public int compare(Long first, Long second) {
+                return Integer.compare(chunkDistanceSq(first, pcx, pcz),
+                        chunkDistanceSq(second, pcx, pcz));
+            }
+        });
+
+        for (int i = 0; i < pendingSweep.size(); i++) {
+            long k = pendingSweep.get(i);
+            enqueueChunk((int) (k >> 32), (int) k);
+        }
+    }
+
+    private static int chunkDistanceSq(long chunkKey, int originX, int originZ) {
+        int dx = (int) (chunkKey >> 32) - originX;
+        int dz = (int) chunkKey - originZ;
+        return dx * dx + dz * dz;
     }
 
     public void onBlockChange(BlockPos pos, IBlockState newState) {
