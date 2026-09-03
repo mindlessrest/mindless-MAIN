@@ -61,6 +61,12 @@ private static final double HUD_WAVE_HORIZONTAL_X_SCALE = 0.35;
     private static SliderSetting cornerRadius;
     private static SliderSetting backgroundOpacity;
     private static ButtonSetting backgroundBlur;
+    private static SliderSetting blurStrength;
+    private static SliderSetting blurPasses;
+    private static SliderSetting blurOpacity;
+    private static ColorSetting backgroundTint;
+    private static ButtonSetting backgroundBorder;
+    private static ColorSetting borderColor;
     private static ButtonSetting textShadow;
     private static SliderSetting shadowStyle;
     private static SliderSetting shadowOpacity;
@@ -123,6 +129,12 @@ private static final int[][] OUTLINE_OFFSETS = {
         this.registerSetting(cornerRadius = new SliderSetting("Corner radius", 4.0, 0.0, 12.0, 0.5));
         this.registerSetting(backgroundOpacity = new SliderSetting("Background opacity", 43.0, 0.0, 100.0, 1.0));
         this.registerSetting(backgroundBlur = new ButtonSetting("Background blur", false));
+        this.registerSetting(blurStrength = new SliderSetting("Blur strength", 4.0, 0.5, 16.0, 0.5));
+        this.registerSetting(blurPasses = new SliderSetting("Blur passes", 2, 1, 5, 1));
+        this.registerSetting(blurOpacity = new SliderSetting("Blur opacity", "%", 85, 10, 100, 1));
+        this.registerSetting(backgroundTint = new ColorSetting("Background tint", 0, 0, 0));
+        this.registerSetting(backgroundBorder = new ButtonSetting("Background border", false));
+        this.registerSetting(borderColor = new ColorSetting("Border color", 255, 255, 255, 40));
         this.registerSetting(textShadow = new ButtonSetting("Text shadow", true));
         this.registerSetting(shadowStyle = new SliderSetting("Shadow style", 0, SHADOW_STYLES));
         this.registerSetting(shadowOpacity = new SliderSetting("Shadow opacity", 100.0, 5.0, 100.0, 5.0));
@@ -177,8 +189,17 @@ private static final int[][] OUTLINE_OFFSETS = {
         if (backgroundOpacity != null) {
             backgroundOpacity.setVisible(background, this);
         }
+        boolean blurring = background && backgroundBlur != null && backgroundBlur.isToggled();
+        if (blurStrength != null) blurStrength.setVisible(blurring, this);
+        if (blurPasses != null) blurPasses.setVisible(blurring, this);
+        if (blurOpacity != null) blurOpacity.setVisible(blurring, this);
+        if (backgroundTint != null) backgroundTint.setVisible(background, this);
+        if (backgroundBorder != null) backgroundBorder.setVisible(background, this);
+        if (borderColor != null) {
+            borderColor.setVisible(background && backgroundBorder != null && backgroundBorder.isToggled(), this);
+        }
         if (backgroundBlur != null) {
-            backgroundBlur.setVisible(background && getBackgroundMode() == 2, this);
+            backgroundBlur.setVisible(background, this);
         }
 
         boolean shadow = textShadow != null && textShadow.isToggled();
@@ -675,45 +696,87 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
         return result;
     }
 
+    /**
+     * Blur, tint and border all trace the same silhouette.
+     *
+     * The blur used to be panel-only, which meant the one mode where the list has an interesting
+     * outline -- Connected, with its stepped right edge -- got a flat rectangle or nothing at all.
+     * BlurUtils masks by whatever you draw between prepare and end, so the stepped rows go into
+     * the mask exactly as they are painted and the blur comes back cut to that shape.
+     */
     private static void drawArrayListBackground(int[] widths, float top, int horizontalTextPadding, int rowHeight) {
         if (widths.length == 0) {
             return;
         }
+
+        float[] bounds = backgroundBounds(widths, top, horizontalTextPadding, rowHeight);
+
+        if (backgroundBlur != null && backgroundBlur.isToggled()) {
+            BlurUtils.prepareBlur(bounds[0], bounds[1], bounds[2], bounds[3]);
+            paintBackgroundShapes(widths, top, horizontalTextPadding, rowHeight, 0xFF000000, 0.0f);
+            BlurUtils.blurEndRegion(
+                    blurPasses == null ? 2 : (int) blurPasses.getInput(),
+                    blurStrength == null ? 4.0f : (float) blurStrength.getInput(),
+                    blurOpacity == null ? 0.85f : (float) (blurOpacity.getInput() / 100.0),
+                    bounds[0] - 2.0f, bounds[1] - 2.0f, bounds[2] + 4.0f, bounds[3] + 4.0f);
+        }
+
+        // Painting the shapes one pixel proud in the border colour before the fill gives the
+        // stepped edge a hairline for free, which drawing an outline per row could not do without
+        // seams where two rows of different widths meet.
+        if (backgroundBorder != null && backgroundBorder.isToggled() && borderColor != null) {
+            paintBackgroundShapes(widths, top, horizontalTextPadding, rowHeight,
+                    borderColor.getColor(), 1.0f);
+        }
+
+        int alpha = getBackgroundAlpha();
+        if (alpha > 0) {
+            int tint = backgroundTint == null ? 0 : backgroundTint.getRGB();
+            paintBackgroundShapes(widths, top, horizontalTextPadding, rowHeight,
+                    (alpha << 24) | tint, 0.0f);
+        }
+    }
+
+    /** {left, top, width, height} of the whole list, whichever way it is aligned. */
+    private static float[] backgroundBounds(int[] widths, float top, int horizontalTextPadding, int rowHeight) {
+        int maxWidth = 0;
+        for (int width : widths) {
+            maxWidth = Math.max(maxWidth, width);
+        }
+        float left = alignRight.isToggled()
+                ? posX - maxWidth - horizontalTextPadding
+                : posX - horizontalTextPadding;
+        return new float[]{left, top, maxWidth + horizontalTextPadding * 2f, widths.length * (float) rowHeight};
+    }
+
+    /** Draws the chosen background shape in one colour; grow expands it for the border pass. */
+    private static void paintBackgroundShapes(int[] widths, float top, int horizontalTextPadding,
+                                              int rowHeight, int color, float grow) {
         int mode = getBackgroundMode();
 
         if (mode == 2) {
-            int maxWidth = 0;
-            for (int width : widths) {
-                maxWidth = Math.max(maxWidth, width);
-            }
-            float left = alignRight.isToggled()
-                    ? posX - maxWidth - horizontalTextPadding
-                    : posX - horizontalTextPadding;
-            drawHudBackground(left, top, maxWidth + horizontalTextPadding * 2f, widths.length * (float) rowHeight);
+            float[] bounds = backgroundBounds(widths, top, horizontalTextPadding, rowHeight);
+            float radius = getBackgroundRadius(Math.min(bounds[2], bounds[3]));
+            paintRoundedRect(bounds[0] - grow, bounds[1] - grow,
+                    bounds[2] + grow * 2f, bounds[3] + grow * 2f, radius, color);
             return;
         }
 
         if (mode == 1) {
             for (int i = 0; i < widths.length; i++) {
+                float width = widths[i] + horizontalTextPadding * 2f;
                 float left = alignRight.isToggled()
                         ? posX - widths[i] - horizontalTextPadding
                         : posX - horizontalTextPadding;
-                drawHudBackground(left, top + i * rowHeight, widths[i] + horizontalTextPadding * 2f, rowHeight);
+                float radius = getBackgroundRadius(Math.min(width, rowHeight));
+                paintRoundedRect(left - grow, top + i * rowHeight - grow,
+                        width + grow * 2f, rowHeight + grow * 2f, radius, color);
             }
             return;
         }
 
-        drawConnectedBackground(widths, top, horizontalTextPadding, rowHeight);
-    }
-private static void drawConnectedBackground(int[] widths, float top, int horizontalTextPadding, int rowHeight) {
         boolean right = alignRight.isToggled();
-        int alpha = getBackgroundAlpha();
-        if (alpha <= 0) {
-            return;
-        }
-        int color = new Color(0, 0, 0, alpha).getRGB();
         float radius = getBackgroundRadius(rowHeight);
-
         for (int i = 0; i < widths.length; i++) {
             float width = widths[i] + horizontalTextPadding * 2f;
             float left = right ? posX - widths[i] - horizontalTextPadding : posX - horizontalTextPadding;
@@ -723,10 +786,28 @@ private static void drawConnectedBackground(int[] widths, float top, int horizon
             float top4 = firstRow ? radius : 0.0f;
             float bottom4 = lastRow ? radius : 0.0f;
 
-            fillRow(left, rowTop, left + width, rowTop + rowHeight,
+            // Only the outer edges grow; growing the shared horizontal seams would draw the
+            // border straight through the middle of the list.
+            float growTop = firstRow ? grow : 0.0f;
+            float growBottom = lastRow ? grow : 0.0f;
+            fillRow(left - grow, rowTop - growTop, left + width + grow, rowTop + rowHeight + growBottom,
                     top4, top4, bottom4, bottom4, color);
         }
     }
+
+    private static void paintRoundedRect(float left, float top, float width, float height,
+                                         float radius, int color) {
+        if (width <= 0.0f || height <= 0.0f) {
+            return;
+        }
+        if (radius <= 0.0f) {
+            RenderUtils.drawRect(left, top, left + width, top + height, color);
+        }
+        else {
+            RoundedUtils.drawRound(left, top, width, height, radius, new Color(color, true));
+        }
+    }
+
 private static void fillRow(float x1, float y1, float x2, float y2,
                                 float topLeft, float topRight, float bottomRight, float bottomLeft,
                                 int color) {
@@ -801,31 +882,6 @@ private static void radialBand(float cx, float cy, float r0, float a0, float r1,
         float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
                 * mindless.module.impl.theme.ThemeManager.roundingScale();
         return Math.max(0.0f, Math.min(radius, height * 0.34f));
-    }
-private static void drawHudBackground(float left, float top, float width, float height) {
-        if (width <= 0.0f || height <= 0.0f) {
-            return;
-        }
-        int alpha = getBackgroundAlpha();
-        if (alpha == 0 && !(backgroundBlur != null && backgroundBlur.isToggled())) {
-            return;
-        }
-        int color = new Color(0, 0, 0, alpha).getRGB();
-        float radius = getBackgroundRadius(Math.min(width, height));
-        if (backgroundBlur != null && backgroundBlur.isToggled() && getBackgroundMode() == 2) {
-            BlurUtils.prepareBlur(left, top, width, height);
-            RoundedUtils.drawRound(left, top, width, height, radius, 0xFF000000);
-            BlurUtils.blurEndRegion(1, 1.4f, 0.60f, left - 2.0f, top - 2.0f,
-                    width + 4.0f, height + 4.0f);
-        }
-        if (alpha > 0) {
-            if (radius <= 0.0f) {
-                RenderUtils.drawRect(left, top, left + width, top + height, color);
-            }
-            else {
-                RoundedUtils.drawRound(left, top, width, height, radius, new Color(color, true));
-            }
-        }
     }
 
     private static float getHudTextY(float rowTop, int textTopOffset, int textTopPadding) {
