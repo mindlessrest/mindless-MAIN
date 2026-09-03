@@ -219,25 +219,32 @@ public static void scissor(double x, double y, double width, double height) {
     /**
      * Frustum-tests a world-space box against the camera the frame was actually drawn from.
      *
-     * The clipping planes come from the live modelview/projection, so they are relative to the
-     * render camera. Positioning the frustum at the view entity's feet instead left a constant
-     * error of the eye height in first person, and of the whole third-person pull-back -- up to
-     * four blocks -- whenever Freelook was up. Chunk-sized boxes absorb that; a bed or a player's
-     * projected box does not, so overlays flicked in and out near the screen edges and dropped out
-     * wholesale in Freelook.
+     * The origin has to be the interpolated view-entity position, which is exactly what vanilla
+     * feeds its own culling camera in EntityRenderer.renderWorldPass:
+     *
+     *     ClippingHelperImpl.getInstance();
+     *     Frustum icamera = new Frustum();
+     *     icamera.setPosition(lastTickPos + (pos - lastTickPos) * partialTicks);
+     *
+     * Frustum keeps a reference to the ClippingHelperImpl singleton rather than a copy, and that
+     * singleton reads the planes off the modelview *after* setupCameraTransform has run. So the
+     * eye height and the third-person pull-back are already folded into the planes. Adding
+     * ActiveRenderInfo.getPosition() on top -- it is the camera origin measured from the entity,
+     * not a world position -- shifted the origin by that offset a second time: about 1.62 blocks
+     * standing still, and the entire pull-back with Freelook or F5 up. Boxes then failed the test
+     * while plainly on screen, which is what made beds wink out as you walked up to them and
+     * vanish outright in Freelook. RenderManager.viewerPos is interpolated identically, so it is
+     * the same value vanilla uses.
      */
     public static boolean isInViewFrustum(final AxisAlignedBB bb) {
         if (bb == null) return false;
         Entity view = mc.getRenderViewEntity();
         if (view == null) return true;
-        Vec3 cameraOffset = ActiveRenderInfo.getPosition();
-        if (cameraOffset == null) {
+        RenderManager renderManager = mc.getRenderManager();
+        if (renderManager == null) {
             frustum.setPosition(view.posX, view.posY, view.posZ);
         } else {
-            RenderManager renderManager = mc.getRenderManager();
-            frustum.setPosition(renderManager.viewerPosX + cameraOffset.xCoord,
-                    renderManager.viewerPosY + cameraOffset.yCoord,
-                    renderManager.viewerPosZ + cameraOffset.zCoord);
+            frustum.setPosition(renderManager.viewerPosX, renderManager.viewerPosY, renderManager.viewerPosZ);
         }
         return frustum.isBoundingBoxInFrustum(bb);
     }
