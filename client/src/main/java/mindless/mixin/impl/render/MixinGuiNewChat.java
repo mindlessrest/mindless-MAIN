@@ -2,6 +2,7 @@ package mindless.mixin.impl.render;
 
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.render.ChatModule;
+import mindless.utility.font.ChatWrapFontRenderer;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.shader.BlurUtils;
@@ -22,7 +23,11 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import net.minecraft.client.gui.FontRenderer;
+import net.minecraft.client.gui.GuiUtilRenderComponents;
+import net.minecraft.util.IChatComponent;
 import org.lwjgl.opengl.GL11;
 
 import java.util.IdentityHashMap;
@@ -129,6 +134,14 @@ public abstract class MixinGuiNewChat {
             if (i > 0) y += insertionOffset;
             else y += (float) ((1.0 - eased) * 2.5);
             String text = chatLine.getChatComponent().getFormattedText();
+            // Backstop: however the line was wrapped, it is trimmed here against the font that is
+            // about to draw it, so nothing can run past the chat box.
+            if (chatFont != null) {
+                float available = chatWidth - textIndent;
+                if (available > 0f && chatFont.getStringWidth(text) > available) {
+                    text = ChatWrapFontRenderer.trim(chatFont, text, (int) available, false);
+                }
+            }
             int alpha = MathHelper.clamp_int((int) Math.round(255.0 * eased), 0, 255);
             int textColor = 0xFFFFFF | (alpha << 24);
 
@@ -175,6 +188,17 @@ public abstract class MixinGuiNewChat {
         GlStateManager.popMatrix();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         ci.cancel();
+    }
+
+    /**
+     * Wrap against the font the chat is actually drawn with, not the vanilla one.
+     */
+    @Redirect(method = "setChatLine", require = 0, at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/gui/GuiUtilRenderComponents;splitText(Lnet/minecraft/util/IChatComponent;ILnet/minecraft/client/gui/FontRenderer;ZZ)Ljava/util/List;"))
+    private List<IChatComponent> mindless$splitWithChatFont(IChatComponent component, int width,
+                                                            FontRenderer font, boolean p3, boolean p4) {
+        return GuiUtilRenderComponents.splitText(component, width,
+                ChatWrapFontRenderer.measuring(ChatModule.getCustomFont()), p3, p4);
     }
 
     @Unique

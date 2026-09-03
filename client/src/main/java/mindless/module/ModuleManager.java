@@ -228,7 +228,6 @@ public class ModuleManager {
         this.addModule(chams = new Chams());
         this.addModule(new DamageTint());
         this.addModule(new Fullbright());
-        this.addModule(new MotionBlur());
         this.addModule(new DamageTags());
 
         this.addModule(new ChestESP());

@@ -34,9 +34,7 @@ import org.lwjgl.opengl.GL11;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 public class ItemESP extends Module {
 private enum Category {
         DIAMOND("Diamond", 0x00E5FF),
@@ -75,9 +73,14 @@ private enum Category {
     private final ButtonSetting showDistance;
     private final ButtonSetting showCount;
     private final ButtonSetting hideInGui;
-private final List<Entry> entries = new ArrayList<Entry>();
+private static final double STACK_RADIUS_SQ = 9.0D;
+    private static final double TIGHT_RADIUS_SQ = 2.25D;
+    private static final float SPREAD_GAP = 12.0F;
+
+    private final List<Entry> entries = new ArrayList<Entry>();
     private final List<Card> cards = new ArrayList<Card>();
-    private final Map<Long, Entry> groups = new HashMap<Long, Entry>();
+    private final List<Card> cluster = new ArrayList<Card>();
+    private boolean[] clustered = new boolean[64];
     private final double[] projected = new double[3];
     private RenderUtils.ProjectionContext projectionContext;
 
@@ -98,7 +101,7 @@ private final List<Entry> entries = new ArrayList<Entry>();
         registerSetting(showName = new ButtonSetting(card, "Show name", false));
         registerSetting(showDistance = new ButtonSetting(card, "Show distance", false));
         registerSetting(outline = new ButtonSetting(card, "Outline", true));
-        registerSetting(iconScale = new SliderSetting(card, "Icon scale", "x", 1.0, 0.7, 2.0, 0.05));
+        registerSetting(iconScale = new SliderSetting(card, "Icon scale", "x", 1.0, 0.0, 2.0, 0.05));
         registerSetting(backgroundAlpha = new SliderSetting(card, "Background alpha", 170, 0, 255, 5));
 
         registerSetting(stackLayout = new ButtonSetting("Stack layout", true));
@@ -110,7 +113,7 @@ private final List<Entry> entries = new ArrayList<Entry>();
     public void onDisable() {
         entries.clear();
         cards.clear();
-        groups.clear();
+        cluster.clear();
     }
 
     @SubscribeEvent
@@ -151,10 +154,9 @@ private final List<Entry> entries = new ArrayList<Entry>();
     };
 private void collect() {
         entries.clear();
-        groups.clear();
 
         double maxDistSq = maxDistance.getInput() * maxDistance.getInput();
-        boolean stack = stackLayout.isToggled();
+        double radiusSq = stackLayout.isToggled() ? STACK_RADIUS_SQ : TIGHT_RADIUS_SQ;
 
         for (Entity entity : mc.theWorld.loadedEntityList) {
             if (!(entity instanceof EntityItem)) continue;
@@ -167,19 +169,23 @@ private void collect() {
             Category matched = categoryOf(itemStack);
             if (matched == null || matched.setting == null || !matched.setting.isToggled()) continue;
 
-            if (stack) {
-                long cell = (((long) Math.floor(entity.posX / 1.25) & 0x1FFFFF) << 42)
-                        | (((long) Math.floor(entity.posY / 1.25) & 0x1FFFFF) << 21)
-                        | ((long) Math.floor(entity.posZ / 1.25) & 0x1FFFFF);
-                long key = cell * 31L + matched.ordinal();
-                Entry existing = groups.get(key);
-                if (existing != null) {
-                    existing.count += itemStack.stackSize;
-                    continue;
+            // Always merge same-item drops that share a spot. A generator pile is dozens of
+            // one-item entities and only means anything as a total; the setting widens the radius
+            // rather than deciding whether merging happens at all.
+            Entry host = null;
+            for (int i = 0; i < entries.size(); i++) {
+                Entry candidate = entries.get(i);
+                if (candidate.category != matched || candidate.anchor == null) continue;
+                double dx = candidate.anchor.posX - entity.posX;
+                double dy = candidate.anchor.posY - entity.posY;
+                double dz = candidate.anchor.posZ - entity.posZ;
+                if (dx * dx + dy * dy + dz * dz <= radiusSq) {
+                    host = candidate;
+                    break;
                 }
-                Entry entry = new Entry(matched, itemStack, itemStack.stackSize, entity);
-                groups.put(key, entry);
-                entries.add(entry);
+            }
+            if (host != null) {
+                host.count += itemStack.stackSize;
                 continue;
             }
 
@@ -230,7 +236,9 @@ private final List<Card> cardPool = new ArrayList<Card>();
         MindlessFontRenderer text = FontManager.getHudRenderer(ModuleFont.nameOf(font), 1.0f);
         float scale = (float) iconScale.getInput();
         float icon = 16f * scale;
-        float padding = 2f * scale;
+        float padding = Math.max(2f, 3f * scale);
+        float gap = icon > 0f ? Math.max(2f, 3f * scale) : 0f;
+        float fontHeight = text.getFontHeight();
         int alpha = (int) backgroundAlpha.getInput();
         boolean drawOutline = outline.isToggled();
         boolean drawCount = showCount.isToggled();
@@ -240,6 +248,14 @@ private final List<Card> cardPool = new ArrayList<Card>();
         float screenW = resolution.getScaledWidth();
         float screenH = resolution.getScaledHeight();
 
+        measureCards(text, icon, padding, gap, fontHeight, drawCount, drawName, drawDistance);
+        // Merging changes the counts, which changes the widths, which can bring further cards into
+        // contact. Repeat until it settles rather than leaving a half-merged row behind.
+        for (int round = 0; round < 4 && mergeStackedCards(); round++) {
+            measureCards(text, icon, padding, gap, fontHeight, drawCount, drawName, drawDistance);
+        }
+        spreadOverlapping();
+
         for (int i = 0; i < cards.size(); i++) {
             Card card = cards.get(i);
             if (card.screenX < -150f || card.screenX > screenW + 150f
@@ -247,10 +263,8 @@ private final List<Card> cardPool = new ArrayList<Card>();
                 continue;
             }
 
-            String count = drawCount ? String.valueOf(card.count) : "";
-            float countW = drawCount ? text.getStringWidth(count) : 0f;
-            float width = Math.max(icon + padding * 2f, countW + icon * .5f + padding * 2f);
-            float height = icon + padding * 2f;
+            float width = card.width;
+            float height = card.height;
             float left = card.screenX - width / 2f;
             float top = card.screenY - height / 2f;
 
@@ -265,16 +279,18 @@ private final List<Card> cardPool = new ArrayList<Card>();
                                 (card.category.color >> 8) & 0xFF, card.category.color & 0xFF, 200));
             }
 
-            drawIcon(card.icon, card.screenX - icon / 2f, card.screenY - icon / 2f, scale);
+            if (icon > 0f) {
+                drawIcon(card.icon, left + padding, card.screenY - icon / 2f, scale);
+            }
 
             if (drawCount) {
-                text.drawString(count, left + width - countW - padding,
-                        top + height - text.getFontHeight() - padding * .5f, 0xFFFFFFFF, true);
+                text.drawString(card.label, left + padding + icon + gap,
+                        card.screenY - fontHeight / 2f, 0xFFFFFFFF, true);
             }
             if (drawName) {
                 String name = card.icon.getDisplayName();
                 text.drawString(name, card.screenX - text.getStringWidth(name) / 2f,
-                        top - text.getFontHeight() - 1f, 0xFFFFFFFF, true);
+                        top - fontHeight - 1f, 0xFFFFFFFF, true);
             }
             if (drawDistance) {
                 String distance = ((int) card.distance) + "m";
@@ -284,6 +300,162 @@ private final List<Card> cardPool = new ArrayList<Card>();
         }
 
         GlStateManager.color(1f, 1f, 1f, 1f);
+    }
+
+    /**
+     * Measures the pill and, separately, how wide the card actually draws.
+     *
+     * The name and distance labels are centred on the card and are far wider than the pill, so
+     * testing overlap against the pill alone let a pile of identical drops sit as separate cards
+     * whose names ran straight through each other.
+     */
+    private void measureCards(MindlessFontRenderer text, float icon, float padding, float gap,
+                              float fontHeight, boolean drawCount, boolean drawName,
+                              boolean drawDistance) {
+        for (int i = 0; i < cards.size(); i++) {
+            Card card = cards.get(i);
+            card.label = drawCount ? String.valueOf(card.count) : "";
+            float labelW = drawCount ? text.getStringWidth(card.label) : 0f;
+            card.width = padding * 2f + icon + (drawCount ? gap + labelW : 0f);
+            card.height = Math.max(icon, fontHeight) + padding * 2f;
+
+            float extent = card.width;
+            if (drawName && card.icon != null) {
+                extent = Math.max(extent, text.getStringWidth(card.icon.getDisplayName()));
+            }
+            if (drawDistance) {
+                extent = Math.max(extent, text.getStringWidth(((int) card.distance) + "m"));
+            }
+            card.extent = extent;
+            card.span = card.height
+                    + (drawName ? fontHeight + 1f : 0f)
+                    + (drawDistance ? fontHeight + 1f : 0f);
+        }
+    }
+
+    /**
+     * Sums cards of the same item that land on top of each other into one total. A generator pile
+     * is dozens of separate one-item entities; without this they are dozens of separate cards,
+     * and spreading them out turns a pile of iron into a screen-wide row of "1"s.
+     */
+    private boolean mergeStackedCards() {
+        int size = cards.size();
+        if (size < 2) return false;
+
+        boolean merged = false;
+        for (int i = 0; i < size; i++) {
+            Card host = cards.get(i);
+            if (host == null) continue;
+
+            for (int j = i + 1; j < size; j++) {
+                Card other = cards.get(j);
+                if (other == null || other.category != host.category) continue;
+                if (Math.abs(other.screenX - host.screenX) >= (host.extent + other.extent) * 0.5f
+                        || Math.abs(other.screenY - host.screenY) >= (host.span + other.span) * 0.5f) {
+                    continue;
+                }
+                host.count += other.count;
+                if (other.distance < host.distance) {
+                    host.icon = other.icon;
+                    host.screenX = other.screenX;
+                    host.screenY = other.screenY;
+                    host.distance = other.distance;
+                }
+                cards.set(j, null);
+                merged = true;
+            }
+        }
+
+        if (!merged) return false;
+
+        int write = 0;
+        for (int i = 0; i < size; i++) {
+            Card card = cards.get(i);
+            if (card != null) {
+                cards.set(write++, card);
+            }
+        }
+        for (int i = size - 1; i >= write; i--) {
+            cards.remove(i);
+        }
+        return true;
+    }
+
+    /**
+     * Lays cards that land on top of each other out in a row instead. The pile keeps its screen
+     * position -- the row is centred on where the cards already were -- so a gold and an iron
+     * stack sitting on the same generator read as two labels side by side rather than one
+     * unreadable overlap. Same-item cards are already summed by mergeStackedCards, so what is
+     * left in a cluster is one card per item type.
+     */
+    private void spreadOverlapping() {
+        int size = cards.size();
+        if (size < 2) return;
+        if (clustered.length < size) {
+            clustered = new boolean[Math.max(size, clustered.length * 2)];
+        }
+        for (int i = 0; i < size; i++) clustered[i] = false;
+
+        for (int i = 0; i < size; i++) {
+            if (clustered[i]) continue;
+            Card anchor = cards.get(i);
+            cluster.clear();
+            cluster.add(anchor);
+            clustered[i] = true;
+
+            for (int j = i + 1; j < size; j++) {
+                if (clustered[j]) continue;
+                Card other = cards.get(j);
+                if (Math.abs(other.screenX - anchor.screenX) < (anchor.extent + other.extent) * 0.5f
+                        && Math.abs(other.screenY - anchor.screenY) < (anchor.span + other.span) * 0.5f) {
+                    cluster.add(other);
+                    clustered[j] = true;
+                }
+            }
+
+            if (cluster.size() < 2) continue;
+
+            sortClusterByCategory();
+
+            // Space by the drawn extent, not the pill, or the labels overlap even once the pills
+            // have been pulled apart.
+            float total = SPREAD_GAP * (cluster.size() - 1);
+            float meanX = 0f;
+            float meanY = 0f;
+            for (int k = 0; k < cluster.size(); k++) {
+                Card card = cluster.get(k);
+                total += card.extent;
+                meanX += card.screenX;
+                meanY += card.screenY;
+            }
+            meanX /= cluster.size();
+            meanY /= cluster.size();
+
+            float cursor = meanX - total * 0.5f;
+            for (int k = 0; k < cluster.size(); k++) {
+                Card card = cluster.get(k);
+                card.screenX = cursor + card.extent * 0.5f;
+                card.screenY = meanY;
+                cursor += card.extent + SPREAD_GAP;
+            }
+        }
+    }
+
+    /**
+     * Insertion sort in place. Collections.sort would copy the list to an array every frame for
+     * what is never more than a handful of cards.
+     */
+    private void sortClusterByCategory() {
+        for (int i = 1; i < cluster.size(); i++) {
+            Card card = cluster.get(i);
+            int ordinal = card.category.ordinal();
+            int j = i - 1;
+            while (j >= 0 && cluster.get(j).category.ordinal() > ordinal) {
+                cluster.set(j + 1, cluster.get(j));
+                j--;
+            }
+            cluster.set(j + 1, card);
+        }
     }
 private void drawIcon(ItemStack itemStack, float x, float y, float scale) {
         boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
@@ -358,9 +530,14 @@ private static final class Entry {
     private static final class Card {
         private Category category;
         private ItemStack icon;
+        private String label;
         private int count;
         private float screenX;
         private float screenY;
+        private float width;
+        private float height;
+        private float extent;
+        private float span;
         private double distance;
     }
 }

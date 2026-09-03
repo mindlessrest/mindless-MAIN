@@ -74,20 +74,17 @@ public final class FireballSimulator {
         int simulatedTicks = 0;
         Vec3 finalPosition = new Vec3(posX, posY, posZ);
 
-        for (int tick = 0; tick < Math.max(1, maxTicks); tick++) {
+        int tickLimit = Math.max(1, maxTicks);
+        for (int tick = 0; tick < tickLimit; tick++) {
             simulatedTicks = tick + 1;
-            double[] motion = motionRef(motionX, motionY, motionZ);
             WaterState waterState = sampleWaterState(world, posX, posY, posZ, width, height, fireball);
 
-            if (waterState.flowDirection.lengthVector() > 0.0D) {
-                motion[0] += waterState.flowDirection.xCoord * WATER_FLOW_ACCELERATION;
-                motion[1] += waterState.flowDirection.yCoord * WATER_FLOW_ACCELERATION;
-                motion[2] += waterState.flowDirection.zCoord * WATER_FLOW_ACCELERATION;
+            if (waterState.flowDirection.xCoord != 0.0D || waterState.flowDirection.yCoord != 0.0D
+                    || waterState.flowDirection.zCoord != 0.0D) {
+                motionX += waterState.flowDirection.xCoord * WATER_FLOW_ACCELERATION;
+                motionY += waterState.flowDirection.yCoord * WATER_FLOW_ACCELERATION;
+                motionZ += waterState.flowDirection.zCoord * WATER_FLOW_ACCELERATION;
             }
-
-            motionX = motion[0];
-            motionY = motion[1];
-            motionZ = motion[2];
 
             Vec3 start = new Vec3(posX, posY, posZ);
             Vec3 end = new Vec3(posX + motionX, posY + motionY, posZ + motionZ);
@@ -320,10 +317,6 @@ public final class FireballSimulator {
         }
 
         return new WaterState(inWater, flow);
-    }
-
-    private static double[] motionRef(double motionX, double motionY, double motionZ) {
-        return new double[] { motionX, motionY, motionZ };
     }
 
     private static final class WaterState {

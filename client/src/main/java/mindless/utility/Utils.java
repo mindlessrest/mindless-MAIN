@@ -56,6 +56,15 @@ import java.util.stream.IntStream;
 public class Utils implements IMinecraftInstance {
     private static final Random rand = new Random();
     private static final ThreadLocal<Integer> LOCAL_PLAYER_SUB_UPDATE_DEPTH = ThreadLocal.withInitial(() -> 0);
+    private static Object cachedSidebarWorld;
+    private static int cachedSidebarTick = Integer.MIN_VALUE;
+    private static List<String> cachedSidebarLines = Collections.emptyList();
+    private static Object cachedBedwarsWorld;
+    private static int cachedBedwarsTick = Integer.MIN_VALUE;
+    private static int cachedBedwarsStatus = -1;
+    private static Object cachedLobbyWorld;
+    private static int cachedLobbyTick = Integer.MIN_VALUE;
+    private static boolean cachedLobbyStatus;
     public static HashSet<String> friends = new HashSet<>();
     public static HashSet<String> enemies = new HashSet<>();
     public static final Logger log = LogManager.getLogger();
@@ -986,6 +995,17 @@ public static boolean isTeammate(Entity entity) {
         if (!nullCheck()) {
             return -1;
         }
+        int tick = sidebarTick();
+        if (cachedBedwarsWorld == mc.theWorld && cachedBedwarsTick == tick) {
+            return cachedBedwarsStatus;
+        }
+        cachedBedwarsWorld = mc.theWorld;
+        cachedBedwarsTick = tick;
+        cachedBedwarsStatus = computeBedwarsStatus();
+        return cachedBedwarsStatus;
+    }
+
+    private static int computeBedwarsStatus() {
         final Scoreboard scoreboard = mc.theWorld.getScoreboard();
         if (scoreboard == null) {
             return -1;
@@ -1024,10 +1044,30 @@ public static boolean isTeammate(Entity entity) {
     }
 
     public static List<String> getSidebarLines() {
-        final List<String> lines = new ArrayList<>();
         if (mc.theWorld == null) {
-            return lines;
+            cachedSidebarWorld = null;
+            cachedSidebarTick = Integer.MIN_VALUE;
+            cachedSidebarLines = Collections.emptyList();
+            return cachedSidebarLines;
         }
+        int tick = sidebarTick();
+        if (cachedSidebarWorld == mc.theWorld && cachedSidebarTick == tick) {
+            return cachedSidebarLines;
+        }
+        cachedSidebarWorld = mc.theWorld;
+        cachedSidebarTick = tick;
+        cachedSidebarLines = Collections.unmodifiableList(computeSidebarLines());
+        return cachedSidebarLines;
+    }
+
+    private static int sidebarTick() {
+        return mc.thePlayer != null
+                ? mc.thePlayer.ticksExisted
+                : (int) (mc.theWorld.getTotalWorldTime() & Integer.MAX_VALUE);
+    }
+
+    private static List<String> computeSidebarLines() {
+        final List<String> lines = new ArrayList<>();
         final Scoreboard scoreboard = mc.theWorld.getScoreboard();
         if (scoreboard == null) {
             return lines;
@@ -1685,16 +1725,25 @@ public static boolean isMining() {
     }
 
     public static boolean isLobby() {
-        if (isHypixel()) {
-            List<String> sidebarLines = getSidebarLines();
-            if (!sidebarLines.isEmpty()) {
-                String[] parts = stripColor(sidebarLines.get(1)).split("  ");
-                if (parts.length > 1 && parts[1].charAt(0) == 'L') {
-                    return true;
-                }
-            }
+        if (!nullCheck()) {
+            return false;
         }
-        return false;
+        int tick = sidebarTick();
+        if (cachedLobbyWorld == mc.theWorld && cachedLobbyTick == tick) {
+            return cachedLobbyStatus;
+        }
+        cachedLobbyWorld = mc.theWorld;
+        cachedLobbyTick = tick;
+        cachedLobbyStatus = computeLobbyStatus();
+        return cachedLobbyStatus;
+    }
+
+    private static boolean computeLobbyStatus() {
+        if (!isHypixel()) return false;
+        List<String> sidebarLines = getSidebarLines();
+        if (sidebarLines.size() <= 1) return false;
+        String[] parts = stripColor(sidebarLines.get(1)).split("  ");
+        return parts.length > 1 && !parts[1].isEmpty() && parts[1].charAt(0) == 'L';
     }
 
     public static boolean isBedwarsPracticeOrReplay() {

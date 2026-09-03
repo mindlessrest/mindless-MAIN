@@ -19,6 +19,7 @@ import static org.lwjgl.opengl.GL20.*;
 public class ShaderUtils {
 
     private Minecraft mc = Minecraft.getMinecraft();
+    private final String name;
     public final int programID;
     private final Map<String, Integer> uniformLocations = new HashMap<String, Integer>();
     private final String lunarSaturation = "#version 120\n" +
@@ -145,7 +146,7 @@ public class ShaderUtils {
                                          "    float distance = roundedSDF(p, rectSize * 0.5, radius);\n" +
                                          "    float outside = max(distance, 0.0);\n" +
                                          "    float fade = exp(-(outside * outside) / (2.0 * softness * softness));\n" +
-                                         "    fade *= 1.0 - smoothstep(cutoff * 0.6, cutoff, outside);\n" +
+                                         "    fade *= 1.0 - smoothstep(cutoff * 0.8, cutoff, outside);\n" +
                                          "    float softEdge = smoothstep(-0.5, 1.5, distance);\n" +
                                          "    gl_FragColor = vec4(color.rgb, color.a * fade * softEdge);\n" +
                                          "}";
@@ -425,6 +426,7 @@ private final String roundedRectGradientCorners = "#version 120\n" +
                                        "}";
 
     public ShaderUtils(String fragmentShaderLoc, String vertexShaderLoc) {
+        this.name = fragmentShaderLoc;
         int program = glCreateProgram();
         try {
             int fragmentShaderID;
@@ -511,6 +513,10 @@ private final String roundedRectGradientCorners = "#version 120\n" +
         this(fragmentShaderLoc, "minecraft:shaders/vertex.vsh");
     }
 
+    public String getName() {
+        return name;
+    }
+
     public static void drawQuads() {
         ScaledResolution sr = ScaledResolutionCache.get();
         float width = (float) sr.getScaledWidth_double();
@@ -542,9 +548,13 @@ private final String roundedRectGradientCorners = "#version 120\n" +
 
     public void init() {
         glUseProgram(programID);
+        // A stale or never-linked program id is reported here as GL_INVALID_VALUE, which is
+        // otherwise blamed on whatever drew next.
+        mindless.utility.Diagnostics.gl("shader bind: " + name);
     }
 
     public void unload() {
+        mindless.utility.Diagnostics.gl("shader draw: " + name);
         glUseProgram(0);
     }
 

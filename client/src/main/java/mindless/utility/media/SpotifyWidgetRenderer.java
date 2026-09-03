@@ -41,8 +41,7 @@ private static final float PAD = COVER * 0.17F;
     private static final float BAR_GAP = COVER * 0.09F;
     private static final float VISUALIZER_HEIGHT = COVER * 0.22F;
     private static final float LYRICS_GAP = COVER * 0.08F;
-private static final float SHADOW_OFFSET = 3.5F;
-    private static final float SHADOW_SPREAD = 6.0F;
+private static final float SHADOW_SPREAD = 2.2F;
 private static final Color TRACK = new Color(31, 31, 31);
     private static final Color FILL = new Color(255, 255, 255);
 private static final String BOLD_FAMILY = "Sf-Bold";
@@ -59,7 +58,13 @@ private static final int SAVED_GL_STATE = GL11.GL_ENABLE_BIT
     private static float visibility;
     private static long lastFrameMs;
 private static String lyricKey = "";
+    private static int lyricSourceIndex = -1;
+    private static List<String> cachedLyricLines = java.util.Collections.emptyList();
     private static long lyricChangedAt;
+    private static long cachedElapsedSecond = Long.MIN_VALUE;
+    private static long cachedDurationSecond = Long.MIN_VALUE;
+    private static String cachedElapsedText = "0:00";
+    private static String cachedDurationText = "0:00";
 
     private static float cardX;
     private static float cardY;
@@ -194,10 +199,6 @@ public static float[] getCurrentRect() {
                 : bubbleDetached
                         ? lyricsPosition(resolution, bubbleW, lyricStripHeight)
                         : new float[]{x, y + rowHeight + lyricGap};
-        if (bubblePos != null) {
-            dropShadow(bubblePos[0], bubblePos[1], bubbleW, lyricStripHeight, radius, uiScale, alpha);
-        }
-
         drawCover(art, wash, x, y, cover, radius, alpha);
         drawPanel(info, wash, panelX, y, panelWidth, rowHeight, radius, padX, uiScale,
                 visualizerHeight, alpha);
@@ -208,6 +209,8 @@ public static float[] getCurrentRect() {
             bubbleY = bubblePos[1];
             bubbleWidth = bubbleW;
             bubbleHeight = lyricStripHeight;
+            dropShadow(bubblePos[0], bubblePos[1], bubbleW, lyricStripHeight, radius,
+                    lyricUiScale, alpha);
             drawLyricStrip(lyricLines, lyricFont, wash, bubblePos[0], bubblePos[1],
                     bubbleW, lyricStripHeight, radius, PAD * lyricUiScale, lyricUiScale, alpha);
         }
@@ -216,12 +219,20 @@ public static float[] getCurrentRect() {
         GlStateManager.enableTexture2D();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
-private static void dropShadow(float x, float y, float width, float height, float radius,
+    /**
+     * Centred, so the falloff reads as a shadow around the card. Offsetting it downwards left the
+     * part that cleared the card's bottom edge as a flat slab of grey -- the card hid the half
+     * that made it look like a shadow, and what was left just looked like another panel.
+     */
+    private static void dropShadow(float x, float y, float width, float height, float radius,
                                    float uiScale, float alpha) {
-        float softness = Math.max(2.0F, SHADOW_SPREAD * uiScale);
-        float offset = SHADOW_OFFSET * uiScale;
-        RoundedUtils.drawRoundShadow(x + offset * 0.4F, y + offset, width, height, radius,
-                softness, new Color(0, 0, 0, Math.round(150 * alpha)).getRGB());
+        // Tight and dark rather than wide and faint. A soft falloff spread over tens of pixels
+        // never reads as a shadow -- it just tints a rectangle of the world behind the card, which
+        // is the translucent slab that keeps showing up. Keeping it close to the edge and nearly
+        // opaque makes it read as depth instead.
+        float softness = Math.max(1.5F, SHADOW_SPREAD * uiScale);
+        RoundedUtils.drawRoundShadow(x, y, width, height, radius,
+                softness, new Color(0, 0, 0, Math.round(215 * alpha)).getRGB());
     }
 
     private static void drawCover(ResourceLocation art, ResourceLocation wash, float x, float y,
@@ -282,8 +293,8 @@ private static void dropShadow(float x, float y, float width, float height, floa
 
         long duration = Math.max(0L, info.getDurationMs());
         long position = Math.max(0L, Math.min(duration, info.getLivePositionMs()));
-        String elapsed = formatTime(position);
-        String remaining = formatTime(duration);
+        String elapsed = elapsedText(position);
+        String remaining = durationText(duration);
 
         drawShadowedString(labelFont, elapsed, textX, timesY, primary, uiScale, alpha);
         drawShadowedString(labelFont, remaining,
@@ -372,10 +383,14 @@ private static Color progressColor() {
 private static List<String> collectLyrics(SystemMediaInfo info) {
         List<String> empty = java.util.Collections.emptyList();
         if (!isOn(SpotifyMiniPlayer.showLyrics) || !info.isAvailable()) {
+            lyricSourceIndex = -1;
+            cachedLyricLines = empty;
             return empty;
         }
         TimedLyrics lyrics = SystemMediaClient.getInstance().getTimedLyrics();
         if (lyrics == null || !lyrics.isAvailable() || lyrics.getLines().isEmpty()) {
+            lyricSourceIndex = -1;
+            cachedLyricLines = empty;
             return empty;
         }
 
@@ -383,20 +398,24 @@ private static List<String> collectLyrics(SystemMediaInfo info) {
                 + (SpotifyMiniPlayer.lyricSyncOffset == null
                         ? 0L : (long) SpotifyMiniPlayer.lyricSyncOffset.getInput());
         int active = lyrics.findVisibleLineIndex(position);
-        if (active < 0) return empty;
+        if (active < 0) {
+            lyricSourceIndex = -1;
+            cachedLyricLines = empty;
+            return empty;
+        }
 
         List<TimedLyrics.LyricsLine> all = lyrics.getLines();
-        java.util.List<String> out = new java.util.ArrayList<String>(1);
         activeLyricIndex = 0;
         String text = all.get(active).getText();
         if (text == null || text.trim().isEmpty()) return empty;
-        out.add(text.trim());
-        String key = out.toString() + "@" + activeLyricIndex;
-        if (!key.equals(lyricKey)) {
-            lyricKey = key;
+        text = text.trim();
+        if (active != lyricSourceIndex || !text.equals(lyricKey)) {
+            lyricSourceIndex = active;
+            lyricKey = text;
+            cachedLyricLines = java.util.Collections.singletonList(text);
             lyricChangedAt = nowMs();
         }
-        return out;
+        return cachedLyricLines;
     }
 
     private static int activeLyricIndex;
@@ -488,7 +507,26 @@ private static List<String> collectLyrics(SystemMediaInfo info) {
 
     private static String formatTime(long millis) {
         long totalSeconds = Math.max(0L, millis / 1000L);
-        return (totalSeconds / 60L) + ":" + String.format("%02d", totalSeconds % 60L);
+        long seconds = totalSeconds % 60L;
+        return (totalSeconds / 60L) + ":" + (seconds < 10L ? "0" : "") + seconds;
+    }
+
+    private static String elapsedText(long millis) {
+        long second = Math.max(0L, millis / 1000L);
+        if (second != cachedElapsedSecond) {
+            cachedElapsedSecond = second;
+            cachedElapsedText = formatTime(millis);
+        }
+        return cachedElapsedText;
+    }
+
+    private static String durationText(long millis) {
+        long second = Math.max(0L, millis / 1000L);
+        if (second != cachedDurationSecond) {
+            cachedDurationSecond = second;
+            cachedDurationText = formatTime(millis);
+        }
+        return cachedDurationText;
     }
 
     private static String valueOr(String value, String fallback) {

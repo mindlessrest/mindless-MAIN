@@ -45,6 +45,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class BedESP extends Module {
 
@@ -92,11 +93,16 @@ public class BedESP extends Module {
     private static final EnumMap<EnumFacing, LayerOffsets[]> DEFENSE_OFFSETS = buildLayerOffsetsByFacing();
 
     private final List<BlockPos[]> activeBedPairs = new ArrayList<>();
+    private final List<BlockPos[]> candidateBedPairs = new ArrayList<>();
+    private final List<BlockPos[]> pairsToRender = new ArrayList<>();
+    private final Set<BlockPos> addedFeet = new HashSet<>();
+    private final Set<Long> activeDefenseFeet = new HashSet<>();
+    private final List<Long> inactiveDefenseBeds = new ArrayList<>();
     private final Map<Long, DefenseOverlaySnapshot> defenseSnapshots = new HashMap<>();
     private final Map<Long, DefenseWatchRegion> defenseWatchRegions = new HashMap<>();
-    private final Map<Long, Set<Long>> watchedBedsByDefensePos = new HashMap<>();
-    private final Map<Long, Set<Long>> watchedBedsByChunk = new HashMap<>();
-    private final Set<Long> dirtyDefenseBeds = new HashSet<>();
+    private final Map<Long, Set<Long>> watchedBedsByDefensePos = new ConcurrentHashMap<>();
+    private final Map<Long, Set<Long>> watchedBedsByChunk = new ConcurrentHashMap<>();
+    private final Set<Long> dirtyDefenseBeds = ConcurrentHashMap.newKeySet();
     private final SharedBlockHighlightCache.UpdateListener defenseUpdateListener = new SharedBlockHighlightCache.UpdateListener() {
         @Override
         public void onBlockChanged(BlockPos pos, IBlockState newState) {
@@ -127,8 +133,8 @@ public class BedESP extends Module {
         this.registerSetting(color = new ColorSetting("Color", 255, 85, 85, 64));
         this.registerSetting(color2 = new ColorSetting("Color 2", 85, 85, 255, 64));
         this.registerSetting(gradientSpeed = new SliderSetting("Gradient speed", 1.0, 0.1, 8.0, 0.1));
-        this.registerSetting(range = new SliderSetting("Range", 10.0, 4.0, 200.0, 2.0));
-        this.registerSetting(scanSpeed = new SliderSetting("Scan speed", 8.0, 1.0, 32.0, 1.0));
+        this.registerSetting(range = new SliderSetting("Range", 120.0, 4.0, 320.0, 2.0));
+        this.registerSetting(scanSpeed = new SliderSetting("Scan speed", 32.0, 1.0, 128.0, 1.0));
         this.registerSetting(disableInLobby = new ButtonSetting("Disable in lobby", true));
         this.registerSetting(firstBed = new ButtonSetting("Only render first bed", false));
         this.registerSetting(renderFullBlock = new ButtonSetting("Render full block", false));
@@ -233,9 +239,7 @@ public class BedESP extends Module {
         List<BlockPos[]> candidatePairs = collectActiveBedPairs(cache, px, py, pz, rangeSq);
 
         activeBedPairs.clear();
-        for (BlockPos[] pair : candidatePairs) {
-            activeBedPairs.add(copyBedPair(pair));
-        }
+        activeBedPairs.addAll(candidatePairs);
 
         boolean defenseToolMode = showDefenseTools.isToggled();
         if (lastDefenseToolMode != defenseToolMode) {
@@ -248,12 +252,12 @@ public class BedESP extends Module {
             return;
         }
 
-        Set<Long> activeFeet = new HashSet<>();
+        activeDefenseFeet.clear();
         for (BlockPos[] pair : candidatePairs) {
             BlockPos foot = pair[0];
             BlockPos head = pair[1];
             long footKey = foot.toLong();
-            activeFeet.add(footKey);
+            activeDefenseFeet.add(footKey);
 
             DefenseWatchRegion region = defenseWatchRegions.get(footKey);
             if (region == null || !region.matches(head)) {
@@ -268,13 +272,15 @@ public class BedESP extends Module {
             }
         }
 
-        for (Long footKey : new ArrayList<>(defenseWatchRegions.keySet())) {
-            if (!activeFeet.contains(footKey)) {
-                unregisterDefenseWatch(footKey);
+        inactiveDefenseBeds.clear();
+        for (Long footKey : defenseWatchRegions.keySet()) {
+            if (!activeDefenseFeet.contains(footKey)) {
+                inactiveDefenseBeds.add(footKey);
             }
         }
+        for (Long footKey : inactiveDefenseBeds) unregisterDefenseWatch(footKey);
 
-        dirtyDefenseBeds.retainAll(activeFeet);
+        dirtyDefenseBeds.retainAll(activeDefenseFeet);
     }
 
     @Override
@@ -300,8 +306,8 @@ public class BedESP extends Module {
         double py = mc.thePlayer.posY;
         double pz = mc.thePlayer.posZ;
 
-        List<BlockPos[]> pairsToRender = new ArrayList<>();
-        Set<BlockPos> addedFeet = new HashSet<>();
+        pairsToRender.clear();
+        addedFeet.clear();
 
         for (BlockPos[] pair : activeBedPairs) {
             BlockPos foot = pair[0];
@@ -310,11 +316,11 @@ public class BedESP extends Module {
                 continue;
             }
             if (addedFeet.add(foot)) {
-                pairsToRender.add(copyBedPair(pair));
+                pairsToRender.add(pair);
             }
         }
 
-        for (BlockPos[] prev : new ArrayList<>(lastRenderedBedPairs)) {
+        for (BlockPos[] prev : lastRenderedBedPairs) {
             if (prev == null || prev.length < 2) {
                 continue;
             }
@@ -336,7 +342,7 @@ public class BedESP extends Module {
             if (!RenderUtils.isInViewFrustum(bb)) {
                 continue;
             }
-            pairsToRender.add(copyBedPair(prev));
+            pairsToRender.add(prev);
             addedFeet.add(foot);
         }
 
@@ -348,9 +354,7 @@ public class BedESP extends Module {
         }
 
         lastRenderedBedPairs.clear();
-        for (BlockPos[] pair : pairsToRender) {
-            lastRenderedBedPairs.add(copyBedPair(pair));
-        }
+        lastRenderedBedPairs.addAll(pairsToRender);
     }
 
     private boolean shouldPauseForLobby() {
@@ -371,17 +375,18 @@ public class BedESP extends Module {
 
     private void clearRenderedState() {
         activeBedPairs.clear();
+        candidateBedPairs.clear();
+        pairsToRender.clear();
+        addedFeet.clear();
+        activeDefenseFeet.clear();
+        inactiveDefenseBeds.clear();
         lastRenderedBedPairs.clear();
         lastDefenseToolMode = false;
         clearDefenseState();
     }
 
-    private static BlockPos[] copyBedPair(BlockPos[] pair) {
-        return new BlockPos[]{new BlockPos(pair[0]), new BlockPos(pair[1])};
-    }
-
     private List<BlockPos[]> collectActiveBedPairs(SharedBlockHighlightCache cache, double px, double py, double pz, double rangeSq) {
-        List<BlockPos[]> candidatePairs = new ArrayList<>();
+        candidateBedPairs.clear();
 
         for (Map.Entry<Long, Set<BlockPos>> chunk : cache.entriesBedFeet()) {
             for (BlockPos foot : chunk.getValue()) {
@@ -397,17 +402,17 @@ public class BedESP extends Module {
                     continue;
                 }
 
-                candidatePairs.add(copyBedPair(pair));
+                candidateBedPairs.add(pair);
             }
         }
 
-        if (!firstBed.isToggled() || candidatePairs.size() <= 1) {
-            return candidatePairs;
+        if (!firstBed.isToggled() || candidateBedPairs.size() <= 1) {
+            return candidateBedPairs;
         }
 
         BlockPos[] nearest = null;
         double nearestDistanceSq = Double.MAX_VALUE;
-        for (BlockPos[] pair : candidatePairs) {
+        for (BlockPos[] pair : candidateBedPairs) {
             double dx = pair[0].getX() + 0.5 - px;
             double dy = pair[0].getY() + 0.5 - py;
             double dz = pair[0].getZ() + 0.5 - pz;
@@ -418,11 +423,11 @@ public class BedESP extends Module {
             }
         }
 
-        candidatePairs.clear();
+        candidateBedPairs.clear();
         if (nearest != null) {
-            candidatePairs.add(nearest);
+            candidateBedPairs.add(nearest);
         }
-        return candidatePairs;
+        return candidateBedPairs;
     }
 
     private static boolean isBedFoot(IBlockState st) {
@@ -474,23 +479,28 @@ public class BedESP extends Module {
     }
 
     private void renderBed(BlockPos[] blocks, float height) {
-        List<BlockPos> exposedBlocks = getExposedBlocks(blocks);
-        List<AxisAlignedBB> mergedExposedBounds = mergeExposedBounds(exposedBlocks);
-
-        int exposedCount = exposedBlocks.size();
         int exposedLimit = (int) renderExposedBlocks.getInput();
-
         boolean exposedRenderingEnabled = exposedLimit != -1;
+
+        // Every one of these walks the bed's neighbours and allocates, once per bed per frame.
+        // None of it is needed unless a setting actually consumes the result, so nothing runs
+        // until something asks for it.
+        boolean exposedWanted = exposedRenderingEnabled || showExposedOutline.isToggled();
+        List<BlockPos> exposedBlocks = exposedWanted ? getExposedBlocks(blocks) : Collections.<BlockPos>emptyList();
+        int exposedCount = exposedBlocks.size();
+
         boolean renderExposedOverlays = exposedRenderingEnabled
                 && exposedCount > 0
                 && exposedCount <= exposedLimit;
 
-        boolean fullyExposed = isFullyExposed(blocks);
-
         boolean renderExposedOutline = exposedCount > 0
-                && (!disableFullyExposed.isToggled() || !fullyExposed)
                 && ((!exposedRenderingEnabled && showExposedOutline.isToggled())
-                || (exposedRenderingEnabled && exposedCount > exposedLimit));
+                || (exposedRenderingEnabled && exposedCount > exposedLimit))
+                && (!disableFullyExposed.isToggled() || !isFullyExposed(blocks));
+
+        List<AxisAlignedBB> mergedExposedBounds = renderExposedOverlays
+                ? mergeExposedBounds(exposedBlocks)
+                : Collections.<AxisAlignedBB>emptyList();
         double x = blocks[0].getX() - mc.getRenderManager().viewerPosX;
         double y = blocks[0].getY() - mc.getRenderManager().viewerPosY;
         double z = blocks[0].getZ() - mc.getRenderManager().viewerPosZ;
@@ -505,7 +515,7 @@ public class BedESP extends Module {
         float r = (col >> 16 & 0xFF) / 255.0f;
         float g = (col >> 8 & 0xFF) / 255.0f;
         float b = (col & 0xFF) / 255.0f;
-        GL11.glColor4d(r, g, b, drawA);
+        GlStateManager.color(r, g, b, drawA);
         AxisAlignedBB axisAlignedBB;
         if (blocks[0].getX() != blocks[1].getX()) {
             if (blocks[0].getX() > blocks[1].getX()) {
@@ -1083,13 +1093,13 @@ public class BedESP extends Module {
                     continue;
                 }
 
-                watchedBedsByDefensePos.computeIfAbsent(posKey, ignored -> new HashSet<>()).add(footKey);
+                watchedBedsByDefensePos.computeIfAbsent(posKey, ignored -> ConcurrentHashMap.<Long>newKeySet()).add(footKey);
                 watchedChunks.add(chunkKey(watchedPos.getX() >> 4, watchedPos.getZ() >> 4));
             }
         }
 
         for (Long chunkKey : watchedChunks) {
-            watchedBedsByChunk.computeIfAbsent(chunkKey, ignored -> new HashSet<>()).add(footKey);
+            watchedBedsByChunk.computeIfAbsent(chunkKey, ignored -> ConcurrentHashMap.<Long>newKeySet()).add(footKey);
         }
 
         defenseWatchRegions.put(footKey, new DefenseWatchRegion(

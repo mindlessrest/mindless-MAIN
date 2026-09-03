@@ -11,6 +11,9 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 public final class BlockHighlightSharedHandler {
 
     private static final Minecraft mc = Minecraft.getMinecraft();
+    private static final int SWEEP_INTERVAL = 20;
+
+    private int sweepTicks;
 
     @SubscribeEvent
     public void onReceivePacket(ReceivePacketEvent e) {
@@ -34,6 +37,10 @@ public final class BlockHighlightSharedHandler {
             budget = Math.max(budget, ModuleManager.bedESP.getScanSpeedBudget());
         }
         if (budget > 0) {
+            if (++sweepTicks >= SWEEP_INTERVAL) {
+                sweepTicks = 0;
+                cache.sweepMissedChunks();
+            }
             cache.tickScan(budget);
         }
     }
@@ -47,6 +54,7 @@ public final class BlockHighlightSharedHandler {
         if (!cache.anyConsumerActive()) {
             return;
         }
+        sweepTicks = 0;
         cache.clear();
         cache.enqueueLoadedChunks();
     }

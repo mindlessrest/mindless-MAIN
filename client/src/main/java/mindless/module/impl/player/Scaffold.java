@@ -15,7 +15,6 @@ import mindless.module.impl.render.HUD;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.ModuleFont;
 import mindless.utility.font.MindlessFontRenderer;
-import mindless.utility.shader.BlurUtils;
 import org.lwjgl.opengl.GL20;
 import java.awt.Color;
 import net.minecraft.block.Block;
@@ -47,6 +46,7 @@ public class Scaffold extends Module {
     private static final int BPS_WINDOW_MS = 3000;
     private static final int TIMESTAMP_RING = 512;
 private static SliderSetting counterFont;
+    private static SliderSetting counterScale;
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
     private final ButtonSetting keepY;
@@ -74,15 +74,16 @@ private static SliderSetting counterFont;
 
     private final long[] timestamps = new long[TIMESTAMP_RING];
     private int tsHead, tsCount;
-private static final float BADGE_SIZE = 22.0F;
-    private static final float BADGE_GAP = 7.0F;
-    private static final float BADGE_RADIUS = 6.0F;
-    private static final int BADGE_COLOUR = 0x66000000;
-    private static final float PANEL_PAD_X = 7.0F;
-    private static final float PANEL_PAD_Y = 6.0F;
-    private static final float BAR_HEIGHT = 2.5F;
-    private static final float BAR_GAP = 3.5F;
-    private static final float MIN_CONTENT_WIDTH = 78.0F;
+private static final float BADGE_SIZE = 24.0F;
+    private static final float BADGE_GAP = 9.0F;
+    private static final float BADGE_RADIUS = 7.0F;
+    private static final int BADGE_COLOUR = 0x59000000;
+    private static final float PANEL_PAD_X = 10.0F;
+    private static final float PANEL_PAD_Y = 8.0F;
+    private static final float BAR_HEIGHT = 3.0F;
+    private static final float BAR_GAP = 6.0F;
+    private static final float LABEL_GAP = 2.0F;
+    private static final float MIN_CONTENT_WIDTH = 84.0F;
     private static final long POP_DURATION_MS = 200L;
 private static final int BAR_FULL_BLOCKS = 128;
 
@@ -102,6 +103,7 @@ private int previousSlot = -1;
     public Scaffold() {
         super("Scaffold", category.player);
         this.registerSetting(counterFont = new SliderSetting("Counter font", 0, ModuleFont.options()));
+        this.registerSetting(counterScale = new SliderSetting("Counter scale", "x", 1.0, 0.5, 3.0, 0.05));
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));
         this.registerSetting(sprint = new SliderSetting("Sprint", 0, new String[]{"Off", "Legit", "Watchdog"}));
         this.registerSetting(keepY = new ButtonSetting("Keep Y", false));
@@ -160,7 +162,10 @@ private void restorePreviousSlot() {
 
     @Override
     public void guiUpdate() {
-        editPosition.setVisible(showBlockCount.isToggled(), this);
+        boolean counter = showBlockCount.isToggled();
+        editPosition.setVisible(counter, this);
+        counterFont.setVisible(counter, this);
+        counterScale.setVisible(counter, this);
     }
 
     @SubscribeEvent
@@ -361,87 +366,114 @@ private static float easeOutBack(float t) {
     }
 private void drawOverlay(ItemStack badgeStack, int blocks, float bps, float left, float top, float popScale) {
         advanceOverlayCounters(blocks, bps);
-        float scale = Math.max(0.0F, popScale);
+
+        float scale = Math.max(0.0F, popScale) * overlayUserScale();
+        if (scale <= 0.001F) return;
 
         MindlessFontRenderer countFont = countFont();
         MindlessFontRenderer labelFont = HUD.getHudFontRenderer();
 
-        int shownBlocks = Math.round(displayedBlocks);
-        String countText = Integer.toString(shownBlocks);
+        // The number is read, not watched -- show the real one. Only the bar and the rate are
+        // eased, where a moving value is the point.
+        String countText = Integer.toString(Math.max(0, blocks));
         String rateText = String.format("%.1f", displayedBps);
         String rateSuffix = " BPS";
 
-        float countW = countFont.getStringWidth(countText);
-        float rateW = labelFont.getStringWidth(rateText) + labelFont.getStringWidth(rateSuffix);
-        float labelW = labelFont.getStringWidth("BLOCKS");
-        float contentW = Math.max(MIN_CONTENT_WIDTH, Math.max(countW + 12.0F + rateW, labelW + 12.0F + rateW));
-
         float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
-        float layoutWidth = PANEL_PAD_X * 2.0F + badgeSpan + contentW;
+        float layoutWidth = PANEL_PAD_X * 2.0F + badgeSpan + overlayContentWidth(countFont, labelFont, countText);
         float layoutHeight = overlayHeight(countFont, labelFont);
+
+        // RoundedUtils resolves its shapes against gl_FragCoord, so the geometry has to arrive
+        // already scaled -- a modelview scale would move the quad and leave the shape behind.
+        // Only text and the item icon go inside a scaled matrix.
         float centerX = left + layoutWidth * 0.5F;
         float centerY = top + layoutHeight * 0.5F;
         float width = layoutWidth * scale;
         float height = layoutHeight * scale;
         float panelLeft = centerX - width * 0.5F;
         float panelTop = centerY - height * 0.5F;
-        float radius = 8.0F * mindless.module.impl.theme.ThemeManager.roundingScale() * scale;
-        RoundedUtils.drawRoundShadow(panelLeft, panelTop, width, height, radius, 5.0F * scale, 0x82000000);
-        BlurUtils.prepareBlur(panelLeft, panelTop, width, height);
-        RoundedUtils.drawRound(panelLeft, panelTop, width, height, radius, 0xFF000000);
-        BlurUtils.blurEndRegion(2, 2.4F, 0.85F, panelLeft - 2.0F, panelTop - 2.0F, width + 4.0F, height + 4.0F);
-        RoundedUtils.drawRound(panelLeft, panelTop, width, height, radius, 0x82000000);
+        float radius = 9.0F * mindless.module.impl.theme.ThemeManager.roundingScale() * scale;
+
+        int accent = countColour(blocks);
+
+        RoundedUtils.drawRoundShadow(panelLeft, panelTop, width, height, radius, 5.0F * scale, 0x96000000);
+        RoundedUtils.drawRound(panelLeft, panelTop, width, height, radius, 0xF00E0E12);
         RoundedUtils.drawGradientVertical(panelLeft, panelTop, width, height, radius,
-                new Color(255, 255, 255, 20), new Color(255, 255, 255, 4));
-        RoundedUtils.drawRoundOutline(panelLeft, panelTop, width, height, radius, 1.0F,
-                new Color(0, 0, 0, 0), new Color(255, 255, 255, 30));
+                new Color(255, 255, 255, 16), new Color(255, 255, 255, 0));
+        // One flat hairline. The old outline faded from transparent to white along its length,
+        // which read as a smeared edge rather than a border.
+        Color edge = new Color(255, 255, 255, 28);
+        RoundedUtils.drawRoundOutline(panelLeft, panelTop, width, height, radius, 1.0F, edge, edge);
         GL20.glUseProgram(0);
         GlStateManager.enableTexture2D();
         GlStateManager.enableBlend();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+
+        float contentX = left + PANEL_PAD_X + badgeSpan;
+        float contentRight = left + layoutWidth - PANEL_PAD_X;
+        float countY = top + PANEL_PAD_Y;
+        float labelY = countY + countFont.getFontHeight() + LABEL_GAP;
+        float barY = labelY + labelFont.getFontHeight() + BAR_GAP;
+
+        // Bar is a rounded rect, so it is placed in screen space like the panel.
+        drawCapacityBar(panelLeft + (contentX - left) * scale,
+                panelTop + (barY - top) * scale,
+                (contentRight - contentX) * scale,
+                BAR_HEIGHT * scale,
+                accent);
+        if (badgeStack != null) {
+            drawHeldBlockBadge(badgeStack,
+                    panelLeft + PANEL_PAD_X * scale,
+                    panelTop + (layoutHeight - BADGE_SIZE) * 0.5F * scale,
+                    scale);
+        }
+
         GlStateManager.pushMatrix();
         GlStateManager.translate(centerX, centerY, 0.0F);
         GlStateManager.scale(scale, scale, 1.0F);
         GlStateManager.translate(-centerX, -centerY, 0.0F);
         try {
+            countFont.drawString(countText, contentX, countY, 0xFF000000 | accent, false);
 
-        float contentX = left + PANEL_PAD_X + badgeSpan;
-        float contentRight = left + layoutWidth - PANEL_PAD_X;
-        int countColor = countColour(shownBlocks);
+            float rateW = labelFont.getStringWidth(rateText);
+            float suffixW = labelFont.getStringWidth(rateSuffix);
+            float rateBaseline = countY + (countFont.getFontHeight() - labelFont.getFontHeight()) * 0.5F;
+            labelFont.drawString(rateText, contentRight - suffixW - rateW, rateBaseline, 0xFFF2F2F2, false);
+            labelFont.drawString(rateSuffix, contentRight - suffixW, rateBaseline, 0x73FFFFFF, false);
 
-        float countY = top + PANEL_PAD_Y;
-        countFont.drawString(countText, contentX, countY, 0xFF000000 | countColor, false);
-        float rateBaseline = countY + (countFont.getFontHeight() - labelFont.getFontHeight()) * 0.6F;
-        float suffixW = labelFont.getStringWidth(rateSuffix);
-        float rateX = contentRight - rateW;
-        labelFont.drawString(rateText, rateX, rateBaseline, 0xFFE8E8E8, false);
-        labelFont.drawString(rateSuffix, contentRight - suffixW, rateBaseline, 0x8AFFFFFF, false);
-
-        float labelY = countY + countFont.getFontHeight() + 1.0F;
-        labelFont.drawString("BLOCKS", contentX, labelY, 0x7AFFFFFF, false);
-
-        float barY = labelY + labelFont.getFontHeight() + BAR_GAP;
-        drawCapacityBar(contentX, barY, contentRight - contentX, countColor);
-
-        drawHeldBlockBadge(badgeStack, left + PANEL_PAD_X, top + (layoutHeight - BADGE_SIZE) * 0.5F);
+            labelFont.drawString("BLOCKS", contentX, labelY, 0x66FFFFFF, false);
         }
         finally {
             GlStateManager.popMatrix();
         }
     }
+
+    private static float overlayUserScale() {
+        return counterScale == null ? 1.0F : (float) counterScale.getInput();
+    }
+
+    private static float overlayContentWidth(MindlessFontRenderer countFont,
+                                             MindlessFontRenderer labelFont, String countText) {
+        float rateW = labelFont.getStringWidth("0.0") + labelFont.getStringWidth(" BPS");
+        float countW = countFont.getStringWidth(countText);
+        float labelW = labelFont.getStringWidth("BLOCKS");
+        return Math.max(MIN_CONTENT_WIDTH, Math.max(countW, labelW) + 14.0F + rateW);
+    }
+
 private float overlayHeight(MindlessFontRenderer countFont, MindlessFontRenderer labelFont) {
-        float content = countFont.getFontHeight() + 1.0F + labelFont.getFontHeight() + BAR_GAP + BAR_HEIGHT;
+        float content = countFont.getFontHeight() + LABEL_GAP + labelFont.getFontHeight()
+                + BAR_GAP + BAR_HEIGHT;
         return Math.max(BADGE_SIZE, content) + PANEL_PAD_Y * 2.0F;
     }
 private float[] overlaySize(ItemStack badgeStack) {
         MindlessFontRenderer countFont = countFont();
         MindlessFontRenderer labelFont = HUD.getHudFontRenderer();
-        float rateW = labelFont.getStringWidth("0.0") + labelFont.getStringWidth(" BPS");
-        float countW = countFont.getStringWidth(Integer.toString(Math.max(0, getTotalBlocks())));
-        float labelW = labelFont.getStringWidth("BLOCKS");
-        float contentW = Math.max(MIN_CONTENT_WIDTH, Math.max(countW + 12.0F + rateW, labelW + 12.0F + rateW));
+        String countText = Integer.toString(Math.max(0, getTotalBlocks()));
         float badgeSpan = badgeStack == null ? 0.0F : BADGE_SIZE + BADGE_GAP;
-        return new float[]{PANEL_PAD_X * 2.0F + badgeSpan + contentW, overlayHeight(countFont, labelFont)};
+        float scale = overlayUserScale();
+        return new float[]{
+                (PANEL_PAD_X * 2.0F + badgeSpan + overlayContentWidth(countFont, labelFont, countText)) * scale,
+                overlayHeight(countFont, labelFont) * scale};
     }
 private static MindlessFontRenderer countFont() {
         return FontManager.getHudRenderer(ModuleFont.nameOf(counterFont),
@@ -449,20 +481,20 @@ private static MindlessFontRenderer countFont() {
     }
 
     private static int countColour(int blocks) {
-        if (blocks <= 16) return 0xFF5555;
-        if (blocks <= 32) return 0xFFAA00;
-        if (blocks <= 64) return 0xFFFF55;
-        return 0xFFFFFF;
+        if (blocks <= 16) return 0xFF5C5C;
+        if (blocks <= 32) return 0xFFA23D;
+        if (blocks <= 64) return 0xFFE04D;
+        return 0xF2F5FF;
     }
-private void drawCapacityBar(float x, float y, float width, int fillColour) {
-        if (width <= 1.0F) return;
+private void drawCapacityBar(float x, float y, float width, float barHeight, int fillColour) {
+        if (width <= 1.0F || barHeight <= 0.1F) return;
 
         float fraction = Math.max(0.0F, Math.min(1.0F, displayedBlocks / (float) BAR_FULL_BLOCKS));
-        float radius = BAR_HEIGHT * 0.5F;
-        RoundedUtils.drawRound(x, y, width, BAR_HEIGHT, radius, 0x33FFFFFF);
+        float radius = barHeight * 0.5F;
+        RoundedUtils.drawRound(x, y, width, barHeight, radius, 0x26FFFFFF);
         float filled = width * fraction;
-        if (filled > BAR_HEIGHT) {
-            RoundedUtils.drawRound(x, y, filled, BAR_HEIGHT, radius, 0xD8000000 | fillColour);
+        if (filled > barHeight) {
+            RoundedUtils.drawRound(x, y, filled, barHeight, radius, 0xE6000000 | fillColour);
         }
         GL20.glUseProgram(0);
         GlStateManager.enableTexture2D();
@@ -490,25 +522,31 @@ private ItemStack getDisplayBlock() {
         int slot = getBestBlockSlot();
         return slot == -1 ? null : mc.thePlayer.inventory.mainInventory[slot];
     }
-private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY) {
+private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY, float scale) {
         if (stack == null) {
             return;
         }
 
-        RoundedUtils.drawRound(badgeX, badgeY, BADGE_SIZE, BADGE_SIZE, BADGE_RADIUS, BADGE_COLOUR);
-        RoundedUtils.drawRoundOutline(badgeX, badgeY, BADGE_SIZE, BADGE_SIZE, BADGE_RADIUS, 1.0F,
-                new Color(0, 0, 0, 0), new Color(255, 255, 255, 22));
+        float size = BADGE_SIZE * scale;
+        Color edge = new Color(255, 255, 255, 24);
+        RoundedUtils.drawRound(badgeX, badgeY, size, size, BADGE_RADIUS * scale, BADGE_COLOUR);
+        RoundedUtils.drawRoundOutline(badgeX, badgeY, size, size, BADGE_RADIUS * scale, 1.0F, edge, edge);
         GL20.glUseProgram(0);
 
-        int iconX = Math.round(badgeX + (BADGE_SIZE - 16.0F) * 0.5F);
-        int iconY = Math.round(badgeY + (BADGE_SIZE - 16.0F) * 0.5F);
+        // renderItemAndEffectIntoGUI only takes integer coordinates, so the icon is scaled with a
+        // matrix and drawn at the origin.
+        float iconScale = scale * (BADGE_SIZE / 24.0F);
+        float iconX = badgeX + (size - 16.0F * iconScale) * 0.5F;
+        float iconY = badgeY + (size - 16.0F * iconScale) * 0.5F;
 
         GlStateManager.pushMatrix();
+        GlStateManager.translate(iconX, iconY, 0.0F);
+        GlStateManager.scale(iconScale, iconScale, 1.0F);
         GlStateManager.enableDepth();
         RenderHelper.enableGUIStandardItemLighting();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         mc.getRenderItem().zLevel = 0.0F;
-        mc.getRenderItem().renderItemAndEffectIntoGUI(stack, iconX, iconY);
+        mc.getRenderItem().renderItemAndEffectIntoGUI(stack, 0, 0);
         RenderHelper.disableStandardItemLighting();
         GlStateManager.disableDepth();
         GlStateManager.popMatrix();
@@ -921,9 +959,14 @@ private void drawHeldBlockBadge(ItemStack stack, float badgeX, float badgeY) {
         return inWindow / (BPS_WINDOW_MS / 1000f);
     }
 
+    /**
+     * Counts only what the module can actually place: hotbar slots, which is all getBestBlockSlot
+     * ever looks at. Counting the whole inventory reported blocks the scaffold could never reach,
+     * so the number went on climbing while the bar it was meant to describe stood still.
+     */
     private int getTotalBlocks() {
         int count = 0;
-        for (int i = 0; i < 36; i++) {
+        for (int i = 0; i < 9; i++) {
             ItemStack stack = mc.thePlayer.inventory.mainInventory[i];
             if (stack != null && stack.getItem() instanceof ItemBlock && stack.stackSize > 0) {
                 count += stack.stackSize;

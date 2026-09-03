@@ -36,7 +36,13 @@ public final class Diagnostics {
             return false;
         }
     }
-public static void gl(String stage) {
+/**
+     * glGetError reports everything accumulated since the last call, so polling on a timer pins the
+     * error on whichever stage happened to be sampled rather than the one that caused it. The check
+     * runs on every call instead; it only runs at all with diagnostics switched on, and a stall per
+     * call is the price of an answer that names the right stage.
+     */
+    public static void gl(String stage) {
         if (!isEnabled()) return;
         int error;
         while ((error = GL11.glGetError()) != GL11.GL_NO_ERROR) {

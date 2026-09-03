@@ -1,11 +1,17 @@
 package mindless.utility;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.lang.management.ManagementFactory;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -13,6 +19,12 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 public class DiscordRPC {
 private static final int MAX_PIPES = 10;
+    // The browser/websocket transport. Forks that do not publish a named pipe (Dorion, arRPC based
+    // setups) listen here instead, and official Discord answers on it too.
+    private static final int SOCKET_PORT_FIRST = 6463;
+    private static final int SOCKET_PORT_LAST = 6472;
+    private static final int SOCKET_CONNECT_TIMEOUT_MS = 200;
+    private static final int SOCKET_READ_TIMEOUT_MS = 1500;
 private static final long RECONNECT_INTERVAL_MS = 5000L;
 private static final long POLL_INTERVAL_MS = 100L;
 private static final long STALL_TIMEOUT_MS = 10000L;
@@ -27,13 +39,13 @@ private static final int MAX_REPLY_SCAN = 8;
     private static final int OP_PONG = 4;
 
     private final String clientId;
-    private final List<Connection> connections = new CopyOnWriteArrayList<>();
+    private final List<RpcLink> connections = new CopyOnWriteArrayList<>();
     private final Object lifecycleLock = new Object();
 
     private volatile RichPresence desired;
     private volatile boolean running;
     private volatile long lastCycleAt;
-private volatile Connection connectingPipe;
+private volatile RpcLink connectingPipe;
     private Thread worker;
 
     public DiscordRPC(String clientId) {
@@ -65,10 +77,10 @@ public void update(RichPresence presence) {
         }
         if (System.currentTimeMillis() - lastCycleAt > STALL_TIMEOUT_MS) {
             System.out.println("[discord rpc] worker stalled, dropping connections to free it");
-            for (Connection c : connections) {
+            for (RpcLink c : connections) {
                 c.forceClose();
             }
-            Connection stuck = connectingPipe;
+            RpcLink stuck = connectingPipe;
             if (stuck != null) {
                 stuck.forceClose();
             }
@@ -80,8 +92,8 @@ public void update(RichPresence presence) {
     }
 public List<String> describeConnections() {
         List<String> out = new ArrayList<>();
-        for (Connection c : connections) {
-            out.add(c.label);
+        for (RpcLink c : connections) {
+            out.add(c.label());
         }
         return out;
     }
@@ -95,7 +107,7 @@ public RichPresence getDesired() {
             worker = null;
         }
         desired = null;
-        for (Connection c : connections) {
+        for (RpcLink c : connections) {
             c.forceClose();
         }
         connections.clear();
@@ -146,7 +158,7 @@ private void pump() {
         catch (Throwable ignored) {
         }
         finally {
-            for (Connection c : connections) {
+            for (RpcLink c : connections) {
                 c.forceClose();
             }
             connections.clear();
@@ -159,7 +171,7 @@ private void pump() {
 private boolean send(RichPresence presence) {
         String json = buildActivityJson(presence);
         boolean delivered = false;
-        for (Connection c : connections) {
+        for (RpcLink c : connections) {
             if (c.send(json)) {
                 delivered = true;
             }
@@ -168,35 +180,57 @@ private boolean send(RichPresence presence) {
     }
 
     private void dropDeadConnections() {
-        for (Iterator<Connection> it = connections.iterator(); it.hasNext(); ) {
-            Connection c = it.next();
+        for (Iterator<RpcLink> it = connections.iterator(); it.hasNext(); ) {
+            RpcLink c = it.next();
             if (!c.isAlive()) {
                 c.forceClose();
                 connections.remove(c);
-                System.out.println("[discord rpc] lost " + c.label + ", will look again");
+                System.out.println("[discord rpc] lost " + c.label() + ", will look again");
             }
         }
     }
 private void findPipes() {
-        Set<Integer> already = new HashSet<>();
-        for (Connection c : connections) {
-            already.add(c.getPipeIndex());
+        Set<String> already = new HashSet<>();
+        for (RpcLink c : connections) {
+            already.add(c.key());
         }
         for (int i = 0; i < MAX_PIPES; i++) {
-            if (already.contains(i)) {
-                continue;
-            }
-            Connection c = new Connection(clientId, i);
-            connectingPipe = c;
-            try {
-                if (c.connect()) {
-                    connections.add(c);
-                }
-            }
-            finally {
-                connectingPipe = null;
+            tryLink(already, new PipeConnection(clientId, i));
+        }
+        // Every client that answers gets its own link, so official, Canary, Vesktop, Dorion and
+        // anything else running at the same time all show the presence.
+        for (int port = SOCKET_PORT_FIRST; port <= SOCKET_PORT_LAST; port++) {
+            tryLink(already, new SocketConnection(clientId, port));
+        }
+    }
+
+    private void tryLink(Set<String> already, RpcLink link) {
+        if (already.contains(link.key())) {
+            return;
+        }
+        connectingPipe = link;
+        try {
+            if (link.connect()) {
+                connections.add(link);
             }
         }
+        finally {
+            connectingPipe = null;
+        }
+    }
+
+    private interface RpcLink {
+        boolean isAlive();
+
+        String key();
+
+        String label();
+
+        boolean connect();
+
+        boolean send(String json);
+
+        void forceClose();
     }
 private String buildActivityJson(RichPresence presence) {
         List<String> activity = new ArrayList<>(6);
@@ -305,28 +339,36 @@ private static String escape(String s) {
             Thread.currentThread().interrupt();
         }
     }
-private static final class Connection {
+private static final class PipeConnection implements RpcLink {
         private final String clientId;
         private final int pipeIndex;
         private volatile RandomAccessFile pipe;
         private volatile boolean alive;
         String label = "";
 
-        Connection(String clientId, int pipeIndex) {
+        PipeConnection(String clientId, int pipeIndex) {
             this.clientId = clientId;
             this.pipeIndex = pipeIndex;
             this.label = "pipe " + pipeIndex;
         }
 
-        boolean isAlive() {
+        @Override
+        public boolean isAlive() {
             return alive;
         }
 
-        int getPipeIndex() {
-            return pipeIndex;
+        @Override
+        public String key() {
+            return "pipe:" + pipeIndex;
         }
 
-        boolean connect() {
+        @Override
+        public String label() {
+            return label;
+        }
+
+        @Override
+        public boolean connect() {
             String[] prefixes = {"\\\\.\\pipe\\discord-ipc-", "\\\\?\\pipe\\discord-ipc-"};
             for (String prefix : prefixes) {
                 try {
@@ -362,7 +404,8 @@ private static final class Connection {
             }
             return false;
         }
-boolean send(String json) {
+@Override
+        public boolean send(String json) {
             if (!alive) {
                 return false;
             }
@@ -404,7 +447,8 @@ boolean send(String json) {
                 return false;
             }
         }
-void forceClose() {
+@Override
+        public void forceClose() {
             alive = false;
             RandomAccessFile open = pipe;
             if (open == null) {
@@ -480,6 +524,331 @@ void forceClose() {
                 off += n;
             }
             return true;
+        }
+
+        private static String extractField(String json, String field) {
+            String key = "\"" + field + "\":\"";
+            int start = json.indexOf(key);
+            if (start == -1) {
+                return null;
+            }
+            start += key.length();
+            int end = json.indexOf('"', start);
+            return end == -1 ? null : json.substring(start, end);
+        }
+    }
+
+
+    /**
+     * Discord's other RPC transport: a websocket on 127.0.0.1:6463-6472.
+     *
+     * Clients that never publish a \\.\pipe\discord-ipc-N pipe -- Dorion, and arRPC based setups
+     * generally -- are only reachable this way. There is no handshake frame here; the client id
+     * travels in the upgrade URL and the connection is ready once Discord dispatches READY. After
+     * that the payloads are exactly the ones the pipe transport sends, so nothing above this class
+     * has to know which kind of link it got.
+     */
+    private static final class SocketConnection implements RpcLink {
+        private static final SecureRandom RANDOM = new SecureRandom();
+
+        private final String clientId;
+        private final int port;
+        private volatile Socket socket;
+        private volatile InputStream in;
+        private volatile OutputStream out;
+        private volatile boolean alive;
+        private String label;
+
+        SocketConnection(String clientId, int port) {
+            this.clientId = clientId;
+            this.port = port;
+            this.label = "socket " + port;
+        }
+
+        @Override
+        public boolean isAlive() {
+            return alive;
+        }
+
+        @Override
+        public String key() {
+            return "socket:" + port;
+        }
+
+        @Override
+        public String label() {
+            return label;
+        }
+
+        @Override
+        public boolean connect() {
+            try {
+                Socket s = new Socket();
+                s.setTcpNoDelay(true);
+                s.connect(new InetSocketAddress("127.0.0.1", port), SOCKET_CONNECT_TIMEOUT_MS);
+                s.setSoTimeout(SOCKET_READ_TIMEOUT_MS);
+                socket = s;
+                in = s.getInputStream();
+                out = s.getOutputStream();
+
+                if (!upgrade()) {
+                    closeQuietly();
+                    return false;
+                }
+
+                // Wait for READY before claiming the link. A port that answers HTTP but is not a
+                // Discord client will simply never send it and time out.
+                for (int i = 0; i < MAX_REPLY_SCAN; i++) {
+                    String payload = readText();
+                    if (payload == null) {
+                        closeQuietly();
+                        return false;
+                    }
+                    if (payload.contains("\"evt\":\"ERROR\"")) {
+                        System.out.println("[discord rpc] " + label + " refused: " + payload);
+                        closeQuietly();
+                        return false;
+                    }
+                    if (payload.contains("\"evt\":\"READY\"")) {
+                        String username = extractField(payload, "username");
+                        if (username != null) {
+                            label = "socket " + port + " (" + username + ")";
+                        }
+                        System.out.println("[discord rpc] connected: " + label);
+                        alive = true;
+                        return true;
+                    }
+                }
+                closeQuietly();
+                return false;
+            }
+            catch (Exception e) {
+                closeQuietly();
+                return false;
+            }
+        }
+
+        private boolean upgrade() throws Exception {
+            byte[] nonce = new byte[16];
+            RANDOM.nextBytes(nonce);
+            String key = Base64.getEncoder().encodeToString(nonce);
+
+            String request = "GET /?v=1&client_id=" + clientId + "&encoding=json HTTP/1.1\r\n"
+                    + "Host: 127.0.0.1:" + port + "\r\n"
+                    + "Upgrade: websocket\r\n"
+                    + "Connection: Upgrade\r\n"
+                    + "Sec-WebSocket-Key: " + key + "\r\n"
+                    + "Sec-WebSocket-Version: 13\r\n"
+                    + "Origin: https://discord.com\r\n"
+                    + "\r\n";
+            out.write(request.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+
+            StringBuilder head = new StringBuilder(256);
+            int consecutive = 0;
+            while (head.length() < 4096) {
+                int b = in.read();
+                if (b == -1) {
+                    return false;
+                }
+                head.append((char) b);
+                if (b == '\n' || b == '\r') {
+                    consecutive++;
+                    if (consecutive == 4) {
+                        break;
+                    }
+                }
+                else {
+                    consecutive = 0;
+                }
+            }
+            String response = head.toString();
+            int lineEnd = response.indexOf('\r');
+            String statusLine = lineEnd == -1 ? response : response.substring(0, lineEnd);
+            return statusLine.contains("101");
+        }
+
+        @Override
+        public boolean send(String json) {
+            if (!alive) {
+                return false;
+            }
+            try {
+                writeText(json);
+                for (int i = 0; i < MAX_REPLY_SCAN; i++) {
+                    String payload = readText();
+                    if (payload == null) {
+                        alive = false;
+                        return false;
+                    }
+                    if (payload.contains("\"cmd\":\"SET_ACTIVITY\"")) {
+                        if (payload.contains("\"evt\":\"ERROR\"")) {
+                            System.out.println("[discord rpc] " + label + " rejected update: " + payload);
+                            return false;
+                        }
+                        return true;
+                    }
+                }
+                alive = false;
+                return false;
+            }
+            catch (Exception e) {
+                System.out.println("[discord rpc] " + label + " failed: " + e);
+                alive = false;
+                return false;
+            }
+        }
+
+        private void writeText(String json) throws Exception {
+            OutputStream stream = out;
+            if (stream == null) {
+                throw new IllegalStateException("socket closed");
+            }
+            byte[] payload = json.getBytes(StandardCharsets.UTF_8);
+            ByteBuffer buffer = ByteBuffer.allocate(payload.length + 14);
+            buffer.put((byte) 0x81);
+
+            // Client frames are always masked, per RFC 6455.
+            if (payload.length < 126) {
+                buffer.put((byte) (0x80 | payload.length));
+            }
+            else if (payload.length <= 0xFFFF) {
+                buffer.put((byte) (0x80 | 126));
+                buffer.put((byte) (payload.length >>> 8));
+                buffer.put((byte) payload.length);
+            }
+            else {
+                buffer.put((byte) (0x80 | 127));
+                buffer.putLong(payload.length);
+            }
+
+            byte[] mask = new byte[4];
+            RANDOM.nextBytes(mask);
+            buffer.put(mask);
+            for (int i = 0; i < payload.length; i++) {
+                buffer.put((byte) (payload[i] ^ mask[i & 3]));
+            }
+
+            buffer.flip();
+            byte[] frame = new byte[buffer.remaining()];
+            buffer.get(frame);
+            stream.write(frame);
+            stream.flush();
+        }
+
+        /** Reads frames until a text one arrives, answering pings and stopping on close. */
+        private String readText() throws Exception {
+            for (int guard = 0; guard < 16; guard++) {
+                int first = in.read();
+                if (first == -1) {
+                    return null;
+                }
+                int opcode = first & 0x0F;
+                int second = in.read();
+                if (second == -1) {
+                    return null;
+                }
+                boolean masked = (second & 0x80) != 0;
+                long length = second & 0x7F;
+                if (length == 126) {
+                    length = ((long) readByte() << 8) | readByte();
+                }
+                else if (length == 127) {
+                    length = 0L;
+                    for (int i = 0; i < 8; i++) {
+                        length = (length << 8) | readByte();
+                    }
+                }
+                if (length < 0 || length > 1 << 20) {
+                    return null;
+                }
+
+                byte[] mask = null;
+                if (masked) {
+                    mask = new byte[4];
+                    readFully(mask);
+                }
+                byte[] payload = new byte[(int) length];
+                readFully(payload);
+                if (mask != null) {
+                    for (int i = 0; i < payload.length; i++) {
+                        payload[i] ^= mask[i & 3];
+                    }
+                }
+
+                if (opcode == 0x8) {
+                    return null;
+                }
+                if (opcode == 0x9) {
+                    writePong(payload);
+                    continue;
+                }
+                if (opcode == 0x1 || opcode == 0x0) {
+                    return new String(payload, StandardCharsets.UTF_8);
+                }
+            }
+            return null;
+        }
+
+        private void writePong(byte[] payload) throws Exception {
+            OutputStream stream = out;
+            if (stream == null) {
+                return;
+            }
+            byte[] mask = new byte[4];
+            RANDOM.nextBytes(mask);
+            ByteBuffer buffer = ByteBuffer.allocate(payload.length + 6);
+            buffer.put((byte) 0x8A);
+            buffer.put((byte) (0x80 | Math.min(125, payload.length)));
+            buffer.put(mask);
+            for (int i = 0; i < payload.length && i < 125; i++) {
+                buffer.put((byte) (payload[i] ^ mask[i & 3]));
+            }
+            buffer.flip();
+            byte[] frame = new byte[buffer.remaining()];
+            buffer.get(frame);
+            stream.write(frame);
+            stream.flush();
+        }
+
+        private int readByte() throws Exception {
+            int b = in.read();
+            if (b == -1) {
+                throw new IllegalStateException("socket closed");
+            }
+            return b;
+        }
+
+        private void readFully(byte[] buf) throws Exception {
+            int off = 0;
+            while (off < buf.length) {
+                int n = in.read(buf, off, buf.length - off);
+                if (n == -1) {
+                    throw new IllegalStateException("socket closed");
+                }
+                off += n;
+            }
+        }
+
+        @Override
+        public void forceClose() {
+            alive = false;
+            closeQuietly();
+        }
+
+        private void closeQuietly() {
+            Socket open = socket;
+            socket = null;
+            in = null;
+            out = null;
+            alive = false;
+            try {
+                if (open != null) {
+                    open.close();
+                }
+            }
+            catch (Exception ignored) {
+            }
         }
 
         private static String extractField(String json, String field) {

@@ -598,7 +598,7 @@ private void restoreFlatOverlayState() {
         collectOutlineCandidates();
         if (outlineCandidates.isEmpty()) return;
 
-        outlineFramebuffer = createOutlineFramebuffer(outlineFramebuffer);
+        outlineFramebuffer = createOutlineFramebuffer(outlineFramebuffer, drawEdge ? 1 : 2);
         if (outlineFramebuffer == null) {
             outlineCandidates.clear();
             return;
@@ -697,8 +697,8 @@ private void restoreFlatOverlayState() {
         }
     }
 
-    private Framebuffer createOutlineFramebuffer(Framebuffer framebuffer) {
-        framebuffer = RenderUtils.createFrameBuffer(framebuffer, false);
+    private Framebuffer createOutlineFramebuffer(Framebuffer framebuffer, int divisor) {
+        framebuffer = RenderUtils.createScaledFrameBuffer(framebuffer, divisor, false);
         if (framebuffer == null) return null;
         framebuffer.setFramebufferColor(0.0f, 0.0f, 0.0f, 0.0f);
         framebuffer.setFramebufferFilter(GL11.GL_LINEAR);

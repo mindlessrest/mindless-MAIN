@@ -76,7 +76,7 @@ packet, collision, block highlight, and world-render paths are present.
 ### Render and HUD
 
 AntiDebuff, AntiShuffle, Arrows, BedESP, BlockESP, BlockOverlay, BodyMaterial,
-BreakProgress, Chams, DamageTint, Fullbright, MotionBlur, DamageTags,
+BreakProgress, Chams, DamageTint, Fullbright, DamageTags,
 HitParticles, ChestESP, ExtendCamera, Freelook, FallView, Holdlook, HUD,
 Notifications, Indicators, ItemESP, ItemPhysics, MobESP, Nametags,
 NoCameraClip, NoHurtCam, PotionHUD, Radar, Saturation, Watermark, TargetHUD,

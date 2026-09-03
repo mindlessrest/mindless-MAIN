@@ -39,6 +39,7 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
         pass.use();
         pass.setTint(r, g, b);
         pass.setShape(radius, intensity);
+        pass.setTexelSize(silhouette.framebufferWidth, silhouette.framebufferHeight);
         pass.setDirection(1.0f, 0.0f, MODE_BLUR);
         Diagnostics.gl("glow: horizontal uniforms set");
         RenderUtils.drawFramebufferFullscreen(silhouette);
@@ -49,6 +50,7 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
         pass.use();
         pass.setTint(r, g, b);
         pass.setShape(radius, intensity);
+        pass.setTexelSize(horizontal.framebufferWidth, horizontal.framebufferHeight);
         pass.setDirection(0.0f, 1.0f, MODE_BLUR);
         RenderUtils.drawFramebufferFullscreen(horizontal);
         Diagnostics.gl("glow: vertical draw");
@@ -155,6 +157,13 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
             if (location >= 0) GL20.glUniform1f(location, radius);
             location = uniform("intensity");
             if (location >= 0) GL20.glUniform1f(location, intensity);
+        }
+
+        private void setTexelSize(int width, int height) {
+            int location = uniform("texelSize");
+            if (location >= 0) {
+                GL20.glUniform2f(location, 1.0f / Math.max(1, width), 1.0f / Math.max(1, height));
+            }
         }
 
         private void setDirection(float x, float y, int mode) {

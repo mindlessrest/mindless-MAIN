@@ -247,6 +247,11 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
                 width + expansion * 2.0f, height + expansion * 2.0f);
         roundedShadowShader.unload();
         glDepthMask(true);
+        // Deliberately a bare pop. Routing this through RenderUtils.popAttrib re-syncs
+        // GlStateManager from the driver, and the GL_ENABLE_BIT branch of that sync rewrites the
+        // lighting state -- which left every 3D block item in the inventory unlit and invisible
+        // while flat items still drew. This runs every frame from the HUD, so it stays cheap and
+        // stays out of the cache's way.
         glPopAttrib();
     }
 

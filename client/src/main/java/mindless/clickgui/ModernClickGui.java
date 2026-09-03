@@ -213,6 +213,11 @@ private static float guiDragOffsetX = 0f;
     private boolean draggingGui = false;
     private float dragStartMouseX, dragStartMouseY;
     private float dragStartOffsetX, dragStartOffsetY;
+    private boolean draggingMascot = false;
+    private float mascotDragOffsetX, mascotDragOffsetY;
+    private float mascotDragStartMouseX, mascotDragStartMouseY;
+    private float mascotDragStartOffsetX, mascotDragStartOffsetY;
+    private float mascotX, mascotY, mascotDrawW, mascotDrawH;
     private long lastFrameNanos = System.nanoTime();
     private float frameDelta = 1f / 60f;
     private float resetHover;
@@ -355,11 +360,46 @@ private float pixelScale() {
 
         float mascotH = panelH * 0.75f;
         float mascotW = mascotH;
-        float mx = width - mascotW - 50f;
-        float my = height - mascotH - 50f;
+        float mx = width - mascotW - 50f + mascotDragOffsetX;
+        float my = height - mascotH - 50f + mascotDragOffsetY;
+
+        // Keep a grabbable sliver on screen however far she is dragged.
+        float margin = Math.min(40f, mascotW * 0.5f);
+        mx = Math.max(-mascotW + margin, Math.min(width - margin, mx));
+        my = Math.max(-mascotH + margin, Math.min(height - margin, my));
+
+        mascotX = mx;
+        mascotY = my;
+        mascotDrawW = mascotW;
+        mascotDrawH = mascotH;
 
         drawTextureRegion(targetTexture, mx, my, mascotW, mascotH,
                 0, 0, 1, 1, 1, 1, 1f, 1f, 1f, 1f);
+    }
+
+    /**
+     * She is drawn behind the panels, so she only takes a click that missed all of them.
+     */
+    private boolean beginMascotDrag(int mx, int my) {
+        if (mascotDrawW <= 0f || mascotDrawH <= 0f) return false;
+        if (Gui.mascot == null) return false;
+        int input = (int) Gui.mascot.getInput();
+        if (input != 0 && input != 1) return false;
+        if (insideDashboard(mx, my)) return false;
+        if (!inside(mx, my, mascotX, mascotY, mascotX + mascotDrawW, mascotY + mascotDrawH)) return false;
+
+        draggingMascot = true;
+        mascotDragStartMouseX = mx;
+        mascotDragStartMouseY = my;
+        mascotDragStartOffsetX = mascotDragOffsetX;
+        mascotDragStartOffsetY = mascotDragOffsetY;
+        return true;
+    }
+
+    private boolean insideDashboard(int mx, int my) {
+        if (inside(mx, my, baseX, baseY, baseX + sideW, baseY + panelH)) return true;
+        if (inside(mx, my, centerX, baseY, centerX + centerW, baseY + panelH)) return true;
+        return detailW > 2f && inside(mx, my, detailX, baseY, detailX + detailW, baseY + panelH);
     }
 
     private void drawDashboardShadows(float renderScale) {
@@ -603,12 +643,15 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
     private void drawModuleRow(Module module, float y, int mx, int my) {
         float x1 = centerX + 14, x2 = centerX + centerW - 14;
         boolean scriptManager = module instanceof mindless.script.Manager;
+        // The manager rows open a screen, they are not toggles. They sit permanently enabled, so
+        // the enabled-row treatment lit them up as though every script were running.
+        boolean manager = module instanceof Manager || scriptManager;
         boolean selected = module == selectedModule;
         boolean hover = inside(mx, my, x1, y, x2, y + MODULE_ROW_HEIGHT);
         float hp = animate(hoverAnimation, module, hover ? 1f : 0f, 17f);
         float sp = animate(selectedAnimation, module, selected ? 1f : 0f, 19f);
         int rowColor = mixColor(ROW, ROW_HOVER, hp);
-        if (module.isEnabled()) rowColor = mixColor(withAlpha(TEXT, 34), withAlpha(TEXT, 48), hp);
+        if (module.isEnabled() && !manager) rowColor = mixColor(withAlpha(TEXT, 34), withAlpha(TEXT, 48), hp);
         rowColor = mixColor(rowColor, withAlpha(ACCENT, 55), sp);
         if (scriptManager) rowColor = mixColor(rowColor, withAlpha(ACCENT, 62), .42f);
         rounded(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f, rowColor);
@@ -620,8 +663,7 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
                     0f, 1.25f, 1.25f, 0f, withAlpha(ACCENT, (int) (255 * sp)));
         }
         boolean profile = module instanceof ProfileModule;
-        boolean manager = module instanceof Manager || scriptManager;
-        boolean enabled = module.isEnabled();
+        boolean enabled = module.isEnabled() && !manager;
         float actionX = x2 - 88;
         float availableTextWidth = Math.max(42f, x2 - 70f - x1);
         drawText(trim(module.getName(), availableTextWidth, .73f, true),
@@ -1218,6 +1260,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         }
         if (editingSliderValue != null) finishSliderValueEdit(true);
         if (mouseButton != 0 && mouseButton != 1) return;
+        if (mouseButton == 0 && beginMascotDrag(mx, my)) return;
         if (mouseButton == 0 && inside(mx, my, baseX + 10, baseY + 8, baseX + sideW - 10, baseY + 40)) {
             draggingGui = true;
             dragStartMouseX = mx;
@@ -1436,6 +1479,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         colorDrag = 0;
         draggingScrollbar = 0;
         draggingGui = false;
+        draggingMascot = false;
     }
 
     @Override
@@ -1534,10 +1578,18 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     }
 
     private void updateDragging(int mx, int my) {
-        if (!Mouse.isButtonDown(0)) { draggingSlider = null; colorDrag = 0; draggingScrollbar = 0; draggingGui = false; return; }
+        if (!Mouse.isButtonDown(0)) {
+            draggingSlider = null; colorDrag = 0; draggingScrollbar = 0;
+            draggingGui = false; draggingMascot = false;
+            return;
+        }
         if (draggingGui) {
             guiDragOffsetX = dragStartOffsetX + (mx - dragStartMouseX);
             guiDragOffsetY = dragStartOffsetY + (my - dragStartMouseY);
+        }
+        if (draggingMascot) {
+            mascotDragOffsetX = mascotDragStartOffsetX + (mx - mascotDragStartMouseX);
+            mascotDragOffsetY = mascotDragStartOffsetY + (my - mascotDragStartMouseY);
         }
         if (draggingScrollbar != 0) updateScrollbarDrag(my);
         if (draggingSlider != null) setSliderFromMouse(draggingSlider, mx, sliderRect.x1, sliderRect.x2);

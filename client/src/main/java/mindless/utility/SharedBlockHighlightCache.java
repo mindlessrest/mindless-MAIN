@@ -13,11 +13,11 @@ import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.EmptyChunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public final class SharedBlockHighlightCache {
 
@@ -27,7 +27,11 @@ public final class SharedBlockHighlightCache {
     private final Map<Long, Set<BlockPos>> blockListByChunk = new ConcurrentHashMap<>();
     private final Map<Long, Set<BlockPos>> bedFootByChunk = new ConcurrentHashMap<>();
     private final Set<UpdateListener> updateListeners = ConcurrentHashMap.newKeySet();
-    private final Deque<long[]> scanQueue = new ArrayDeque<>();
+    // Chunk packets arrive on the netty thread while the scan drains on the client thread, so
+    // both the queue and its dedupe set have to be concurrent.
+    private final Queue<Long> scanQueue = new ConcurrentLinkedQueue<>();
+    private final Set<Long> queuedChunks = ConcurrentHashMap.newKeySet();
+    private final Set<Long> scannedChunks = ConcurrentHashMap.newKeySet();
 
     private BlockListHighlightMatcher blockListMatcher;
     private boolean bedAttached;
@@ -53,6 +57,7 @@ public final class SharedBlockHighlightCache {
 
     public void attachBlockList(BlockListSetting setting) {
         this.blockListMatcher = new BlockListHighlightMatcher(setting);
+        scannedChunks.clear();
     }
 
     public void detachBlockList() {
@@ -62,6 +67,7 @@ public final class SharedBlockHighlightCache {
 
     public void attachBed() {
         this.bedAttached = true;
+        scannedChunks.clear();
     }
 
     public void detachBed() {
@@ -84,10 +90,16 @@ public final class SharedBlockHighlightCache {
     public void clear() {
         blockListByChunk.clear();
         bedFootByChunk.clear();
-        scanQueue.clear();
+        clearQueue();
         for (UpdateListener listener : updateListeners) {
             listener.onCacheCleared();
         }
+    }
+
+    private void clearQueue() {
+        scanQueue.clear();
+        queuedChunks.clear();
+        scannedChunks.clear();
     }
 
     public void addUpdateListener(UpdateListener listener) {
@@ -106,7 +118,11 @@ public final class SharedBlockHighlightCache {
         if (!anyConsumerActive()) {
             return;
         }
-        scanQueue.addLast(new long[]{chunkX, chunkZ});
+        long k = key(chunkX, chunkZ);
+        scannedChunks.remove(k);
+        if (queuedChunks.add(k)) {
+            scanQueue.add(k);
+        }
         for (UpdateListener listener : updateListeners) {
             listener.onChunkQueued(chunkX, chunkZ);
         }
@@ -116,6 +132,7 @@ public final class SharedBlockHighlightCache {
         long k = key(chunkX, chunkZ);
         blockListByChunk.remove(k);
         bedFootByChunk.remove(k);
+        scannedChunks.remove(k);
         for (UpdateListener listener : updateListeners) {
             listener.onChunkRemoved(chunkX, chunkZ);
         }
@@ -125,7 +142,7 @@ public final class SharedBlockHighlightCache {
         if (!anyConsumerActive()) {
             return;
         }
-        scanQueue.clear();
+        clearQueue();
         if (mc.theWorld == null || mc.thePlayer == null) {
             return;
         }
@@ -150,14 +167,54 @@ public final class SharedBlockHighlightCache {
             blockListMatcher.beginScanPass();
         }
         int remaining = maxSections;
-        while (remaining > 0 && !scanQueue.isEmpty()) {
-            long[] cpos = scanQueue.pollFirst();
-            int cx = (int) cpos[0], cz = (int) cpos[1];
+        while (remaining > 0) {
+            Long queuedKey = scanQueue.poll();
+            if (queuedKey == null) {
+                break;
+            }
+            long k = queuedKey;
+            queuedChunks.remove(k);
+            int cx = (int) (k >> 32), cz = (int) k;
             Chunk chunk = mc.theWorld.getChunkFromChunkCoords(cx, cz);
             if (chunk == null || chunk instanceof EmptyChunk) {
+                // Chunk packets are seen on the netty thread before the client thread installs
+                // the chunk. Charging the budget keeps a burst of not-yet-loaded chunks from
+                // draining the whole queue in one tick; sweepMissedChunks re-queues them once
+                // they land.
+                remaining--;
                 continue;
             }
+            scannedChunks.add(k);
             remaining -= scanChunk(chunk);
+        }
+    }
+
+    /**
+     * Re-queues loaded chunks the scan never got to. A chunk dropped for not being loaded yet,
+     * or missed because a packet was lost between the two threads, would otherwise stay unscanned
+     * for as long as it stays loaded -- which is what left the bed index empty.
+     */
+    public void sweepMissedChunks() {
+        if (!anyConsumerActive() || mc.theWorld == null || mc.thePlayer == null) {
+            return;
+        }
+        int rd = mc.gameSettings.renderDistanceChunks;
+        int pcx = (int) Math.floor(mc.thePlayer.posX) >> 4;
+        int pcz = (int) Math.floor(mc.thePlayer.posZ) >> 4;
+        for (int cx = pcx - rd; cx <= pcx + rd; cx++) {
+            for (int cz = pcz - rd; cz <= pcz + rd; cz++) {
+                long k = key(cx, cz);
+                if (scannedChunks.contains(k) || queuedChunks.contains(k)) {
+                    continue;
+                }
+                Chunk chunk = mc.theWorld.getChunkFromChunkCoords(cx, cz);
+                if (chunk == null || chunk instanceof EmptyChunk) {
+                    continue;
+                }
+                if (queuedChunks.add(k)) {
+                    scanQueue.add(k);
+                }
+            }
         }
     }
 
@@ -204,7 +261,7 @@ public final class SharedBlockHighlightCache {
 
     private void rescanBlockListLayer() {
         blockListByChunk.clear();
-        scanQueue.clear();
+        clearQueue();
         if (!anyConsumerActive()) {
             return;
         }
@@ -281,6 +338,10 @@ public final class SharedBlockHighlightCache {
         int baseX = chunk.xPosition << 4;
         int baseZ = chunk.zPosition << 4;
 
+        // Hoisted: these were being re-evaluated once per block, 4096 times a section.
+        boolean blockListActive = isBlockListActive();
+        boolean bedActive = isBedActive();
+
         for (int si = 0; si < sections.length; si++) {
             ExtendedBlockStorage section = sections[si];
             if (section == null) {
@@ -291,15 +352,24 @@ public final class SharedBlockHighlightCache {
             for (int y = 0; y < 16; y++) {
                 for (int z = 0; z < 16; z++) {
                     for (int x = 0; x < 16; x++) {
-                        BlockPos pos = new BlockPos(baseX + x, baseY + y, baseZ + z);
                         IBlockState state = section.get(x, y, z);
                         if (state == null) {
                             continue;
                         }
-                        if (isBlockListActive() && blockListMatcher.matchesBlock(state) && blockListMatcher.shouldIndexAt(pos, state)) {
+                        // Match on the state first. Building a BlockPos for every block in the
+                        // chunk was 32k throwaway objects per chunk, which is most of what made
+                        // the scan slow enough to need a budget this small.
+                        boolean blockWanted = blockListActive && blockListMatcher.matchesBlock(state);
+                        boolean bedWanted = bedActive && BED_MATCHER.matchesBlock(state);
+                        if (!blockWanted && !bedWanted) {
+                            continue;
+                        }
+
+                        BlockPos pos = new BlockPos(baseX + x, baseY + y, baseZ + z);
+                        if (blockWanted && blockListMatcher.shouldIndexAt(pos, state)) {
                             blockFound.add(pos);
                         }
-                        if (isBedActive() && BED_MATCHER.matchesBlock(state) && BED_MATCHER.shouldIndexAt(pos, state)) {
+                        if (bedWanted && BED_MATCHER.shouldIndexAt(pos, state)) {
                             bedFound.add(pos);
                         }
                     }

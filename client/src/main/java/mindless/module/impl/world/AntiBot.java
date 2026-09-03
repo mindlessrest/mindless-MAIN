@@ -240,20 +240,84 @@ private static long shopPosHash(double x, double z) {
                 || display.startsWith("CIT-") || hasShopMarker(display);
     }
 
+    /**
+     * Reads the stand's own name tag rather than going through getDisplayName.
+     *
+     * A lobby holds hundreds of label stands and this runs over all of them twice a second.
+     * getDisplayName builds a fresh chat component every call, and normalizing it ran a regex
+     * strip plus a trim plus an uppercase copy on top -- five throwaway objects per stand per
+     * pass, for a check that is almost always false.
+     */
     private static boolean hasShopLabel(Entity entity) {
-        String display = normalizeDisplayName(entity.getDisplayName() == null
-                ? "" : entity.getDisplayName().getUnformattedText());
-        return hasShopMarker(display);
+        String raw = entity.getCustomNameTag();
+        return raw != null && !raw.isEmpty() && hasShopMarker(raw);
     }
 
     private static boolean hasShopMarker(String display) {
-        return display.contains("RIGHT CLICK")
-                || display.contains("ITEM SHOP")
-                || display.contains("TEAM UPGRADES")
-                || display.contains("SOLO UPGRADES")
-                || display.equals("UPGRADES")
-                || display.contains("BANKER")
-                || display.contains("STREAK POWERS");
+        return containsMarker(display, "RIGHT CLICK")
+                || containsMarker(display, "ITEM SHOP")
+                || containsMarker(display, "TEAM UPGRADES")
+                || containsMarker(display, "SOLO UPGRADES")
+                || equalsMarker(display, "UPGRADES")
+                || containsMarker(display, "BANKER")
+                || containsMarker(display, "STREAK POWERS");
+    }
+
+    /**
+     * Case-insensitive substring search that steps over section-sign colour codes as it goes, so
+     * the name never has to be stripped, trimmed and upper-cased into a new string first. Marker
+     * must be upper case.
+     */
+    private static boolean containsMarker(String display, String marker) {
+        int length = display.length();
+        int markerLength = marker.length();
+        for (int start = 0; start <= length - markerLength; start++) {
+            int index = start;
+            int matched = 0;
+            while (index < length && matched < markerLength) {
+                char character = display.charAt(index);
+                if (character == '\u00a7') {
+                    index += 2;
+                    continue;
+                }
+                if (Character.toUpperCase(character) != marker.charAt(matched)) {
+                    break;
+                }
+                index++;
+                matched++;
+            }
+            if (matched == markerLength) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean equalsMarker(String display, String marker) {
+        int length = display.length();
+        int index = 0;
+        int end = length;
+        while (index < end && (display.charAt(index) == ' ' || display.charAt(index) == '\u00a7')) {
+            index += display.charAt(index) == '\u00a7' ? 2 : 1;
+        }
+        while (end > index && display.charAt(end - 1) == ' ') {
+            end--;
+        }
+
+        int matched = 0;
+        while (index < end) {
+            char character = display.charAt(index);
+            if (character == '\u00a7') {
+                index += 2;
+                continue;
+            }
+            if (matched >= marker.length() || Character.toUpperCase(character) != marker.charAt(matched)) {
+                return false;
+            }
+            index++;
+            matched++;
+        }
+        return matched == marker.length();
     }
 
     private static String normalizeDisplayName(String display) {

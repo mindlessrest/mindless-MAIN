@@ -3,6 +3,7 @@ package mindless.module.impl.player;
 import mindless.event.PreSlotScrollEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.event.PostProfileLoadEvent;
+import mindless.event.ReceivePacketEvent;
 import mindless.event.SendPacketEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
@@ -36,6 +37,7 @@ import net.minecraft.item.ItemSpade;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
 import net.minecraft.network.play.client.C0EPacketClickWindow;
+import net.minecraft.network.play.server.S32PacketConfirmTransaction;
 import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.DamageSource;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
@@ -52,6 +54,7 @@ public class InvManager extends Module {
     private static final int AUTO_SORT_NORMAL = 0;
     private static final int AUTO_SORT_CUSTOM = 1;
     private static final double QUALITY_EPSILON = 1.0E-6D;
+    private static final long ACK_TIMEOUT_MS = 750L;
 
     private static final Comparator<PlannedAction> ACTION_COMPARATOR = (first, second) -> {
         int comparison = Integer.compare(first.clickCount, second.clickCount);
@@ -117,6 +120,8 @@ public class InvManager extends Module {
     private PlannedAction currentAction;
     private int cursorRecoveryInventoryIndex = -1;
     private double windowClickBudget;
+    private volatile int pendingWindowClicks;
+    private volatile long lastWindowClickAt;
     private boolean sessionOpen;
     private SessionState sessionState = SessionState.ACTIVE;
     private long ticks = 0L;
@@ -241,6 +246,23 @@ public class InvManager extends Module {
         if (normalSortDelay.getInput() == -1.0) {
             autoSortMode.setValueRaw(AUTO_SORT_DISABLED);
             normalSortDelay.setValue(3.0);
+        }
+    }
+
+    /**
+     * Cleared whenever the server acknowledges a window click.
+     *
+     * windowClick applies the click to the client's inventory immediately and only then sends it.
+     * Firing a dependent chain -- pick a stack up, put it down, return the remainder -- one click
+     * per tick without waiting for those acknowledgements means every click after the first is
+     * predicated on a result the server has not agreed to yet. When one is refused mid-chain the
+     * client keeps the rest of its predictions, which is the stack that shows in the hotbar and
+     * does not exist.
+     */
+    @SubscribeEvent
+    public void onReceivePacket(ReceivePacketEvent event) {
+        if (event.getPacket() instanceof S32PacketConfirmTransaction) {
+            pendingWindowClicks = 0;
         }
     }
 
@@ -594,6 +616,11 @@ public class InvManager extends Module {
         }
         int clickBudget = consumeWindowClickBudget();
         if (clickBudget <= 0) {
+            return true;
+        }
+
+        // Never run ahead of the server inside a plan.
+        if (!serverAcknowledgedLastClick()) {
             return true;
         }
 
@@ -1002,20 +1029,28 @@ public class InvManager extends Module {
             return -1;
         }
 
-        for (String storageId : items.getItems()) {
-            if (!ItemSearchIndex.matches(storageId, stack)) {
+        List<String> orderedItems = items.getItems();
+        int firstMatch = -1;
+        for (int index = 0; index < orderedItems.size(); index++) {
+            if (!ItemSearchIndex.matches(orderedItems.get(index), stack)) {
                 continue;
             }
 
-            Integer assignedSlot = items.getAssignedSlot(storageId);
-            if (assignedSlot == null) {
-                return -1;
+            int hotbarSlot = items.getAssignedSlot(index) - 1;
+            if (hotbarSlot < 0 || hotbarSlot >= HOTBAR_SIZE) {
+                continue;
             }
-
-            int hotbarSlot = assignedSlot - 1;
-            return hotbarSlot >= 0 && hotbarSlot < HOTBAR_SIZE ? hotbarSlot : -1;
+            if (firstMatch < 0) {
+                firstMatch = hotbarSlot;
+            }
+            // With the same id assigned to several slots, aim at one that is not already holding
+            // it rather than always naming the first.
+            ItemStack occupant = mc.thePlayer.inventory.getStackInSlot(hotbarSlot);
+            if (!ItemSearchIndex.matches(orderedItems.get(index), occupant)) {
+                return hotbarSlot;
+            }
         }
-        return -1;
+        return firstMatch;
     }
 
     private void delayedClick(int slotId, int button, int mode, SliderSetting delaySlider) {
@@ -1193,6 +1228,18 @@ public class InvManager extends Module {
 
     private boolean ownsCarriedStack() {
         return currentAction != null || cursorRecoveryInventoryIndex >= 0;
+    }
+
+    private boolean serverAcknowledgedLastClick() {
+        if (pendingWindowClicks <= 0) {
+            return true;
+        }
+        // A dropped or unanswered acknowledgement must not wedge the sorter for good.
+        if (System.currentTimeMillis() - lastWindowClickAt > ACK_TIMEOUT_MS) {
+            pendingWindowClicks = 0;
+            return true;
+        }
+        return false;
     }
 
     private int consumeWindowClickBudget() {
@@ -2141,12 +2188,12 @@ public class InvManager extends Module {
 
         for (int priorityIndex = 0; priorityIndex < orderedItems.size(); priorityIndex++) {
             String storageId = orderedItems.get(priorityIndex);
-            Integer assignedSlot = items.getAssignedSlot(storageId);
-            if (assignedSlot == null) {
-                continue;
-            }
-
-            int hotbarSlot = assignedSlot - 1;
+            // Look the slot up by row, not by id. getAssignedSlot(String) resolves through
+            // indexOf, so two rows holding the same id -- wool to slot 4 and wool to slot 6 --
+            // both answered with the first row's slot. The second row then collided with an
+            // assignment that already existed and was dropped, leaving its slot unassigned and
+            // its contents treated as loose stock to be drained into the first.
+            int hotbarSlot = items.getAssignedSlot(priorityIndex) - 1;
             if (hotbarSlot < 0 || hotbarSlot >= HOTBAR_SIZE || assignments[hotbarSlot] != null) {
                 continue;
             }
@@ -2242,6 +2289,8 @@ public class InvManager extends Module {
         sendingInventoryClick = true;
         try {
             mc.playerController.windowClick(mc.thePlayer.openContainer.windowId, slotId, button, mode, mc.thePlayer);
+            pendingWindowClicks++;
+            lastWindowClickAt = System.currentTimeMillis();
         } finally {
             sendingInventoryClick = false;
         }

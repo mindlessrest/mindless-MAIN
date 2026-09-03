@@ -152,9 +152,20 @@ public class Indicators extends Module {
     private static final double ARROW_TRAJECTORY_MARKER_INNER_BACK_SWEEP = 0.01D;
     private static final double ARROW_TRAJECTORY_MARKER_OUTER_BACK_SWEEP = 0.05D;
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
+    private static final ItemStack ARROW_STACK = new ItemStack(Items.arrow);
+    private static final ItemStack FIREBALL_STACK = new ItemStack(Items.fire_charge);
+    private static final ItemStack PEARL_STACK = new ItemStack(Items.ender_pearl);
+    private static final ItemStack EGG_STACK = new ItemStack(Items.egg);
+    private static final ItemStack SNOWBALL_STACK = new ItemStack(Items.snowball);
+    private static final Color PEARL_COLOR = new Color(210, 0, 255);
+    private static final Color FIREBALL_COLOR = new Color(255, 150, 0);
+    private static final Color EGG_COLOR = new Color(255, 238, 154);
     private int tickCounter;
     private final Map<Entity, Vec3> lastPosition = new HashMap<>();
     private final Set<Entity> entitiesToRender = new HashSet<>();
+    private final Set<Entity> seenEntities = new HashSet<>();
+    private final Map<EntityLargeFireball, FireballSimulator.Result> fireballPredictions = new HashMap<>();
+    private final Set<EntityLargeFireball> seenFireballs = new HashSet<>();
 
     private String[] arrowTypes = new String[] { "Caret", "Greater than", "Triangle" };
 
@@ -197,6 +208,9 @@ public class Indicators extends Module {
     public void onDisable() {
         lastPosition.clear();
         entitiesToRender.clear();
+        seenEntities.clear();
+        fireballPredictions.clear();
+        seenFireballs.clear();
     }
 
     @SubscribeEvent
@@ -207,13 +221,16 @@ public class Indicators extends Module {
         if (!Utils.nullCheck() || mc.theWorld == null) {
             lastPosition.clear();
             entitiesToRender.clear();
+            fireballPredictions.clear();
             return;
         }
+        updateFireballPredictions();
         tickCounter++;
         if (tickCounter % APPROACH_INTERVAL_TICKS != 0) {
             return;
         }
-        Set<Entity> seen = new HashSet<>();
+        boolean trackApproach = onlyWhenApproaching.isToggled();
+        seenEntities.clear();
         entitiesToRender.clear();
         double px = mc.thePlayer.posX, py = mc.thePlayer.posY, pz = mc.thePlayer.posZ;
         for (Entity en : mc.theWorld.loadedEntityList) {
@@ -224,9 +241,11 @@ public class Indicators extends Module {
             if (itemStack == null || !canRender(en)) {
                 continue;
             }
-            seen.add(en);
+            if (trackApproach) {
+                seenEntities.add(en);
+            }
             Vec3 posThen = lastPosition.get(en);
-            if (onlyWhenApproaching.isToggled()) {
+            if (trackApproach) {
                 if (posThen == null) {
                     lastPosition.put(en, new Vec3(en.posX, en.posY, en.posZ));
                     continue;
@@ -242,9 +261,16 @@ public class Indicators extends Module {
                 }
             }
             entitiesToRender.add(en);
-            lastPosition.put(en, new Vec3(en.posX, en.posY, en.posZ));
+            if (trackApproach) {
+                lastPosition.put(en, new Vec3(en.posX, en.posY, en.posZ));
+            }
         }
-        lastPosition.keySet().retainAll(seen);
+        if (trackApproach) {
+            lastPosition.keySet().retainAll(seenEntities);
+        }
+        else {
+            lastPosition.clear();
+        }
     }
 
     @SubscribeEvent
@@ -274,19 +300,24 @@ public class Indicators extends Module {
         }
 
         try {
+            if (drawFireballTrajectory.isToggled()) {
+                for (Map.Entry<EntityLargeFireball, FireballSimulator.Result> entry : fireballPredictions.entrySet()) {
+                    EntityLargeFireball fireball = entry.getKey();
+                    if (!fireball.isDead && fireball.worldObj == mc.theWorld) {
+                        renderFireballTrajectory(fireball, entry.getValue(), event.partialTicks);
+                    }
+                }
+            }
+            if (!drawArrowTrajectory.isToggled() && !drawPearlTrajectory.isToggled()) {
+                return;
+            }
             for (Entity entity : mc.theWorld.loadedEntityList) {
-                if (!canRender(entity)) {
-                    continue;
-                }
-
-                if (entity instanceof EntityLargeFireball && drawFireballTrajectory.isToggled()) {
-                    renderFireballTrajectory((EntityLargeFireball) entity, event.partialTicks);
-                }
-                else if (entity instanceof EntityArrow && drawArrowTrajectory.isToggled()
+                if (entity instanceof EntityArrow && renderArrows.isToggled() && drawArrowTrajectory.isToggled()
                         && !AccessorBridge.EntityArrow_getInGround((EntityArrow) entity)) {
                     renderArrowTrajectory((EntityArrow) entity, event.partialTicks);
                 }
-                else if (entity instanceof EntityEnderPearl && drawPearlTrajectory.isToggled()) {
+                else if (entity instanceof EntityEnderPearl && renderPearls.isToggled()
+                        && drawPearlTrajectory.isToggled()) {
                     renderPearlTrajectory((EntityEnderPearl) entity, event.partialTicks);
                 }
             }
@@ -302,19 +333,19 @@ public class Indicators extends Module {
             if (AccessorBridge.EntityArrow_getInGround((EntityArrow) en)) {
                 return null;
             }
-            return new ItemStack(Items.arrow);
+            return ARROW_STACK;
         }
         if (en instanceof EntityFireball) {
-            return new ItemStack(Items.fire_charge);
+            return FIREBALL_STACK;
         }
         if (en instanceof EntityEnderPearl) {
-            return new ItemStack(Items.ender_pearl);
+            return PEARL_STACK;
         }
         if (en instanceof EntityEgg) {
-            return new ItemStack(Items.egg);
+            return EGG_STACK;
         }
         if (en instanceof EntitySnowball) {
-            return new ItemStack(Items.snowball);
+            return SNOWBALL_STACK;
         }
         return null;
     }
@@ -480,13 +511,13 @@ public class Indicators extends Module {
             return Color.WHITE;
         }
         if (itemStack.getItem() == Items.ender_pearl) {
-            return new Color(210, 0, 255);
+            return PEARL_COLOR;
         }
         else if (itemStack.getItem() == Items.fire_charge) {
-            return new Color(255, 150, 0);
+            return FIREBALL_COLOR;
         }
         else if (itemStack.getItem() == Items.egg) {
-            return new Color(255, 238, 154);
+            return EGG_COLOR;
         }
         else {
             return Color.WHITE;
@@ -515,8 +546,30 @@ public class Indicators extends Module {
         }
     }
 
-    private void renderFireballTrajectory(EntityLargeFireball fireball, float partialTicks) {
-        FireballSimulator.Result result = FireballSimulator.simulate(fireball);
+    private void updateFireballPredictions() {
+        if (!renderFireballs.isToggled() || !drawFireballTrajectory.isToggled()) {
+            fireballPredictions.clear();
+            return;
+        }
+        seenFireballs.clear();
+        for (Entity entity : mc.theWorld.loadedEntityList) {
+            if (!(entity instanceof EntityLargeFireball) || entity.isDead || !canRender(entity)) {
+                continue;
+            }
+            EntityLargeFireball fireball = (EntityLargeFireball) entity;
+            seenFireballs.add(fireball);
+            try {
+                fireballPredictions.put(fireball, FireballSimulator.simulate(fireball));
+            }
+            catch (Throwable ignored) {
+                fireballPredictions.remove(fireball);
+            }
+        }
+        fireballPredictions.keySet().retainAll(seenFireballs);
+    }
+
+    private void renderFireballTrajectory(EntityLargeFireball fireball, FireballSimulator.Result result,
+                                          float partialTicks) {
         Vec3 impactPosition = result.getImpactPosition();
 
         if (impactPosition == null) {
@@ -530,7 +583,7 @@ public class Indicators extends Module {
         double startY = fireball.lastTickPosY + (fireball.posY - fireball.lastTickPosY) * partialTicks + fireball.height * 0.5D;
         double startZ = fireball.lastTickPosZ + (fireball.posZ - fireball.lastTickPosZ) * partialTicks;
         double endY = impactPosition.yCoord + fireball.height * 0.5D;
-        Color fireballColor = itemColors.isToggled() ? getColorForItem(new ItemStack(Items.fire_charge)) : Color.WHITE;
+        Color fireballColor = itemColors.isToggled() ? FIREBALL_COLOR : Color.WHITE;
         float red = fireballColor.getRed() / 255.0F;
         float green = fireballColor.getGreen() / 255.0F;
         float blue = fireballColor.getBlue() / 255.0F;

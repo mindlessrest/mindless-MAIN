@@ -39,6 +39,9 @@ public final class AccessorBridge {
 
     private static final ConcurrentHashMap<String, Field> FIELDS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Method> METHODS = new ConcurrentHashMap<>();
+    private static volatile Field entityArrowInGroundField;
+    private static volatile Method entityRendererSetupCameraTransformMethod;
+    private static volatile Field minecraftTimerField;
 
     private static Field field(Class<?> owner, String... candidates) {
         String key = owner.getName() + "#" + candidates[0];
@@ -98,7 +101,14 @@ public final class AccessorBridge {
         catch (Exception t) { throw wrap("Entity_getIsInWeb", t); }
     }
     public static boolean EntityArrow_getInGround(EntityArrow a) {
-        try { return field(EntityArrow.class, "inGround", "field_70254_i").getBoolean(a); }
+        try {
+            Field accessor = entityArrowInGroundField;
+            if (accessor == null) {
+                accessor = field(EntityArrow.class, "inGround", "field_70254_i");
+                entityArrowInGroundField = accessor;
+            }
+            return accessor.getBoolean(a);
+        }
         catch (Exception t) { throw wrap("EntityArrow_getInGround", t); }
     }
     public static int EntityLivingBase_getJumpTicks(EntityLivingBase e) {
@@ -135,9 +145,14 @@ public final class AccessorBridge {
     }
     public static void EntityRenderer_callSetupCameraTransform(EntityRenderer r, float partial, int pass) {
         try {
-            method(EntityRenderer.class,
-                    new String[]{"setupCameraTransform", "func_78479_a"},
-                    float.class, int.class).invoke(r, partial, pass);
+            Method accessor = entityRendererSetupCameraTransformMethod;
+            if (accessor == null) {
+                accessor = method(EntityRenderer.class,
+                        new String[]{"setupCameraTransform", "func_78479_a"},
+                        float.class, int.class);
+                entityRendererSetupCameraTransformMethod = accessor;
+            }
+            accessor.invoke(r, partial, pass);
         } catch (Exception t) { throw wrap("EntityRenderer_callSetupCameraTransform", t); }
     }
     public static void EntityRenderer_callLoadShader(EntityRenderer r, ResourceLocation loc) {
@@ -212,7 +227,14 @@ public final class AccessorBridge {
         catch (Exception t) { throw wrap("ItemFood_getAlwaysEdible", t); }
     }
     public static Timer Minecraft_getTimer(Minecraft mc) {
-        try { return (Timer) field(Minecraft.class, "timer", "field_71428_T").get(mc); }
+        try {
+            Field accessor = minecraftTimerField;
+            if (accessor == null) {
+                accessor = field(Minecraft.class, "timer", "field_71428_T");
+                minecraftTimerField = accessor;
+            }
+            return (Timer) accessor.get(mc);
+        }
         catch (Exception t) { throw wrap("Minecraft_getTimer", t); }
     }
     public static int Minecraft_getRightClickDelayTimer(Minecraft mc) {

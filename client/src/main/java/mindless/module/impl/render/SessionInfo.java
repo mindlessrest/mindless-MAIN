@@ -78,6 +78,14 @@ private static final long RESULT_COOLDOWN_MS = 20_000L;
     private int deaths;
     private int wins;
     private int losses;
+    private final java.util.List<String> cachedModernLines = new java.util.ArrayList<String>(5);
+    private int cachedLineKills = Integer.MIN_VALUE;
+    private int cachedLineDeaths = Integer.MIN_VALUE;
+    private int cachedLineWins = Integer.MIN_VALUE;
+    private int cachedLineLosses = Integer.MIN_VALUE;
+    private int cachedLineMask = -1;
+    private long cachedSessionSecond = Long.MIN_VALUE;
+    private String cachedSessionTime = "0s";
 
     private static SliderSetting font;
 
@@ -106,6 +114,8 @@ private static final long RESULT_COOLDOWN_MS = 20_000L;
         deaths = 0;
         wins = 0;
         losses = 0;
+        cachedLineMask = -1;
+        cachedSessionSecond = Long.MIN_VALUE;
     }
 
     public SliderSetting scaleSetting() {
@@ -299,17 +309,9 @@ private boolean isMe(String name) {
         syncPositionToResolution();
         float s = (float) scale.getInput();
 
-        java.util.List<String> lines = new java.util.ArrayList<>();
-        if (showKills.isToggled()) lines.add(kills + " kills");
-        if (showDeaths.isToggled()) lines.add(deaths + " deaths");
-        if (showWins.isToggled()) lines.add(wins + " wins");
-        if (showLosses.isToggled()) lines.add(losses + " losses");
-        if (showKdr.isToggled()) {
-            String kdr = deaths == 0 ? String.format("%.1f", (double) kills) : String.format("%.2f", (double) kills / deaths);
-            lines.add(kdr + " kdr");
-        }
+        java.util.List<String> lines = modernLines();
 
-        String timeStr = formatTime(System.currentTimeMillis() - sessionStartMs);
+        String timeStr = sessionTime();
         String headerLeft = "Session";
         String headerRight = " Information";
 
@@ -516,7 +518,44 @@ private float[] draw() {
     }
 
     private String clock() {
-        return formatTime(System.currentTimeMillis() - sessionStartMs);
+        return sessionTime();
+    }
+
+    private java.util.List<String> modernLines() {
+        int mask = (showKills.isToggled() ? 1 : 0)
+                | (showDeaths.isToggled() ? 2 : 0)
+                | (showWins.isToggled() ? 4 : 0)
+                | (showLosses.isToggled() ? 8 : 0)
+                | (showKdr.isToggled() ? 16 : 0);
+        if (kills == cachedLineKills && deaths == cachedLineDeaths && wins == cachedLineWins
+                && losses == cachedLineLosses && mask == cachedLineMask) {
+            return cachedModernLines;
+        }
+        cachedLineKills = kills;
+        cachedLineDeaths = deaths;
+        cachedLineWins = wins;
+        cachedLineLosses = losses;
+        cachedLineMask = mask;
+        cachedModernLines.clear();
+        if ((mask & 1) != 0) cachedModernLines.add(kills + " kills");
+        if ((mask & 2) != 0) cachedModernLines.add(deaths + " deaths");
+        if ((mask & 4) != 0) cachedModernLines.add(wins + " wins");
+        if ((mask & 8) != 0) cachedModernLines.add(losses + " losses");
+        if ((mask & 16) != 0) {
+            String kdr = deaths == 0 ? String.format("%.1f", (double) kills) : String.format("%.2f", (double) kills / deaths);
+            cachedModernLines.add(kdr + " kdr");
+        }
+        return cachedModernLines;
+    }
+
+    private String sessionTime() {
+        long elapsed = Math.max(0L, System.currentTimeMillis() - sessionStartMs);
+        long second = elapsed / 1000L;
+        if (second != cachedSessionSecond) {
+            cachedSessionSecond = second;
+            cachedSessionTime = formatTime(elapsed);
+        }
+        return cachedSessionTime;
     }
 
     private String formatTime(long ms) {

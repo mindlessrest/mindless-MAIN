@@ -34,7 +34,7 @@ public static void prepareBlur(float x, float y, float width, float height) {
         int boundFramebuffer = GL11.glGetInteger(EXTFramebufferObject.GL_FRAMEBUFFER_BINDING_EXT);
         blurTargetFramebuffer = boundFramebuffer;
         if (frameSerial == 0L || sourceFrame != frameSerial || sourceFramebuffer != boundFramebuffer
-                || blurSourceTexture == 0 || !GL11.glIsTexture(blurSourceTexture)) {
+                || blurSourceTexture == 0) {
             resolveSourceTexture(boundFramebuffer);
             sourceFrame = frameSerial;
             sourceFramebuffer = boundFramebuffer;
@@ -90,10 +90,10 @@ private static void clearWholeMask(Framebuffer buffer) {
         buffer.bindFramebuffer(false);
         GL11.glPushAttrib(GL11.GL_SCISSOR_BIT | GL11.GL_COLOR_BUFFER_BIT);
         GL11.glDisable(GL11.GL_SCISSOR_TEST);
-        GlStateManager.clearColor(buffer.framebufferColor[0], buffer.framebufferColor[1],
+        GL11.glClearColor(buffer.framebufferColor[0], buffer.framebufferColor[1],
                 buffer.framebufferColor[2], buffer.framebufferColor[3]);
-        GlStateManager.clear(GL11.GL_COLOR_BUFFER_BIT);
-        RenderUtils.popAttrib(GL11.GL_SCISSOR_BIT | GL11.GL_COLOR_BUFFER_BIT);
+        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        GL11.glPopAttrib();
     }
 private static void clearRegion(Framebuffer buffer, float x, float y, float width, float height) {
         ScaledResolution sr = ScaledResolutionCache.get();
@@ -109,10 +109,10 @@ private static void clearRegion(Framebuffer buffer, float x, float y, float widt
         GL11.glPushAttrib(GL11.GL_SCISSOR_BIT | GL11.GL_COLOR_BUFFER_BIT);
         GL11.glEnable(GL11.GL_SCISSOR_TEST);
         GL11.glScissor(px, bottom, Math.max(0, pw), Math.max(0, ph));
-        GlStateManager.clearColor(buffer.framebufferColor[0], buffer.framebufferColor[1],
+        GL11.glClearColor(buffer.framebufferColor[0], buffer.framebufferColor[1],
                 buffer.framebufferColor[2], buffer.framebufferColor[3]);
-        GlStateManager.clear(GL11.GL_COLOR_BUFFER_BIT);
-        RenderUtils.popAttrib(GL11.GL_SCISSOR_BIT | GL11.GL_COLOR_BUFFER_BIT);
+        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        GL11.glPopAttrib();
     }
     public static void prepareBloom() {
         stencilFrameBufferBloom = RenderUtils.createFrameBuffer(stencilFrameBufferBloom);
