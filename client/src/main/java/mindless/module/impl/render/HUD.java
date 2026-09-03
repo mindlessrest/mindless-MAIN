@@ -187,13 +187,13 @@ private static final int[][] OUTLINE_OFFSETS = {
             cornerRadius.setVisible(background && roundedBackground != null && roundedBackground.isToggled(), this);
         }
         if (backgroundOpacity != null) {
-            backgroundOpacity.setVisible(background, this);
+            backgroundOpacity.setVisible(background && !(backgroundBlur != null && backgroundBlur.isToggled()), this);
         }
         boolean blurring = background && backgroundBlur != null && backgroundBlur.isToggled();
         if (blurStrength != null) blurStrength.setVisible(blurring, this);
         if (blurPasses != null) blurPasses.setVisible(blurring, this);
         if (blurOpacity != null) blurOpacity.setVisible(blurring, this);
-        if (backgroundTint != null) backgroundTint.setVisible(background, this);
+        if (backgroundTint != null) backgroundTint.setVisible(background && !blurring, this);
         if (backgroundBorder != null) backgroundBorder.setVisible(background, this);
         if (borderColor != null) {
             borderColor.setVisible(background && backgroundBorder != null && backgroundBorder.isToggled(), this);
@@ -711,7 +711,9 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
 
         float[] bounds = backgroundBounds(widths, top, horizontalTextPadding, rowHeight);
 
-        if (backgroundBlur != null && backgroundBlur.isToggled()) {
+        boolean blurring = backgroundBlur != null && backgroundBlur.isToggled();
+
+        if (blurring) {
             BlurUtils.prepareBlur(bounds[0], bounds[1], bounds[2], bounds[3]);
             paintBackgroundShapes(widths, top, horizontalTextPadding, rowHeight, 0xFF000000, 0.0f);
             BlurUtils.blurEndRegion(
@@ -727,6 +729,13 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
         if (backgroundBorder != null && backgroundBorder.isToggled() && borderColor != null) {
             paintBackgroundShapes(widths, top, horizontalTextPadding, rowHeight,
                     borderColor.getColor(), 1.0f);
+        }
+
+        // The blur *is* the background. Painting the tint over it as well just put the old black
+        // panel back on top of the thing it was meant to replace, which is why turning blur on
+        // looked like it did nothing.
+        if (blurring) {
+            return;
         }
 
         int alpha = getBackgroundAlpha();

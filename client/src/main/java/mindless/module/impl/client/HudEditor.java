@@ -392,7 +392,7 @@ private void beginResize(Element element, int handle) {
             }
 
 
-            if (ModuleManager.blockCounter != null && ModuleManager.blockCounter.isEnabled()) {
+            if (ModuleManager.blockCounter != null) {
                 final mindless.module.impl.render.BlockCounter counter = ModuleManager.blockCounter;
                 elements.add(new Element("Block Counter") {
                     @Override

@@ -93,7 +93,7 @@ public class BlockCounter extends Module {
     public BlockCounter() {
         super("Block Counter", "Counts your placeable blocks and how fast you place.", category.render);
         instance = this;
-        this.registerSetting(showWhen = new SliderSetting("Show when", SHOW_PLACING, SHOW_MODES));
+        this.registerSetting(showWhen = new SliderSetting("Show when", SHOW_HOLDING, SHOW_MODES));
         this.registerSetting(hideAfter = new SliderSetting("Hide after", "s", 2.0, 0.5, 10.0, 0.5));
         this.registerSetting(counterFont = new SliderSetting("Font", 0, ModuleFont.options()));
         this.registerSetting(counterScale = new SliderSetting("Scale", "x", 1.0, 0.5, 3.0, 0.05));
@@ -555,7 +555,7 @@ public class BlockCounter extends Module {
 
     /** Bounds for the HUD editor, or null while the overlay has nothing to show. */
     public float[] renderPreview() {
-        if (!Utils.nullCheck()) return null;
+        if (!isEnabled() || !Utils.nullCheck()) return null;
         syncPosition();
         float[] size = overlaySize(getDisplayBlock());
         return new float[]{posX, posY, posX + size[0], posY + size[1]};
@@ -621,7 +621,17 @@ public class BlockCounter extends Module {
         @Override
         protected void mouseReleased(int mx, int my, int state) {
             super.mouseReleased(mx, my, state);
-            if (state == 0) dragging = false;
+            if (state != 0) return;
+            if (dragging) {
+                // Writing the dragged position back through setAbsolutePosition is what makes it
+                // stick: it recomputes relativePosX/Y from the new pixels. Clearing the flag alone
+                // left the old relative coordinates in place, and the next frame's syncPosition
+                // snapped the panel straight back to where it started.
+                setAbsolutePosition(ax, ay);
+                ax = posX;
+                ay = posY;
+            }
+            dragging = false;
         }
 
         @Override
