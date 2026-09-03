@@ -951,6 +951,18 @@ public class ScriptDefaults {
             return ModuleManager.blockCounter == null ? 0f : ModuleManager.blockCounter.getBlocksPerSecond();
         }
 
+        /**
+         * Holds the Block Counter panel on screen for this many milliseconds.
+         *
+         * Only needed by scripts that bridge without sending a normal block placement; anything
+         * that sends a real C08 already keeps the panel up on its own.
+         */
+        public void showBlockCounter(long millis) {
+            if (ModuleManager.blockCounter != null) {
+                ModuleManager.blockCounter.showFor(millis);
+            }
+        }
+
         public boolean isTowering() {
             return false;
         }

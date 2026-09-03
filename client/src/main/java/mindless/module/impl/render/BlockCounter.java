@@ -53,6 +53,13 @@ public class BlockCounter extends Module {
 
     private static BlockCounter instance;
 
+    private static final String[] SHOW_MODES = {"While placing", "Holding blocks", "Always"};
+    private static final int SHOW_PLACING = 0;
+    private static final int SHOW_HOLDING = 1;
+    private static final int SHOW_ALWAYS = 2;
+
+    private final SliderSetting showWhen;
+    private final SliderSetting hideAfter;
     private final SliderSetting counterFont;
     private final SliderSetting counterScale;
     private final SliderSetting barFull;
@@ -80,9 +87,14 @@ public class BlockCounter extends Module {
     private float displayedBps;
     private long lastOverlayNanos;
 
+    private long lastPlacement;
+    private long scriptHoldUntil;
+
     public BlockCounter() {
         super("Block Counter", "Counts your placeable blocks and how fast you place.", category.render);
         instance = this;
+        this.registerSetting(showWhen = new SliderSetting("Show when", SHOW_PLACING, SHOW_MODES));
+        this.registerSetting(hideAfter = new SliderSetting("Hide after", "s", 2.0, 0.5, 10.0, 0.5));
         this.registerSetting(counterFont = new SliderSetting("Font", 0, ModuleFont.options()));
         this.registerSetting(counterScale = new SliderSetting("Scale", "x", 1.0, 0.5, 3.0, 0.05));
         this.registerSetting(wholeInventory = new ButtonSetting("Count whole inventory", false));
@@ -101,6 +113,9 @@ public class BlockCounter extends Module {
     @Override
     public void guiUpdate() {
         barFull.setVisible(showBar.isToggled(), this);
+        int mode = (int) showWhen.getInput();
+        hideAfter.setVisible(mode == SHOW_PLACING, this);
+        alwaysShow.setVisible(mode != SHOW_PLACING, this);
     }
 
     /** Blocks the counter is willing to count, for scripts and for the overlay alike. */
@@ -147,9 +162,46 @@ public class BlockCounter extends Module {
     }
 
     private void recordPlacement() {
-        timestamps[tsHead % TIMESTAMP_RING] = System.currentTimeMillis();
+        lastPlacement = System.currentTimeMillis();
+        timestamps[tsHead % TIMESTAMP_RING] = lastPlacement;
         tsHead++;
         tsCount = Math.min(tsCount + 1, TIMESTAMP_RING);
+    }
+
+    /**
+     * Keeps the panel up for a while longer, for scripts that bridge without going through a
+     * normal block placement. Anything that sends a real C08 already feeds recordPlacement and
+     * needs no help.
+     */
+    public void showFor(long millis) {
+        scriptHoldUntil = Math.max(scriptHoldUntil, System.currentTimeMillis() + Math.max(0L, millis));
+    }
+
+    /**
+     * Whether the overlay wants to be on screen.
+     *
+     * Holding blocks is nearly always true in Bed Wars, so keying off that alone put the panel up
+     * for the whole game. The default keys off actual placements instead and falls away once you
+     * stop, which is the only time the count and the rate are worth reading.
+     */
+    private boolean shouldShow() {
+        if (System.currentTimeMillis() < scriptHoldUntil) {
+            return true;
+        }
+        int blocks = getBlockCount();
+        switch ((int) showWhen.getInput()) {
+            case SHOW_HOLDING: {
+                ItemStack held = mc.thePlayer.inventory.getCurrentItem();
+                boolean holding = held != null && held.getItem() instanceof ItemBlock && held.stackSize > 0;
+                return holding || (alwaysShow.isToggled() && blocks > 0);
+            }
+            case SHOW_ALWAYS:
+                return blocks > 0 || alwaysShow.isToggled();
+            case SHOW_PLACING:
+            default:
+                return lastPlacement > 0
+                        && System.currentTimeMillis() - lastPlacement <= (long) (hideAfter.getInput() * 1000.0);
+        }
     }
 
     @Override
@@ -160,6 +212,8 @@ public class BlockCounter extends Module {
         displayedBlocks = Float.NaN;
         displayedBps = 0f;
         lastOverlayNanos = 0L;
+        lastPlacement = 0L;
+        scriptHoldUntil = 0L;
     }
 
     @Override
@@ -174,7 +228,7 @@ public class BlockCounter extends Module {
         if (mc.currentScreen != null) return;
 
         int blocks = getBlockCount();
-        boolean shouldShow = blocks > 0 || alwaysShow.isToggled();
+        boolean shouldShow = shouldShow();
 
         if (shouldShow && !overlayVisible) {
             overlayVisible = true;
