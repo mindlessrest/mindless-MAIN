@@ -50,6 +50,22 @@ public final class Diagnostics {
         }
     }
 
+    /**
+     * Drains errors left pending by whatever ran before Mindless did this frame.
+     *
+     * glGetError reports everything since the last call, with no call site attached. Without a
+     * drain at the top of our own rendering, the first checkpoint inside it inherits OptiFine's
+     * and Lunar's errors and reports them as ours -- which is why the stage tags could not be
+     * trusted. Anything reported here happened before we touched the context.
+     */
+    public static void glBaseline() {
+        if (!isEnabled()) return;
+        int error;
+        while ((error = GL11.glGetError()) != GL11.GL_NO_ERROR) {
+            report("gl", "(pre-existing, not mindless) -> " + describeGl(error));
+        }
+    }
+
     public static void log(String category, String message) {
         if (!isEnabled()) return;
         report(category, message);

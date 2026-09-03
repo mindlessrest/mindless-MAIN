@@ -172,6 +172,7 @@ public static void scissor(double x, double y, double width, double height) {
         int glBottom = (int) Math.floor((screenH - bottomGui) * scale);
         int glTop = (int) Math.ceil((screenH - y) * scale);
         int scaledHeight = Math.max(0, glTop - glBottom);
+        mindless.utility.Diagnostics.gl("before scissor push");
         boolean wasEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
         if (scissorPushDepth >= SCISSOR_PUSH_STACK_DEPTH) {
             throw new IllegalStateException("Scissor stack overflow");

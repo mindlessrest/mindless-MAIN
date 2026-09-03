@@ -132,6 +132,7 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
     }
 
     public static void drawRound(float x, float y, float width, float height, float radius, boolean blur, int color) {
+        mindless.utility.Diagnostics.gl("before rounded: fill");
         RenderUtils.resetColor();
         glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_BLEND);
@@ -206,6 +207,7 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
 
 
     public static void drawRoundOutline(float x, float y, float width, float height, float radius, float outlineThickness, Color color, Color outlineColor) {
+        mindless.utility.Diagnostics.gl("before rounded: outline");
         RenderUtils.resetColor();
         GlStateManager.enableBlend();
         GlStateManager.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

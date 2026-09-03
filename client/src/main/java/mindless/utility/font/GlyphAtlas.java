@@ -70,6 +70,8 @@ public void finish() {
             pages.get(i).upload();
         }
         finished = true;
+        mindless.utility.Diagnostics.gl("font: atlas upload " + pageWidth + "x" + pageHeight
+                + " x" + pages.size());
     }
 
     public void delete() {
@@ -193,6 +195,9 @@ public static int[] chooseSize(List<int[]> glyphSizes) {
             GlStateManager.bindTexture(textureId);
             GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, x, y, image.getWidth(), image.getHeight(),
                     GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
+            mindless.utility.Diagnostics.gl("font: glyph upload at " + x + "," + y
+                    + " " + image.getWidth() + "x" + image.getHeight()
+                    + " into " + width + "x" + height);
         }
 
         private static ByteBuffer toBuffer(BufferedImage image) {

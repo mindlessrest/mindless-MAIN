@@ -22,6 +22,7 @@ public class BlurUtils {
 public static void beginFrame() {
         frameSerial++;
         if (frameSerial == 0L) frameSerial = 1L;
+        mindless.utility.Diagnostics.glBaseline();
     }
 
     public static long getFrameSerial() {
@@ -47,6 +48,7 @@ public static void prepareBlur(float x, float y, float width, float height) {
             clearRegion(stencilFrameBufferBlur, x, y, width, height);
         }
         stencilFrameBufferBlur.bindFramebuffer(false);
+        mindless.utility.Diagnostics.gl("blur: prepare mask");
     }
 
     private static void resolveSourceTexture(int blurTargetFramebuffer) {
@@ -85,6 +87,7 @@ public static void prepareBlur(float x, float y, float width, float height) {
         } else {
             GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         }
+        mindless.utility.Diagnostics.gl("blur: resolve scene texture");
     }
 private static void clearWholeMask(Framebuffer buffer) {
         buffer.bindFramebuffer(false);
@@ -136,6 +139,7 @@ public static void blurEndRegion(int passes, float radius, float opacity,
         KawaseBlur.renderBlurRegion(stencilFrameBufferBlur.framebufferTexture,
                 blurSourceTexture, blurTargetFramebuffer, passes, radius, opacity,
                 x, y, width, height);
+        mindless.utility.Diagnostics.gl("blur: composite region");
     }
 public static void blurEndSmooth(int passes, float radius) {
         stencilFrameBufferBlur.unbindFramebuffer();

@@ -200,6 +200,7 @@ private static Pyramid pyramid(int iterations, int downsampleFactor) {
         pyramid.preparedFrame = frame;
         pyramid.preparedOffsetBits = offsetBits;
         pyramid.preparedSourceTexture = sourceTexture;
+        mindless.utility.Diagnostics.gl("blur: build pyramid");
     }
 
     private static void compositeRegion(int stencilTexture, int targetFramebuffer, float offset,
@@ -249,6 +250,8 @@ private static Pyramid pyramid(int iterations, int downsampleFactor) {
         shader.setUniformf("iResolution", framebuffer.framebufferWidth, framebuffer.framebufferHeight);
         ShaderUtils.drawQuads();
         shader.unload();
+        mindless.utility.Diagnostics.gl("blur: pass into "
+                + framebuffer.framebufferWidth + "x" + framebuffer.framebufferHeight);
     }
 private static TextureBindings bindCompositeTextures(int maskTexture, int sourceTexture) {
         int previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
