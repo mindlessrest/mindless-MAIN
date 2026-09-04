@@ -4,6 +4,7 @@ import mindless.Mindless;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.clickgui.components.impl.ModuleComponent;
 import mindless.module.Module;
+import mindless.module.ModuleManager;
 import mindless.module.setting.Setting;
 import mindless.module.setting.impl.*;
 import mindless.module.impl.client.Gui;
@@ -112,6 +113,17 @@ private float settingControlLeft = Float.NaN;
     private float moduleScrollTarget;
     private float settingScrollTarget;
     private String search = "";
+
+    // Where you were when the menu last closed. Escape is a cascading back button -- it clears the
+    // dropdown, then the selected module, then the search, and only then closes -- so closing with
+    // it unwound your place before the screen ever went away. These hold the view from before that
+    // unwind. Plain fields read once on open and written once on close: no per-frame cost.
+    private Module.category pinnedCategory;
+    private Module pinnedModule;
+    private String pinnedSearch;
+    private float pinnedModuleScroll;
+    private float pinnedSettingScroll;
+    private boolean viewPinned;
     private boolean searchFocused;
     private int searchCaret;
     private int searchSelectionAnchor;
@@ -250,6 +262,7 @@ private static float guiDragOffsetX = 0f;
     public void initGui() {
         super.initGui();
         buttonList.clear();
+        restorePinnedView();
         if (selectedModule != null && !modulesFor(selectedCategory).contains(selectedModule)) {
             selectModule(null);
         } else if (selectedModule != null && (moduleSnapshot == null || moduleSnapshot.module != selectedModule)) {
@@ -328,6 +341,40 @@ private static float guiDragOffsetX = 0f;
     @Override
     public void onGuiClosed() {
         guiClosing = false;
+        if (!viewPinned) {
+            pinView();
+        }
+    }
+
+    /** Stores the current view, unless Escape already stored it on the way out. */
+    private void pinView() {
+        pinnedCategory = selectedCategory;
+        pinnedModule = selectedModule;
+        pinnedSearch = search;
+        pinnedModuleScroll = moduleScrollTarget;
+        pinnedSettingScroll = settingScrollTarget;
+        viewPinned = true;
+    }
+
+    /** Puts the menu back where it was, dropping anything that no longer exists. */
+    private void restorePinnedView() {
+        if (!viewPinned) {
+            return;
+        }
+        viewPinned = false;
+
+        if (pinnedCategory != null) {
+            selectedCategory = pinnedCategory;
+        }
+        search = pinnedSearch == null ? "" : pinnedSearch;
+        searchCaret = searchSelectionAnchor = search.length();
+
+        if (pinnedModule != null && ModuleManager.modules.contains(pinnedModule)) {
+            selectedModule = pinnedModule;
+            moduleSnapshot = new ModuleSnapshot(pinnedModule);
+        }
+        moduleScroll = moduleScrollTarget = pinnedModuleScroll;
+        settingScroll = settingScrollTarget = pinnedSettingScroll;
     }
 
     private void computeLayout() {
@@ -1594,6 +1641,8 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
                 closeDropdownState();
                 return;
             }
+            // Taken before the unwind, so the place you were in survives being backed out of.
+            pinView();
             if (selectedModule != null) {
                 selectModule(null);
                 return;
