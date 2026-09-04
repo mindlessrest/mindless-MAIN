@@ -196,9 +196,10 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(tagBackgroundRadius = new SliderSetting(tagGroup, "Background radius", 2.0, 0.0, 8.0, 0.5));
         registerSetting(tagPadding = new SliderSetting(tagGroup, "Background padding", 2.0, 0.0, 8.0, 0.5));
         registerSetting(itemTags = new ButtonSetting(tagGroup, "Held item", true));
-        registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.5, 0.25, 1.0, 0.05));
+        registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.7, 0.4, 1.0, 0.05));
         registerSetting(distanceTextScale = new ButtonSetting(tagGroup, "Distance scaling", true));
-        registerSetting(textBorder = new ButtonSetting(tagGroup, "Black text outline", true));
+        registerSetting(textBorder = new ButtonSetting(tagGroup, "Text shadow", true,
+                "Tags.Black text outline", "Black text outline"));
 
         GroupSetting statsGroup = new GroupSetting("Stats");
         registerSetting(statsGroup);
@@ -764,11 +765,6 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         nameRun.setLength(0);
     }
 
-    /**
-     * Draws the built runs: background, then the outline from the concatenated plain text in one
-     * call per offset, then each run in its own colour. The outline and the fill share a glyph
-     * sequence by construction, so they cannot drift apart.
-     */
     private void drawNameTag(double centerX, double y, double scale) {
         if (nameSegmentCount == 0) {
             return;
@@ -794,15 +790,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         GlStateManager.scale(scale, scale, 1);
 
         if (textBorder.isToggled()) {
-            int border = 0xF0000000;
-            tagFont.drawString(plain, -1, -1, border, false);
-            tagFont.drawString(plain, 0, -1, border, false);
-            tagFont.drawString(plain, 1, -1, border, false);
-            tagFont.drawString(plain, -1, 0, border, false);
-            tagFont.drawString(plain, 1, 0, border, false);
-            tagFont.drawString(plain, -1, 1, border, false);
-            tagFont.drawString(plain, 0, 1, border, false);
-            tagFont.drawString(plain, 1, 1, border, false);
+            tagFont.drawString(plain, 0.75F, 0.75F, 0xA0000000, false);
         }
 
         float penX = 0f;
@@ -985,7 +973,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
     }
 
     private double getTagScale(Bounds b) {
-        double scale = fontScale.getInput();
+        double scale = Math.max(0.6, fontScale.getInput());
         if (distanceTextScale.isToggled()) {
             scale *= MathHelper.clamp_double(b.height() / 48.0, 0.9, 1.1);
         }
@@ -1012,19 +1000,8 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         GlStateManager.translate(centerX - width / 2.0, y, 0);
         GlStateManager.scale(scale, scale, 1);
         if (textBorder.isToggled()) {
-            // Stripped the same way the renderer skips codes, not with the formatting helper --
-            // that only removes valid ones, so a stray section sign used to survive into the
-            // outline and paint glyphs the coloured pass never drew.
-            String outlineText = stripSectionCodes(text);
-            int border = 0xF0000000;
-            tagFont.drawString(outlineText, -1, -1, border, false);
-            tagFont.drawString(outlineText, 0, -1, border, false);
-            tagFont.drawString(outlineText, 1, -1, border, false);
-            tagFont.drawString(outlineText, -1, 0, border, false);
-            tagFont.drawString(outlineText, 1, 0, border, false);
-            tagFont.drawString(outlineText, -1, 1, border, false);
-            tagFont.drawString(outlineText, 0, 1, border, false);
-            tagFont.drawString(outlineText, 1, 1, border, false);
+            String shadowText = stripSectionCodes(text);
+            tagFont.drawString(shadowText, 0.75F, 0.75F, 0xA0000000, false);
         }
         tagFont.drawString(text, 0, 0, textColor, false);
         GlStateManager.popMatrix();
@@ -1087,10 +1064,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         GlStateManager.translate(x, y, 0);
         GlStateManager.scale(scale, scale, 1);
         float drawX = centered ? -stringFont.getStringWidth(text) / 2.0F : 0;
-        stringFont.drawString(text, drawX - 0.5F, 0, 0xFF000000, false);
-        stringFont.drawString(text, drawX + 0.5F, 0, 0xFF000000, false);
-        stringFont.drawString(text, drawX, -0.5F, 0xFF000000, false);
-        stringFont.drawString(text, drawX, 0.5F, 0xFF000000, false);
+        stringFont.drawString(stripSectionCodes(text), drawX + 0.75F, 0.75F, 0xA0000000, false);
         stringFont.drawString(text, drawX, 0, 0xFFFFFFFF, false);
         GlStateManager.popMatrix();
         GlStateManager.disableTexture2D();

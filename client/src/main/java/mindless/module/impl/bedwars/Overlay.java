@@ -3,11 +3,11 @@ package mindless.module.impl.bedwars;
 import com.mojang.realmsclient.gui.ChatFormatting;
 import mindless.module.Module;
 import mindless.module.impl.render.HUD;
-import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.KeySetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.module.setting.impl.TextSetting;
 import mindless.utility.HypixelBedWars;
+import mindless.utility.BedwarsTeam;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.MindlessFontRenderer;
@@ -53,7 +53,6 @@ public class Overlay extends Module {
     private final TextSetting    apiKey;
     private final SliderSetting  scale;
     private final SliderSetting  maxPlayers;
-    private final ButtonSetting  showTeammates;
     private final KeySetting     toggleKey;
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -81,7 +80,6 @@ public class Overlay extends Module {
         this.registerSetting(apiKey       = new TextSetting("API Key",        "Paste key...", "", 64));
         this.registerSetting(scale        = new SliderSetting("Scale",        "x", 1.0, 0.5, 2.0, 0.05));
         this.registerSetting(maxPlayers   = new SliderSetting("Max Players",  "",  16,  4,  32, 1));
-        this.registerSetting(showTeammates= new ButtonSetting("Show Teammates", false));
         this.registerSetting(toggleKey    = new KeySetting("Toggle Key",      Keyboard.KEY_INSERT));
     }
 
@@ -132,7 +130,7 @@ public class Overlay extends Module {
 
             // skip NPC profiles (version == 2 UUID = offline/NPC)
             if (info.getGameProfile().getId() != null && info.getGameProfile().getId().version() == 2) continue;
-            if (name.equalsIgnoreCase(mc.thePlayer.getName()) && !showTeammates.isToggled()) continue;
+            if (name.equalsIgnoreCase(mc.thePlayer.getName()) || BedwarsTeam.isOwnTeam(info)) continue;
 
             String lk = name.toLowerCase();
             currentTabNames.add(lk);
@@ -293,7 +291,7 @@ public class Overlay extends Module {
         float cx = x;
 
         // IGN
-        String ign = p.displayName != null ? p.displayName : "?";
+        String ign = BedwarsTeam.label(p.displayName);
         font.drawString(ign, cx, y, 0xFFFFFFFF, false);
         cx += COL_IGN;
 

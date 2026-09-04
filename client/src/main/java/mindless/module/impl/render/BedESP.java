@@ -605,6 +605,8 @@ public class BedESP extends Module {
             axisAlignedBB = new AxisAlignedBB(x, y, z, x + 1.0, y + height, z + 2.0);
         }
         RenderUtils.drawBoundingBox(axisAlignedBB, r, g, b, drawA);
+        GlStateManager.color(r, g, b, 1.0F);
+        RenderGlobal.drawSelectionBoundingBox(axisAlignedBB);
         if (renderExposedOverlays) {
             renderExposedBlockOverlays(mergedExposedBounds);
         }

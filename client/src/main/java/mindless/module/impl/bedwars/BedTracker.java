@@ -4,6 +4,7 @@ import mindless.command.impl.Urchin;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
+import mindless.utility.BedwarsTeam;
 import net.minecraft.block.BlockBed;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.BlockPos;
@@ -144,7 +145,8 @@ private static final long SETTLE_MS = 6000L;
         int maxDistance = (int) distance.getInput();
 
         for (EntityPlayer player : mc.theWorld.playerEntities) {
-            if (player == mc.thePlayer || Utils.isTeammate(player)) continue;
+            if (player == mc.thePlayer || Utils.isTeammate(player)
+                    || BedwarsTeam.isSameColorTeam(mc.thePlayer, player)) continue;
             if (player.capabilities.isFlying) continue;
             if (player.ticksExisted < 100) continue;
 
@@ -156,7 +158,7 @@ private static final long SETTLE_MS = 6000L;
             if (previous != null && now - previous < interval) continue;
             lastAlert.put(id, now);
 
-            Utils.sendMessage("&b" + player.getName() + " &7is " + colourFor(away) + away
+            Utils.sendMessage(BedwarsTeam.label(player) + " &7is " + colourFor(away) + away
                     + " &7blocks from your bed.");
             if (pingSound.isToggled()) {
                 mc.thePlayer.playSound("note.pling", 1.0f, 0.7f);
