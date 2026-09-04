@@ -4,6 +4,7 @@ import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.runtime.AccessorBridge;
 import mindless.utility.RenderUtils;
 import mindless.utility.SharedBlockHighlightCache;
 import mindless.utility.Theme;
@@ -316,6 +317,7 @@ public class BedESP extends Module {
         if (!isEnabled() || shouldPauseForLobby()) {
             return;
         }
+        AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, e.partialTicks, 0);
         float blockHeight = getBlockHeight();
         double rangeSq = range.getInput() * range.getInput();
         double px = mc.thePlayer.posX;
