@@ -1185,6 +1185,7 @@ private void restoreFlatOverlayState() {
         boolean useTeamColorOutline = outlineTeamColor.isToggled();
 
         glowShader.use();
+        mindless.utility.Diagnostics.gl("esp: glow program bound");
         try {
             for (int i = 0; i < outlineCandidates.size(); i++) {
                 EntityPlayer player = outlineCandidates.get(i);
@@ -1197,7 +1198,13 @@ private void restoreFlatOverlayState() {
                         pB = teamCol & 0xFF;
                     }
                 }
+                // Re-assert the program every entity. Entity rendering runs mixins and vanilla
+                // layers that are free to bind a program of their own, and a uniform written
+                // against a location from a program that is no longer current is an invalid
+                // operation -- which is what the silhouette pass has been reporting.
+                glowShader.use();
                 glowShader.setColor(pR, pG, pB, 255);
+                mindless.utility.Diagnostics.gl("esp: glow tint set");
                 boolean invis = player.isInvisible();
                 try {
                     if (showInvisible.isToggled()) player.setInvisible(false);
@@ -1206,6 +1213,7 @@ private void restoreFlatOverlayState() {
                 finally {
                     player.setInvisible(invis);
                 }
+                mindless.utility.Diagnostics.gl("esp: entity rendered");
             }
         }
         finally {
