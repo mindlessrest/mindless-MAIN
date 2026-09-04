@@ -211,6 +211,28 @@ public class BlockCounter extends Module {
      * for the whole game. The default keys off actual placements instead and falls away once you
      * stop, which is the only time the count and the rate are worth reading.
      */
+    /**
+     * The block to show in the Dynamic Island, or null when there is nothing worth showing.
+     *
+     * Deliberately reuses shouldShow rather than re-deciding: the island appearing and the panel
+     * appearing must agree, or holding a block would light one and not the other. This answers
+     * even while the module is drawing nothing itself, because the island is a separate surface
+     * with its own visibility.
+     */
+    public ItemStack islandBlock() {
+        if (!isEnabled() || !Utils.nullCheck() || !shouldShow()) return null;
+        ItemStack held = mc.thePlayer.inventory.getCurrentItem();
+        if (held != null && held.getItem() instanceof ItemBlock && held.stackSize > 0) {
+            return held;
+        }
+        return getDisplayBlock();
+    }
+
+    /** Blocks currently counted, for the island. */
+    public int islandCount() {
+        return getBlockCount();
+    }
+
     private boolean shouldShow() {
         if (System.currentTimeMillis() < scriptHoldUntil) {
             return true;

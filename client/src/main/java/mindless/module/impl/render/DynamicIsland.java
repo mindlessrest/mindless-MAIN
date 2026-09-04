@@ -53,6 +53,7 @@ public class DynamicIsland extends Module {
     private static final float CHIP_DOT = 3.5f;
     private static final float CHIP_DOT_GAP = 3.5f;
     private static final float CHIP_GAP = 4.0f;
+    private static final float ITEM_SIZE = 9.0f;
     private static final int MAX_TOGGLES = 8;
     private static final int ACCENT_ON = 0x5BD98A;
     private static final int ACCENT_OFF = 0xE0644F;
@@ -68,6 +69,7 @@ public class DynamicIsland extends Module {
     private final ButtonSetting showServer;
     private final ButtonSetting showSession;
     private final ButtonSetting showClock;
+    private final ButtonSetting showBlocks;
     private final ButtonSetting showStatus;
     private final SliderSetting statusLimit;
     private final SliderSetting statusDuration;
@@ -116,6 +118,7 @@ public class DynamicIsland extends Module {
         this.registerSetting(showServer = new ButtonSetting(contentGroup, "Server", false));
         this.registerSetting(showSession = new ButtonSetting(contentGroup, "Session time", false));
         this.registerSetting(showClock = new ButtonSetting(contentGroup, "Clock", false));
+        this.registerSetting(showBlocks = new ButtonSetting(contentGroup, "Held blocks", true));
         this.registerSetting(showStatus = new ButtonSetting(contentGroup, "Module toggles", true));
         this.registerSetting(statusLimit = new SliderSetting(contentGroup, "Toggles shown", 3.0, 1.0, 6.0, 1.0));
         this.registerSetting(statusDuration = new SliderSetting(contentGroup, "Toggle time", "s", 2.5, 0.5, 8.0, 0.5));
@@ -123,7 +126,7 @@ public class DynamicIsland extends Module {
 
         this.registerSetting(styleGroup = new GroupSetting("Style"));
         this.registerSetting(blurBackdrop = new ButtonSetting(styleGroup, "Blur backdrop", true));
-        this.registerSetting(hairline = new ButtonSetting(styleGroup, "Edge highlight", true));
+        this.registerSetting(hairline = new ButtonSetting(styleGroup, "Edge highlight", false));
         this.registerSetting(dropShadow = new ButtonSetting(styleGroup, "Drop shadow", true));
         this.registerSetting(sheen = new ButtonSetting(styleGroup, "Top sheen", true));
         this.registerSetting(accentIcons = new ButtonSetting(styleGroup, "Accent icons", true));
@@ -252,13 +255,14 @@ public class DynamicIsland extends Module {
         }
 
         if (hairline.isToggled()) {
-            // Half a GUI unit, not a whole one. drawRoundOutline multiplies the thickness by the
-            // GUI scale factor, so 1.0 was a full Minecraft pixel -- three physical pixels at the
-            // usual scale -- and read as a heavy grey border drawn around the pill rather than as
-            // a lit edge on it.
-            RoundedUtils.drawRoundOutline(x, y, width, height, radius, 0.5f,
+            // A quarter of a GUI unit at a sixth of the alpha it used to carry, and off by
+            // default. drawRoundOutline multiplies thickness by the GUI scale factor, so the
+            // original 1.0 was a full Minecraft pixel -- three physical pixels at the usual scale
+            // -- which is a border drawn around the pill, not a lit edge on it. The shadow and
+            // the top sheen already say where the pill ends; a ring on top of them only competes.
+            RoundedUtils.drawRoundOutline(x, y, width, height, radius, 0.25f,
                     new java.awt.Color(0, 0, 0, 0),
-                    new java.awt.Color(255, 255, 255, Math.min(30, alpha / 7)));
+                    new java.awt.Color(255, 255, 255, Math.min(16, alpha / 13)));
         }
     }
 
@@ -281,7 +285,7 @@ public class DynamicIsland extends Module {
 
         for (int i = 0; i < segmentCount; i++) {
             Segment segment = segments[i];
-            boolean chip = segment.icon == Segment.ICON_CHIP;
+            boolean chip = segment.icon == Segment.ICON_CHIP || segment.icon == Segment.ICON_ITEM;
             float labelWidth = text.getStringWidth(segment.label) * uiScale;
 
             if (chip) {
@@ -292,34 +296,40 @@ public class DynamicIsland extends Module {
                 float chipY = y + (height - chipHeight) * 0.5f;
                 float chipRadius = chipHeight * 0.5f;
 
-                // Same two stop treatment as the pill, one step brighter, so a chip reads as a
-                // raised key on the surface instead of a flat patch cut out of it.
+                // No outline. A ring around something already lighter than its surroundings just
+                // draws a second edge, which is what made the chips look like pasted buttons.
+                // The two stop fill alone is enough to lift them off the pill.
                 RoundedUtils.drawGradientVertical(cursor, chipY, chipWidth, chipHeight, chipRadius,
-                        new java.awt.Color(255, 255, 255, Math.min(30, chipAlpha / 7)),
-                        new java.awt.Color(255, 255, 255, Math.min(14, chipAlpha / 15)));
-                RoundedUtils.drawRoundOutline(cursor, chipY, chipWidth, chipHeight, chipRadius,
-                        0.5f, new java.awt.Color(0, 0, 0, 0),
-                        new java.awt.Color(255, 255, 255, Math.min(22, chipAlpha / 10)));
+                        new java.awt.Color(255, 255, 255, Math.min(26, chipAlpha / 8)),
+                        new java.awt.Color(255, 255, 255, Math.min(11, chipAlpha / 19)));
 
-                float dot = CHIP_DOT * uiScale;
-                float dotX = cursor + CHIP_PAD_X * uiScale;
-                float dotY = y + (height - dot) * 0.5f;
-                // A halo the width of the dot again, at a tenth of its alpha. Small enough to
-                // read as the dot being lit rather than as a second ring around it.
-                float halo = dot * 2.1f;
-                RoundedUtils.drawRound(dotX - (halo - dot) * 0.5f, dotY - (halo - dot) * 0.5f,
-                        halo, halo, halo * 0.5f,
-                        withAlpha(segment.accent, Math.round(chipAlpha * 0.20f)));
-                RoundedUtils.drawRound(dotX, dotY, dot, dot, dot * 0.5f,
-                        withAlpha(segment.accent, chipAlpha));
+                float markerX = cursor + CHIP_PAD_X * uiScale;
+                if (segment.icon == Segment.ICON_ITEM) {
+                    float item = ITEM_SIZE * uiScale;
+                    drawItemIcon(segment.stack, markerX, y + (height - item) * 0.5f, item);
+                    cursor += chipWidth;
+                }
+                else {
+                    float dot = CHIP_DOT * uiScale;
+                    float dotY = y + (height - dot) * 0.5f;
+                    // A halo the width of the dot again, at a fifth of its alpha. Small enough to
+                    // read as the dot being lit rather than as a second ring around it.
+                    float halo = dot * 2.1f;
+                    RoundedUtils.drawRound(markerX - (halo - dot) * 0.5f, dotY - (halo - dot) * 0.5f,
+                            halo, halo, halo * 0.5f,
+                            withAlpha(segment.accent, Math.round(chipAlpha * 0.20f)));
+                    RoundedUtils.drawRound(markerX, dotY, dot, dot, dot * 0.5f,
+                            withAlpha(segment.accent, chipAlpha));
+                    cursor += chipWidth;
+                }
 
-                float labelX = cursor + (CHIP_PAD_X + CHIP_DOT + CHIP_DOT_GAP) * uiScale;
-                drawScaled(text, segment.label, labelX, textY, uiScale,
+                float marker = segment.icon == Segment.ICON_ITEM ? ITEM_SIZE : CHIP_DOT;
+                drawScaled(text, segment.label,
+                        markerX + (marker + CHIP_DOT_GAP) * uiScale, textY, uiScale,
                         withAlpha(0xE8ECF2, chipAlpha));
-                cursor += chipWidth;
             }
             else {
-                if (i > 0 && dividers.isToggled() && segments[i - 1].icon != Segment.ICON_CHIP) {
+                if (i > 0 && dividers.isToggled() && !isChipIcon(segments[i - 1].icon)) {
                     // Faded at both ends rather than a hard bar. A divider that stops dead against
                     // the pill's inner curve draws attention to itself; one that dissolves reads
                     // as a separation and nothing more.
@@ -349,11 +359,47 @@ public class DynamicIsland extends Module {
             }
 
             if (i < segmentCount - 1) {
-                cursor += (segments[i + 1].icon == Segment.ICON_CHIP ? CHIP_GAP : SEGMENT_GAP) * uiScale;
+                cursor += (isChipIcon(segments[i + 1].icon) ? CHIP_GAP : SEGMENT_GAP) * uiScale;
             }
         }
 
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    private static boolean isChipIcon(int icon) {
+        return icon == Segment.ICON_CHIP || icon == Segment.ICON_ITEM;
+    }
+
+    /**
+     * Draws the held block into a chip.
+     *
+     * renderItemAndEffectIntoGUI only takes integer coordinates, so the icon is placed with a
+     * matrix and drawn at the origin. The program is dropped first: item rendering is fixed
+     * function, and anything still bound from the surrounding HUD passes would eat it.
+     */
+    private void drawItemIcon(net.minecraft.item.ItemStack stack, float x, float y, float size) {
+        if (stack == null) return;
+
+        org.lwjgl.opengl.GL20.glUseProgram(0);
+        float iconScale = size / 16.0f;
+
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(x, y, 0.0f);
+        GlStateManager.scale(iconScale, iconScale, 1.0f);
+        GlStateManager.enableDepth();
+        net.minecraft.client.renderer.RenderHelper.enableGUIStandardItemLighting();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        mc.getRenderItem().zLevel = 0.0f;
+        mc.getRenderItem().renderItemAndEffectIntoGUI(stack, 0, 0);
+        net.minecraft.client.renderer.RenderHelper.disableStandardItemLighting();
+        GlStateManager.disableDepth();
+        GlStateManager.popMatrix();
+
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
     }
 
     private void drawScaled(MindlessFontRenderer text, String value, float x, float y,
@@ -459,11 +505,35 @@ public class DynamicIsland extends Module {
         if (showClock.isToggled()) {
             add(Segment.ICON_CLOCK, clockText(), false);
         }
+        if (showBlocks.isToggled()) {
+            addBlockChip();
+        }
         if (showStatus.isToggled()) {
             long now = System.currentTimeMillis();
             pollToggles(now);
             addToggleChips(now);
         }
+    }
+
+    /**
+     * The block in your hand and how many of it, for as long as you are holding it.
+     *
+     * Block Counter decides whether there is anything to say -- the island asks it rather than
+     * re-deriving the answer, so the two can never disagree about whether you are holding blocks.
+     * No rate here: the panel already shows that, and a number moving every frame inside a pill
+     * that resizes to fit it would never sit still.
+     */
+    private void addBlockChip() {
+        BlockCounter counter = mindless.module.ModuleManager.blockCounter;
+        if (counter == null) return;
+
+        net.minecraft.item.ItemStack stack = counter.islandBlock();
+        if (stack == null) return;
+
+        int count = counter.islandCount();
+        if (count <= 0) return;
+
+        addItemChip(Integer.toString(count), stack);
     }
 
     /**
@@ -512,6 +582,18 @@ public class DynamicIsland extends Module {
         String name = module.getNameInHud();
         if (name == null || name.isEmpty()) return;
 
+        // One chip per module, updated where it stands. Appending gave three Kill Aura chips in a
+        // row disagreeing with each other; a module has one state, so it gets one chip, and
+        // toggling it again just restates it and restarts its clock.
+        for (int i = 0; i < recentToggles.size(); i++) {
+            Toggle existing = recentToggles.get(i);
+            if (existing.name.equals(name)) {
+                existing.enabled = enabled;
+                existing.bornAt = now;
+                return;
+            }
+        }
+
         while (recentToggles.size() >= MAX_TOGGLES) {
             recentToggles.remove(0);
         }
@@ -545,6 +627,11 @@ public class DynamicIsland extends Module {
         addSegment(Segment.ICON_CHIP, label, true, accent, fade);
     }
 
+    private void addItemChip(String label, net.minecraft.item.ItemStack stack) {
+        addSegment(Segment.ICON_ITEM, label, true, 0, 1.0f);
+        segments[segmentCount - 1].stack = stack;
+    }
+
     private void addSegment(int icon, String label, boolean emphasised, int accent, float fade) {
         if (segmentCount >= MAX_SEGMENTS || label == null || label.isEmpty()) return;
         Segment segment = segments[segmentCount];
@@ -557,11 +644,15 @@ public class DynamicIsland extends Module {
         segment.emphasised = emphasised;
         segment.accent = accent;
         segment.fade = fade;
+        segment.stack = null;
         segmentCount++;
     }
 
     /** Width of one segment's contents, excluding the gap that follows it. */
     private float segmentWidth(MindlessFontRenderer text, Segment segment) {
+        if (segment.icon == Segment.ICON_ITEM) {
+            return CHIP_PAD_X * 2.0f + ITEM_SIZE + CHIP_DOT_GAP + text.getStringWidth(segment.label);
+        }
         if (segment.icon == Segment.ICON_CHIP) {
             return CHIP_PAD_X * 2.0f + CHIP_DOT + CHIP_DOT_GAP + text.getStringWidth(segment.label);
         }
@@ -573,7 +664,7 @@ public class DynamicIsland extends Module {
         for (int i = 0; i < segmentCount; i++) {
             width += segmentWidth(text, segments[i]);
             if (i < segmentCount - 1) {
-                width += segments[i + 1].icon == Segment.ICON_CHIP ? CHIP_GAP : SEGMENT_GAP;
+                width += isChipIcon(segments[i + 1].icon) ? CHIP_GAP : SEGMENT_GAP;
             }
         }
         return width;
@@ -791,19 +882,22 @@ public class DynamicIsland extends Module {
 
         /** A chip carries its own pill and accent dot instead of an icon and a divider. */
         private static final int ICON_CHIP = 5;
+        /** A chip whose marker is the held item itself rather than a coloured dot. */
+        private static final int ICON_ITEM = 6;
 
         private int icon;
         private String label;
         private boolean emphasised;
         private int accent;
         private float fade;
+        private net.minecraft.item.ItemStack stack;
     }
 
-    /** One module toggle, alive until its lifetime runs out. */
+    /** One module's toggle chip, restated in place each time that module changes. */
     private static final class Toggle {
         private final String name;
-        private final boolean enabled;
-        private final long bornAt;
+        private boolean enabled;
+        private long bornAt;
 
         private Toggle(String name, boolean enabled, long bornAt) {
             this.name = name;
