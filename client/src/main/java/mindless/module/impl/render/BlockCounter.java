@@ -386,7 +386,9 @@ public class BlockCounter extends Module {
 
         int accent = countColour(blocks);
 
-        RoundedUtils.drawRoundShadow(panelLeft, panelTop, width, height, radius, 5.0F * scale, 0x96000000);
+        // Half the spread and half the opacity. The old drop shadow read as a dark halo
+        // around the panel rather than a shadow under it.
+        RoundedUtils.drawRoundShadow(panelLeft, panelTop, width, height, radius, 2.5F * scale, 0x4B000000);
         RoundedUtils.drawRound(panelLeft, panelTop, width, height, radius, 0xF00E0E12);
         RoundedUtils.drawGradientVertical(panelLeft, panelTop, width, height, radius,
                 new Color(255, 255, 255, 16), new Color(255, 255, 255, 0));
