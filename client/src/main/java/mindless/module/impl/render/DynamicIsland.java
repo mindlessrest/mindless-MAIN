@@ -97,6 +97,7 @@ public class DynamicIsland extends Module {
     private float animatedWidth = -1.0f;
     private float widthVelocity;
     private long lastFrameNanos;
+    private long lastPollAt;
     private long sessionStart = System.currentTimeMillis();
 
     public float textPosX = DEFAULT_TEXT_X;
@@ -149,6 +150,7 @@ public class DynamicIsland extends Module {
         animatedWidth = -1.0f;
         widthVelocity = 0.0f;
         lastFrameNanos = 0L;
+        lastPollAt = 0L;
         // Re-seeded on the next poll, so switching the island on does not announce every module
         // that happened to already be running.
         toggleStates.clear();
@@ -509,10 +511,23 @@ public class DynamicIsland extends Module {
             addBlockChip();
         }
         if (showStatus.isToggled()) {
-            long now = System.currentTimeMillis();
-            pollToggles(now);
-            addToggleChips(now);
+            addToggleChips(System.currentTimeMillis());
         }
+    }
+
+    /**
+     * Toggles are watched on the client tick, not while laying the pill out.
+     *
+     * buildSegments is a layout pass. It does not run while a screen is open, and it runs an extra
+     * time when the HUD editor asks for the island's bounds -- so polling from inside it meant a
+     * module toggled in the click GUI was either never noticed or was noticed, aged and expired
+     * behind the GUI, and had nothing left to show by the time the pill was on screen again.
+     * Ticks keep running through all of that.
+     */
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || !showStatus.isToggled()) return;
+        pollToggles(System.currentTimeMillis());
     }
 
     /**
@@ -551,6 +566,18 @@ public class DynamicIsland extends Module {
     private void pollToggles(long now) {
         long life = (long) (statusDuration.getInput() * 1000.0);
         boolean announceOff = statusValues.isToggled();
+
+        // A chip's lifetime is time spent on screen, not wall clock. Toggling something in the
+        // click GUI would otherwise start its clock behind the GUI, and it would be most of the
+        // way expired -- or entirely gone -- by the time the pill was visible again. Holding the
+        // birth timestamp forward while the pill is hidden freezes the age instead.
+        long elapsed = lastPollAt == 0L ? 0L : Math.max(0L, now - lastPollAt);
+        lastPollAt = now;
+        if (elapsed > 0L && (mc.currentScreen != null || mc.gameSettings.showDebugInfo)) {
+            for (int i = 0; i < recentToggles.size(); i++) {
+                recentToggles.get(i).bornAt += elapsed;
+            }
+        }
 
         java.util.List<mindless.module.Module> modules = mindless.module.ModuleManager.modules;
         if (modules != null) {
