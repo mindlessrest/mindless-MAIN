@@ -1638,6 +1638,9 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPreAttack(PreAttackEvent event) {
         if (!isOverrideAttackEnabled()) {
+            if (active && displaceThisTick) {
+                event.setCanceled(true);
+            }
             return;
         }
         if (overrideAttackState != OverrideAttackState.IDLE) {
@@ -1656,7 +1659,16 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onAttack(AttackEvent event) {
-        if (!isOverrideAttackEnabled() || event.attacker != mc.thePlayer || overrideAttackInProgress) {
+        if (event.attacker != mc.thePlayer) {
+            return;
+        }
+        if (!isOverrideAttackEnabled()) {
+            if (active && displaceThisTick) {
+                event.setCanceled(true);
+            }
+            return;
+        }
+        if (overrideAttackInProgress) {
             return;
         }
         if (overrideAttackState != OverrideAttackState.IDLE) {

@@ -344,6 +344,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         GlStateManager.disableBlend();
         GlStateManager.color(1, 1, 1, 1);
         GlStateManager.popMatrix();
+        AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, event.partialTicks, 0);
     }
 
     private boolean isValidEntity(Entity entity) {
