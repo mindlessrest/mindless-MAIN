@@ -74,6 +74,7 @@ public class SexyESP extends Module {
     private final ButtonSetting armorDurability;
     private final SliderSetting armorPosition;
     private final ButtonSetting tags;
+    private final SliderSetting nameSource;
     private final SliderSetting nameColorMode;
     private final ColorSetting nameColor;
     private final ColorSetting friendColor;
@@ -182,6 +183,8 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(tagGroup);
         registerSetting(tags = new ButtonSetting(tagGroup, "Names", true));
         registerSetting(font = new SliderSetting(tagGroup, "Font", 0, FONT_OPTIONS));
+        registerSetting(nameSource = new SliderSetting(tagGroup, "Name source", 0,
+                new String[]{"Display name", "Username"}));
         registerSetting(nameColorMode = new SliderSetting(tagGroup, "Name color", NAME_TEAM, NAME_COLOR_MODES));
         registerSetting(nameColor = new ColorSetting(tagGroup, "Custom name color", 255, 255, 255));
         registerSetting(friendColor = new ColorSetting(tagGroup, "Friend color", 85, 255, 85));
@@ -241,6 +244,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
 
         int nameMode = (int) nameColorMode.getInput();
         boolean named = tags.isToggled();
+        nameSource.setVisible(named, this);
         nameColorMode.setVisible(named, this);
         nameColor.setVisible(named && (nameMode == NAME_CUSTOM || nameMode == NAME_RELATION), this);
         friendColor.setVisible(named && nameMode == NAME_RELATION, this);
@@ -540,8 +544,9 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         boolean statsAbove = (int) statsPosition.getInput() == 0;
 
         if (tags.isToggled()) {
-            drawTag(nameLabel(living), b.left + b.width() / 2.0, nameY, tagScale,
-                    nameTagColor(living, healthRatio, b));
+            boolean ownColour = (int) nameColorMode.getInput() != NAME_TEAM;
+            buildNameSegments(nameLabel(living), nameTagColor(living, healthRatio, b), ownColour);
+            drawNameTag(b.left + b.width() / 2.0, nameY, tagScale);
         }
 
         if (playerStats.isToggled() && living instanceof EntityPlayer) {
@@ -648,9 +653,149 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         }
     }
 
+    private static final int[] SECTION_COLOURS = {
+            0x000000, 0x0000AA, 0x00AA00, 0x00AAAA, 0xAA0000, 0xAA00AA, 0xFFAA00, 0xAAAAAA,
+            0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF
+    };
+    private static final String SECTION_CODES = "0123456789abcdef";
+
+    private static final class NameSegment {
+        String text;
+        int color;
+    }
+
+    private final java.util.List<NameSegment> nameSegments = new java.util.ArrayList<NameSegment>();
+    private int nameSegmentCount;
+    private final StringBuilder namePlain = new StringBuilder();
+    private final StringBuilder nameRun = new StringBuilder();
+
+    /**
+     * Splits a formatted name into plain runs with their colours resolved.
+     *
+     * The old tag drew its black outline from EnumChatFormatting.getTextWithoutFormattingCodes and
+     * the coloured text from the raw string. Those two disagree: the helper strips only *valid*
+     * codes, while the renderer skips a section sign and the character after it whatever that
+     * character is. Hypixel display names carry section signs followed by non-codes, so the
+     * outline kept glyphs the fill dropped and painted them in black beside the name, with
+     * everything after them shifted.
+     *
+     * Building the runs once and drawing both passes from them removes the possibility: there is
+     * only one glyph sequence now, and no pass ever sees a control code.
+     */
+    private void buildNameSegments(String formatted, int defaultColor, boolean forceColor) {
+        nameSegmentCount = 0;
+        namePlain.setLength(0);
+        nameRun.setLength(0);
+        if (formatted == null) {
+            return;
+        }
+
+        int color = defaultColor;
+        for (int i = 0; i < formatted.length(); i++) {
+            char c = formatted.charAt(i);
+
+            if (c == '\u00a7') {
+                if (i + 1 >= formatted.length()) {
+                    break;
+                }
+                char code = Character.toLowerCase(formatted.charAt(++i));
+                if (forceColor) {
+                    continue;
+                }
+                int index = SECTION_CODES.indexOf(code);
+                if (index >= 0) {
+                    pushNameRun(color);
+                    color = SECTION_COLOURS[index];
+                }
+                else if (code == 'r') {
+                    pushNameRun(color);
+                    color = defaultColor;
+                }
+                continue;
+            }
+
+            if (Character.isISOControl(c)) {
+                continue;
+            }
+            nameRun.append(c);
+            namePlain.append(c);
+        }
+        pushNameRun(color);
+    }
+
+    private void pushNameRun(int color) {
+        if (nameRun.length() == 0) {
+            return;
+        }
+        NameSegment segment;
+        if (nameSegmentCount < nameSegments.size()) {
+            segment = nameSegments.get(nameSegmentCount);
+        }
+        else {
+            segment = new NameSegment();
+            nameSegments.add(segment);
+        }
+        segment.text = nameRun.toString();
+        segment.color = color;
+        nameSegmentCount++;
+        nameRun.setLength(0);
+    }
+
+    /**
+     * Draws the built runs: background, then the outline from the concatenated plain text in one
+     * call per offset, then each run in its own colour. The outline and the fill share a glyph
+     * sequence by construction, so they cannot drift apart.
+     */
+    private void drawNameTag(double centerX, double y, double scale) {
+        if (nameSegmentCount == 0) {
+            return;
+        }
+
+        MindlessFontRenderer tagFont = espFont();
+        String plain = namePlain.toString();
+        double width = tagFont.getStringWidth(plain) * scale;
+
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+        if (tagBackground.isToggled()) {
+            double pad = tagPadding.getInput() * scale;
+            double padY = Math.max(0.5, pad * 0.75);
+            drawTagBackground(centerX - width / 2 - pad, y - padY,
+                    centerX + width / 2 + pad, y + tagFont.getFontHeight() * scale + padY,
+                    tagBackgroundRadius.getInput() * scale, tagBackgroundColor.getColor());
+        }
+
+        rectBatch.flush();
+        GlStateManager.enableTexture2D();
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(centerX - width / 2.0, y, 0);
+        GlStateManager.scale(scale, scale, 1);
+
+        if (textBorder.isToggled()) {
+            int border = 0xF0000000;
+            tagFont.drawString(plain, -1, -1, border, false);
+            tagFont.drawString(plain, 0, -1, border, false);
+            tagFont.drawString(plain, 1, -1, border, false);
+            tagFont.drawString(plain, -1, 0, border, false);
+            tagFont.drawString(plain, 1, 0, border, false);
+            tagFont.drawString(plain, -1, 1, border, false);
+            tagFont.drawString(plain, 0, 1, border, false);
+            tagFont.drawString(plain, 1, 1, border, false);
+        }
+
+        float penX = 0f;
+        for (int i = 0; i < nameSegmentCount; i++) {
+            NameSegment segment = nameSegments.get(i);
+            tagFont.drawString(segment.text, penX, 0, 0xFF000000 | (segment.color & 0xFFFFFF), false);
+            penX += tagFont.getStringWidth(segment.text);
+        }
+
+        GlStateManager.popMatrix();
+        GlStateManager.disableTexture2D();
+    }
+
     /** The name plus whichever extras are switched on, as one line. */
     private String nameLabel(EntityLivingBase living) {
-        StringBuilder label = new StringBuilder(living.getDisplayName().getFormattedText());
+        StringBuilder label = new StringBuilder(nameBase(living));
         if (tagDistance.isToggled() && mc.thePlayer != null) {
             label.append(" \u00A77").append((int) mc.thePlayer.getDistanceToEntity(living)).append('m');
         }
@@ -661,6 +806,18 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
             }
         }
         return label.toString();
+    }
+
+    /**
+     * Username only skips the scoreboard team prefix and suffix entirely, which is where the
+     * stray section signs live on most servers.
+     */
+    private String nameBase(EntityLivingBase living) {
+        if ((int) nameSource.getInput() == 1) {
+            String name = living.getName();
+            return name == null ? "" : name;
+        }
+        return living.getDisplayName().getFormattedText();
     }
 
     private int pingOf(EntityLivingBase living) {
@@ -832,7 +989,10 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         GlStateManager.translate(centerX - width / 2.0, y, 0);
         GlStateManager.scale(scale, scale, 1);
         if (textBorder.isToggled()) {
-            String outlineText = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(text);
+            // Stripped the same way the renderer skips codes, not with the formatting helper --
+            // that only removes valid ones, so a stray section sign used to survive into the
+            // outline and paint glyphs the coloured pass never drew.
+            String outlineText = stripSectionCodes(text);
             int border = 0xF0000000;
             tagFont.drawString(outlineText, -1, -1, border, false);
             tagFont.drawString(outlineText, 0, -1, border, false);
@@ -846,6 +1006,26 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         tagFont.drawString(text, 0, 0, textColor, false);
         GlStateManager.popMatrix();
         GlStateManager.disableTexture2D();
+    }
+
+    /** Drops every section sign and the character after it, valid code or not. */
+    private static String stripSectionCodes(String text) {
+        if (text == null || text.indexOf('\u00a7') < 0) {
+            return text == null ? "" : text;
+        }
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\u00a7') {
+                i++;
+                continue;
+            }
+            if (Character.isISOControl(c)) {
+                continue;
+            }
+            out.append(c);
+        }
+        return out.toString();
     }
 
     /**
