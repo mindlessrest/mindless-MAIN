@@ -100,6 +100,7 @@ static std::pair<const void*, size_t> get_resource(int id, const wchar_t* type)
 
 Application::~Application()
 {
+    protection::shutdown();
     if (authThread_.joinable()) authThread_.join();
     if (downloadThread_.joinable()) downloadThread_.join();
     if (authSection_) CloseHandle(authSection_);
@@ -107,9 +108,7 @@ Application::~Application()
 
 bool Application::init()
 {
-    // broken
-    //protection::init();
-    //if (!protection::check_all()) return false;
+    if (!protection::init() || !protection::checkAll()) return false;
 
     const int margin = static_cast<int>(ui::g_theme.glowMargin) * 2;
     if (!window_.create(L"Mindless", 120 + margin, 120 + margin))
@@ -272,13 +271,6 @@ void Application::start_download()
                     break;
                 }
             }
-            if (fileId.empty() && !files.empty())
-            {
-                for (const auto& f : files)
-                {
-                    if (f.name != "loader") { fileId = f.id; break; }
-                }
-            }
             if (fileId.empty())
             {
                 OutputDebugStringA("[Mindless] Download: no matching file found\n");
@@ -361,6 +353,19 @@ int Application::run()
         lastFrame_ = now;
         dt = std::min(dt, 0.1f);
 
+        if (protection::isCompromised() && state_.screen != Screen::Login
+            && state_.screen != Screen::Closing)
+        {
+            if (!state_.dllBytes.empty())
+            {
+                SecureZeroMemory(state_.dllBytes.data(), state_.dllBytes.size());
+                state_.dllBytes.clear();
+            }
+            state_.authComplete = false;
+            state_.authError = std::string("Security validation failed: ") + protection::lastReason();
+            state_.transition_to(Screen::Login, -1.0f);
+        }
+
         // Auth flow — runs on Login screen after user clicks sign in
         if (state_.screen == Screen::Login && state_.authInProgress)
         {
@@ -378,24 +383,25 @@ int Application::run()
 
                     if (state_.authComplete && state_.authError.empty())
                     {
-                        // Create persistent auth client for protection reports
                         authClient_ = std::make_unique<authclient::AuthClient>(
                             XORSTR("https://api.mindless.rest"));
                         authClient_->setToken(state_.authToken);
                         if (!state_.authHwid.empty())
                             authClient_->setHWID(state_.authHwid);
-                        // protection crashes soft?
-                        //protection::set_auth_client(authClient_.get());
-                        //protection::check_all();
-                        //protection::start_watchdog();
-                        //protection::erase_pe_headers();
-
-                        save_credentials(state_.username.text, state_.password.text, state_.rememberMe);
-                        // Written on every successful sign-in, independent of "remember me" --
-                        // the client reads it to show who is logged in.
-                        mindless::save_session_username(state_.username.text);
-                        state_.statusText = "Authenticated";
-                        state_.transition_to(Screen::ProcessSelect, 1.0f);
+                        protection::setAuthClient(authClient_.get());
+                        if (!protection::checkAll())
+                        {
+                            state_.authComplete = false;
+                            state_.authError = "Security validation failed";
+                        }
+                        else
+                        {
+                            protection::startWatchdog();
+                            save_credentials(state_.username.text, state_.password.text, state_.rememberMe);
+                            mindless::save_session_username(state_.username.text);
+                            state_.statusText = "Authenticated";
+                            state_.transition_to(Screen::ProcessSelect, 1.0f);
+                        }
                     }
                     else
                     {

@@ -60,6 +60,12 @@ string(REPLACE "\\" "\\\\" MINDLESS_FORGE_PAYLOAD_JAR_ESCAPED "${_forge_payload_
 get_filename_component(MINDLESS_LUNAR_PAYLOAD_JAR "${MINDLESS_LUNAR_PAYLOAD_JAR}" ABSOLUTE)
 file(TO_NATIVE_PATH "${MINDLESS_LUNAR_PAYLOAD_JAR}" _lunar_payload_native)
 string(REPLACE "\\" "\\\\" MINDLESS_LUNAR_PAYLOAD_JAR_ESCAPED "${_lunar_payload_native}")
+file(SHA256 "${MINDLESS_FORGE_PAYLOAD_JAR}" MINDLESS_FORGE_PAYLOAD_SHA256)
+file(SHA256 "${MINDLESS_LUNAR_PAYLOAD_JAR}" MINDLESS_LUNAR_PAYLOAD_SHA256)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${MINDLESS_FORGE_PAYLOAD_JAR}"
+    "${MINDLESS_LUNAR_PAYLOAD_JAR}")
+configure_file(payload_hashes.h.in "${CMAKE_CURRENT_BINARY_DIR}/payload_hashes.h" @ONLY)
 
 file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/app.manifest" _manifest_native)
 string(REPLACE "\\" "\\\\" MINDLESS_MANIFEST_PATH "${_manifest_native}")
@@ -95,6 +101,7 @@ set_target_properties(MindlessNative PROPERTIES
 target_include_directories(MindlessNative PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../.."
+    "${CMAKE_CURRENT_BINARY_DIR}"
     ${JNI_INCLUDE_DIRS})
 target_link_libraries(MindlessNative PRIVATE user32 advapi32)
 if(MSVC)

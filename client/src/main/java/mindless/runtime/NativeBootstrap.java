@@ -47,8 +47,10 @@ public final class NativeBootstrap {
         STATE.set(BootstrapState.STARTING);
 
         if (!EnvironmentGuard.check()) {
+            bootstrapFailure = new SecurityException("Missing or invalid loader session");
+            STATE.set(BootstrapState.FAILED);
             log("Environment guard blocked startup");
-            return;
+            throw new SecurityException("Missing or invalid loader session");
         }
 
         ProgressPipe.connect();
@@ -281,7 +283,29 @@ public final class NativeBootstrap {
     }
 
     private static void startAuthHeartbeat() {
-        log("Auth heartbeat disabled");
+        String token = System.getProperty("mindless.auth.token");
+        String apiUrl = System.getProperty("mindless.auth.apiUrl");
+        String hwid = System.getProperty("mindless.auth.hwid");
+        if (token == null || token.isEmpty() || apiUrl == null || apiUrl.isEmpty()) return;
+        try {
+            dev.authsys.AuthClient client = new dev.authsys.AuthClient(apiUrl);
+            client.setToken(token);
+            client.setHwid(hwid);
+            dev.authsys.Heartbeat heartbeat = new dev.authsys.Heartbeat(
+                    client, new dev.authsys.HeartbeatConfig(60, Integer.MAX_VALUE, 10));
+            heartbeat.setOnInvalid(reason -> {
+                log("Session invalid: " + reason);
+                try {
+                    Mindless.uninject();
+                } catch (Throwable ignored) {
+                }
+                TransformerHooks.untransformNative();
+            });
+            heartbeat.start();
+            log("Auth heartbeat started");
+        } catch (Throwable error) {
+            log("Auth heartbeat unavailable: " + error.getMessage());
+        }
     }
 
     static void log(String message) {

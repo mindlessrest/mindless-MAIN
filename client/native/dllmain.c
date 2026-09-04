@@ -1,6 +1,8 @@
 #include "mindless_native.h"
+#include "payload_hashes.h"
 #include "shared/mindless_auth_shared.h"
 
+#include <wincrypt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -70,6 +72,38 @@ static void send_failure(DWORD error_code) {
 
 #define MINDLESS_FORGE_PAYLOAD_RESOURCE_ID 421
 #define MINDLESS_LUNAR_PAYLOAD_RESOURCE_ID 422
+
+static int verify_payload_hash(const unsigned char *data, DWORD size,
+        int resource_id) {
+    const char *expected = resource_id == MINDLESS_FORGE_PAYLOAD_RESOURCE_ID
+            ? MINDLESS_FORGE_PAYLOAD_SHA256 : MINDLESS_LUNAR_PAYLOAD_SHA256;
+    HCRYPTPROV provider = 0;
+    HCRYPTHASH hash = 0;
+    BYTE digest[32];
+    DWORD digest_size = sizeof(digest);
+    char actual[65];
+    static const char digits[] = "0123456789abcdef";
+    DWORD i;
+    int valid = 0;
+
+    if (!CryptAcquireContextW(&provider, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) goto cleanup;
+    if (!CryptCreateHash(provider, CALG_SHA_256, 0, 0, &hash)) goto cleanup;
+    if (!CryptHashData(hash, data, size, 0)) goto cleanup;
+    if (!CryptGetHashParam(hash, HP_HASHVAL, digest, &digest_size, 0) || digest_size != sizeof(digest)) goto cleanup;
+    for (i = 0; i < digest_size; ++i) {
+        actual[i * 2] = digits[digest[i] >> 4];
+        actual[i * 2 + 1] = digits[digest[i] & 15];
+    }
+    actual[64] = '\0';
+    valid = _stricmp(actual, expected) == 0;
+
+cleanup:
+    if (hash != 0) CryptDestroyHash(hash);
+    if (provider != 0) CryptReleaseContext(provider, 0);
+    SecureZeroMemory(digest, sizeof(digest));
+    SecureZeroMemory(actual, sizeof(actual));
+    return valid;
+}
 
 typedef enum mindless_runtime_namespace {
     MINDLESS_NAMESPACE_UNKNOWN = 0,
@@ -271,6 +305,10 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
             : (const unsigned char *)LockResource(loaded_resource);
     if (jar_data == NULL || jar_size < 4 || jar_data[0] != 'P' || jar_data[1] != 'K') {
         vape_log(L"embedded payload JAR resource is invalid");
+        return 0;
+    }
+    if (!verify_payload_hash(jar_data, jar_size, resource_id)) {
+        vape_log(L"embedded payload JAR failed integrity validation");
         return 0;
     }
 bais_cls = (*env)->FindClass(env, "java/io/ByteArrayInputStream");
