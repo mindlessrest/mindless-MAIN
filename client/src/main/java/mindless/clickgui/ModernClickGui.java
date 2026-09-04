@@ -210,11 +210,29 @@ private static float guiDragOffsetX = 0f;
         guiDragOffsetX = x;
         guiDragOffsetY = y;
     }
+
+    // Static like the panel offset, because the screen is rebuilt every time the GUI opens. As an
+    // instance field the mascot went back to its default corner on every open, whatever the
+    // profile said.
+    private static float mascotDragOffsetX = 0f;
+    private static float mascotDragOffsetY = 0f;
+
+    public static float getMascotOffsetX() {
+        return mascotDragOffsetX;
+    }
+
+    public static float getMascotOffsetY() {
+        return mascotDragOffsetY;
+    }
+
+    public static void setMascotOffset(float x, float y) {
+        mascotDragOffsetX = x;
+        mascotDragOffsetY = y;
+    }
     private boolean draggingGui = false;
     private float dragStartMouseX, dragStartMouseY;
     private float dragStartOffsetX, dragStartOffsetY;
     private boolean draggingMascot = false;
-    private float mascotDragOffsetX, mascotDragOffsetY;
     private float mascotDragStartMouseX, mascotDragStartMouseY;
     private float mascotDragStartOffsetX, mascotDragStartOffsetY;
     private float mascotX, mascotY, mascotDrawW, mascotDrawH;
@@ -1478,8 +1496,24 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         draggingSlider = null;
         colorDrag = 0;
         draggingScrollbar = 0;
+        if (draggingGui || draggingMascot) {
+            markProfileUnsaved();
+        }
         draggingGui = false;
         draggingMascot = false;
+    }
+
+    /**
+     * Flags the profile as having unsaved changes.
+     *
+     * Module.toggle deliberately skips this for the Gui module so that merely opening the menu
+     * does not dirty a profile, but that also meant moving the panel or the mascot left no trace
+     * -- the offsets were serialised, yet nothing ever asked for a save, so they were lost.
+     */
+    private void markProfileUnsaved() {
+        if (Mindless.currentProfile != null && Mindless.currentProfile.getModule() != null) {
+            Mindless.currentProfile.getModule().saved = false;
+        }
     }
 
     @Override
@@ -1580,6 +1614,9 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     private void updateDragging(int mx, int my) {
         if (!Mouse.isButtonDown(0)) {
             draggingSlider = null; colorDrag = 0; draggingScrollbar = 0;
+            if (draggingGui || draggingMascot) {
+                markProfileUnsaved();
+            }
             draggingGui = false; draggingMascot = false;
             return;
         }

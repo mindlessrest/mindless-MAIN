@@ -323,6 +323,10 @@ private static boolean isAutoSaveEnabled() {
                     mindless.clickgui.ModernClickGui.getDragOffsetX());
             moduleInformation.addProperty("modernGuiOffsetY",
                     mindless.clickgui.ModernClickGui.getDragOffsetY());
+            moduleInformation.addProperty("mascotOffsetX",
+                    mindless.clickgui.ModernClickGui.getMascotOffsetX());
+            moduleInformation.addProperty("mascotOffsetY",
+                    mindless.clickgui.ModernClickGui.getMascotOffsetY());
         }
         for (Setting setting : module.getSettings()) {
             if (setting instanceof ButtonSetting && !((ButtonSetting) setting).isMethodButton) {
@@ -395,6 +399,7 @@ public void loadProfile(String name) {
         Map<Module, JsonObject> loadedModuleData = new LinkedHashMap<Module, JsonObject>();
         Map<String, SavedCategoryState> savedGuiCategoryState = new HashMap<String, SavedCategoryState>();
         float[] savedModernGuiOffset = null;
+        float[] savedMascotOffset = null;
         boolean loadedRelationshipsState = false;
 
         for (JsonElement moduleJson : modules) {
@@ -431,6 +436,15 @@ public void loadProfile(String name) {
 
             if (module.getName().equals("Gui")) {
                 readGuiCategoryState(moduleInformation, savedGuiCategoryState);
+                if (moduleInformation.has("mascotOffsetX") && moduleInformation.has("mascotOffsetY")) {
+                    try {
+                        savedMascotOffset = new float[] {
+                                moduleInformation.get("mascotOffsetX").getAsFloat(),
+                                moduleInformation.get("mascotOffsetY").getAsFloat() };
+                    } catch (Exception malformed) {
+                        savedMascotOffset = null;
+                    }
+                }
                 if (moduleInformation.has("modernGuiOffsetX") && moduleInformation.has("modernGuiOffsetY")) {
                     try {
                         savedModernGuiOffset = new float[] {
@@ -530,6 +544,10 @@ public void loadProfile(String name) {
                     if (state != null) {
                         c.applySavedState(state.x, state.y, state.opened, true);
                     }
+                }
+                if (savedMascotOffset != null) {
+                    mindless.clickgui.ModernClickGui.setMascotOffset(
+                            savedMascotOffset[0], savedMascotOffset[1]);
                 }
                 if (savedModernGuiOffset != null) {
                     mindless.clickgui.ModernClickGui.setDragOffset(
