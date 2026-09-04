@@ -260,6 +260,7 @@ public class ModuleManager {
         this.addModule(new Trajectories());
         this.addModule(new TNTTimer());
         this.addModule(new Tracers());
+        this.addModule(new mindless.module.impl.render.Wings());
         this.addModule(new Xray());
         this.addModule(new Animations());
         this.addModule(new AlwaysBlock());
