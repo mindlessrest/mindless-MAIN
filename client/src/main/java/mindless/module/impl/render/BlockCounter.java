@@ -5,6 +5,7 @@ import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.shader.RoundedUtils;
+import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
@@ -51,6 +52,10 @@ public class BlockCounter extends Module {
     private static final float MIN_CONTENT_WIDTH = 84.0F;
     private static final long POP_DURATION_MS = 200L;
 
+    private static final String[] ANCHOR_MODES = {"Screen", "Held item"};
+    private static final int ANCHOR_SCREEN = 0;
+    private static final int ANCHOR_HAND = 1;
+
     private static final String[] BAR_MODES = {"Auto", "Fixed"};
     private static final int BAR_AUTO = 0;
 
@@ -62,6 +67,9 @@ public class BlockCounter extends Module {
     private static final int SHOW_ALWAYS = 2;
 
     private final SliderSetting showWhen;
+    private final SliderSetting anchorMode;
+    private final SliderSetting handOffsetX;
+    private final SliderSetting handOffsetY;
     private final SliderSetting hideAfter;
     private final SliderSetting counterFont;
     private final SliderSetting counterScale;
@@ -79,6 +87,7 @@ public class BlockCounter extends Module {
     private int tsCount;
 
     private float overlayScale;
+    private float overlayFromScale;
     private long overlayPopStart = -1L;
     private boolean overlayVisible;
 
@@ -88,9 +97,11 @@ public class BlockCounter extends Module {
     private float relativePosY = Float.NaN;
 
     private float displayedBlocks = Float.NaN;
+    private float displayedCapacity = Float.NaN;
     private float displayedBps;
     private long lastOverlayNanos;
 
+    private RenderUtils.ProjectionContext projectionContext;
     private long lastPlacement;
     private long scriptHoldUntil;
     private int peakBlocks;
@@ -99,6 +110,9 @@ public class BlockCounter extends Module {
         super("Block Counter", "Counts your placeable blocks and how fast you place.", category.render);
         instance = this;
         this.registerSetting(showWhen = new SliderSetting("Show when", SHOW_HOLDING, SHOW_MODES));
+        this.registerSetting(anchorMode = new SliderSetting("Anchor", ANCHOR_SCREEN, ANCHOR_MODES));
+        this.registerSetting(handOffsetX = new SliderSetting("Hand offset X", 14, -120, 120, 1));
+        this.registerSetting(handOffsetY = new SliderSetting("Hand offset Y", -34, -120, 120, 1));
         this.registerSetting(hideAfter = new SliderSetting("Hide after", "s", 2.0, 0.5, 10.0, 0.5));
         this.registerSetting(counterFont = new SliderSetting("Font", 0, ModuleFont.options()));
         this.registerSetting(counterScale = new SliderSetting("Scale", "x", 1.0, 0.5, 3.0, 0.05));
@@ -122,7 +136,10 @@ public class BlockCounter extends Module {
         barFull.setVisible(showBar.isToggled() && (int) barMode.getInput() != BAR_AUTO, this);
         int mode = (int) showWhen.getInput();
         hideAfter.setVisible(mode == SHOW_PLACING, this);
-        alwaysShow.setVisible(mode != SHOW_PLACING, this);
+        alwaysShow.setVisible(mode == SHOW_ALWAYS, this);
+        handOffsetX.setVisible((int) anchorMode.getInput() == ANCHOR_HAND, this);
+        handOffsetY.setVisible((int) anchorMode.getInput() == ANCHOR_HAND, this);
+        editPosition.setVisible((int) anchorMode.getInput() != ANCHOR_HAND, this);
     }
 
     /** Blocks the counter is willing to count, for scripts and for the overlay alike. */
@@ -198,9 +215,10 @@ public class BlockCounter extends Module {
         int blocks = getBlockCount();
         switch ((int) showWhen.getInput()) {
             case SHOW_HOLDING: {
+                // Strictly what is in your hand. Falling back to "any blocks anywhere" here made
+                // the mode indistinguishable from Always.
                 ItemStack held = mc.thePlayer.inventory.getCurrentItem();
-                boolean holding = held != null && held.getItem() instanceof ItemBlock && held.stackSize > 0;
-                return holding || (alwaysShow.isToggled() && blocks > 0);
+                return held != null && held.getItem() instanceof ItemBlock && held.stackSize > 0;
             }
             case SHOW_ALWAYS:
                 return blocks > 0 || alwaysShow.isToggled();
@@ -217,11 +235,26 @@ public class BlockCounter extends Module {
         overlayPopStart = -1L;
         overlayVisible = false;
         displayedBlocks = Float.NaN;
+        displayedCapacity = Float.NaN;
         displayedBps = 0f;
         lastOverlayNanos = 0L;
         lastPlacement = 0L;
         scriptHoldUntil = 0L;
         peakBlocks = 0;
+    }
+
+    /**
+     * Captures the world projection while the world matrices are still current.
+     *
+     * Player ESP captures one too, but only while it is enabled, so borrowing it left the anchor
+     * reading a stale matrix whenever that module was off. Only runs with the hand anchor
+     * selected, so it costs nothing otherwise.
+     */
+    @SubscribeEvent(priority = net.minecraftforge.fml.common.eventhandler.EventPriority.LOWEST)
+    public void onRenderWorld(net.minecraftforge.client.event.RenderWorldLastEvent event) {
+        if (!Utils.nullCheck() || (int) anchorMode.getInput() != ANCHOR_HAND) return;
+        projectionContext = RenderUtils.captureProjectionContext(projectionContext,
+                mindless.utility.ScaledResolutionCache.get().getScaleFactor());
     }
 
     @Override
@@ -237,31 +270,37 @@ public class BlockCounter extends Module {
 
         int blocks = getBlockCount();
         trackPeak(blocks);
-        boolean shouldShow = shouldShow();
+        boolean wanted = shouldShow();
 
-        if (shouldShow && !overlayVisible) {
-            overlayVisible = true;
-            overlayPopStart = System.currentTimeMillis();
-        }
-        else if (!shouldShow && overlayVisible) {
-            if (overlayPopStart > 0 && overlayScale <= 0.01f) {
-                overlayVisible = false;
-                overlayPopStart = -1L;
-                return;
-            }
-            if (overlayPopStart > 0 && overlayScale > 0.99f) {
-                overlayPopStart = System.currentTimeMillis();
-            }
+        // The old version re-armed the fade timer every frame it was still above 0.99 scale. One
+        // frame never moves it far enough to fall below that, so the timer reset forever and the
+        // panel never faded -- it just sat there and re-popped when a block came back out.
+        // The target is latched once and animated from wherever the scale happens to be.
+        long now = System.currentTimeMillis();
+        if (wanted != overlayVisible) {
+            overlayVisible = wanted;
+            overlayPopStart = now;
+            overlayFromScale = overlayScale;
         }
 
-        if (overlayPopStart > 0) {
-            float progress = Math.min(1f, (System.currentTimeMillis() - overlayPopStart) / (float) POP_DURATION_MS);
-            overlayScale = shouldShow ? easeOutBack(progress) : 1f - progress;
+        float progress = overlayPopStart <= 0L
+                ? 1f
+                : Math.min(1f, (now - overlayPopStart) / (float) POP_DURATION_MS);
+        if (overlayVisible) {
+            overlayScale = overlayFromScale + (1f - overlayFromScale) * easeOutBack(progress);
         }
-        if (overlayScale <= 0.01f) return;
+        else {
+            overlayScale = overlayFromScale * (1f - progress);
+        }
+
+        if (overlayScale <= 0.005f) {
+            overlayScale = 0f;
+            return;
+        }
 
         syncPosition();
-        drawOverlay(getDisplayBlock(), blocks, getBlocksPerSecond(), posX, posY, overlayScale);
+        float[] anchor = anchorPosition();
+        drawOverlay(getDisplayBlock(), blocks, getBlocksPerSecond(), anchor[0], anchor[1], overlayScale);
     }
 
     /**
@@ -454,7 +493,8 @@ public class BlockCounter extends Module {
     private void drawCapacityBar(float x, float y, float width, float barHeight, int fillColour) {
         if (width <= 1.0F || barHeight <= 0.1F) return;
 
-        float fraction = Math.max(0.0F, Math.min(1.0F, displayedBlocks / barCapacity()));
+        float fraction = Math.max(0.0F, Math.min(1.0F,
+                displayedBlocks / Math.max(1.0F, displayedCapacity)));
         float radius = barHeight * 0.5F;
         RoundedUtils.drawRound(x, y, width, barHeight, radius, 0x26FFFFFF);
         float filled = width * fraction;
@@ -473,11 +513,23 @@ public class BlockCounter extends Module {
                 : Math.max(0.0F, Math.min(0.25F, (now - lastOverlayNanos) / 1_000_000_000.0F));
         lastOverlayNanos = now;
 
-        if (Float.isNaN(displayedBlocks) || Math.abs(blocks - displayedBlocks) > 48.0F) {
+        // Only a restock snaps. Draining always animates, however fast it goes -- the old
+        // threshold jumped whenever the count moved by more than 48 in either direction, which is
+        // exactly what a fast bridge does.
+        if (Float.isNaN(displayedBlocks) || blocks - displayedBlocks > 24.0F) {
             displayedBlocks = blocks;
         }
         else {
-            displayedBlocks += (blocks - displayedBlocks) * (1.0F - (float) Math.exp(-delta * 12.0F));
+            displayedBlocks += (blocks - displayedBlocks) * (1.0F - (float) Math.exp(-delta * 7.0F));
+        }
+        // The capacity is eased too. Restocking moves the peak instantly, and a fill easing up to
+        // a mark that has already jumped reads as the bar lurching.
+        float capacity = barCapacity();
+        if (Float.isNaN(displayedCapacity) || displayedCapacity <= 0.0F) {
+            displayedCapacity = capacity;
+        }
+        else {
+            displayedCapacity += (capacity - displayedCapacity) * (1.0F - (float) Math.exp(-delta * 7.0F));
         }
         displayedBps += (bps - displayedBps) * (1.0F - (float) Math.exp(-delta * 9.0F));
     }
@@ -586,6 +638,72 @@ public class BlockCounter extends Module {
         posX = Float.NaN;
         posY = Float.NaN;
         syncPosition();
+    }
+
+    /**
+     * Where the panel sits this frame.
+     *
+     * Screen anchoring is the dragged position. Held item projects the point the item is drawn at
+     * and hangs the panel off it, so the readout travels with your hand.
+     *
+     * In third person that point is the real hand: the player's position with a shoulder offset
+     * rotated by their body yaw. In first person the item is not in the world at all -- it is
+     * drawn straight into the hand matrix -- so the anchor is a fixed offset in view space from
+     * the eye, which lands where the item renders and tracks head movement, but does not follow
+     * the swing animation.
+     */
+    private float[] anchorPosition() {
+        if ((int) anchorMode.getInput() != ANCHOR_HAND) {
+            return new float[]{posX, posY};
+        }
+
+        double[] projected = new double[3];
+        RenderUtils.ProjectionContext context = projectionContext;
+        if (context == null) {
+            return new float[]{posX, posY};
+        }
+
+        net.minecraft.client.renderer.entity.RenderManager renderManager = mc.getRenderManager();
+        double px, py, pz;
+
+        boolean firstPerson = mc.gameSettings.thirdPersonView == 0
+                && mc.getRenderViewEntity() == mc.thePlayer;
+        if (firstPerson) {
+            float yaw = (float) Math.toRadians(mc.thePlayer.rotationYaw);
+            float pitch = (float) Math.toRadians(mc.thePlayer.rotationPitch);
+            double lookX = -Math.sin(yaw) * Math.cos(pitch);
+            double lookY = -Math.sin(pitch);
+            double lookZ = Math.cos(yaw) * Math.cos(pitch);
+            double rightX = Math.cos(yaw);
+            double rightZ = Math.sin(yaw);
+
+            double eyeX = mc.thePlayer.posX;
+            double eyeY = mc.thePlayer.posY + mc.thePlayer.getEyeHeight();
+            double eyeZ = mc.thePlayer.posZ;
+            px = eyeX + lookX * 0.75 + rightX * 0.42;
+            py = eyeY + lookY * 0.75 - 0.30;
+            pz = eyeZ + lookZ * 0.75 + rightZ * 0.42;
+        }
+        else {
+            float yaw = (float) Math.toRadians(mc.thePlayer.renderYawOffset);
+            double rightX = Math.cos(yaw);
+            double rightZ = Math.sin(yaw);
+            px = mc.thePlayer.posX + rightX * 0.45;
+            py = mc.thePlayer.posY + mc.thePlayer.getEyeHeight() * 0.72;
+            pz = mc.thePlayer.posZ + rightZ * 0.45;
+        }
+
+        if (!RenderUtils.projectTo2D(context,
+                px - renderManager.viewerPosX,
+                py - renderManager.viewerPosY,
+                pz - renderManager.viewerPosZ, projected)
+                || projected[2] <= 0.005 || projected[2] >= 1.0) {
+            return new float[]{posX, posY};
+        }
+
+        return new float[]{
+                (float) projected[0] + (float) handOffsetX.getInput(),
+                (float) projected[1] + (float) handOffsetY.getInput()};
     }
 
     /** Bounds for the HUD editor, or null while the overlay has nothing to show. */
