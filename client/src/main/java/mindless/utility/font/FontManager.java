@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Iterator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,6 +44,11 @@ private static final float NAMETAG_ATLAS_BOOST = 2.5f;
     private static final Map<String, BundledFont> BUNDLED_FONT_MAP = buildBundledFontMap();
     private static final Map<String, Font> BASE_FONT_CACHE = new ConcurrentHashMap<String, Font>();
     private static final Map<String, MindlessFontRenderer> FONT_CACHE = new LinkedHashMap<String, MindlessFontRenderer>(16, 0.75f, true);
+    /** Evicted renderers awaiting teardown, oldest first. Insertion-ordered on purpose. */
+    private static final Map<String, MindlessFontRenderer> RETIRED_RENDERERS = new LinkedHashMap<String, MindlessFontRenderer>();
+    private static final Map<String, Long> RETIRED_AT = new HashMap<String, Long>();
+    private static final long RETIRE_GRACE_NANOS = 10L * 1_000_000_000L;
+    private static final int MAX_RETIRED_RENDERERS = 64;
 
     private FontManager() {
     }
@@ -297,12 +303,34 @@ public static MindlessFontRenderer getClickGuiRenderer(String family, float pixe
             return renderer;
         }
 
+        // Evicted but not yet torn down: take it back rather than rasterising a fresh atlas for a
+        // font we already have. This is also what stops an overlay that is drawn every other
+        // frame from paying for a rebuild each time it comes back.
+        MindlessFontRenderer reprieved = RETIRED_RENDERERS.remove(key);
+        if (reprieved != null) {
+            FONT_CACHE.put(key, reprieved);
+            sweepRetiredRenderers();
+            return reprieved;
+        }
+
         renderer = rendererSupplier.get();
         FONT_CACHE.put(key, renderer);
         trimFontCache();
+        sweepRetiredRenderers();
         return renderer;
     }
 
+    /**
+     * Evicting a renderer used to destroy it on the spot, which deletes its glyph atlas texture.
+     * Anything still holding that renderer -- SpotifyMiniPlayerRenderer keeps one in a static
+     * field across frames -- was then drawing against a deleted texture.
+     *
+     * Eviction now only retires: the renderer leaves the live cache but keeps its atlas for a
+     * grace period. If it is asked for again in that window it comes straight back, and only a
+     * renderer nobody has wanted for the whole period is actually destroyed. Holders get a
+     * bounded window rather than a promise, which is the most a cache can offer without every
+     * caller releasing explicitly, and it is far longer than any frame.
+     */
     private static void trimFontCache() {
         while (FONT_CACHE.size() > MAX_CACHED_RENDERERS) {
             Iterator<Map.Entry<String, MindlessFontRenderer>> iterator = FONT_CACHE.entrySet().iterator();
@@ -311,10 +339,39 @@ public static MindlessFontRenderer getClickGuiRenderer(String family, float pixe
             }
 
             Map.Entry<String, MindlessFontRenderer> eldestEntry = iterator.next();
+            String eldestKey = eldestEntry.getKey();
+            MindlessFontRenderer eldest = eldestEntry.getValue();
             iterator.remove();
-            if (eldestEntry.getValue() != null) {
-                eldestEntry.getValue().destroy();
+            if (eldest != null) {
+                RETIRED_RENDERERS.put(eldestKey, eldest);
+                RETIRED_AT.put(eldestKey, System.nanoTime());
             }
+        }
+    }
+
+    /** Destroys retired renderers once the grace period has passed with no further requests. */
+    private static void sweepRetiredRenderers() {
+        if (RETIRED_RENDERERS.isEmpty()) {
+            return;
+        }
+        long now = System.nanoTime();
+        Iterator<Map.Entry<String, MindlessFontRenderer>> iterator = RETIRED_RENDERERS.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, MindlessFontRenderer> entry = iterator.next();
+            Long retiredAt = RETIRED_AT.get(entry.getKey());
+            boolean expired = retiredAt == null || now - retiredAt > RETIRE_GRACE_NANOS;
+            // A hard ceiling as well, so a pathological run of misses cannot pile up atlases
+            // faster than the grace period clears them.
+            if (expired || RETIRED_RENDERERS.size() > MAX_RETIRED_RENDERERS) {
+                RETIRED_AT.remove(entry.getKey());
+                iterator.remove();
+                if (entry.getValue() != null) {
+                    entry.getValue().destroy();
+                }
+                continue;
+            }
+            // Insertion-ordered, so the first unexpired entry means the rest are younger still.
+            break;
         }
     }
 

@@ -783,6 +783,7 @@ public class BlockCounter extends Module {
                 // left the old relative coordinates in place, and the next frame's syncPosition
                 // snapped the panel straight back to where it started.
                 setAbsolutePosition(ax, ay);
+                mindless.utility.ProfileUtils.markUnsaved();
                 ax = posX;
                 ay = posY;
             }

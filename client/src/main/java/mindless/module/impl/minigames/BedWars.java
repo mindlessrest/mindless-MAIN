@@ -951,6 +951,9 @@ private void resetSpawnTracking() {
         protected void mouseReleased(int mouseX, int mouseY, int state) {
             super.mouseReleased(mouseX, mouseY, state);
             if (state == 0) {
+                if (this.dragging != DRAG_NONE) {
+                    mindless.utility.ProfileUtils.markUnsaved();
+                }
                 this.dragging = DRAG_NONE;
             }
         }

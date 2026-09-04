@@ -334,6 +334,9 @@ public class HideWindow extends Module {
         protected void mouseReleased(int mouseX, int mouseY, int state) {
             super.mouseReleased(mouseX, mouseY, state);
             if (state == 0) {
+                if (dragging) {
+                    mindless.utility.ProfileUtils.markUnsaved();
+                }
                 dragging = false;
             }
         }

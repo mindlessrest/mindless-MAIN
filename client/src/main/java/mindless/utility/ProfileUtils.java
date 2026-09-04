@@ -103,4 +103,21 @@ public class ProfileUtils {
         SUMO,
         OP;
     }
+
+    /**
+     * Flags the current profile as having unsaved changes.
+     *
+     * autoSaveTick only writes when this flag is down, and nothing in the HUD edit screens set
+     * it -- so dragging an element was serialised correctly but never actually saved, even with
+     * "Auto save profiles" switched on.
+     */
+    public static void markUnsaved() {
+        if (mindless.Mindless.currentProfile == null) {
+            return;
+        }
+        mindless.utility.profile.ProfileModule module = mindless.Mindless.currentProfile.getModule();
+        if (module != null) {
+            module.saved = false;
+        }
+    }
 }
