@@ -59,7 +59,7 @@ loom {
 
     if (mindlessBuildType == "forge") {
         mixin {
-            defaultRefmapName.set("mixins.mindless.refmap.json")
+            defaultRefmapName.set("mindless-refmap.json")
         }
     }
 }

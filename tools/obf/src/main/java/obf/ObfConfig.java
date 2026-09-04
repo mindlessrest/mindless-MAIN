@@ -8,14 +8,28 @@ import java.util.*;
 public class ObfConfig {
     public String input;
     public String output;
-    public List<String> excludes = new ArrayList<>();
+    public List<String> includes = new ArrayList<>(Collections.singletonList("mindless/"));
+    public List<String> excludes = new ArrayList<>(Arrays.asList(
+            "java/",
+            "javax/",
+            "sun/",
+            "net/minecraft/",
+            "net/minecraftforge/",
+            "org/spongepowered/",
+            "org/objectweb/asm/",
+            "net/lenni0451/",
+            "com/google/",
+            "org/apache/",
+            "org/slf4j/",
+            "mindless/runtime/"
+    ));
     public List<String> transforms = new ArrayList<>();
     public RenamerConfig renamer = new RenamerConfig();
     public StringObfConfig stringObf = new StringObfConfig();
 
     public static class RenamerConfig {
         public String packagePrefix = "com/moonsworth/lunar/";
-        public String alphabet = "COHRি";
+        public String alphabet = "COHRI";
         public int minLength = 15;
         public int maxLength = 35;
         public boolean renameClasses = true;
@@ -33,7 +47,6 @@ public class ObfConfig {
         if (config.transforms.isEmpty()) {
             config.transforms.add("renamer");
             config.transforms.add("stringobf");
-            config.transforms.add("cflow");
         }
         return config;
     }
@@ -44,7 +57,6 @@ public class ObfConfig {
         c.output = output;
         c.transforms.add("renamer");
         c.transforms.add("stringobf");
-        c.transforms.add("cflow");
         return c;
     }
 

@@ -60,6 +60,7 @@ public class StringObf implements Transform, Opcodes {
             LabelNode loopEnd = new LabelNode();
 
             il.add(loopStart);
+            il.add(new FrameNode(F_APPEND, 2, new Object[]{"[C", INTEGER}, 0, null));
             il.add(new VarInsnNode(ILOAD, 2));
             il.add(new VarInsnNode(ALOAD, 1));
             il.add(new InsnNode(ARRAYLENGTH));
@@ -81,6 +82,7 @@ public class StringObf implements Transform, Opcodes {
             il.add(new JumpInsnNode(GOTO, loopStart));
 
             il.add(loopEnd);
+            il.add(new FrameNode(F_SAME, 0, null, 0, null));
             il.add(new TypeInsnNode(NEW, "java/lang/String"));
             il.add(new InsnNode(DUP));
             il.add(new VarInsnNode(ALOAD, 1));

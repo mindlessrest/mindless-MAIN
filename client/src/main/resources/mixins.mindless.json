@@ -2,7 +2,7 @@
   "required": true,
   "minVersion": "0.7.11",
   "package": "mindless.mixin.impl",
-  "refmap": "mixins.mindless.refmap.json",
+  "refmap": "mindless-refmap.json",
   "compatibilityLevel": "JAVA_8",
   "mixins": [
     "entity.MixinEntity",

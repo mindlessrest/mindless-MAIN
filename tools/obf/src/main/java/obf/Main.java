@@ -87,6 +87,9 @@ public class Main {
         // Read input JAR
         System.out.println("  Reading input JAR...");
         try (JarInputStream jis = new JarInputStream(new FileInputStream(config.input))) {
+            if (jis.getManifest() != null) {
+                ctx.manifest(new Manifest(jis.getManifest()));
+            }
             JarEntry entry;
             while ((entry = jis.getNextJarEntry()) != null) {
                 if (entry.isDirectory()) continue;
@@ -127,7 +130,12 @@ public class Main {
 
         // Write output JAR
         System.out.println("  Writing output JAR...");
-        try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(config.output))) {
+        Path outputPath = Path.of(config.output);
+        Path parent = outputPath.toAbsolutePath().getParent();
+        if (parent != null) Files.createDirectories(parent);
+        try (JarOutputStream jos = ctx.manifest() == null
+                ? new JarOutputStream(new FileOutputStream(config.output))
+                : new JarOutputStream(new FileOutputStream(config.output), ctx.manifest())) {
             // Write classes
             for (Map.Entry<String, ClassNode> entry : ctx.classes().entrySet()) {
                 ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
