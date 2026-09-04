@@ -58,11 +58,16 @@ public class DynamicIsland extends Module {
     private static final int ACCENT_ON = 0x5BD98A;
     private static final int ACCENT_OFF = 0xE0644F;
 
+    private static final String LOGO_RESOURCE = "/assets/mindless/textures/icon/icon_white.png";
+    /** The mark is wider than it is tall; drawing it square squashes the M. */
+    private static final float LOGO_ASPECT = 1.45f;
+
     private final SliderSetting mode;
     private final SliderSetting font;
     private final SliderSetting anchor;
 
     private final GroupSetting contentGroup;
+    private final ButtonSetting showLogo;
     private final ButtonSetting showAccount;
     private final ButtonSetting showFps;
     private final ButtonSetting showPing;
@@ -94,6 +99,9 @@ public class DynamicIsland extends Module {
             new java.util.IdentityHashMap<mindless.module.Module, Boolean>();
     private final java.util.List<Toggle> recentToggles = new java.util.ArrayList<Toggle>();
 
+    private net.minecraft.util.ResourceLocation logoTexture;
+    private boolean logoLoadAttempted;
+
     private float animatedWidth = -1.0f;
     private float widthVelocity;
     private long lastFrameNanos;
@@ -113,6 +121,7 @@ public class DynamicIsland extends Module {
         this.registerSetting(font = new SliderSetting("Font", 0, ModuleFont.options()));
 
         this.registerSetting(contentGroup = new GroupSetting("Content"));
+        this.registerSetting(showLogo = new ButtonSetting(contentGroup, "Mindless mark", true));
         this.registerSetting(showAccount = new ButtonSetting(contentGroup, "Account", true));
         this.registerSetting(showFps = new ButtonSetting(contentGroup, "FPS", true));
         this.registerSetting(showPing = new ButtonSetting(contentGroup, "Ping", false));
@@ -350,10 +359,18 @@ public class DynamicIsland extends Module {
                 int iconColor = accentIcons.isToggled()
                         ? withAlpha(ThemeManager.getWatermarkColor(i * 1.5) & 0xFFFFFF, alpha)
                         : mutedColor;
+                // The mark is the client's own identity, not a piece of status: it keeps the
+                // text's colour rather than joining the accent cycle the other icons run through.
+                if (segment.icon == Segment.ICON_LOGO) {
+                    iconColor = textColor;
+                }
 
                 float iconY = y + (height - iconSize) * 0.5f;
                 drawIcon(segment.icon, cursor, iconY, iconSize, iconColor);
-                cursor += iconSize + ICON_GAP * uiScale;
+                cursor += iconWidth(segment.icon) * uiScale;
+                if (!segment.label.isEmpty()) {
+                    cursor += ICON_GAP * uiScale;
+                }
 
                 int colour = segment.emphasised ? textColor : mutedColor;
                 drawScaled(text, segment.label, cursor, textY, uiScale, colour);
@@ -427,6 +444,10 @@ public class DynamicIsland extends Module {
      */
     private void drawIcon(int icon, float x, float y, float size, int colour) {
         switch (icon) {
+            case Segment.ICON_LOGO: {
+                drawLogo(x, y, size * LOGO_ASPECT, size, colour);
+                break;
+            }
             case Segment.ICON_ACCOUNT: {
                 float headSize = size * 0.42f;
                 RoundedUtils.drawRound(x + (size - headSize) * 0.5f, y + size * 0.04f,
@@ -484,11 +505,65 @@ public class DynamicIsland extends Module {
         }
     }
 
+    /**
+     * The mark, tinted to the text colour and drawn as a plain textured quad.
+     *
+     * It is loaded straight off the classpath into a DynamicTexture rather than being looked up as
+     * a resource location. Lunar does not mount the client's assets into the resource manager, so
+     * a ResourceLocation lookup resolves to the missing-texture checkerboard there; reading the
+     * stream ourselves works on both paths. One failed attempt is enough -- the flag stops the
+     * lookup being retried once per frame forever.
+     */
+    private void drawLogo(float x, float y, float width, float height, int colour) {
+        net.minecraft.util.ResourceLocation texture = logoTexture();
+        if (texture == null) return;
+
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableAlpha();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
+        GlStateManager.color(((colour >> 16) & 0xFF) / 255.0f, ((colour >> 8) & 0xFF) / 255.0f,
+                (colour & 0xFF) / 255.0f, ((colour >>> 24) & 0xFF) / 255.0f);
+        mc.getTextureManager().bindTexture(texture);
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glTexCoord2f(0.0f, 0.0f); GL11.glVertex2f(x, y);
+        GL11.glTexCoord2f(0.0f, 1.0f); GL11.glVertex2f(x, y + height);
+        GL11.glTexCoord2f(1.0f, 1.0f); GL11.glVertex2f(x + width, y + height);
+        GL11.glTexCoord2f(1.0f, 0.0f); GL11.glVertex2f(x + width, y);
+        GL11.glEnd();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    private net.minecraft.util.ResourceLocation logoTexture() {
+        if (logoTexture == null && !logoLoadAttempted) {
+            logoLoadAttempted = true;
+            try (java.io.InputStream stream = DynamicIsland.class.getResourceAsStream(LOGO_RESOURCE)) {
+                if (stream != null) {
+                    java.awt.image.BufferedImage image = javax.imageio.ImageIO.read(stream);
+                    if (image != null) {
+                        net.minecraft.client.renderer.texture.DynamicTexture dynamic =
+                                new net.minecraft.client.renderer.texture.DynamicTexture(image);
+                        dynamic.setBlurMipmap(true, false);
+                        logoTexture = mc.getTextureManager()
+                                .getDynamicTextureLocation("mindless_island_mark", dynamic);
+                    }
+                }
+            } catch (Exception unreadable) {
+                logoTexture = null;
+            }
+        }
+        return logoTexture;
+    }
+
     // ------------------------------------------------------------------ content
 
     private void buildSegments(MindlessFontRenderer text) {
         segmentCount = 0;
 
+        if (showLogo.isToggled()) {
+            addLogo();
+        }
         if (showAccount.isToggled()) {
             add(Segment.ICON_ACCOUNT, MindlessAccount.displayName(), true);
         }
@@ -659,6 +734,28 @@ public class DynamicIsland extends Module {
         segments[segmentCount - 1].stack = stack;
     }
 
+    /**
+     * The leading mark.
+     *
+     * It goes through addSegment's siblings rather than addSegment itself, which drops anything
+     * with an empty label -- the mark is the whole segment and has no text to carry.
+     */
+    private void addLogo() {
+        if (segmentCount >= MAX_SEGMENTS || logoTexture() == null) return;
+        Segment segment = segments[segmentCount];
+        if (segment == null) {
+            segment = new Segment();
+            segments[segmentCount] = segment;
+        }
+        segment.icon = Segment.ICON_LOGO;
+        segment.label = "";
+        segment.emphasised = false;
+        segment.accent = 0;
+        segment.fade = 1.0f;
+        segment.stack = null;
+        segmentCount++;
+    }
+
     private void addSegment(int icon, String label, boolean emphasised, int accent, float fade) {
         if (segmentCount >= MAX_SEGMENTS || label == null || label.isEmpty()) return;
         Segment segment = segments[segmentCount];
@@ -683,7 +780,15 @@ public class DynamicIsland extends Module {
         if (segment.icon == Segment.ICON_CHIP) {
             return CHIP_PAD_X * 2.0f + CHIP_DOT + CHIP_DOT_GAP + text.getStringWidth(segment.label);
         }
-        return ICON_SIZE + ICON_GAP + text.getStringWidth(segment.label);
+        if (segment.label.isEmpty()) {
+            return iconWidth(segment.icon);
+        }
+        return iconWidth(segment.icon) + ICON_GAP + text.getStringWidth(segment.label);
+    }
+
+    /** Icons are square but for the mark, which keeps the artwork's proportions. */
+    private static float iconWidth(int icon) {
+        return icon == Segment.ICON_LOGO ? ICON_SIZE * LOGO_ASPECT : ICON_SIZE;
     }
 
     private float measureWidth(MindlessFontRenderer text) {
@@ -788,6 +893,21 @@ public class DynamicIsland extends Module {
 
     public boolean isCustomAnchored() {
         return (int) mode.getInput() == 0 && (int) anchor.getInput() == 3;
+    }
+
+    /**
+     * Places the pill from the HUD editor.
+     *
+     * A preset anchor puts the pill back where it wants it every frame, so dragging one used to be
+     * refused outright and the pill was the one HUD element you could not grab. Taking hold of it
+     * is a clear enough statement of intent: the anchor moves to Custom and the drag sticks.
+     */
+    public void moveIslandTo(float left, float top) {
+        if ((int) anchor.getInput() != 3) {
+            anchor.setValueWithEvent(3.0);
+        }
+        islandPosX = left;
+        islandPosY = top;
     }
 
     public boolean isIslandMode() {
@@ -911,6 +1031,8 @@ public class DynamicIsland extends Module {
         private static final int ICON_CHIP = 5;
         /** A chip whose marker is the held item itself rather than a coloured dot. */
         private static final int ICON_ITEM = 6;
+        /** The Mindless mark, drawn from a texture and carrying no label of its own. */
+        private static final int ICON_LOGO = 7;
 
         private int icon;
         private String label;

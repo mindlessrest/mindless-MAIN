@@ -116,6 +116,7 @@ public class ModuleManager {
         this.addModule(chatCommands = new ChatCommands());
         this.addModule(new Gui());
         this.addModule(new Settings());
+        this.addModule(new mindless.module.impl.client.HudEditor());
         this.addModule(new HideModules());
         this.addModule(themeManager = new ThemeManager());
         this.addModule(spotifyMiniPlayer = new SpotifyMiniPlayer());

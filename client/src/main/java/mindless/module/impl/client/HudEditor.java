@@ -1,5 +1,6 @@
 package mindless.module.impl.client;
 
+import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
@@ -7,9 +8,11 @@ import mindless.module.impl.render.Radar;
 import mindless.module.impl.render.DynamicIsland;
 import mindless.module.impl.render.StatsHUD;
 import mindless.module.impl.render.TargetHUD;
+import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.runtime.GuiIngameState;
 import mindless.utility.RenderUtils;
+import mindless.utility.Utils;
 import mindless.utility.TextGlowUtils;
 import mindless.utility.gui.MindlessButton;
 import mindless.utility.media.MediaPlayerRenderer;
@@ -20,14 +23,46 @@ import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.WorldRenderer;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class HudEditor {
-    private HudEditor() {
+/**
+ * The HUD layout editor, and the module that opens it.
+ *
+ * It is a module so it can carry a keybind and its own settings like everything else, rather than
+ * living as a button buried in another module's list. Enabling it opens the screen and switches
+ * straight back off, the way the Gui module does, so it never sits in the array list.
+ */
+public class HudEditor extends Module {
+
+    public static ButtonSetting depthOfField;
+    public static SliderSetting blurStrength;
+
+    public HudEditor() {
+        super("HUD Editor", "Drag and resize your HUD elements.", category.client);
+        this.liteModule = true;
+        this.registerSetting(depthOfField = new ButtonSetting("Depth of field", true));
+        this.registerSetting(blurStrength = new SliderSetting("Blur strength", "%", 100.0, 0.0, 100.0, 5.0));
+    }
+
+    @Override
+    public void guiUpdate() {
+        blurStrength.setVisible(depthOfField.isToggled(), this);
+    }
+
+    @Override
+    public void onEnable() {
+        if (Utils.nullCheck()) {
+            mc.displayGuiScreen(new Screen());
+        }
+        this.disable();
     }
 
     public static final class Screen extends GuiScreen {
@@ -36,6 +71,18 @@ private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W 
         private static final float HANDLE_HALF = 3.0f;
         private static final float GRAB_HALF = 6.0f;
         private static final float MIN_SPAN = 6.0f;
+
+        private static final int DOF_PASSES = 2;
+        private static final float DOF_RADIUS = 4.2f;
+        /** Fractions of the screen diagonal: sharp inside the first, fully soft past the second. */
+        private static final float DOF_NEAR = 0.15f;
+        private static final float DOF_FAR = 0.52f;
+        private static final int DOF_SEGMENTS = 28;
+        private static final float FOCUS_SMOOTH = 0.18f;
+        private static final int SCRIM = 0x5E000000;
+
+        private float focusX = Float.NaN;
+        private float focusY = Float.NaN;
 
         private final List<Element> elements = new ArrayList<Element>();
         private MindlessButton doneButton;
@@ -63,7 +110,7 @@ private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W 
 
         @Override
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-            drawRect(0, 0, width, height, 0x88000000);
+            drawBackdrop(mouseX, mouseY);
 
             if (elements.isEmpty()) buildElements();
             if (dragging != null) {
@@ -135,6 +182,101 @@ private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W 
         @Override
         public boolean doesGuiPauseGame() {
             return false;
+        }
+
+        /**
+         * The world behind, thrown out of focus around whatever you are working on.
+         *
+         * A true depth of field wants the depth buffer, and 1.8.9 attaches its depth as a
+         * renderbuffer rather than a texture, so there is nothing here to sample -- reworking the
+         * game's framebuffer to get one would be a large change to pay for a backdrop. This does
+         * the part you actually see. One blur of the frame is composited back through a mask that
+         * is clear over the element under the cursor and opaque out towards the edges, so focus
+         * falls away from where you are looking.
+         *
+         * The cost is one blur chain. The pyramid it builds is cached per frame inside KawaseBlur
+         * and shared with every other blur on screen, the mask is three draw calls, and the
+         * composite is a single full screen quad -- so this is one pass whatever the screen holds.
+         */
+        private void drawBackdrop(int mouseX, int mouseY) {
+            if (HudEditor.depthOfField == null || !HudEditor.depthOfField.isToggled()) {
+                drawRect(0, 0, width, height, 0x88000000);
+                return;
+            }
+
+            float strength = (float) (HudEditor.blurStrength.getInput() / 100.0);
+            if (strength <= 0.01f) {
+                drawRect(0, 0, width, height, 0x88000000);
+                return;
+            }
+
+            Element focus = dragging != null ? dragging : resizing != null ? resizing : hovered;
+            boolean framed = focus != null && focus.hasBounds();
+            float targetX = framed ? (focus.left + focus.right) * 0.5f : mouseX;
+            float targetY = framed ? (focus.top + focus.bottom) * 0.5f : mouseY;
+            if (Float.isNaN(focusX)) {
+                focusX = targetX;
+                focusY = targetY;
+            }
+            focusX += (targetX - focusX) * FOCUS_SMOOTH;
+            focusY += (targetY - focusY) * FOCUS_SMOOTH;
+
+            float diagonal = (float) Math.sqrt(width * (double) width + height * (double) height);
+            BlurUtils.prepareBlur();
+            drawFocusMask(focusX, focusY, diagonal * DOF_NEAR, diagonal * DOF_FAR);
+            BlurUtils.blurEnd(DOF_PASSES, DOF_RADIUS, strength);
+
+            drawRect(0, 0, width, height, SCRIM);
+        }
+
+        /**
+         * Writes the circle of confusion into the blur mask.
+         *
+         * Blending is off on purpose: the shapes overwrite one another rather than mixing, so the
+         * ring's ramp lands exactly on top of the screen fill instead of adding to it. Alpha is
+         * what the composite shader reads, and the colour never matters.
+         */
+        private void drawFocusMask(float centreX, float centreY, float near, float far) {
+            GlStateManager.disableTexture2D();
+            GlStateManager.disableBlend();
+            GlStateManager.disableAlpha();
+            GlStateManager.disableDepth();
+            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+
+            Tessellator tessellator = Tessellator.getInstance();
+            WorldRenderer buffer = tessellator.getWorldRenderer();
+
+            buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
+            buffer.pos(0.0, height, 0.0).color(255, 255, 255, 255).endVertex();
+            buffer.pos(width, height, 0.0).color(255, 255, 255, 255).endVertex();
+            buffer.pos(width, 0.0, 0.0).color(255, 255, 255, 255).endVertex();
+            buffer.pos(0.0, 0.0, 0.0).color(255, 255, 255, 255).endVertex();
+            tessellator.draw();
+
+            buffer.begin(GL11.GL_TRIANGLE_FAN, DefaultVertexFormats.POSITION_COLOR);
+            buffer.pos(centreX, centreY, 0.0).color(255, 255, 255, 0).endVertex();
+            for (int i = 0; i <= DOF_SEGMENTS; i++) {
+                double angle = i * Math.PI * 2.0 / DOF_SEGMENTS;
+                buffer.pos(centreX + Math.cos(angle) * near, centreY + Math.sin(angle) * near, 0.0)
+                        .color(255, 255, 255, 0).endVertex();
+            }
+            tessellator.draw();
+
+            buffer.begin(GL11.GL_TRIANGLE_STRIP, DefaultVertexFormats.POSITION_COLOR);
+            for (int i = 0; i <= DOF_SEGMENTS; i++) {
+                double angle = i * Math.PI * 2.0 / DOF_SEGMENTS;
+                double cos = Math.cos(angle);
+                double sin = Math.sin(angle);
+                buffer.pos(centreX + cos * near, centreY + sin * near, 0.0)
+                        .color(255, 255, 255, 0).endVertex();
+                buffer.pos(centreX + cos * far, centreY + sin * far, 0.0)
+                        .color(255, 255, 255, 255).endVertex();
+            }
+            tessellator.draw();
+
+            GlStateManager.enableBlend();
+            GlStateManager.enableAlpha();
+            GlStateManager.enableTexture2D();
         }
 private void beginResize(Element element, int handle) {
             SliderSetting slider = element.scaleSetting();
@@ -528,18 +670,18 @@ private void beginResize(Element element, int handle) {
                     }
                 });
 
-                // Only grabbable on the Custom anchor; the presets place it themselves and a
-                // handle that snaps back the moment you let go is worse than none.
+                // Grabbable on every anchor. It used to be offered only on Custom, so the pill was
+                // the one element here you could not drag -- you had to know to go and change a
+                // setting first. Taking hold of it switches the anchor for you.
                 elements.add(new Element("Dynamic Island") {
                     @Override
                     void render() {
-                        setBounds(island.isCustomAnchored() ? island.getIslandBounds() : null);
+                        setBounds(island.isIslandMode() ? island.getIslandBounds() : null);
                     }
 
                     @Override
                     void moveTo(float left, float top) {
-                        island.islandPosX = left;
-                        island.islandPosY = top;
+                        island.moveIslandTo(left, top);
                         setBounds(island.getIslandBounds());
                     }
 

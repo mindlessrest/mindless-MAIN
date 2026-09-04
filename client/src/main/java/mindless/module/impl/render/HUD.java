@@ -4,7 +4,6 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.combat.AntiKnockback;
 import mindless.module.impl.combat.Velocity;
-import mindless.module.impl.client.HudEditor;
 import mindless.module.impl.client.Settings;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
@@ -119,7 +118,6 @@ private static final int[][] OUTLINE_OFFSETS = {
         this.registerSetting(font = new SliderSetting("Font", 0, HUD_FONT_OPTIONS));
         this.registerSetting(fontSize = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.1));
         this.registerSetting(outline = new SliderSetting("Outline", 0, OUTLINE_MODES));
-        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new HudEditor.Screen())));
         this.registerSetting(alignRight = new ButtonSetting("Align right", false));
         this.registerSetting(alphabeticalSort = new ButtonSetting("Alphabetical sort", false));
         this.registerSetting(lineSpacing = new SliderSetting("Line spacing", 0.0, -2.0, 8.0, 0.5));
