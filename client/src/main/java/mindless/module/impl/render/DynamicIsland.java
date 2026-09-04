@@ -203,8 +203,10 @@ public class DynamicIsland extends Module {
         if (blurBackdrop.isToggled()) {
             BlurUtils.prepareBlur(x, y, width, height);
             RoundedUtils.drawRound(x, y, width, height, radius, 0xFF000000);
-            BlurUtils.blurEndRegion(2, 2.6f, alpha / 255.0f,
-                    x - 2.0f, y - 2.0f, width + 4.0f, height + 4.0f);
+            // Composited over exactly the pill, not two pixels past it. The inflated region let
+            // the blur smear past the rounded mask, which is the pale square-shouldered halo that
+            // sat around the pill and made its edge look like a second, badly drawn border.
+            BlurUtils.blurEndRegion(2, 2.6f, alpha / 255.0f, x, y, width, height);
         }
 
         RoundedUtils.drawRound(x, y, width, height, radius, withAlpha(0x0A0D12, alpha));
@@ -215,14 +217,18 @@ public class DynamicIsland extends Module {
             float bandHeight = Math.min(height * 0.45f, 9.0f);
             RoundedUtils.drawGradientVertical(x + 1.0f, y + 1.0f, width - 2.0f, bandHeight,
                     Math.max(0.0f, radius - 1.0f),
-                    new java.awt.Color(255, 255, 255, Math.min(38, alpha / 5)),
+                    new java.awt.Color(255, 255, 255, Math.min(26, alpha / 8)),
                     new java.awt.Color(255, 255, 255, 0));
         }
 
         if (hairline.isToggled()) {
-            RoundedUtils.drawRoundOutline(x, y, width, height, radius, 1.0f,
+            // Half a GUI unit, not a whole one. drawRoundOutline multiplies the thickness by the
+            // GUI scale factor, so 1.0 was a full Minecraft pixel -- three physical pixels at the
+            // usual scale -- and read as a heavy grey border drawn around the pill rather than as
+            // a lit edge on it.
+            RoundedUtils.drawRoundOutline(x, y, width, height, radius, 0.5f,
                     new java.awt.Color(0, 0, 0, 0),
-                    new java.awt.Color(255, 255, 255, Math.min(46, alpha / 4)));
+                    new java.awt.Color(255, 255, 255, Math.min(30, alpha / 7)));
         }
     }
 
