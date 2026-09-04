@@ -46,7 +46,7 @@ public class DynamicIsland extends Module {
     private static final float ICON_GAP = 4.5f;
     private static final float ICON_SIZE = 7.0f;
     private static final float EDGE_MARGIN = 4.0f;
-    private static final float WIDTH_EASE = 12.0f;
+    private static final float WIDTH_SMOOTH_TIME = 0.11f;
 
     private static final int MAX_SEGMENTS = 12;
     private static final float CHIP_PAD_X = 5.0f;
@@ -76,6 +76,7 @@ public class DynamicIsland extends Module {
     private final GroupSetting styleGroup;
     private final ButtonSetting blurBackdrop;
     private final ButtonSetting hairline;
+    private final ButtonSetting dropShadow;
     private final ButtonSetting sheen;
     private final ButtonSetting accentIcons;
     private final ButtonSetting dividers;
@@ -92,6 +93,7 @@ public class DynamicIsland extends Module {
     private final java.util.List<Toggle> recentToggles = new java.util.ArrayList<Toggle>();
 
     private float animatedWidth = -1.0f;
+    private float widthVelocity;
     private long lastFrameNanos;
     private long sessionStart = System.currentTimeMillis();
 
@@ -122,6 +124,7 @@ public class DynamicIsland extends Module {
         this.registerSetting(styleGroup = new GroupSetting("Style"));
         this.registerSetting(blurBackdrop = new ButtonSetting(styleGroup, "Blur backdrop", true));
         this.registerSetting(hairline = new ButtonSetting(styleGroup, "Edge highlight", true));
+        this.registerSetting(dropShadow = new ButtonSetting(styleGroup, "Drop shadow", true));
         this.registerSetting(sheen = new ButtonSetting(styleGroup, "Top sheen", true));
         this.registerSetting(accentIcons = new ButtonSetting(styleGroup, "Accent icons", true));
         this.registerSetting(dividers = new ButtonSetting(styleGroup, "Dividers", true));
@@ -141,6 +144,7 @@ public class DynamicIsland extends Module {
     public void onEnable() {
         sessionStart = System.currentTimeMillis();
         animatedWidth = -1.0f;
+        widthVelocity = 0.0f;
         lastFrameNanos = 0L;
         // Re-seeded on the next poll, so switching the island on does not announce every module
         // that happened to already be running.
@@ -184,8 +188,9 @@ public class DynamicIsland extends Module {
 
         if (animatedWidth < 0.0f) {
             animatedWidth = targetWidth;
+            widthVelocity = 0.0f;
         }
-        animatedWidth = approach(animatedWidth, targetWidth, WIDTH_EASE, delta);
+        animatedWidth = spring(animatedWidth, targetWidth, WIDTH_SMOOTH_TIME, delta);
         float width = animatedWidth;
 
         ScaledResolution resolution = ScaledResolutionCache.get();
@@ -199,7 +204,22 @@ public class DynamicIsland extends Module {
         drawSegments(text, x, y, width, height, uiScale, alpha);
     }
 
+    /**
+     * The pill itself, built the way a physical object would catch light.
+     *
+     * Order matters and each layer is doing one job: a shadow to sit the pill above the world, the
+     * blur to say it is translucent, a two stop body so the surface reads as curved rather than
+     * flat, a specular band along the top and a much fainter bounce along the bottom, and finally
+     * a thin lit rim. The previous version drew only a flat fill and one heavy ring, which is why
+     * it read as a sticker painted onto the scene.
+     */
     private void drawBackdrop(float x, float y, float width, float height, float radius, int alpha) {
+        if (dropShadow.isToggled()) {
+            // Offset down a touch: light comes from above, so the contact shadow belongs below.
+            RoundedUtils.drawRoundShadow(x, y + height * 0.10f, width, height, radius,
+                    4.5f, withAlpha(0x000000, Math.round(alpha * 0.45f)));
+        }
+
         if (blurBackdrop.isToggled()) {
             BlurUtils.prepareBlur(x, y, width, height);
             RoundedUtils.drawRound(x, y, width, height, radius, 0xFF000000);
@@ -209,16 +229,26 @@ public class DynamicIsland extends Module {
             BlurUtils.blurEndRegion(2, 2.6f, alpha / 255.0f, x, y, width, height);
         }
 
-        RoundedUtils.drawRound(x, y, width, height, radius, withAlpha(0x0A0D12, alpha));
+        // A curved surface catches more light at the top than at the bottom. A flat fill cannot
+        // say that; two stops can, for the same one draw.
+        RoundedUtils.drawGradientVertical(x, y, width, height, radius,
+                toColor(withAlpha(0x171C26, alpha)),
+                toColor(withAlpha(0x05070C, alpha)));
 
         if (sheen.isToggled()) {
-            // A thin lit band along the top edge; it is what stops the pill reading as a flat
-            // rectangle without adding another blur pass.
-            float bandHeight = Math.min(height * 0.45f, 9.0f);
+            float bandHeight = Math.min(height * 0.48f, 10.0f);
             RoundedUtils.drawGradientVertical(x + 1.0f, y + 1.0f, width - 2.0f, bandHeight,
                     Math.max(0.0f, radius - 1.0f),
-                    new java.awt.Color(255, 255, 255, Math.min(26, alpha / 8)),
+                    new java.awt.Color(255, 255, 255, Math.min(30, alpha / 7)),
                     new java.awt.Color(255, 255, 255, 0));
+
+            // Light bouncing back up off whatever the pill sits on. Faint on purpose -- it is the
+            // difference between reading as a shape and reading as a surface.
+            float bounceHeight = Math.min(height * 0.30f, 6.0f);
+            RoundedUtils.drawGradientVertical(x + 1.0f, y + height - bounceHeight - 1.0f,
+                    width - 2.0f, bounceHeight, Math.max(0.0f, radius - 1.0f),
+                    new java.awt.Color(255, 255, 255, 0),
+                    new java.awt.Color(255, 255, 255, Math.min(13, alpha / 16)));
         }
 
         if (hairline.isToggled()) {
@@ -260,12 +290,28 @@ public class DynamicIsland extends Module {
                 float chipHeight = height - PAD_Y * uiScale;
                 float chipWidth = segmentWidth(text, segment) * uiScale;
                 float chipY = y + (height - chipHeight) * 0.5f;
-                RoundedUtils.drawRound(cursor, chipY, chipWidth, chipHeight, chipHeight * 0.5f,
-                        withAlpha(0xFFFFFF, Math.min(24, chipAlpha / 8)));
+                float chipRadius = chipHeight * 0.5f;
+
+                // Same two stop treatment as the pill, one step brighter, so a chip reads as a
+                // raised key on the surface instead of a flat patch cut out of it.
+                RoundedUtils.drawGradientVertical(cursor, chipY, chipWidth, chipHeight, chipRadius,
+                        new java.awt.Color(255, 255, 255, Math.min(30, chipAlpha / 7)),
+                        new java.awt.Color(255, 255, 255, Math.min(14, chipAlpha / 15)));
+                RoundedUtils.drawRoundOutline(cursor, chipY, chipWidth, chipHeight, chipRadius,
+                        0.5f, new java.awt.Color(0, 0, 0, 0),
+                        new java.awt.Color(255, 255, 255, Math.min(22, chipAlpha / 10)));
 
                 float dot = CHIP_DOT * uiScale;
-                RoundedUtils.drawRound(cursor + CHIP_PAD_X * uiScale, y + (height - dot) * 0.5f,
-                        dot, dot, dot * 0.5f, withAlpha(segment.accent, chipAlpha));
+                float dotX = cursor + CHIP_PAD_X * uiScale;
+                float dotY = y + (height - dot) * 0.5f;
+                // A halo the width of the dot again, at a tenth of its alpha. Small enough to
+                // read as the dot being lit rather than as a second ring around it.
+                float halo = dot * 2.1f;
+                RoundedUtils.drawRound(dotX - (halo - dot) * 0.5f, dotY - (halo - dot) * 0.5f,
+                        halo, halo, halo * 0.5f,
+                        withAlpha(segment.accent, Math.round(chipAlpha * 0.20f)));
+                RoundedUtils.drawRound(dotX, dotY, dot, dot, dot * 0.5f,
+                        withAlpha(segment.accent, chipAlpha));
 
                 float labelX = cursor + (CHIP_PAD_X + CHIP_DOT + CHIP_DOT_GAP) * uiScale;
                 drawScaled(text, segment.label, labelX, textY, uiScale,
@@ -274,10 +320,19 @@ public class DynamicIsland extends Module {
             }
             else {
                 if (i > 0 && dividers.isToggled() && segments[i - 1].icon != Segment.ICON_CHIP) {
+                    // Faded at both ends rather than a hard bar. A divider that stops dead against
+                    // the pill's inner curve draws attention to itself; one that dissolves reads
+                    // as a separation and nothing more.
                     float dividerX = cursor - SEGMENT_GAP * uiScale * 0.5f;
-                    float inset = height * 0.28f;
-                    RoundedUtils.drawRound(dividerX, y + inset, Math.max(1.0f, uiScale),
-                            height - inset * 2.0f, 0.5f, withAlpha(0xFFFFFF, Math.min(38, alpha / 5)));
+                    float inset = height * 0.24f;
+                    float lineHeight = (height - inset * 2.0f) * 0.5f;
+                    float lineWidth = Math.max(1.0f, uiScale * 0.75f);
+                    java.awt.Color solid = new java.awt.Color(255, 255, 255, Math.min(34, alpha / 6));
+                    java.awt.Color clear = new java.awt.Color(255, 255, 255, 0);
+                    RoundedUtils.drawGradientVertical(dividerX, y + inset, lineWidth, lineHeight,
+                            0.0f, clear, solid);
+                    RoundedUtils.drawGradientVertical(dividerX, y + inset + lineHeight, lineWidth,
+                            lineHeight, 0.0f, solid, clear);
                 }
 
                 int iconColor = accentIcons.isToggled()
@@ -682,6 +737,40 @@ public class DynamicIsland extends Module {
     private static float approach(float current, float target, float rate, float delta) {
         float factor = 1.0f - (float) Math.exp(-delta * rate);
         return current + (target - current) * factor;
+    }
+
+    /**
+     * Critically damped spring, the thing that gives the pill its weight.
+     *
+     * An exponential ease decelerates the whole way in, so the pill crept to its new width and
+     * arrived without ever having moved quickly. A spring carries velocity between frames, so a
+     * chip appearing throws the edge out and it settles -- which is the motion the shape is
+     * promising.
+     *
+     * This is the standard smooth damp rather than a raw force integration: it is unconditionally
+     * stable, so a frame drop cannot make the pill fly apart, which a stiff spring integrated at
+     * a 100ms delta absolutely would.
+     */
+    private float spring(float current, float target, float smoothTime, float delta) {
+        if (delta <= 0.0f) {
+            return current;
+        }
+        float omega = 2.0f / Math.max(0.0001f, smoothTime);
+        float scaled = omega * delta;
+        float decay = 1.0f / (1.0f + scaled + 0.48f * scaled * scaled
+                + 0.235f * scaled * scaled * scaled);
+
+        float change = current - target;
+        float temp = (widthVelocity + omega * change) * delta;
+        widthVelocity = (widthVelocity - omega * temp) * decay;
+
+        float result = target + (change + temp) * decay;
+        // Settle exactly rather than asymptotically, so the width stops recomputing forever.
+        if (Math.abs(target - result) < 0.05f) {
+            widthVelocity = 0.0f;
+            return target;
+        }
+        return result;
     }
 
     private static int withAlpha(int rgb, int alpha) {
