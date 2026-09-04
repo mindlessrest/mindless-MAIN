@@ -1316,6 +1316,9 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     public void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
         int mx = mouseX, my = mouseY;
         computeLayout();
+        // Any click ends an Escape cascade: you are navigating again, so whatever was pinned on
+        // the way out is stale and the view at close time is the one worth keeping.
+        viewPinned = false;
         if (binding != null) {
             int value = mouseButton < 0 ? 0 : 1000 + mouseButton;
             if (binding instanceof Module) ((Module) binding).setBind(value);
@@ -1642,7 +1645,14 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
                 return;
             }
             // Taken before the unwind, so the place you were in survives being backed out of.
-            pinView();
+            //
+            // Only on the first Escape of the cascade. Closing with Escape takes two presses when
+            // a module is open -- one to back out of it, one to close -- and pinning on both meant
+            // the second press overwrote the module you were looking at with the empty view the
+            // first press had just left behind. Reopening then landed on nothing.
+            if (!viewPinned) {
+                pinView();
+            }
             if (selectedModule != null) {
                 selectModule(null);
                 return;

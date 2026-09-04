@@ -691,7 +691,6 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
 
     private final java.util.List<NameSegment> nameSegments = new java.util.ArrayList<NameSegment>();
     private int nameSegmentCount;
-    private final StringBuilder namePlain = new StringBuilder();
     private final StringBuilder nameRun = new StringBuilder();
 
     /**
@@ -709,7 +708,6 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
      */
     private void buildNameSegments(String formatted, int defaultColor, boolean forceColor) {
         nameSegmentCount = 0;
-        namePlain.setLength(0);
         nameRun.setLength(0);
         if (formatted == null) {
             return;
@@ -743,7 +741,6 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
                 continue;
             }
             nameRun.append(c);
-            namePlain.append(c);
         }
         pushNameRun(color);
     }
@@ -772,8 +769,19 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         }
 
         MindlessFontRenderer tagFont = espFont();
-        String plain = namePlain.toString();
-        double width = tagFont.getStringWidth(plain) * scale;
+
+        // Measured the way it is drawn: run by run.
+        //
+        // getStringWidth returns an int, so it rounds. The fill walks the runs and adds a rounded
+        // width per run, while the outline and the background were sized from one rounded measure
+        // of the whole string. On a name with several colour runs -- which is every ranked Hypixel
+        // name -- those two totals differ by a pixel per run, so the black outline sat beside the
+        // name instead of under it and the background sat off centre.
+        float runWidth = 0f;
+        for (int i = 0; i < nameSegmentCount; i++) {
+            runWidth += tagFont.getStringWidth(nameSegments.get(i).text);
+        }
+        double width = runWidth * scale;
 
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         if (tagBackground.isToggled()) {
@@ -791,7 +799,12 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         GlStateManager.scale(scale, scale, 1);
 
         if (textBorder.isToggled()) {
-            tagFont.drawString(plain, 0.75F, 0.75F, 0xA0000000, false);
+            float shadowX = 0.75f;
+            for (int i = 0; i < nameSegmentCount; i++) {
+                NameSegment segment = nameSegments.get(i);
+                tagFont.drawString(segment.text, shadowX, 0.75F, 0xA0000000, false);
+                shadowX += tagFont.getStringWidth(segment.text);
+            }
         }
 
         float penX = 0f;

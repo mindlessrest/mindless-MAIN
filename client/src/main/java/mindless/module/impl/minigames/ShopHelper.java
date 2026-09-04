@@ -33,7 +33,7 @@ public class ShopHelper extends Module {
     public static final int CLICK_ALLOW = 0;
     /** Swallow the click entirely. */
     public static final int CLICK_CANCEL = 1;
-    /** Send it as a quick-move instead, which buys without the pickup round trip. */
+    /** Send it as a clone click instead, which buys without the pickup animation. */
     public static final int CLICK_QUICK_MOVE = 2;
 
     /**
@@ -154,8 +154,6 @@ public class ShopHelper extends Module {
     }
 
     /** What to do with a click on a shop slot. */
-    private static final String QUICK_BUY_PAGE = "Quick Buy";
-
     public int decideClick(GuiContainer gui, Slot slot, int clickType, int clickedButton) {
         if (!Utils.nullCheck() || slot == null || !slot.getHasStack()) return CLICK_ALLOW;
         if (onlyInGame.isToggled() && !inGame()) return CLICK_ALLOW;
@@ -179,19 +177,18 @@ public class ShopHelper extends Module {
             return CLICK_CANCEL;
         }
 
-        // Quick-move buys in one packet; a plain pickup leaves the stack on the cursor.
+        // The buy is re-sent as a clone click (button 2, mode 3) rather than a quick move.
         //
-        // Left button only. clickType 0 covers both buttons, so right clicks were being turned
-        // into shift right clicks -- and on Quick Buy a shift click unbinds the slot rather than
-        // buying it, which is what was wiping the page.
+        // A quick move is a shift click. Hypixel reads that as a purchase on the category pages
+        // only: on Upgrades & Traps it is not a buy at all, which is why paying diamonds for an
+        // upgrade did nothing, and on Quick Buy it unbinds the slot instead of buying it. A clone
+        // click carries no shift, so the server sees a plain click on the item on every page --
+        // and because the stack never lands on the cursor, the pickup animation never plays.
         //
-        // Quick Buy is left alone entirely for the same reason: shift clicking there is a
-        // destructive edit, not a purchase.
         // Both toggles were OR'd, so switching either one off changed nothing -- the only way to
         // stop the conversion was to find and clear both. They gate the same behaviour, so either
         // one being off now turns it off, which is what the settings read as.
         if (clickedButton == 0 && clickType == 0
-                && !title.equals(QUICK_BUY_PAGE)
                 && replaceClicks.isToggled() && instantBuy.isToggled()) {
             return CLICK_QUICK_MOVE;
         }

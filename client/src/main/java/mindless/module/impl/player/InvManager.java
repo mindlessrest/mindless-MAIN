@@ -1357,7 +1357,7 @@ public class InvManager extends Module {
                 public boolean isValid(SnapshotContext current, InvManager module) {
                     return current.snapshot.carried == null
                         && ItemSearchIndex.matches(selectedAssignment.storageId, current.snapshot.getSlot(sourceInventoryIndex))
-                        && (sourceInventoryIndex >= HOTBAR_SIZE || !module.isCorrectHotbarSlot(current, sourceInventoryIndex));
+                        && !module.isReservedHotbarSource(current, sourceInventoryIndex, selectedAssignment);
                 }
             },
             NO_OP,
@@ -1371,7 +1371,7 @@ public class InvManager extends Module {
             assignment.priorityIndex,
             bestSource.resultingSize,
             true,
-            0,
+            isCorrectHotbarSlot(context, sourceInventoryIndex) ? 1 : 0,
             sourceInventoryIndex,
             steps
         );
@@ -2228,6 +2228,26 @@ public class InvManager extends Module {
         return stack != null && items.matches(stack);
     }
 
+    /**
+     * True when a stack sitting in some other row's hotbar slot is off limits to this row.
+     *
+     * A slot already holding what it was configured to hold is normally left alone, which is what
+     * stops the sorter shuffling finished work. The exception is two rows configured with the same
+     * item -- wool to slot 4 and wool to slot 6. The earlier row is the one you reach for first,
+     * so the bigger stack belongs there, and refusing to touch slot 6 at all is what left the 64
+     * parked behind the 32. A later row's slot may be taken by an earlier one; never the reverse,
+     * which is what keeps this from ping-ponging.
+     */
+    private boolean isReservedHotbarSource(SnapshotContext context, int inventoryIndex,
+                                           SlotAssignment assignment) {
+        if (inventoryIndex >= HOTBAR_SIZE || !isCorrectHotbarSlot(context, inventoryIndex)) {
+            return false;
+        }
+
+        SlotAssignment holder = context.assignments[inventoryIndex];
+        return holder == null || holder.priorityIndex <= assignment.priorityIndex;
+    }
+
     private boolean isAssignedTargetSatisfied(SnapshotContext context, SlotAssignment assignment, ItemStack targetStack) {
         if (!ItemSearchIndex.matches(assignment.storageId, targetStack)) {
             return false;
@@ -2255,7 +2275,7 @@ public class InvManager extends Module {
                 continue;
             }
 
-            if (inventoryIndex < HOTBAR_SIZE && isCorrectHotbarSlot(context, inventoryIndex)) {
+            if (isReservedHotbarSource(context, inventoryIndex, assignment)) {
                 continue;
             }
 
@@ -2587,14 +2607,18 @@ public class InvManager extends Module {
                 return comparison > 0;
             }
 
-            comparison = Integer.compare(sourcePreference, other.sourcePreference);
-            if (comparison != 0) {
-                return comparison < 0;
-            }
-
+            // Size before location. sourcePreference favours a main-inventory stack over one
+            // already in the hotbar, to keep the hotbar still -- but it was checked first, so a
+            // 32 sitting in the inventory beat a 64 sitting in a hotbar slot and the smaller
+            // stack won the configured slot. It is a tie break, not a rule.
             comparison = Integer.compare(resultingSize, other.resultingSize);
             if (comparison != 0) {
                 return comparison > 0;
+            }
+
+            comparison = Integer.compare(sourcePreference, other.sourcePreference);
+            if (comparison != 0) {
+                return comparison < 0;
             }
 
             return inventoryIndex < other.inventoryIndex;
