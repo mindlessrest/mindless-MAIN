@@ -139,10 +139,20 @@ public final class SharedBlockHighlightCache {
         }
     }
 
+    /**
+     * Drops a chunk the server has unloaded.
+     *
+     * Beds are deliberately kept. A bed does not stop existing because you walked out of render
+     * distance, and dropping them here is what made Bed ESP fade out as you crossed the map and
+     * come back as you returned. The entry heals itself: a rescan overwrites the chunk's bed set
+     * with whatever is actually there, and a block change clears one that was broken in view.
+     *
+     * The block list is still dropped, because it indexes arbitrary blocks and would grow without
+     * bound. Beds are a handful per map.
+     */
     public void removeChunk(int chunkX, int chunkZ) {
         long k = key(chunkX, chunkZ);
         blockListByChunk.remove(k);
-        bedFootByChunk.remove(k);
         scannedChunks.remove(k);
         for (UpdateListener listener : updateListeners) {
             listener.onChunkRemoved(chunkX, chunkZ);

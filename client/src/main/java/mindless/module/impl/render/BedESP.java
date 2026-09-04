@@ -106,6 +106,8 @@ public class BedESP extends Module {
     private final Map<Long, Set<Long>> watchedBedsByDefensePos = new ConcurrentHashMap<>();
     private final Map<Long, Set<Long>> watchedBedsByChunk = new ConcurrentHashMap<>();
     private final Set<Long> dirtyDefenseBeds = ConcurrentHashMap.newKeySet();
+    /** Bed foot to bed head, kept so a bed still resolves once its chunk has unloaded. */
+    private final Map<Long, BlockPos> rememberedHeads = new ConcurrentHashMap<>();
     private final SharedBlockHighlightCache.UpdateListener defenseUpdateListener = new SharedBlockHighlightCache.UpdateListener() {
         @Override
         public void onBlockChanged(BlockPos pos, IBlockState newState) {
@@ -422,6 +424,7 @@ public class BedESP extends Module {
         activeDefenseFeet.clear();
         inactiveDefenseBeds.clear();
         lastRenderedBedPairs.clear();
+        rememberedHeads.clear();
         lastDefenseToolMode = false;
         clearDefenseState();
     }
@@ -476,9 +479,20 @@ public class BedESP extends Module {
                 && st.getValue((IProperty) BlockBed.PART) == BlockBed.EnumPartType.FOOT;
     }
 
+    /**
+     * Whether the pair is still worth drawing.
+     *
+     * An unloaded chunk reads as air, so requiring live block data here hid every distant bed. When
+     * neither half is loaded the cached entry is trusted; the moment either half is back in view
+     * the real block decides, so a bed broken while you were away stops drawing as soon as you can
+     * see where it used to be.
+     */
     private boolean stillHasRenderableBed(BlockPos[] pair) {
         if (pair == null || pair.length < 2 || mc.theWorld == null) {
             return false;
+        }
+        if (!mc.theWorld.isBlockLoaded(pair[0]) && !mc.theWorld.isBlockLoaded(pair[1])) {
+            return true;
         }
         IBlockState a = mc.theWorld.getBlockState(pair[0]);
         IBlockState b = mc.theWorld.getBlockState(pair[1]);
@@ -510,13 +524,34 @@ public class BedESP extends Module {
         return new AxisAlignedBB(fx, fy, fz, fx + 1.0, h, fz + 2.0);
     }
 
+    /**
+     * Pairs a bed foot with its head.
+     *
+     * getBlockState answers air for a chunk the client no longer holds, so reading the facing live
+     * meant every bed outside render distance resolved to "not a bed" and stopped drawing. The
+     * facing is recorded the first time the bed is seen and reused while its chunk is away; once
+     * the chunk is back the live state wins again, and a bed that is genuinely gone is forgotten.
+     */
     private BlockPos[] footAndHead(BlockPos foot) {
+        long footKey = foot.toLong();
         IBlockState st = mc.theWorld.getBlockState(foot);
-        if (!(st.getBlock() instanceof BlockBed)) {
+        if (st != null && st.getBlock() instanceof BlockBed) {
+            EnumFacing facing = (EnumFacing) st.getValue((IProperty) BlockBed.FACING);
+            BlockPos head = foot.offset(facing);
+            rememberedHeads.put(footKey, head);
+            return new BlockPos[]{foot, head};
+        }
+
+        if (!mc.theWorld.isBlockLoaded(foot)) {
+            BlockPos head = rememberedHeads.get(footKey);
+            if (head != null) {
+                return new BlockPos[]{foot, head};
+            }
             return null;
         }
-        EnumFacing facing = (EnumFacing) st.getValue((IProperty) BlockBed.FACING);
-        return new BlockPos[]{foot, foot.offset(facing)};
+
+        rememberedHeads.remove(footKey);
+        return null;
     }
 
     private void renderBed(BlockPos[] blocks, float height) {
