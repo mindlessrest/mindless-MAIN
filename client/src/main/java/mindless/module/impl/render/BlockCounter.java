@@ -55,6 +55,9 @@ public class BlockCounter extends Module {
     private static final String[] ANCHOR_MODES = {"Screen", "Held item"};
     private static final int ANCHOR_SCREEN = 0;
     private static final int ANCHOR_HAND = 1;
+    /** Where the first person hand sits, as a fraction of the screen. */
+    private static final float FIRST_PERSON_HAND_X = 0.78f;
+    private static final float FIRST_PERSON_HAND_Y = 0.72f;
 
     private static final String[] BAR_MODES = {"Auto", "Fixed"};
     private static final int BAR_AUTO = 0;
@@ -645,18 +648,36 @@ public class BlockCounter extends Module {
     /**
      * Where the panel sits this frame.
      *
-     * Screen anchoring is the dragged position. Held item projects the point the item is drawn at
-     * and hangs the panel off it, so the readout travels with your hand.
+     * Screen anchoring is the dragged position.
      *
-     * In third person that point is the real hand: the player's position with a shoulder offset
-     * rotated by their body yaw. In first person the item is not in the world at all -- it is
-     * drawn straight into the hand matrix -- so the anchor is a fixed offset in view space from
-     * the eye, which lands where the item renders and tracks head movement, but does not follow
-     * the swing animation.
+     * Held item splits by camera, because the item is drawn two completely different ways.
+     *
+     * In first person it is never in the world: it is drawn into the hand matrix, so it holds the
+     * same place on screen however you turn. The anchor is therefore a screen position, not a
+     * projection. Projecting a world point down the view axis, as this used to, put the panel by
+     * the crosshair rather than the hand, and pushed it off the bottom of the screen the moment
+     * you looked down -- which is exactly when you are bridging and want to read it.
+     *
+     * In third person the item really is in the world, so there the hand is projected: the
+     * player's position with a shoulder offset rotated by their body yaw.
      */
     private float[] anchorPosition() {
         if ((int) anchorMode.getInput() != ANCHOR_HAND) {
             return new float[]{posX, posY};
+        }
+
+        float offsetX = (float) handOffsetX.getInput();
+        float offsetY = (float) handOffsetY.getInput();
+
+        boolean firstPerson = mc.gameSettings.thirdPersonView == 0
+                && mc.getRenderViewEntity() == mc.thePlayer;
+        if (firstPerson) {
+            ScaledResolution resolution = mindless.utility.ScaledResolutionCache.get();
+            float[] size = overlaySize(getDisplayBlock());
+            // Sits to the left of where the hand renders, so the panel never covers the item.
+            return new float[]{
+                    resolution.getScaledWidth() * FIRST_PERSON_HAND_X - size[0] + offsetX,
+                    resolution.getScaledHeight() * FIRST_PERSON_HAND_Y + offsetY};
         }
 
         double[] projected = new double[3];
@@ -666,34 +687,10 @@ public class BlockCounter extends Module {
         }
 
         net.minecraft.client.renderer.entity.RenderManager renderManager = mc.getRenderManager();
-        double px, py, pz;
-
-        boolean firstPerson = mc.gameSettings.thirdPersonView == 0
-                && mc.getRenderViewEntity() == mc.thePlayer;
-        if (firstPerson) {
-            float yaw = (float) Math.toRadians(mc.thePlayer.rotationYaw);
-            float pitch = (float) Math.toRadians(mc.thePlayer.rotationPitch);
-            double lookX = -Math.sin(yaw) * Math.cos(pitch);
-            double lookY = -Math.sin(pitch);
-            double lookZ = Math.cos(yaw) * Math.cos(pitch);
-            double rightX = Math.cos(yaw);
-            double rightZ = Math.sin(yaw);
-
-            double eyeX = mc.thePlayer.posX;
-            double eyeY = mc.thePlayer.posY + mc.thePlayer.getEyeHeight();
-            double eyeZ = mc.thePlayer.posZ;
-            px = eyeX + lookX * 0.75 + rightX * 0.42;
-            py = eyeY + lookY * 0.75 - 0.30;
-            pz = eyeZ + lookZ * 0.75 + rightZ * 0.42;
-        }
-        else {
-            float yaw = (float) Math.toRadians(mc.thePlayer.renderYawOffset);
-            double rightX = Math.cos(yaw);
-            double rightZ = Math.sin(yaw);
-            px = mc.thePlayer.posX + rightX * 0.45;
-            py = mc.thePlayer.posY + mc.thePlayer.getEyeHeight() * 0.72;
-            pz = mc.thePlayer.posZ + rightZ * 0.45;
-        }
+        float yaw = (float) Math.toRadians(mc.thePlayer.renderYawOffset);
+        double px = mc.thePlayer.posX + Math.cos(yaw) * 0.45;
+        double py = mc.thePlayer.posY + mc.thePlayer.getEyeHeight() * 0.72;
+        double pz = mc.thePlayer.posZ + Math.sin(yaw) * 0.45;
 
         if (!RenderUtils.projectTo2D(context,
                 px - renderManager.viewerPosX,
@@ -704,8 +701,8 @@ public class BlockCounter extends Module {
         }
 
         return new float[]{
-                (float) projected[0] + (float) handOffsetX.getInput(),
-                (float) projected[1] + (float) handOffsetY.getInput()};
+                (float) projected[0] + offsetX,
+                (float) projected[1] + offsetY};
     }
 
     /** Bounds for the HUD editor, or null while the overlay has nothing to show. */

@@ -47,9 +47,12 @@ public class DynamicIsland extends Module {
     private static final float ICON_SIZE = 7.0f;
     private static final float EDGE_MARGIN = 4.0f;
     private static final float WIDTH_EASE = 12.0f;
-    private static final float FPS_EASE = 6.0f;
 
-    private static final int MAX_SEGMENTS = 6;
+    private static final int MAX_SEGMENTS = 12;
+    private static final float CHIP_PAD_X = 5.0f;
+    private static final float CHIP_DOT = 3.5f;
+    private static final float CHIP_DOT_GAP = 3.5f;
+    private static final float CHIP_GAP = 4.0f;
 
     private final SliderSetting mode;
     private final SliderSetting font;
@@ -62,6 +65,9 @@ public class DynamicIsland extends Module {
     private final ButtonSetting showServer;
     private final ButtonSetting showSession;
     private final ButtonSetting showClock;
+    private final ButtonSetting showStatus;
+    private final SliderSetting statusLimit;
+    private final ButtonSetting statusValues;
 
     private final GroupSetting styleGroup;
     private final ButtonSetting blurBackdrop;
@@ -77,7 +83,6 @@ public class DynamicIsland extends Module {
     private int segmentCount;
 
     private float animatedWidth = -1.0f;
-    private float smoothedFps = -1.0f;
     private long lastFrameNanos;
     private long sessionStart = System.currentTimeMillis();
 
@@ -100,6 +105,9 @@ public class DynamicIsland extends Module {
         this.registerSetting(showServer = new ButtonSetting(contentGroup, "Server", false));
         this.registerSetting(showSession = new ButtonSetting(contentGroup, "Session time", false));
         this.registerSetting(showClock = new ButtonSetting(contentGroup, "Clock", false));
+        this.registerSetting(showStatus = new ButtonSetting(contentGroup, "Active modules", true));
+        this.registerSetting(statusLimit = new SliderSetting(contentGroup, "Active shown", 3.0, 1.0, 6.0, 1.0));
+        this.registerSetting(statusValues = new ButtonSetting(contentGroup, "Active values", true));
 
         this.registerSetting(styleGroup = new GroupSetting("Style"));
         this.registerSetting(blurBackdrop = new ButtonSetting(styleGroup, "Blur backdrop", true));
@@ -123,7 +131,6 @@ public class DynamicIsland extends Module {
     public void onEnable() {
         sessionStart = System.currentTimeMillis();
         animatedWidth = -1.0f;
-        smoothedFps = -1.0f;
         lastFrameNanos = 0L;
     }
 
@@ -224,25 +231,49 @@ public class DynamicIsland extends Module {
 
         for (int i = 0; i < segmentCount; i++) {
             Segment segment = segments[i];
+            boolean chip = segment.icon == Segment.ICON_CHIP;
+            float labelWidth = text.getStringWidth(segment.label) * uiScale;
 
-            if (i > 0 && dividers.isToggled()) {
-                float dividerX = cursor - SEGMENT_GAP * uiScale * 0.5f;
-                float inset = height * 0.28f;
-                RoundedUtils.drawRound(dividerX, y + inset, Math.max(1.0f, uiScale),
-                        height - inset * 2.0f, 0.5f, withAlpha(0xFFFFFF, Math.min(38, alpha / 5)));
+            if (chip) {
+                // Chips carry their own pill, so a divider beside one would read as a second edge.
+                float chipHeight = height - PAD_Y * uiScale;
+                float chipWidth = segmentWidth(text, segment) * uiScale;
+                float chipY = y + (height - chipHeight) * 0.5f;
+                RoundedUtils.drawRound(cursor, chipY, chipWidth, chipHeight, chipHeight * 0.5f,
+                        withAlpha(0xFFFFFF, Math.min(24, alpha / 8)));
+
+                float dot = CHIP_DOT * uiScale;
+                RoundedUtils.drawRound(cursor + CHIP_PAD_X * uiScale, y + (height - dot) * 0.5f,
+                        dot, dot, dot * 0.5f, withAlpha(segment.accent, alpha));
+
+                float labelX = cursor + (CHIP_PAD_X + CHIP_DOT + CHIP_DOT_GAP) * uiScale;
+                drawScaled(text, segment.label, labelX, textY, uiScale, textColor);
+                cursor += chipWidth;
+            }
+            else {
+                if (i > 0 && dividers.isToggled() && segments[i - 1].icon != Segment.ICON_CHIP) {
+                    float dividerX = cursor - SEGMENT_GAP * uiScale * 0.5f;
+                    float inset = height * 0.28f;
+                    RoundedUtils.drawRound(dividerX, y + inset, Math.max(1.0f, uiScale),
+                            height - inset * 2.0f, 0.5f, withAlpha(0xFFFFFF, Math.min(38, alpha / 5)));
+                }
+
+                int iconColor = accentIcons.isToggled()
+                        ? withAlpha(ThemeManager.getWatermarkColor(i * 1.5) & 0xFFFFFF, alpha)
+                        : mutedColor;
+
+                float iconY = y + (height - iconSize) * 0.5f;
+                drawIcon(segment.icon, cursor, iconY, iconSize, iconColor);
+                cursor += iconSize + ICON_GAP * uiScale;
+
+                int colour = segment.emphasised ? textColor : mutedColor;
+                drawScaled(text, segment.label, cursor, textY, uiScale, colour);
+                cursor += labelWidth;
             }
 
-            int iconColor = accentIcons.isToggled()
-                    ? withAlpha(ThemeManager.getWatermarkColor(i * 1.5) & 0xFFFFFF, alpha)
-                    : mutedColor;
-
-            float iconY = y + (height - iconSize) * 0.5f;
-            drawIcon(segment.icon, cursor, iconY, iconSize, iconColor);
-            cursor += iconSize + ICON_GAP * uiScale;
-
-            int colour = segment.emphasised ? textColor : mutedColor;
-            drawScaled(text, segment.label, cursor, textY, uiScale, colour);
-            cursor += text.getStringWidth(segment.label) * uiScale + SEGMENT_GAP * uiScale;
+            if (i < segmentCount - 1) {
+                cursor += (segments[i + 1].icon == Segment.ICON_CHIP ? CHIP_GAP : SEGMENT_GAP) * uiScale;
+            }
         }
 
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -329,7 +360,7 @@ public class DynamicIsland extends Module {
             add(Segment.ICON_ACCOUNT, MindlessAccount.displayName(), true);
         }
         if (showFps.isToggled()) {
-            add(Segment.ICON_FPS, Math.round(smoothedFps()) + " fps", false);
+            add(Segment.ICON_FPS, currentFps() + " fps", false);
         }
         if (showPing.isToggled()) {
             add(Segment.ICON_PING, pingText(), false);
@@ -343,9 +374,59 @@ public class DynamicIsland extends Module {
         if (showClock.isToggled()) {
             add(Segment.ICON_CLOCK, clockText(), false);
         }
+        if (showStatus.isToggled()) {
+            addStatusChips();
+        }
+    }
+
+    /**
+     * The modules currently doing something, as chips on the end of the pill.
+     *
+     * Render and client modules are left out on purpose: they are permanently on and would push
+     * everything that actually changes off the end. What is left is the combat, movement, player
+     * and world set -- the things worth knowing are running right now.
+     */
+    private void addStatusChips() {
+        int limit = Math.min((int) statusLimit.getInput(), MAX_SEGMENTS - segmentCount);
+        if (limit <= 0) return;
+
+        int shown = 0;
+        java.util.List<mindless.module.Module> active = mindless.module.ModuleManager.organizedModules;
+        synchronized (active) {
+            for (int i = 0; i < active.size() && shown < limit; i++) {
+                mindless.module.Module module = active.get(i);
+                if (module == null || !module.isEnabled()) continue;
+
+                mindless.module.Module.category group = module.moduleCategory();
+                if (group == mindless.module.Module.category.render
+                        || group == mindless.module.Module.category.client) {
+                    continue;
+                }
+
+                String label = module.getNameInHud();
+                if (label == null || label.isEmpty()) continue;
+                if (statusValues.isToggled()) {
+                    String info = module.getInfo();
+                    if (info != null && !info.isEmpty()) {
+                        label = label + "  " + info;
+                    }
+                }
+
+                addChip(label, ThemeManager.getWatermarkColor(shown * 2.0) & 0xFFFFFF);
+                shown++;
+            }
+        }
     }
 
     private void add(int icon, String label, boolean emphasised) {
+        addSegment(icon, label, emphasised, 0);
+    }
+
+    private void addChip(String label, int accent) {
+        addSegment(Segment.ICON_CHIP, label, true, accent);
+    }
+
+    private void addSegment(int icon, String label, boolean emphasised, int accent) {
         if (segmentCount >= MAX_SEGMENTS || label == null || label.isEmpty()) return;
         Segment segment = segments[segmentCount];
         if (segment == null) {
@@ -355,29 +436,40 @@ public class DynamicIsland extends Module {
         segment.icon = icon;
         segment.label = label;
         segment.emphasised = emphasised;
+        segment.accent = accent;
         segmentCount++;
+    }
+
+    /** Width of one segment's contents, excluding the gap that follows it. */
+    private float segmentWidth(MindlessFontRenderer text, Segment segment) {
+        if (segment.icon == Segment.ICON_CHIP) {
+            return CHIP_PAD_X * 2.0f + CHIP_DOT + CHIP_DOT_GAP + text.getStringWidth(segment.label);
+        }
+        return ICON_SIZE + ICON_GAP + text.getStringWidth(segment.label);
     }
 
     private float measureWidth(MindlessFontRenderer text) {
         float width = PAD_X * 2.0f;
         for (int i = 0; i < segmentCount; i++) {
-            width += ICON_SIZE + ICON_GAP + text.getStringWidth(segments[i].label);
+            width += segmentWidth(text, segments[i]);
             if (i < segmentCount - 1) {
-                width += SEGMENT_GAP;
+                width += segments[i + 1].icon == Segment.ICON_CHIP ? CHIP_GAP : SEGMENT_GAP;
             }
         }
         return width;
     }
 
-    private float smoothedFps() {
-        float current = Math.max(0, Minecraft.getDebugFPS());
-        if (smoothedFps < 0.0f) {
-            smoothedFps = current;
-            return smoothedFps;
-        }
-        // Minecraft's counter already updates once a second; this only takes the edge off the step.
-        smoothedFps = approach(smoothedFps, current, FPS_EASE, frameDeltaPeek());
-        return smoothedFps;
+    /**
+     * The real framerate, unsmoothed.
+     *
+     * This used to ease toward the counter. Minecraft only republishes it once a second, so easing
+     * toward a value that holds still for a second meant the island spent most of every second
+     * displaying a number the machine was not running at, and disagreeing with every other FPS
+     * readout on screen. There is nothing here to smooth: the source is already a one second
+     * average.
+     */
+    private int currentFps() {
+        return Math.max(0, Minecraft.getDebugFPS());
     }
 
     private String pingText() {
@@ -521,11 +613,6 @@ public class DynamicIsland extends Module {
         return Math.max(0.0f, Math.min(0.1f, delta));
     }
 
-    private float frameDeltaPeek() {
-        long now = System.nanoTime();
-        if (lastFrameNanos == 0L) return 1.0f / 60.0f;
-        return Math.max(0.0f, Math.min(0.1f, (now - lastFrameNanos) / 1_000_000_000.0f));
-    }
 
     private static float approach(float current, float target, float rate, float delta) {
         float factor = 1.0f - (float) Math.exp(-delta * rate);
@@ -548,8 +635,12 @@ public class DynamicIsland extends Module {
         private static final int ICON_SERVER = 3;
         private static final int ICON_CLOCK = 4;
 
+        /** A chip carries its own pill and accent dot instead of an icon and a divider. */
+        private static final int ICON_CHIP = 5;
+
         private int icon;
         private String label;
         private boolean emphasised;
+        private int accent;
     }
 }

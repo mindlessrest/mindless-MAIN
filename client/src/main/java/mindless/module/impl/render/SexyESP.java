@@ -568,10 +568,15 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
     /**
      * Paints the filled part of the bar.
      *
-     * The gradient modes used to resolve to a single colour for the whole bar, so a "gradient"
-     * was really just a flat blend picked by health. It now runs along the bar itself, and the
-     * axis chooses whether that is up its length or across its width -- the bar is vertical, so
-     * along its length is the one that actually reads.
+     * The gradient is anchored to the whole bar, not to the filled part of it. Laying the bands
+     * out across the fill meant the gradient rescaled every time the health changed: the colours
+     * slid around the bar instead of staying put, so the whole bar appeared to change at once
+     * rather than to drain. The bands are now positioned along the full track and simply clipped
+     * to whatever the fill currently reaches, which is what makes the bar read as a fixed gradient
+     * being uncovered.
+     *
+     * Vertical runs down the bar's length, which on a bar this thin is the only axis with enough
+     * room to show a blend at all.
      */
     private void drawHealthFill(double left, double top, double right, double bottom,
                                 double healthRatio, Bounds b) {
@@ -582,30 +587,48 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         }
 
         boolean vertical = (int) barGradientAxis.getInput() == 0;
-        int steps = vertical ? 12 : 6;
-        double span = vertical ? bottom - top : right - left;
-        if (span <= 0.01) {
+        if (bottom - top <= 0.01 || right - left <= 0.01) {
             return;
         }
 
+        if (!vertical) {
+            double span = right - left;
+            int steps = 6;
+            for (int i = 0; i < steps; i++) {
+                double t0 = i / (double) steps;
+                double t1 = (i + 1) / (double) steps;
+                int color = gradientSample(mode, (t0 + t1) * 0.5, b, false);
+                drawFlatRect(left + span * t0, top, left + span * t1, bottom, color);
+            }
+            return;
+        }
+
+        double trackTop = b.axisTop;
+        double trackSpan = Math.max(0.5, b.axisHeight());
+        int steps = 16;
         for (int i = 0; i < steps; i++) {
             double t0 = i / (double) steps;
             double t1 = (i + 1) / (double) steps;
+            double bandTop = trackTop + trackSpan * t0;
+            double bandBottom = trackTop + trackSpan * t1;
+
+            // Only the part of this band the health actually reaches.
+            double clippedTop = Math.max(bandTop, top);
+            double clippedBottom = Math.min(bandBottom, bottom);
+            if (clippedBottom - clippedTop <= 0.001) {
+                continue;
+            }
+
             // Sampled at the middle of each band so the two ends keep their true colours.
-            int color = gradientSample(mode, (t0 + t1) * 0.5, b, vertical);
-            if (vertical) {
-                drawFlatRect(left, top + span * t0, right, top + span * t1, color);
-            }
-            else {
-                drawFlatRect(left + span * t0, top, left + span * t1, bottom, color);
-            }
+            drawFlatRect(left, clippedTop, right, clippedBottom,
+                    gradientSample(mode, (t0 + t1) * 0.5, b, true));
         }
     }
 
     private int gradientSample(int mode, double t, Bounds b, boolean vertical) {
         if (mode == BAR_CUSTOM) {
-            // Low colour at the start of the run, high colour at the end.
-            return 0xFF000000 | lerpRgb(barColorLow.getRGB(), barColorHigh.getRGB(), (float) t);
+            // Full health sits at the bottom of the bar, so the high colour belongs at the bottom.
+            return 0xFF000000 | lerpRgb(barColorHigh.getRGB(), barColorLow.getRGB(), (float) t);
         }
         double along = vertical
                 ? b.axisTop + b.axisHeight() * t

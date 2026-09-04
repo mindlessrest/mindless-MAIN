@@ -25,9 +25,13 @@ inline std::wstring get_session_file_path()
     wchar_t appdata[MAX_PATH] = {};
     if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, appdata)))
     {
-        std::wstring dir = std::wstring(appdata) + L"\Mindless";
+        // Both separators must be escaped. "\M" and "\s" are not escape sequences, so the
+        // compiler dropped the backslashes and this resolved to "...\RoamingMindlesssession.txt":
+        // the file was never written where the client looks, which is why the island fell back to
+        // showing the Minecraft name.
+        std::wstring dir = std::wstring(appdata) + L"\\Mindless";
         CreateDirectoryW(dir.c_str(), nullptr);
-        return dir + L"\session.txt";
+        return dir + L"\\session.txt";
     }
     return L"session.txt";
 }
