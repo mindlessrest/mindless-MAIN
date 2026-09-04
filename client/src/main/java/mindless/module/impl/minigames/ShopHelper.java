@@ -187,9 +187,12 @@ public class ShopHelper extends Module {
         //
         // Quick Buy is left alone entirely for the same reason: shift clicking there is a
         // destructive edit, not a purchase.
+        // Both toggles were OR'd, so switching either one off changed nothing -- the only way to
+        // stop the conversion was to find and clear both. They gate the same behaviour, so either
+        // one being off now turns it off, which is what the settings read as.
         if (clickedButton == 0 && clickType == 0
                 && !title.equals(QUICK_BUY_PAGE)
-                && (replaceClicks.isToggled() || instantBuy.isToggled())) {
+                && replaceClicks.isToggled() && instantBuy.isToggled()) {
             return CLICK_QUICK_MOVE;
         }
         return CLICK_ALLOW;
