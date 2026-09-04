@@ -7,6 +7,7 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.utility.PointerShapes;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
@@ -19,7 +20,6 @@ import net.minecraft.util.MathHelper;
 import net.minecraft.util.Vec3;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
 
@@ -34,12 +34,8 @@ import java.util.ArrayList;
 public class Arrows extends Module {
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
 
-    private static final String[] SHAPES = {"Caret", "Chevron", "Triangle", "Needle", "Diamond"};
-    private static final int SHAPE_CARET = 0;
-    private static final int SHAPE_CHEVRON = 1;
-    private static final int SHAPE_TRIANGLE = 2;
-    private static final int SHAPE_NEEDLE = 3;
-    private static final int SHAPE_DIAMOND = 4;
+    private static final String[] STYLES = {"2D", "3D"};
+    private static final int STYLE_3D = 1;
 
     private static final String[] LAYOUTS = {"Ring", "Screen edge"};
     private static final int LAYOUT_RING = 0;
@@ -51,6 +47,7 @@ public class Arrows extends Module {
     private static final int COLOR_MANUAL = 3;
 
     private final SliderSetting shape;
+    private final SliderSetting style;
     private final SliderSetting shapeScale;
     private final SliderSetting thickness;
     private final ButtonSetting filled;
@@ -94,7 +91,8 @@ public class Arrows extends Module {
 
         GroupSetting pointer = new GroupSetting("Pointer");
         registerSetting(pointer);
-        registerSetting(shape = new SliderSetting(pointer, "Shape", SHAPE_CARET, SHAPES));
+        registerSetting(shape = new SliderSetting(pointer, "Shape", PointerShapes.CARET, PointerShapes.NAMES));
+        registerSetting(style = new SliderSetting(pointer, "Style", 0, STYLES));
         registerSetting(shapeScale = new SliderSetting(pointer, "Scale", "x", 1.0, 0.4, 3.0, 0.05));
         registerSetting(thickness = new SliderSetting(pointer, "Thickness", 3.0, 1.0, 8.0, 0.5));
         registerSetting(filled = new ButtonSetting(pointer, "Filled", true));
@@ -160,12 +158,11 @@ public class Arrows extends Module {
         deadZone.setVisible(ring, this);
         edgeInset.setVisible(!ring, this);
 
-        filled.setVisible(form == SHAPE_TRIANGLE || form == SHAPE_DIAMOND, this);
-        thickness.setVisible(form == SHAPE_CARET || form == SHAPE_NEEDLE
-                || ((form == SHAPE_TRIANGLE || form == SHAPE_DIAMOND) && !filled.isToggled()), this);
+        filled.setVisible(PointerShapes.canFill(form), this);
+        thickness.setVisible(PointerShapes.usesThickness(form, filled.isToggled()), this);
 
         boolean label = renderDistance.isToggled() || renderName.isToggled();
-        font.setVisible(label || form == SHAPE_CHEVRON, this);
+        font.setVisible(label || form == PointerShapes.CHEVRON, this);
         labelScale.setVisible(label, this);
         labelOffset.setVisible(label, this);
     }
@@ -257,6 +254,16 @@ public class Arrows extends Module {
         float yawDelta = MathHelper.wrapAngleTo180_float(wantedYaw - mc.thePlayer.rotationYaw);
         float pitchDelta = wantedPitch - mc.thePlayer.rotationPitch;
         return Math.sqrt(yawDelta * yawDelta + pitchDelta * pitchDelta);
+    }
+
+    /** Degrees the target sits above (negative) or below (positive) your view line. */
+    private double pitchDeltaTo(EntityPlayer en) {
+        double dy = (en.posY + en.getEyeHeight()) - (mc.thePlayer.posY + mc.thePlayer.getEyeHeight());
+        double dx = en.posX - mc.thePlayer.posX;
+        double dz = en.posZ - mc.thePlayer.posZ;
+        double horizontal = Math.sqrt(dx * dx + dz * dz);
+        double wantedPitch = -Math.toDegrees(Math.atan2(dy, Math.max(0.001, horizontal)));
+        return wantedPitch - mc.thePlayer.rotationPitch;
     }
 
     private int colorFor(EntityPlayer en, double distance) {
@@ -386,7 +393,16 @@ public class Arrows extends Module {
         GlStateManager.rotate((float) angle2, 0.0f, 0.0f, 1.0f);
         float form = (float) shapeScale.getInput();
         GlStateManager.scale(form, form, 1.0f);
-        drawShape((int) shape.getInput(), rgba);
+        if ((int) style.getInput() == STYLE_3D) {
+            // 3D reads the vertical angle to the target and foreshortens the pointer along its
+            // length, so one lying far above or below you flattens the way it would if it were
+            // pinned to the ground rather than to the screen. 2D leaves it square on.
+            float squash = (float) Math.max(0.30, Math.cos(Math.toRadians(
+                    Math.max(-80.0, Math.min(80.0, pitchDeltaTo(en))))));
+            GlStateManager.scale(1.0f, squash, 1.0f);
+        }
+        PointerShapes.draw((int) shape.getInput(), rgba, (float) thickness.getInput(),
+                filled.isToggled(), getArrowFontRenderer());
         GlStateManager.popMatrix();
 
         if (!renderDistance.isToggled() && !renderName.isToggled()) {
@@ -414,92 +430,6 @@ public class Arrows extends Module {
         }
 
         GlStateManager.popMatrix();
-    }
-
-    private void drawShape(int form, int rgba) {
-        float red = ((rgba >> 16) & 0xFF) / 255.0F;
-        float green = ((rgba >> 8) & 0xFF) / 255.0F;
-        float blue = (rgba & 0xFF) / 255.0F;
-        float alpha = ((rgba >>> 24) & 0xFF) / 255.0F;
-
-        if (form == SHAPE_CHEVRON) {
-            GlStateManager.rotate(-90.0f, 0.0f, 0.0f, 1.0f);
-            GlStateManager.scale(1.5, 1.5, 1.5);
-            getArrowFontRenderer().drawString(">", -2.0f, -4.0f, rgba, false);
-            return;
-        }
-        if (form == SHAPE_TRIANGLE && filled.isToggled()) {
-            RenderUtils.draw2DPolygon(0.0, 0.0, 5.0, 3, rgba);
-            return;
-        }
-
-        GlStateManager.color(red, green, blue, alpha);
-        GlStateManager.enableBlend();
-        GlStateManager.disableTexture2D();
-        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glEnable(GL11.GL_LINE_SMOOTH);
-        GL11.glLineWidth((float) thickness.getInput());
-
-        switch (form) {
-            case SHAPE_NEEDLE: {
-                // A long thin spike: reads clearly at small scales where a caret turns to mush.
-                GL11.glBegin(GL11.GL_LINE_STRIP);
-                GL11.glVertex2d(-4.0, 2.0);
-                GL11.glVertex2d(0.0, -9.0);
-                GL11.glVertex2d(4.0, 2.0);
-                GL11.glVertex2d(0.0, -1.0);
-                GL11.glVertex2d(-4.0, 2.0);
-                GL11.glEnd();
-                break;
-            }
-            case SHAPE_DIAMOND: {
-                if (filled.isToggled()) {
-                    GL11.glBegin(GL11.GL_TRIANGLE_FAN);
-                    GL11.glVertex2d(0.0, -2.0);
-                    GL11.glVertex2d(0.0, -8.0);
-                    GL11.glVertex2d(5.0, -2.0);
-                    GL11.glVertex2d(0.0, 4.0);
-                    GL11.glVertex2d(-5.0, -2.0);
-                    GL11.glVertex2d(0.0, -8.0);
-                    GL11.glEnd();
-                }
-                else {
-                    GL11.glBegin(GL11.GL_LINE_LOOP);
-                    GL11.glVertex2d(0.0, -8.0);
-                    GL11.glVertex2d(5.0, -2.0);
-                    GL11.glVertex2d(0.0, 4.0);
-                    GL11.glVertex2d(-5.0, -2.0);
-                    GL11.glEnd();
-                }
-                break;
-            }
-            case SHAPE_TRIANGLE: {
-                GL11.glBegin(GL11.GL_LINE_LOOP);
-                GL11.glVertex2d(0.0, -7.0);
-                GL11.glVertex2d(5.0, 3.0);
-                GL11.glVertex2d(-5.0, 3.0);
-                GL11.glEnd();
-                break;
-            }
-            case SHAPE_CARET:
-            default: {
-                double halfAngle = 0.6108652353286743;
-                double size = 9.0;
-                double offsetY = 5.0;
-                GL11.glBegin(GL11.GL_LINE_STRIP);
-                GL11.glVertex2d(Math.sin(-halfAngle) * size, Math.cos(-halfAngle) * size - offsetY);
-                GL11.glVertex2d(0.0, -offsetY);
-                GL11.glVertex2d(Math.sin(halfAngle) * size, Math.cos(halfAngle) * size - offsetY);
-                GL11.glEnd();
-                break;
-            }
-        }
-
-        GL11.glLineWidth(1.0f);
-        GlStateManager.enableTexture2D();
-        GlStateManager.disableBlend();
-        GL11.glDisable(GL11.GL_LINE_SMOOTH);
-        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private String getSelectedFontName() {

@@ -8,6 +8,7 @@ import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.BlockUtils;
 import mindless.utility.FireballSimulator;
+import mindless.utility.PointerShapes;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
@@ -167,7 +168,7 @@ public class Indicators extends Module {
     private final Map<EntityLargeFireball, FireballSimulator.Result> fireballPredictions = new HashMap<>();
     private final Set<EntityLargeFireball> seenFireballs = new HashSet<>();
 
-    private String[] arrowTypes = new String[] { "Caret", "Greater than", "Triangle" };
+    private String[] arrowTypes = PointerShapes.NAMES;
 
     public Indicators() {
         super("Indicators", "Marks incoming projectiles near your crosshair.", category.render);
@@ -429,43 +430,9 @@ public class Indicators extends Module {
             GlStateManager.rotate((float) angle2, 0.0f, 0.0f, 1.0f);
             GlStateManager.scale(1.0f, 1.0f, 1.0f);
 
-            int arrowInput = (int) arrow.getInput();
-
-            if (arrowInput == 0) {
-                if (color == -1) {
-                    GL11.glColor3d(1.0, 1.0, 1.0);
-                }
-                else {
-                    GL11.glColor3d(colorForStack.getRed(), colorForStack.getGreen(), colorForStack.getBlue());
-                }
-
-                GlStateManager.enableBlend();
-                GlStateManager.disableTexture2D();
-                GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-                GL11.glEnable(GL11.GL_LINE_SMOOTH);
-
-                double halfAngle = 0.6108652353286743;
-                double size = 9.0;
-                double offsetY = 5.0;
-                GL11.glLineWidth(3.0f);
-                GL11.glBegin(GL11.GL_LINE_STRIP);
-                GL11.glVertex2d(Math.sin(-halfAngle) * size, Math.cos(-halfAngle) * size - offsetY);
-                GL11.glVertex2d(0.0, -offsetY);
-                GL11.glVertex2d(Math.sin(halfAngle) * size, Math.cos(halfAngle) * size - offsetY);
-                GL11.glEnd();
-                GlStateManager.enableTexture2D();
-                GlStateManager.disableBlend();
-                GL11.glDisable(GL11.GL_LINE_SMOOTH);
-            }
-            else if (arrowInput == 1) {
-                GlStateManager.rotate(-90.0f, 0.0f, 0.0f, 1.0f);
-                GlStateManager.scale(1.5, 1.5, 1.5);
-                MindlessFontRenderer fr = getIndicatorFontRenderer();
-                fr.drawString(">", -2.0f, -4.0f, color, false);
-            }
-            else if (arrowInput == 2) {
-                RenderUtils.draw2DPolygon(0.0, 0.0, 5.0, 3, Utils.mergeAlpha(color, 255));
-            }
+            // Same shapes as Arrows, from the same place. The two used to keep separate
+            // three-entry lists, so a projectile pointer and a player pointer never matched.
+            PointerShapes.draw((int) arrow.getInput(), color, 3.0F, true, getIndicatorFontRenderer());
 
             GlStateManager.popMatrix();
 
