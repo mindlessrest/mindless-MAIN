@@ -22,6 +22,7 @@ import mindless.accountmanager.auth.Account;
 import mindless.accountmanager.auth.AccountType;
 import mindless.accountmanager.auth.CookieAuth;
 import mindless.accountmanager.gui.GuiCookieAuth;
+import mindless.accountmanager.utils.AccountVault;
 import mindless.accountmanager.utils.SSLUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
@@ -50,8 +51,13 @@ public class AccountManager {
 
     public static void load() {
         accounts.clear();
+        boolean wasPlaintext = AccountVault.isPlaintext(file);
         try {
-            JsonElement json = new JsonParser().parse((Reader)new BufferedReader(new FileReader(file)));
+            String contents = AccountVault.read(file);
+            if (contents.trim().isEmpty()) {
+                return;
+            }
+            JsonElement json = new JsonParser().parse(contents);
             if (json instanceof JsonArray) {
                 JsonArray jsonArray = json.getAsJsonArray();
                 for (JsonElement jsonElement : jsonArray) {
@@ -60,11 +66,21 @@ public class AccountManager {
                 }
             }
         }
-        catch (FileNotFoundException e) {
-            System.err.print("Couldn't find accounts.json!");
+        catch (IOException e) {
+            System.err.println("Couldn't read accounts.json: " + e.getMessage());
+            return;
         }
         catch (JsonSyntaxException e) {
             System.err.println("Error parsing accounts.json: " + e.getMessage());
+            return;
+        }
+
+        // An existing plaintext file is sealed the moment it is understood, rather than waiting
+        // for the next account to be added. Tokens should not sit readable for a session longer
+        // than they have to.
+        if (wasPlaintext && !accounts.isEmpty() && AccountVault.isAvailable()) {
+            save();
+            System.out.println("Encrypted accounts.json for this Windows profile.");
         }
     }
 
@@ -74,13 +90,16 @@ public class AccountManager {
             for (Account account : accounts) {
                 jsonArray.add((JsonElement)account.toJson());
             }
-            PrintWriter printWriter = new PrintWriter(new FileWriter(file));
-            printWriter.println(gson.toJson((JsonElement)jsonArray));
-            printWriter.close();
+            AccountVault.write(file, gson.toJson((JsonElement)jsonArray));
         }
         catch (IOException e) {
             System.err.print("Couldn't save accounts.json!");
         }
+    }
+
+    /** Null when the account file is protected, or the reason it is not. */
+    public static String storageWarning() {
+        return AccountVault.isAvailable() ? null : AccountVault.unavailableReason();
     }
 
     public static void addCrackedAccount(String username) {
