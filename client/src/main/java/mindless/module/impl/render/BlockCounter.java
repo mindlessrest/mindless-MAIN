@@ -55,9 +55,30 @@ public class BlockCounter extends Module {
     private static final String[] ANCHOR_MODES = {"Screen", "Held item"};
     private static final int ANCHOR_SCREEN = 0;
     private static final int ANCHOR_HAND = 1;
-    /** Where the first person hand sits, as a fraction of the screen. */
-    private static final float FIRST_PERSON_HAND_X = 0.78f;
-    private static final float FIRST_PERSON_HAND_Y = 0.72f;
+    /**
+     * Where the held item sits in front of the camera, in blocks: right of centre, below it, and
+     * out in front. Vanilla's own first person item transform, near enough to project against.
+     */
+    private static final float HAND_RIGHT = 0.42f;
+    private static final float HAND_UP = -0.34f;
+    private static final float HAND_FORWARD = 0.62f;
+    /** How far the hand drops while an item is being brought up. */
+    private static final float HAND_EQUIP_DROP = 0.50f;
+    /** Gap between the panel's right edge and the hand it hangs off. */
+    private static final float HAND_GAP = 6.0f;
+    /** Shoulder offset used when the item is really in the world rather than in a hand matrix. */
+    private static final float SHOULDER_OUT = 0.38f;
+    private static final float SHOULDER_UP = 1.18f;
+
+    /**
+     * How long the panel takes to cover most of the distance to the hand.
+     *
+     * Short enough that it reads as fixed to the item rather than trailing it, long enough that a
+     * frame of projection noise never shows. Anything past a quarter of the screen is a camera
+     * cut, not a movement, and snaps instead.
+     */
+    private static final float ANCHOR_SMOOTH_TIME = 0.045f;
+    private static final float ANCHOR_SNAP_FRACTION = 0.25f;
 
     private static final String[] BAR_MODES = {"Auto", "Fixed"};
     private static final int BAR_AUTO = 0;
@@ -105,6 +126,10 @@ public class BlockCounter extends Module {
     private long lastOverlayNanos;
 
     private RenderUtils.ProjectionContext projectionContext;
+
+    private float anchorX = Float.NaN;
+    private float anchorY = Float.NaN;
+    private long anchorNanos;
     private long lastPlacement;
     private long scriptHoldUntil;
     private int peakBlocks;
@@ -327,7 +352,7 @@ public class BlockCounter extends Module {
         }
 
         syncPosition();
-        float[] anchor = anchorPosition();
+        float[] anchor = anchorPosition(ev.renderTickTime);
         drawOverlay(getDisplayBlock(), blocks, getBlocksPerSecond(), anchor[0], anchor[1], overlayScale);
     }
 
@@ -675,59 +700,158 @@ public class BlockCounter extends Module {
      *
      * Screen anchoring is the dragged position.
      *
-     * Held item splits by camera, because the item is drawn two completely different ways.
+     * Held item follows the item itself. Both camera modes project a point through the same
+     * captured world matrices, so the panel is placed by the same maths that placed the item and
+     * lands beside it rather than near it.
      *
-     * In first person it is never in the world: it is drawn into the hand matrix, so it holds the
-     * same place on screen however you turn. The anchor is therefore a screen position, not a
-     * projection. Projecting a world point down the view axis, as this used to, put the panel by
-     * the crosshair rather than the hand, and pushed it off the bottom of the screen the moment
-     * you looked down -- which is exactly when you are bridging and want to read it.
+     * In first person the item is drawn into the hand matrix rather than into the world, so the
+     * point is built out of the camera's own basis: right, down and forward from the eye, moved by
+     * the equip and swing animations so the panel rides the hand instead of hovering over a fixed
+     * patch of screen. In third person the item really is in the world, so the point is the
+     * player's shoulder, rotated by their body yaw.
      *
-     * In third person the item really is in the world, so there the hand is projected: the
-     * player's position with a shoulder offset rotated by their body yaw.
+     * Everything here is interpolated with the render partial ticks. It was not before, which is
+     * what made the panel judder while you moved: the world drew at the frame's position and the
+     * panel drew at the last tick's.
      */
-    private float[] anchorPosition() {
+    private float[] anchorPosition(float partialTicks) {
         if ((int) anchorMode.getInput() != ANCHOR_HAND) {
+            anchorX = Float.NaN;
             return new float[]{posX, posY};
         }
 
-        float offsetX = (float) handOffsetX.getInput();
-        float offsetY = (float) handOffsetY.getInput();
+        float[] size = overlaySize(getDisplayBlock());
+        float[] hand = handScreenPosition(partialTicks);
+        if (hand == null) {
+            return anchorFallback(size);
+        }
 
+        float targetX = hand[0] - size[0] - HAND_GAP + (float) handOffsetX.getInput();
+        float targetY = hand[1] - size[1] * 0.5f + (float) handOffsetY.getInput();
+        return smoothAnchor(targetX, targetY);
+    }
+
+    /** Keeps the last good placement when the hand is off screen rather than jumping home. */
+    private float[] anchorFallback(float[] size) {
+        if (Float.isNaN(anchorX)) {
+            return new float[]{posX, posY};
+        }
+        return new float[]{anchorX, anchorY};
+    }
+
+    /**
+     * Eases toward the hand at a rate that does not depend on the framerate.
+     *
+     * A straight per-frame fraction would smooth twice as hard at 60fps as at 120, so the panel
+     * would feel like it lagged more the worse the machine. The exponential is the same curve in
+     * wall time whatever the frame rate.
+     */
+    private float[] smoothAnchor(float targetX, float targetY) {
+        long now = System.nanoTime();
+        float delta = anchorNanos == 0L ? 1f : (now - anchorNanos) / 1.0E9f;
+        anchorNanos = now;
+        delta = Math.max(0f, Math.min(0.25f, delta));
+
+        float snap = mindless.utility.ScaledResolutionCache.get().getScaledWidth()
+                * ANCHOR_SNAP_FRACTION;
+        if (Float.isNaN(anchorX)
+                || Math.abs(targetX - anchorX) > snap || Math.abs(targetY - anchorY) > snap) {
+            anchorX = targetX;
+            anchorY = targetY;
+            return new float[]{anchorX, anchorY};
+        }
+
+        float blend = 1f - (float) Math.exp(-delta / ANCHOR_SMOOTH_TIME);
+        anchorX += (targetX - anchorX) * blend;
+        anchorY += (targetY - anchorY) * blend;
+        return new float[]{anchorX, anchorY};
+    }
+
+    /** The held item's position on screen, or null when it is behind the camera. */
+    private float[] handScreenPosition(float partialTicks) {
+        RenderUtils.ProjectionContext context = projectionContext;
+        if (context == null) return null;
+
+        net.minecraft.client.renderer.entity.RenderManager renderManager = mc.getRenderManager();
+        double[] point = new double[3];
         boolean firstPerson = mc.gameSettings.thirdPersonView == 0
                 && mc.getRenderViewEntity() == mc.thePlayer;
         if (firstPerson) {
-            ScaledResolution resolution = mindless.utility.ScaledResolutionCache.get();
-            float[] size = overlaySize(getDisplayBlock());
-            // Sits to the left of where the hand renders, so the panel never covers the item.
-            return new float[]{
-                    resolution.getScaledWidth() * FIRST_PERSON_HAND_X - size[0] + offsetX,
-                    resolution.getScaledHeight() * FIRST_PERSON_HAND_Y + offsetY};
+            firstPersonHandPoint(partialTicks, point);
+        }
+        else {
+            thirdPersonHandPoint(partialTicks, renderManager, point);
         }
 
         double[] projected = new double[3];
-        RenderUtils.ProjectionContext context = projectionContext;
-        if (context == null) {
-            return new float[]{posX, posY};
-        }
-
-        net.minecraft.client.renderer.entity.RenderManager renderManager = mc.getRenderManager();
-        float yaw = (float) Math.toRadians(mc.thePlayer.renderYawOffset);
-        double px = mc.thePlayer.posX + Math.cos(yaw) * 0.45;
-        double py = mc.thePlayer.posY + mc.thePlayer.getEyeHeight() * 0.72;
-        double pz = mc.thePlayer.posZ + Math.sin(yaw) * 0.45;
-
-        if (!RenderUtils.projectTo2D(context,
-                px - renderManager.viewerPosX,
-                py - renderManager.viewerPosY,
-                pz - renderManager.viewerPosZ, projected)
+        if (!RenderUtils.projectTo2D(context, point[0], point[1], point[2], projected)
                 || projected[2] <= 0.005 || projected[2] >= 1.0) {
-            return new float[]{posX, posY};
+            return null;
         }
+        return new float[]{(float) projected[0], (float) projected[1]};
+    }
 
-        return new float[]{
-                (float) projected[0] + offsetX,
-                (float) projected[1] + offsetY};
+    /** Camera relative, written back as an offset from the render manager's viewer position. */
+    private void firstPersonHandPoint(float partialTicks, double[] out) {
+        net.minecraft.entity.Entity view = mc.getRenderViewEntity();
+        double yaw = Math.toRadians(view.prevRotationYaw
+                + (view.rotationYaw - view.prevRotationYaw) * partialTicks);
+        double pitch = Math.toRadians(view.prevRotationPitch
+                + (view.rotationPitch - view.prevRotationPitch) * partialTicks);
+
+        double cosYaw = Math.cos(yaw);
+        double sinYaw = Math.sin(yaw);
+        double cosPitch = Math.cos(pitch);
+        double sinPitch = Math.sin(pitch);
+
+        double forwardX = -sinYaw * cosPitch;
+        double forwardY = -sinPitch;
+        double forwardZ = cosYaw * cosPitch;
+        double rightX = cosYaw;
+        double rightZ = sinYaw;
+        // up = forward x right, so it tips with the pitch instead of staying world vertical.
+        double upX = forwardY * rightZ;
+        double upY = forwardZ * rightX - forwardX * rightZ;
+        double upZ = -forwardY * rightX;
+
+        float equip = equippedProgress(partialTicks);
+        float swing = (float) Math.sin(mc.thePlayer.getSwingProgress(partialTicks) * Math.PI);
+
+        double right = HAND_RIGHT - swing * 0.10;
+        double up = HAND_UP - (1.0f - equip) * HAND_EQUIP_DROP + swing * 0.12;
+        double forward = HAND_FORWARD - swing * 0.08;
+
+        out[0] = rightX * right + upX * up + forwardX * forward;
+        out[1] = mc.thePlayer.getEyeHeight() + upY * up + forwardY * forward;
+        out[2] = rightZ * right + upZ * up + forwardZ * forward;
+    }
+
+    private void thirdPersonHandPoint(float partialTicks,
+                                      net.minecraft.client.renderer.entity.RenderManager manager,
+                                      double[] out) {
+        net.minecraft.client.entity.EntityPlayerSP player = mc.thePlayer;
+        double px = player.lastTickPosX + (player.posX - player.lastTickPosX) * partialTicks;
+        double py = player.lastTickPosY + (player.posY - player.lastTickPosY) * partialTicks;
+        double pz = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * partialTicks;
+        float bodyYaw = player.prevRenderYawOffset
+                + (player.renderYawOffset - player.prevRenderYawOffset) * partialTicks;
+        double yaw = Math.toRadians(bodyYaw);
+
+        out[0] = px + Math.cos(yaw) * SHOULDER_OUT - manager.viewerPosX;
+        out[1] = py + SHOULDER_UP - manager.viewerPosY;
+        out[2] = pz + Math.sin(yaw) * SHOULDER_OUT - manager.viewerPosZ;
+    }
+
+    private float equippedProgress(float partialTicks) {
+        try {
+            Object renderer = mc.entityRenderer.itemRenderer;
+            float previous = mindless.runtime.AccessorBridge
+                    .ItemRenderer_getPrevEquippedProgress((net.minecraft.client.renderer.ItemRenderer) renderer);
+            float current = mindless.runtime.AccessorBridge.ItemRenderer_getEquippedProgress(renderer);
+            return previous + (current - previous) * partialTicks;
+        } catch (Throwable unavailable) {
+            return 1.0f;
+        }
     }
 
     /** Bounds for the HUD editor, or null while the overlay has nothing to show. */
