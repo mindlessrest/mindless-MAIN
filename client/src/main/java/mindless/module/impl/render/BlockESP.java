@@ -75,6 +75,16 @@ public class BlockESP extends Module {
         return total > 0 ? String.valueOf(total) : "";
     }
 
+    /** Chunks the scan has to reach for this module's range to mean anything. */
+    public int getScanRadiusChunks() {
+        // Same gate as the budget: with nothing selected there is nothing to look for, so do not
+        // make the shared scan walk a wider ring on this module's behalf.
+        if (!isEnabled() || blockList.getBlocks().isEmpty()) {
+            return 0;
+        }
+        return (int) Math.ceil(range.getInput() / 16.0) + 1;
+    }
+
     @SubscribeEvent
     public void onRenderWorld(RenderWorldLastEvent ev) {
         SharedBlockHighlightCache cache = SharedBlockHighlightCache.get();

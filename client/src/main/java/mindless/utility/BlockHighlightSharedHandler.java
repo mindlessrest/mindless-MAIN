@@ -30,12 +30,17 @@ public final class BlockHighlightSharedHandler {
             return;
         }
         int budget = 0;
+        int radius = 0;
         if (ModuleManager.blockESP != null) {
             budget = Math.max(budget, ModuleManager.blockESP.getScanSpeedBudget());
+            radius = Math.max(radius, ModuleManager.blockESP.getScanRadiusChunks());
         }
         if (ModuleManager.bedESP != null) {
             budget = Math.max(budget, ModuleManager.bedESP.getScanSpeedBudget());
+            radius = Math.max(radius, ModuleManager.bedESP.getScanRadiusChunks());
         }
+        cache.resetRequestedRadius();
+        cache.requestScanRadius(radius);
         if (budget > 0) {
             if (++sweepTicks >= SWEEP_INTERVAL) {
                 sweepTicks = 0;

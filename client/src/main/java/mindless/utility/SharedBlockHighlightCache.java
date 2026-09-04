@@ -37,6 +37,7 @@ public final class SharedBlockHighlightCache {
     private final Set<Long> queuedChunks = ConcurrentHashMap.newKeySet();
     private final Set<Long> scannedChunks = ConcurrentHashMap.newKeySet();
     private final List<Long> pendingSweep = new ArrayList<>();
+    private volatile int requestedRadiusChunks;
 
     private BlockListHighlightMatcher blockListMatcher;
     private boolean bedAttached;
@@ -101,6 +102,11 @@ public final class SharedBlockHighlightCache {
         }
     }
 
+    /** Cleared with the index, so a stale radius cannot outlive the modules that asked for it. */
+    public void resetRequestedRadius() {
+        requestedRadiusChunks = 0;
+    }
+
     private void clearQueue() {
         scanQueue.clear();
         queuedChunks.clear();
@@ -140,6 +146,21 @@ public final class SharedBlockHighlightCache {
         scannedChunks.remove(k);
         for (UpdateListener listener : updateListeners) {
             listener.onChunkRemoved(chunkX, chunkZ);
+        }
+    }
+
+    /**
+     * How far out the consumers want chunks scanned, in chunks.
+     *
+     * Set every tick by whichever modules are running. The scan used to walk
+     * renderDistanceChunks and nothing else, so a module asking for 120 blocks got whatever the
+     * video setting happened to be -- four chunks on a low setting, sixty-four blocks. Beds past
+     * that were sitting in chunks the client had, but were never queued, so they only showed once
+     * you walked close enough for the ring to reach them.
+     */
+    public void requestScanRadius(int chunks) {
+        if (chunks > requestedRadiusChunks) {
+            requestedRadiusChunks = chunks;
         }
     }
 
@@ -207,7 +228,10 @@ public final class SharedBlockHighlightCache {
     private void enqueueAroundPlayer(boolean skipScanned) {
         final int pcx = (int) Math.floor(mc.thePlayer.posX) >> 4;
         final int pcz = (int) Math.floor(mc.thePlayer.posZ) >> 4;
-        int rd = mc.gameSettings.renderDistanceChunks;
+        // Whichever reaches further. A chunk the client holds but does not render is still full
+        // of real block data, and a module asking for 120 blocks means 120 blocks.
+        int rd = Math.max(mc.gameSettings.renderDistanceChunks, requestedRadiusChunks);
+        rd = Math.max(1, Math.min(32, rd));
 
         pendingSweep.clear();
         for (int cx = pcx - rd; cx <= pcx + rd; cx++) {

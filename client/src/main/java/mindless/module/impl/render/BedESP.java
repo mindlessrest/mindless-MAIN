@@ -219,6 +219,14 @@ public class BedESP extends Module {
         return isEnabled() && !pausedForLobby ? (int) scanSpeed.getInput() : 0;
     }
 
+    /** Chunks the scan has to reach for this module's range to mean anything. */
+    public int getScanRadiusChunks() {
+        if (!isEnabled() || pausedForLobby) {
+            return 0;
+        }
+        return (int) Math.ceil(range.getInput() / 16.0) + 1;
+    }
+
     @Override
     public void onUpdate() {
         if (!Utils.nullCheck()) {
