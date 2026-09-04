@@ -402,6 +402,26 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         if (valid < 4) return false;
 
         output.set(minX, minY, maxX, maxY);
+
+        // Two more projections per entity, down the middle rather than round the corners. Cheap
+        // next to the eight already done, and the only way to get a line that starts at the feet
+        // and stops at the top of the head whatever angle the camera is at.
+        double footY, headY;
+        if (RenderUtils.projectTo2D(projectionContext, ex, ey, ez, pt)
+                && pt[2] > 0.005 && pt[2] < 1.0) {
+            footY = pt[1];
+        }
+        else {
+            footY = maxY;
+        }
+        if (RenderUtils.projectTo2D(projectionContext, ex, ey + h, ez, pt)
+                && pt[2] > 0.005 && pt[2] < 1.0) {
+            headY = pt[1];
+        }
+        else {
+            headY = minY;
+        }
+        output.setAxis(Math.min(footY, headY), Math.max(footY, headY));
         return true;
     }
 
@@ -469,7 +489,10 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         float maxHealth = Math.max(1.0F, living.getMaxHealth());
         float health = MathHelper.clamp_float(living.getHealth(), 0.0F, maxHealth);
         double healthRatio = health / maxHealth;
-        double healthY = b.bottom - b.height() * healthRatio;
+        double barTop = b.axisTop;
+        double barBottom = b.axisBottom;
+        double barSpan = Math.max(0.5, b.axisHeight());
+        double healthY = barBottom - barSpan * healthRatio;
 
         boolean barOnRight = (int) barSide.getInput() == 1;
         double width = Math.max(0.5, barWidth.getInput());
@@ -483,15 +506,15 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         double fillRight = Math.max(fillOuter, fillInner);
 
         if (healthBar.isToggled()) {
-            drawFlatRect(trackLeft, b.top - 0.5, trackRight, b.bottom + 0.5, barBackground.getColor());
-            drawHealthFill(fillLeft, healthY, fillRight, b.bottom, healthRatio, b);
+            drawFlatRect(trackLeft, barTop, trackRight, barBottom, barBackground.getColor());
+            drawHealthFill(fillLeft, healthY, fillRight, barBottom, healthRatio, b);
             if (absorption.isToggled() && living.getAbsorptionAmount() > 0) {
-                double absorptionHeight = Math.min(b.height(), b.height() * living.getAbsorptionAmount() / maxHealth);
-                drawFlatRect(fillLeft, b.bottom - absorptionHeight, fillRight, b.bottom,
+                double absorptionHeight = Math.min(barSpan, barSpan * living.getAbsorptionAmount() / maxHealth);
+                drawFlatRect(fillLeft, barBottom - absorptionHeight, fillRight, barBottom,
                         0xFF000000 | absorptionColor.getRGB());
             }
             if (barOutline.isToggled()) {
-                drawOutlinedRect(trackLeft, b.top - 0.5, trackRight, b.bottom + 0.5, 0xFF000000);
+                drawOutlinedRect(trackLeft, barTop, trackRight, barBottom, 0xFF000000);
             }
         }
 
@@ -580,7 +603,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
             return 0xFF000000 | lerpRgb(barColorLow.getRGB(), barColorHigh.getRGB(), (float) t);
         }
         double along = vertical
-                ? b.top + (b.bottom - b.top) * t
+                ? b.axisTop + b.axisHeight() * t
                 : b.left + (b.right - b.left) * t;
         return 0xFF000000 | (HUD.getHudColor(HUD.hudWavePhase(0.0, along)) & 0xFFFFFF);
     }
@@ -698,9 +721,10 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
 
     private void drawArmorBar(EntityLivingBase living, Bounds b) {
         double ratio = MathHelper.clamp_double(living.getTotalArmorValue() / 20.0, 0, 1);
-        drawFlatRect(b.right + 1.5, b.top - 0.5, b.right + 4, b.bottom + 0.5, 0x78000000);
+        double span = Math.max(0.5, b.axisHeight());
+        drawFlatRect(b.right + 1.5, b.axisTop, b.right + 4, b.axisBottom, 0x78000000);
         if (ratio > 0) {
-            drawFlatRect(b.right + 2, b.bottom - b.height() * ratio, b.right + 3.5, b.bottom, 0xFF00FFFF);
+            drawFlatRect(b.right + 2, b.axisBottom - span * ratio, b.right + 3.5, b.axisBottom, 0xFF00FFFF);
         }
     }
 
@@ -916,15 +940,30 @@ private void restoreFlatOverlayState() {
         private double right;
         private double bottom;
 
+        // Head and feet as projected down the entity's own centre line, separate from the box.
+        // The box is the 2D hull of all eight AABB corners, and under perspective the near-side
+        // corners project much further out than the model actually reaches -- harmless for an
+        // outline, wrong for anything that is supposed to measure the player.
+        private double axisTop;
+        private double axisBottom;
+
         private void set(double left, double top, double right, double bottom) {
             this.left = left;
             this.top = top;
             this.right = right;
             this.bottom = bottom;
+            this.axisTop = top;
+            this.axisBottom = bottom;
+        }
+
+        private void setAxis(double axisTop, double axisBottom) {
+            this.axisTop = axisTop;
+            this.axisBottom = axisBottom;
         }
 
         private double width() { return right - left; }
         private double height() { return bottom - top; }
+        private double axisHeight() { return axisBottom - axisTop; }
     }
 
     private void runOutlinePass(float partialTicks) {
