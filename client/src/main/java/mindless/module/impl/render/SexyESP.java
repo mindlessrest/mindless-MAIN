@@ -59,6 +59,7 @@ public class SexyESP extends Module {
     private final ColorSetting barColor;
     private final ColorSetting barColorLow;
     private final ColorSetting barColorHigh;
+    private final SliderSetting barGradientAxis;
     private final SliderSetting barWidth;
     private final SliderSetting barSide;
     private final ColorSetting barBackground;
@@ -158,6 +159,8 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(barColor = new ColorSetting(healthGroup, "Bar static color", 85, 255, 85));
         registerSetting(barColorLow = new ColorSetting(healthGroup, "Bar low color", 255, 60, 60));
         registerSetting(barColorHigh = new ColorSetting(healthGroup, "Bar high color", 85, 255, 85));
+        registerSetting(barGradientAxis = new SliderSetting(healthGroup, "Gradient axis", 0,
+                new String[]{"Vertical", "Horizontal"}));
         registerSetting(barWidth = new SliderSetting(healthGroup, "Bar width", 1.0, 0.5, 5.0, 0.25));
         registerSetting(barSide = new SliderSetting(healthGroup, "Bar side", 0, new String[]{"Left", "Right"}));
         registerSetting(barBackground = new ColorSetting(healthGroup, "Bar background", 0, 0, 0, 120));
@@ -227,6 +230,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         barColor.setVisible(bar && barMode == BAR_STATIC, this);
         barColorLow.setVisible(bar && barMode == BAR_CUSTOM, this);
         barColorHigh.setVisible(bar && barMode == BAR_CUSTOM, this);
+        barGradientAxis.setVisible(bar && (barMode == BAR_CUSTOM || barMode == BAR_ARRAYLIST), this);
         barWidth.setVisible(bar, this);
         barSide.setVisible(bar, this);
         barBackground.setVisible(bar, this);
@@ -480,7 +484,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
 
         if (healthBar.isToggled()) {
             drawFlatRect(trackLeft, b.top - 0.5, trackRight, b.bottom + 0.5, barBackground.getColor());
-            drawFlatRect(fillLeft, healthY, fillRight, b.bottom, healthBarColor(healthRatio, b));
+            drawHealthFill(fillLeft, healthY, fillRight, b.bottom, healthRatio, b);
             if (absorption.isToggled() && living.getAbsorptionAmount() > 0) {
                 double absorptionHeight = Math.min(b.height(), b.height() * living.getAbsorptionAmount() / maxHealth);
                 drawFlatRect(fillLeft, b.bottom - absorptionHeight, fillRight, b.bottom,
@@ -531,6 +535,54 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
             drawTag(living.getHeldItem().getDisplayName(), b.left + b.width() / 2.0,
                     b.bottom + 2, getTagScale(b), 0xFFFFFFFF);
         }
+    }
+
+    /**
+     * Paints the filled part of the bar.
+     *
+     * The gradient modes used to resolve to a single colour for the whole bar, so a "gradient"
+     * was really just a flat blend picked by health. It now runs along the bar itself, and the
+     * axis chooses whether that is up its length or across its width -- the bar is vertical, so
+     * along its length is the one that actually reads.
+     */
+    private void drawHealthFill(double left, double top, double right, double bottom,
+                                double healthRatio, Bounds b) {
+        int mode = (int) barColorMode.getInput();
+        if (mode != BAR_CUSTOM && mode != BAR_ARRAYLIST) {
+            drawFlatRect(left, top, right, bottom, healthBarColor(healthRatio, b));
+            return;
+        }
+
+        boolean vertical = (int) barGradientAxis.getInput() == 0;
+        int steps = vertical ? 12 : 6;
+        double span = vertical ? bottom - top : right - left;
+        if (span <= 0.01) {
+            return;
+        }
+
+        for (int i = 0; i < steps; i++) {
+            double t0 = i / (double) steps;
+            double t1 = (i + 1) / (double) steps;
+            // Sampled at the middle of each band so the two ends keep their true colours.
+            int color = gradientSample(mode, (t0 + t1) * 0.5, b, vertical);
+            if (vertical) {
+                drawFlatRect(left, top + span * t0, right, top + span * t1, color);
+            }
+            else {
+                drawFlatRect(left + span * t0, top, left + span * t1, bottom, color);
+            }
+        }
+    }
+
+    private int gradientSample(int mode, double t, Bounds b, boolean vertical) {
+        if (mode == BAR_CUSTOM) {
+            // Low colour at the start of the run, high colour at the end.
+            return 0xFF000000 | lerpRgb(barColorLow.getRGB(), barColorHigh.getRGB(), (float) t);
+        }
+        double along = vertical
+                ? b.top + (b.bottom - b.top) * t
+                : b.left + (b.right - b.left) * t;
+        return 0xFF000000 | (HUD.getHudColor(HUD.hudWavePhase(0.0, along)) & 0xFFFFFF);
     }
 
     /**
