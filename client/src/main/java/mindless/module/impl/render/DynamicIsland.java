@@ -53,6 +53,9 @@ public class DynamicIsland extends Module {
     private static final float CHIP_DOT = 3.5f;
     private static final float CHIP_DOT_GAP = 3.5f;
     private static final float CHIP_GAP = 4.0f;
+    private static final int MAX_TOGGLES = 8;
+    private static final int ACCENT_ON = 0x5BD98A;
+    private static final int ACCENT_OFF = 0xE0644F;
 
     private final SliderSetting mode;
     private final SliderSetting font;
@@ -67,6 +70,7 @@ public class DynamicIsland extends Module {
     private final ButtonSetting showClock;
     private final ButtonSetting showStatus;
     private final SliderSetting statusLimit;
+    private final SliderSetting statusDuration;
     private final ButtonSetting statusValues;
 
     private final GroupSetting styleGroup;
@@ -81,6 +85,11 @@ public class DynamicIsland extends Module {
     /** Reused every frame; the island lays out on the render thread only. */
     private final Segment[] segments = new Segment[MAX_SEGMENTS];
     private int segmentCount;
+
+    /** Identity keyed: two modules can share a name, and a module is never replaced. */
+    private final java.util.Map<mindless.module.Module, Boolean> toggleStates =
+            new java.util.IdentityHashMap<mindless.module.Module, Boolean>();
+    private final java.util.List<Toggle> recentToggles = new java.util.ArrayList<Toggle>();
 
     private float animatedWidth = -1.0f;
     private long lastFrameNanos;
@@ -105,9 +114,10 @@ public class DynamicIsland extends Module {
         this.registerSetting(showServer = new ButtonSetting(contentGroup, "Server", false));
         this.registerSetting(showSession = new ButtonSetting(contentGroup, "Session time", false));
         this.registerSetting(showClock = new ButtonSetting(contentGroup, "Clock", false));
-        this.registerSetting(showStatus = new ButtonSetting(contentGroup, "Active modules", true));
-        this.registerSetting(statusLimit = new SliderSetting(contentGroup, "Active shown", 3.0, 1.0, 6.0, 1.0));
-        this.registerSetting(statusValues = new ButtonSetting(contentGroup, "Active values", true));
+        this.registerSetting(showStatus = new ButtonSetting(contentGroup, "Module toggles", true));
+        this.registerSetting(statusLimit = new SliderSetting(contentGroup, "Toggles shown", 3.0, 1.0, 6.0, 1.0));
+        this.registerSetting(statusDuration = new SliderSetting(contentGroup, "Toggle time", "s", 2.5, 0.5, 8.0, 0.5));
+        this.registerSetting(statusValues = new ButtonSetting(contentGroup, "Show disables", true));
 
         this.registerSetting(styleGroup = new GroupSetting("Style"));
         this.registerSetting(blurBackdrop = new ButtonSetting(styleGroup, "Blur backdrop", true));
@@ -132,6 +142,10 @@ public class DynamicIsland extends Module {
         sessionStart = System.currentTimeMillis();
         animatedWidth = -1.0f;
         lastFrameNanos = 0L;
+        // Re-seeded on the next poll, so switching the island on does not announce every module
+        // that happened to already be running.
+        toggleStates.clear();
+        recentToggles.clear();
     }
 
     public void resetPosition() {
@@ -236,18 +250,20 @@ public class DynamicIsland extends Module {
 
             if (chip) {
                 // Chips carry their own pill, so a divider beside one would read as a second edge.
+                int chipAlpha = Math.round(alpha * Math.max(0.0f, Math.min(1.0f, segment.fade)));
                 float chipHeight = height - PAD_Y * uiScale;
                 float chipWidth = segmentWidth(text, segment) * uiScale;
                 float chipY = y + (height - chipHeight) * 0.5f;
                 RoundedUtils.drawRound(cursor, chipY, chipWidth, chipHeight, chipHeight * 0.5f,
-                        withAlpha(0xFFFFFF, Math.min(24, alpha / 8)));
+                        withAlpha(0xFFFFFF, Math.min(24, chipAlpha / 8)));
 
                 float dot = CHIP_DOT * uiScale;
                 RoundedUtils.drawRound(cursor + CHIP_PAD_X * uiScale, y + (height - dot) * 0.5f,
-                        dot, dot, dot * 0.5f, withAlpha(segment.accent, alpha));
+                        dot, dot, dot * 0.5f, withAlpha(segment.accent, chipAlpha));
 
                 float labelX = cursor + (CHIP_PAD_X + CHIP_DOT + CHIP_DOT_GAP) * uiScale;
-                drawScaled(text, segment.label, labelX, textY, uiScale, textColor);
+                drawScaled(text, segment.label, labelX, textY, uiScale,
+                        withAlpha(0xE8ECF2, chipAlpha));
                 cursor += chipWidth;
             }
             else {
@@ -313,12 +329,20 @@ public class DynamicIsland extends Module {
                 break;
             }
             case Segment.ICON_FPS: {
-                // A gauge: ring plus a needle toward the upper right.
-                RoundedUtils.drawRoundOutline(x, y, size, size, size * 0.5f, Math.max(1.0f, size * 0.16f),
+                // A display on a stand.
+                //
+                // This was a ring with a stub of a needle across it. At seven pixels the ring's
+                // stroke and the needle were both one pixel and sat on top of each other, so it
+                // read as a smudge rather than as a gauge. A screen outline has nothing inside it
+                // to collide with, and it does not repeat the ping icon's bars.
+                float screenHeight = size * 0.72f;
+                RoundedUtils.drawRoundOutline(x, y, size, screenHeight, size * 0.18f,
+                        Math.max(1.0f, size * 0.15f),
                         new java.awt.Color(0, 0, 0, 0), toColor(colour));
-                float needleThickness = Math.max(1.0f, size * 0.14f);
-                RoundedUtils.drawRound(x + size * 0.46f, y + size * 0.26f,
-                        needleThickness, size * 0.28f, needleThickness * 0.5f, colour);
+                float standWidth = size * 0.40f;
+                float standHeight = Math.max(1.0f, size * 0.16f);
+                RoundedUtils.drawRound(x + (size - standWidth) * 0.5f, y + size - standHeight,
+                        standWidth, standHeight, standHeight * 0.5f, colour);
                 break;
             }
             case Segment.ICON_PING: {
@@ -375,58 +399,92 @@ public class DynamicIsland extends Module {
             add(Segment.ICON_CLOCK, clockText(), false);
         }
         if (showStatus.isToggled()) {
-            addStatusChips();
+            long now = System.currentTimeMillis();
+            pollToggles(now);
+            addToggleChips(now);
         }
     }
 
     /**
-     * The modules currently doing something, as chips on the end of the pill.
+     * Watches every module for a toggle and remembers the recent ones.
      *
-     * Render and client modules are left out on purpose: they are permanently on and would push
-     * everything that actually changes off the end. What is left is the combat, movement, player
-     * and world set -- the things worth knowing are running right now.
+     * Listing everything that happened to be enabled filled the pill with modules that are simply
+     * always on -- Discord RPC, the knockback settings -- and never changed, which is the opposite
+     * of useful. A chip is an event now: it appears when you turn something on or off, and leaves
+     * on its own, so the pill only ever carries what just happened.
+     *
+     * Toggles are polled rather than hooked. Module.enable and disable are on the path every
+     * keybind and every script takes, and nothing here is worth putting a callback in that path
+     * for.
      */
-    private void addStatusChips() {
-        int limit = Math.min((int) statusLimit.getInput(), MAX_SEGMENTS - segmentCount);
-        if (limit <= 0) return;
+    private void pollToggles(long now) {
+        long life = (long) (statusDuration.getInput() * 1000.0);
+        boolean announceOff = statusValues.isToggled();
 
-        int shown = 0;
-        java.util.List<mindless.module.Module> active = mindless.module.ModuleManager.organizedModules;
-        synchronized (active) {
-            for (int i = 0; i < active.size() && shown < limit; i++) {
-                mindless.module.Module module = active.get(i);
-                if (module == null || !module.isEnabled()) continue;
-
-                mindless.module.Module.category group = module.moduleCategory();
-                if (group == mindless.module.Module.category.render
-                        || group == mindless.module.Module.category.client) {
-                    continue;
+        java.util.List<mindless.module.Module> modules = mindless.module.ModuleManager.modules;
+        if (modules != null) {
+            synchronized (modules) {
+                for (int i = 0; i < modules.size(); i++) {
+                    trackToggle(modules.get(i), now, life, announceOff);
                 }
+            }
+        }
 
-                String label = module.getNameInHud();
-                if (label == null || label.isEmpty()) continue;
-                if (statusValues.isToggled()) {
-                    String info = module.getInfo();
-                    if (info != null && !info.isEmpty()) {
-                        label = label + "  " + info;
-                    }
-                }
-
-                addChip(label, ThemeManager.getWatermarkColor(shown * 2.0) & 0xFFFFFF);
-                shown++;
+        // Dropped as soon as they expire, so the list never outgrows what is on screen.
+        for (int i = recentToggles.size() - 1; i >= 0; i--) {
+            if (now - recentToggles.get(i).bornAt > life) {
+                recentToggles.remove(i);
             }
         }
     }
 
+    private void trackToggle(mindless.module.Module module, long now, long life, boolean announceOff) {
+        if (module == null || module.isHidden()) return;
+
+        boolean enabled = module.isEnabled();
+        Boolean previous = toggleStates.put(module, enabled);
+        // First sighting is the current state, not a toggle: without this every module would
+        // announce itself the first frame the island drew.
+        if (previous == null || previous.booleanValue() == enabled) return;
+        if (!enabled && !announceOff) return;
+
+        String name = module.getNameInHud();
+        if (name == null || name.isEmpty()) return;
+
+        while (recentToggles.size() >= MAX_TOGGLES) {
+            recentToggles.remove(0);
+        }
+        recentToggles.add(new Toggle(name, enabled, now));
+    }
+
+    /** The toggles still inside their lifetime, newest last, capped at what the user asked for. */
+    private void addToggleChips(long now) {
+        int limit = Math.min((int) statusLimit.getInput(), MAX_SEGMENTS - segmentCount);
+        if (limit <= 0 || recentToggles.isEmpty()) return;
+
+        long life = Math.max(1L, (long) (statusDuration.getInput() * 1000.0));
+        int from = Math.max(0, recentToggles.size() - limit);
+        for (int i = from; i < recentToggles.size(); i++) {
+            Toggle toggle = recentToggles.get(i);
+            float age = (now - toggle.bornAt) / (float) life;
+            if (age >= 1.0f) continue;
+
+            // Fades over the last third of its life, so it leaves rather than blinking out.
+            float fade = age < 0.66f ? 1.0f : Math.max(0.0f, (1.0f - age) / 0.34f);
+            addChip(toggle.name + "  " + (toggle.enabled ? "ON" : "OFF"),
+                    toggle.enabled ? ACCENT_ON : ACCENT_OFF, fade);
+        }
+    }
+
     private void add(int icon, String label, boolean emphasised) {
-        addSegment(icon, label, emphasised, 0);
+        addSegment(icon, label, emphasised, 0, 1.0f);
     }
 
-    private void addChip(String label, int accent) {
-        addSegment(Segment.ICON_CHIP, label, true, accent);
+    private void addChip(String label, int accent, float fade) {
+        addSegment(Segment.ICON_CHIP, label, true, accent, fade);
     }
 
-    private void addSegment(int icon, String label, boolean emphasised, int accent) {
+    private void addSegment(int icon, String label, boolean emphasised, int accent, float fade) {
         if (segmentCount >= MAX_SEGMENTS || label == null || label.isEmpty()) return;
         Segment segment = segments[segmentCount];
         if (segment == null) {
@@ -437,6 +495,7 @@ public class DynamicIsland extends Module {
         segment.label = label;
         segment.emphasised = emphasised;
         segment.accent = accent;
+        segment.fade = fade;
         segmentCount++;
     }
 
@@ -642,5 +701,19 @@ public class DynamicIsland extends Module {
         private String label;
         private boolean emphasised;
         private int accent;
+        private float fade;
+    }
+
+    /** One module toggle, alive until its lifetime runs out. */
+    private static final class Toggle {
+        private final String name;
+        private final boolean enabled;
+        private final long bornAt;
+
+        private Toggle(String name, boolean enabled, long bornAt) {
+            this.name = name;
+            this.enabled = enabled;
+            this.bornAt = bornAt;
+        }
     }
 }
