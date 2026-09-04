@@ -15,6 +15,8 @@ import java.util.*;
 public class Script {
     public String name;
     public Class clazz;
+    /** Held so the classes it defined can still resolve their lazy references. */
+    public SecureClassLoader loader;
     public Object instance;
     public String scriptName;
     public String codeStr;
@@ -109,13 +111,33 @@ private static String javaIdentifier(String name) {
                 return false;
             }
             System.out.println("[Scripts] Compilation SUCCESS: " + this.name);
-            try (SecureClassLoader secureClassLoader = new SecureClassLoader(new URL[]{file.toURI().toURL()}, ScriptManager.scriptParentClassLoader())) {
+            // Deliberately not try-with-resources. Closing a URLClassLoader releases the jar it
+            // reads from, and the JVM resolves classes lazily -- anything referenced only inside a
+            // method body is loaded the first time that method runs, long after this returns. The
+            // old version closed it here, so those loads failed later with NoClassDefFoundError.
+            // The loader lives as long as the classes it defined.
+            SecureClassLoader secureClassLoader = null;
+            try {
+                secureClassLoader = new SecureClassLoader(new URL[]{file.toURI().toURL()},
+                        ScriptManager.scriptParentClassLoader());
+                this.loader = secureClassLoader;
                 this.clazz = secureClassLoader.loadClass(this.scriptName);
                 this.instance = this.clazz.newInstance();
             }
             catch (Throwable e) {
-                e.printStackTrace();
-                Utils.sendMessage("&7Script &b" + Utils.extractFileName(this.name) + " &7blocked, &cunsafe code&7 detected!");
+                // Only a sandbox refusal is unsafe code. Everything else is an ordinary compile or
+                // link failure, and reporting those as "unsafe" made real script bugs impossible
+                // to diagnose.
+                String rejected = secureClassLoader == null ? null : secureClassLoader.getRejectedClass();
+                if (rejected != null) {
+                    Utils.sendMessage("&7Script &b" + Utils.extractFileName(this.name)
+                            + " &7blocked: &cnot allowed to use " + rejected);
+                }
+                else {
+                    e.printStackTrace();
+                    Utils.sendMessage("&7Script &b" + Utils.extractFileName(this.name)
+                            + " &7failed to load: &c" + e.getClass().getSimpleName());
+                }
                 this.error = true;
                 return false;
             }
