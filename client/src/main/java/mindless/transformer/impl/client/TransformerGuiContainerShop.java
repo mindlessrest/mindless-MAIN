@@ -44,7 +44,7 @@ public abstract class TransformerGuiContainerShop {
         if (helper == null || !helper.isEnabled()) return;
 
         GuiContainer self = (GuiContainer) (Object) this;
-        int decision = helper.decideClick(self, slot, clickType);
+        int decision = helper.decideClick(self, slot, clickType, clickedButton);
         if (decision == ShopHelper.CLICK_ALLOW) return;
 
         ci.setCancelled(true);
@@ -52,6 +52,6 @@ public abstract class TransformerGuiContainerShop {
 
         Minecraft mc = Minecraft.getMinecraft();
         mc.playerController.windowClick(self.inventorySlots.windowId, slot.slotNumber,
-                clickedButton, 1, mc.thePlayer);
+                0, 1, mc.thePlayer);
     }
 }

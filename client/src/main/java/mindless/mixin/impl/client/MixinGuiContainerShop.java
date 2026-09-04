@@ -45,14 +45,16 @@ public abstract class MixinGuiContainerShop {
         if (helper == null || !helper.isEnabled()) return;
 
         GuiContainer self = (GuiContainer) (Object) this;
-        int decision = helper.decideClick(self, slot, clickType);
+        int decision = helper.decideClick(self, slot, clickType, clickedButton);
         if (decision == ShopHelper.CLICK_ALLOW) return;
 
         ci.cancel();
         if (decision != ShopHelper.CLICK_QUICK_MOVE) return;
 
         Minecraft mc = Minecraft.getMinecraft();
+        // Button 0 explicitly. Re-sending the original button as a quick move is what
+        // produced shift right clicks the server read as something other than a buy.
         mc.playerController.windowClick(self.inventorySlots.windowId, slot.slotNumber,
-                clickedButton, 1, mc.thePlayer);
+                0, 1, mc.thePlayer);
     }
 }

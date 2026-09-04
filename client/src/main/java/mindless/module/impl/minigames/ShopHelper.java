@@ -154,7 +154,9 @@ public class ShopHelper extends Module {
     }
 
     /** What to do with a click on a shop slot. */
-    public int decideClick(GuiContainer gui, Slot slot, int clickType) {
+    private static final String QUICK_BUY_PAGE = "Quick Buy";
+
+    public int decideClick(GuiContainer gui, Slot slot, int clickType, int clickedButton) {
         if (!Utils.nullCheck() || slot == null || !slot.getHasStack()) return CLICK_ALLOW;
         if (onlyInGame.isToggled() && !inGame()) return CLICK_ALLOW;
 
@@ -178,7 +180,16 @@ public class ShopHelper extends Module {
         }
 
         // Quick-move buys in one packet; a plain pickup leaves the stack on the cursor.
-        if ((replaceClicks.isToggled() || instantBuy.isToggled()) && clickType == 0) {
+        //
+        // Left button only. clickType 0 covers both buttons, so right clicks were being turned
+        // into shift right clicks -- and on Quick Buy a shift click unbinds the slot rather than
+        // buying it, which is what was wiping the page.
+        //
+        // Quick Buy is left alone entirely for the same reason: shift clicking there is a
+        // destructive edit, not a purchase.
+        if (clickedButton == 0 && clickType == 0
+                && !title.equals(QUICK_BUY_PAGE)
+                && (replaceClicks.isToggled() || instantBuy.isToggled())) {
             return CLICK_QUICK_MOVE;
         }
         return CLICK_ALLOW;
