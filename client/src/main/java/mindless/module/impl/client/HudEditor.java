@@ -27,6 +27,7 @@ import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.input.Keyboard;
 
 import java.awt.Color;
 import java.io.IOException;
@@ -66,11 +67,13 @@ public class HudEditor extends Module {
     }
 
     public static final class Screen extends GuiScreen {
-private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W = 7;
+        private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W = 7;
 
-        private static final float HANDLE_HALF = 3.0f;
+        private static final float HANDLE_HALF = 2.5f;
         private static final float GRAB_HALF = 6.0f;
         private static final float MIN_SPAN = 6.0f;
+        private static final int GRID_SIZE = 8;
+        private static final float GUIDE_THRESHOLD = 4.0f;
 
         private static final int DOF_PASSES = 2;
         private static final float DOF_RADIUS = 4.2f;
@@ -87,7 +90,9 @@ private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W 
         private final List<Element> elements = new ArrayList<Element>();
         private MindlessButton doneButton;
         private MindlessButton resetAllButton;
+        private MindlessButton snapButton;
         private Element hovered;
+        private Element selected;
         private Element dragging;
         private float dragOffsetX;
         private float dragOffsetY;
@@ -99,22 +104,27 @@ private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W 
         private float resizeStartHeight;
         private float resizeAnchorX;
         private float resizeAnchorY;
+        private boolean snapEnabled = true;
+        private boolean guideX;
+        private boolean guideY;
 
         @Override
         public void initGui() {
             super.initGui();
             buildElements();
-            buttonList.add(doneButton = new MindlessButton(1, width - 90, height - 25, 85, 20, "Done"));
-            buttonList.add(resetAllButton = new MindlessButton(3, 5, height - 25, 90, 20, "Reset all"));
+            buttonList.add(doneButton = new MindlessButton(1, width - 63, 5, 58, 20, "Done"));
+            buttonList.add(resetAllButton = new MindlessButton(3, width - 132, 5, 64, 20, "Reset"));
+            buttonList.add(snapButton = new MindlessButton(2, width - 222, 5, 85, 20, snapLabel()));
         }
 
         @Override
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
             drawBackdrop(mouseX, mouseY);
+            drawGrid();
 
             if (elements.isEmpty()) buildElements();
             if (dragging != null) {
-                dragging.moveClamped(mouseX - dragOffsetX, mouseY - dragOffsetY, width, height);
+                moveDragged(mouseX - dragOffsetX, mouseY - dragOffsetY);
             }
             if (resizing != null) {
                 applyResize(mouseX, mouseY);
@@ -129,13 +139,27 @@ private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W 
             hovered = findTopmost(mouseX, mouseY);
 
             for (Element element : elements) {
-                boolean active = element == hovered || element == dragging || element == resizing;
-                drawOutline(element, active ? 0xFFFFFFFF : 0x70FFFFFF);
+                boolean active = element == selected || element == hovered || element == dragging || element == resizing;
+                drawOutline(element, active ? 0xE6FFFFFF : 0x26FFFFFF);
                 if (active) {
                     drawLabel(element);
-                    drawHandles(element, mouseX, mouseY);
+                    if (element == selected || element == dragging || element == resizing) {
+                        drawHandles(element, mouseX, mouseY);
+                    }
                 }
             }
+
+            if (guideX) RenderUtils.drawRect(width * 0.5F, 30.0F, width * 0.5F + 0.5F, height, 0x807C6CFF);
+            if (guideY) RenderUtils.drawRect(0.0F, height * 0.5F, width, height * 0.5F + 0.5F, 0x807C6CFF);
+
+            drawRect(0, 0, width, 30, 0xE6101013);
+            RenderUtils.drawRect(0.0F, 29.0F, width, 30.0F, 0x303A3A43);
+            fontRendererObj.drawString("HUD editor", 9, 10, 0xFFF2F2F5, false);
+            String hint = selected == null
+                    ? "Drag an element to reposition it"
+                    : selected.name + "  ·  Arrow keys to nudge  ·  R to reset";
+            drawRect(0, height - 20, width, height, 0xD9101013);
+            fontRendererObj.drawString(hint, 9, height - 14, 0xFF9898A3, false);
 
             super.drawScreen(mouseX, mouseY, partialTicks);
         }
@@ -145,14 +169,18 @@ private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W 
             if (mouseButton == 0) {
                 int handle = hovered != null ? hovered.handleAt(mouseX, mouseY) : -1;
                 if (handle >= 0) {
+                    selected = hovered;
                     beginResize(hovered, handle);
                 }
                 else {
                     Element selected = findTopmost(mouseX, mouseY);
                     if (selected != null) {
+                        this.selected = selected;
                         dragging = selected;
                         dragOffsetX = mouseX - selected.left;
                         dragOffsetY = mouseY - selected.top;
+                    } else if (mouseY > 30 && mouseY < height - 20) {
+                        this.selected = null;
                     }
                 }
             }
@@ -166,6 +194,8 @@ private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W 
                 dragging = null;
                 resizing = null;
                 resizeHandle = -1;
+                guideX = false;
+                guideY = false;
             }
         }
 
@@ -174,9 +204,83 @@ private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W 
             if (button == doneButton) {
                 mc.displayGuiScreen(null);
             }
+            else if (button == snapButton) {
+                snapEnabled = !snapEnabled;
+                snapButton.displayString = snapLabel();
+            }
             else if (button == resetAllButton) {
                 for (Element element : elements) element.reset();
+                selected = null;
             }
+        }
+
+        @Override
+        protected void keyTyped(char typedChar, int keyCode) throws IOException {
+            if (keyCode == Keyboard.KEY_G) {
+                snapEnabled = !snapEnabled;
+                snapButton.displayString = snapLabel();
+                return;
+            }
+            if (selected != null && keyCode == Keyboard.KEY_R) {
+                selected.reset();
+                return;
+            }
+            if (selected != null && (keyCode == Keyboard.KEY_LEFT || keyCode == Keyboard.KEY_RIGHT
+                    || keyCode == Keyboard.KEY_UP || keyCode == Keyboard.KEY_DOWN)) {
+                float step = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)
+                        ? GRID_SIZE : 1.0F;
+                float x = selected.left;
+                float y = selected.top;
+                if (keyCode == Keyboard.KEY_LEFT) x -= step;
+                if (keyCode == Keyboard.KEY_RIGHT) x += step;
+                if (keyCode == Keyboard.KEY_UP) y -= step;
+                if (keyCode == Keyboard.KEY_DOWN) y += step;
+                selected.moveClamped(x, y, width, height);
+                return;
+            }
+            super.keyTyped(typedChar, keyCode);
+        }
+
+        private String snapLabel() {
+            return snapEnabled ? "Snap 8px" : "Snap off";
+        }
+
+        private void drawGrid() {
+            int minor = 0x0DFFFFFF;
+            int major = 0x16FFFFFF;
+            for (int x = GRID_SIZE; x < width; x += GRID_SIZE) {
+                int color = x % (GRID_SIZE * 4) == 0 ? major : minor;
+                RenderUtils.drawRect(x, 30.0F, x + 0.5F, height - 20.0F, color);
+            }
+            for (int y = 32; y < height - 20; y += GRID_SIZE) {
+                int color = y % (GRID_SIZE * 4) == 0 ? major : minor;
+                RenderUtils.drawRect(0.0F, y, width, y + 0.5F, color);
+            }
+        }
+
+        private void moveDragged(float requestedLeft, float requestedTop) {
+            guideX = false;
+            guideY = false;
+            float elementWidth = dragging.right - dragging.left;
+            float elementHeight = dragging.bottom - dragging.top;
+
+            if (snapEnabled && !Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)
+                    && !Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)) {
+                requestedLeft = Math.round(requestedLeft / GRID_SIZE) * GRID_SIZE;
+                requestedTop = Math.round(requestedTop / GRID_SIZE) * GRID_SIZE;
+            }
+
+            float centeredLeft = (width - elementWidth) * 0.5F;
+            float centeredTop = (height - elementHeight) * 0.5F;
+            if (Math.abs(requestedLeft - centeredLeft) <= GUIDE_THRESHOLD) {
+                requestedLeft = centeredLeft;
+                guideX = true;
+            }
+            if (Math.abs(requestedTop - centeredTop) <= GUIDE_THRESHOLD) {
+                requestedTop = centeredTop;
+                guideY = true;
+            }
+            dragging.moveClamped(requestedLeft, requestedTop, width, height);
         }
 
         @Override
