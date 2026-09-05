@@ -129,10 +129,19 @@ add_executable(MindlessLoader WIN32 ${SOURCES})
 add_dependencies(MindlessLoader MindlessResources)
 
 set(MINDLESS_PRODUCTION_OBFUSCATION_FLAGS "" CACHE STRING "Production compiler protection flags")
+option(MINDLESS_PRIVATE_PDB "Emit a private PDB for post-build protection" OFF)
 if (MINDLESS_PRODUCTION_OBFUSCATION_FLAGS)
     target_compile_options(MindlessLoader PRIVATE "SHELL:${MINDLESS_PRODUCTION_OBFUSCATION_FLAGS}")
 else()
     target_compile_definitions(MindlessLoader PRIVATE _NONPROD=1)
+endif()
+
+if (MINDLESS_PRIVATE_PDB)
+    target_compile_options(MindlessLoader PRIVATE "$<$<CONFIG:Release>:/Zi>")
+    target_link_options(MindlessLoader PRIVATE
+        "$<$<CONFIG:Release>:/DEBUG:FULL>"
+        "$<$<CONFIG:Release>:/PDB:$<TARGET_FILE_DIR:MindlessLoader>/MindlessLoader.pdb>"
+    )
 endif()
 
 # Link the compiled .res directly — clang-cl linker accepts it as an object file.

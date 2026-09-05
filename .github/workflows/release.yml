@@ -154,6 +154,35 @@ jobs:
             throw "clang -print-resource-dir failed"
           }
 
+      - name: Extract Mindless protector
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem `
+            -LiteralPath "$env:GITHUB_WORKSPACE\.ci\voyager" `
+            -Filter "Ryujin.zip" `
+            -File `
+            -Recurse |
+            Select-Object -First 1
+
+          if (!$archive) {
+            throw "Ryujin.zip was not found in the extracted Voyager bundle"
+          }
+
+          $destination = Join-Path $env:GITHUB_WORKSPACE ".ci\mindless-protector"
+          New-Item -ItemType Directory -Path $destination -Force | Out-Null
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $destination -Force
+
+          $protector = Join-Path $destination "Mindless.exe"
+          $core = Join-Path $destination "MindlessCore.dll"
+          if (!(Test-Path -LiteralPath $protector -PathType Leaf)) {
+            throw "Ryujin.zip does not contain Mindless.exe at its archive root"
+          }
+          if (!(Test-Path -LiteralPath $core -PathType Leaf)) {
+            throw "Ryujin.zip does not contain MindlessCore.dll at its archive root"
+          }
+
+          "MINDLESS_PROTECTOR_ROOT=$destination" >> $env:GITHUB_ENV
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -193,6 +222,51 @@ jobs:
       - name: Build production client
         shell: pwsh
         run: python tools/build.py --prod --no-cache
+
+      - name: Protect production loader
+        shell: pwsh
+        run: |
+          $input = Join-Path $env:GITHUB_WORKSPACE "MindlessLoader.exe"
+          $pdb = Join-Path $env:GITHUB_WORKSPACE "loader\out\build\windows-clang\Release\MindlessLoader.pdb"
+          $output = Join-Path $env:GITHUB_WORKSPACE "MindlessLoader.protected.exe"
+          $protector = Join-Path $env:MINDLESS_PROTECTOR_ROOT "Mindless.exe"
+
+          foreach ($file in @($input, $pdb, $protector)) {
+            if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Missing loader protection input: $file"
+            }
+          }
+
+          Push-Location $env:MINDLESS_PROTECTOR_ROOT
+          try {
+            & $protector `
+              --input $input `
+              --pdb $pdb `
+              --output $output `
+              --virtualize `
+              --junk `
+              --encrypt `
+              --iat `
+              --mangle-sections `
+              --ai-refuse `
+              --AntiDebug `
+              --AntiDump `
+              --MemoryProtection `
+              --MutateMiniVM `
+              --procs 'wWinMain,mindless::Application::start_auth,mindless::Application::start_download'
+          }
+          finally {
+            Pop-Location
+          }
+
+          if (!(Test-Path -LiteralPath $output -PathType Leaf)) {
+            throw "Mindless did not produce the protected loader"
+          }
+          if ((Get-Item -LiteralPath $output).Length -eq 0) {
+            throw "Mindless produced an empty protected loader"
+          }
+
+          Move-Item -LiteralPath $output -Destination $input -Force
 
       - name: Verify release files
         shell: pwsh

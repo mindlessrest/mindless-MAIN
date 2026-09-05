@@ -375,8 +375,10 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
             if voyager:
                 hikari_flags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-subobf -mllvm -sub_prob=70 -mllvm -sub_loop=2 -mllvm -enable-constenc -mllvm -constenc_times=1"
                 cv["MINDLESS_PRODUCTION_OBFUSCATION_FLAGS"] = hikari_flags
+                cv["MINDLESS_PRIVATE_PDB"] = "ON"
             else:
                 cv.pop("MINDLESS_PRODUCTION_OBFUSCATION_FLAGS", None)
+                cv["MINDLESS_PRIVATE_PDB"] = "OFF"
             cv.pop("CMAKE_C_FLAGS_RELEASE", None)
             cv.pop("CMAKE_CXX_FLAGS_RELEASE", None)
     with open(PRESET_FILE, "w", encoding="utf-8") as f:
