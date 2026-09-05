@@ -1,6 +1,5 @@
 package mindless.runtime;
 
-import mindless.utility.TextGlowUtils;
 import mindless.utility.font.MindlessFontRenderer;
 import net.minecraft.client.gui.FontRenderer;
 public final class HudTextRenderer {
@@ -16,13 +15,11 @@ public final class HudTextRenderer {
     }
 
     public static void draw(MindlessFontRenderer custom, FontRenderer vanilla, String text,
-                            float x, float y, int color, boolean shadow, boolean glow) {
+                            float x, float y, int color, boolean shadow) {
         if (custom != null) {
-            if (glow) TextGlowUtils.drawGlow(custom, text, x, y, color);
             custom.drawString(text, x, y, color, shadow);
             return;
         }
-        if (glow) TextGlowUtils.drawGlow(vanilla, text, x, y, color);
         if (shadow) {
             vanilla.drawStringWithShadow(text, x, y, color);
             return;

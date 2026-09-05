@@ -308,7 +308,6 @@ public class DynamicIsland extends Module {
                 float chipRadius = chipHeight * 0.5f;
 
                 // No outline. A ring around something already lighter than its surroundings just
-                // draws a second edge, which is what made the chips look like pasted buttons.
                 // The two stop fill alone is enough to lift them off the pill.
                 RoundedUtils.drawGradientVertical(cursor, chipY, chipWidth, chipHeight, chipRadius,
                         new java.awt.Color(255, 255, 255, Math.min(26, chipAlpha / 8)),

@@ -4,15 +4,15 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.combat.AntiKnockback;
 import mindless.module.impl.combat.Velocity;
-import mindless.module.impl.client.Settings;
+import mindless.module.impl.client.SpotifyMiniPlayer;
+import mindless.module.impl.client.HudEditor;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
+import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.shader.BlurUtils;
-import mindless.utility.shader.HudGlowHelper;
 import mindless.utility.shader.RoundedUtils;
-import mindless.utility.TextGlowUtils;
 import mindless.utility.font.GlyphBatch;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Theme;
@@ -32,6 +32,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent.RenderTickEvent;
 import java.awt.Color;
 
 public class HUD extends Module {
+    private final SpotifyMiniPlayer spotifyMiniPlayer;
     private static final String[] COLOR_MODES = new String[] { "Static", "Gradient", "Rainbow" };
     private static final String[] WAVE_AXES = new String[] { "Vertical", "Horizontal" };
     private static final String[] VERTICAL_WAVE_DIRECTIONS = new String[] { "Down", "Up" };
@@ -73,6 +74,8 @@ private static final double HUD_WAVE_HORIZONTAL_X_SCALE = 0.35;
     private static ButtonSetting alignRight;
     private static ButtonSetting lowercase;
     public static ButtonSetting showInfo;
+    public static SliderSetting scoreboardPosX;
+    public static SliderSetting scoreboardPosY;
     private static SliderSetting infoSeparator;
     private static ButtonSetting infoMatchName;
     private static ColorSetting infoColor;
@@ -105,7 +108,8 @@ private static final int[][] OUTLINE_OFFSETS = {
     private float lastHudFontScale = -1.0f;
 
     public HUD() {
-        super("Array List", "The list of your enabled modules.", Module.category.render);
+        super("HUD", "Controls the array list and media HUD.", Module.category.render);
+        this.registerSetting(new DescriptionSetting("Array list"));
         this.registerSetting(useTheme = new ButtonSetting("Use theme", true));
         this.registerSetting(colorMode = new SliderSetting("Color mode", 0, COLOR_MODES));
         this.registerSetting(hudColor = new ColorSetting("Color", 255, 255, 255));
@@ -142,10 +146,20 @@ private static final int[][] OUTLINE_OFFSETS = {
         this.registerSetting(infoSeparator = new SliderSetting("Info separator", 0, INFO_SEPARATORS));
         this.registerSetting(infoMatchName = new ButtonSetting("Info matches name color", false));
         this.registerSetting(infoColor = new ColorSetting("Info color", 170, 170, 170));
+        this.registerSetting(new DescriptionSetting("HUD layout"));
+        this.registerSetting(new ButtonSetting("Edit HUD elements", () -> mc.displayGuiScreen(new HudEditor.Screen())));
+        this.registerSetting(scoreboardPosX = new SliderSetting("Scoreboard position X", 0.0, -1.0, 1.0, 0.001));
+        this.registerSetting(scoreboardPosY = new SliderSetting("Scoreboard position Y", 0.0, -1.0, 1.0, 0.001));
+        scoreboardPosX.visible = false;
+        scoreboardPosY.visible = false;
+        scoreboardPosX.setValueRaw(-1.0D);
+        scoreboardPosY.setValueRaw(-1.0D);
+        spotifyMiniPlayer = new SpotifyMiniPlayer(this);
     }
 
     @Override
     public void guiUpdate() {
+        spotifyMiniPlayer.guiUpdate();
         boolean ownColors = useTheme != null && !useTheme.isToggled();
         int mode = colorMode == null ? 0 : (int) colorMode.getInput();
         if (colorMode != null) {
@@ -222,8 +236,50 @@ private static final int[][] OUTLINE_OFFSETS = {
 
     @Override
     public void onEnable() {
+        spotifyMiniPlayer.setEnabled(true);
+        spotifyMiniPlayer.onEnable();
         guiUpdate();
         ModuleManager.sort();
+    }
+
+    @Override
+    public void onDisable() {
+        spotifyMiniPlayer.setEnabled(false);
+        spotifyMiniPlayer.onDisable();
+    }
+
+    public SpotifyMiniPlayer getSpotifyMiniPlayer() {
+        return spotifyMiniPlayer;
+    }
+
+    public static boolean hasCustomScoreboardPosition() {
+        return scoreboardPosX != null && scoreboardPosY != null
+                && scoreboardPosX.getInput() >= 0.0D && scoreboardPosY.getInput() >= 0.0D;
+    }
+
+    public static float getScoreboardX(float width, ScaledResolution resolution, float defaultX) {
+        if (!hasCustomScoreboardPosition()) return defaultX;
+        return (float) (Math.max(0.0F, resolution.getScaledWidth() - width) * scoreboardPosX.getInput());
+    }
+
+    public static float getScoreboardY(float height, ScaledResolution resolution, float defaultY) {
+        if (!hasCustomScoreboardPosition()) return defaultY;
+        return (float) (Math.max(0.0F, resolution.getScaledHeight() - height) * scoreboardPosY.getInput());
+    }
+
+    public static void setScoreboardPosition(float x, float y, float width, float height, ScaledResolution resolution) {
+        if (scoreboardPosX == null || scoreboardPosY == null || resolution == null) return;
+        float maxX = Math.max(0.0F, resolution.getScaledWidth() - width);
+        float maxY = Math.max(0.0F, resolution.getScaledHeight() - height);
+        float clampedX = Math.max(0.0F, Math.min(maxX, x));
+        float clampedY = Math.max(0.0F, Math.min(maxY, y));
+        scoreboardPosX.setValueRaw(maxX <= 0.0F ? 0.0D : clampedX / maxX);
+        scoreboardPosY.setValueRaw(maxY <= 0.0F ? 0.0D : clampedY / maxY);
+    }
+
+    public static void resetScoreboardPosition() {
+        if (scoreboardPosX != null) scoreboardPosX.setValueRaw(-1.0D);
+        if (scoreboardPosY != null) scoreboardPosY.setValueRaw(-1.0D);
     }
 
     @Override
@@ -293,12 +349,6 @@ private static final int[][] OUTLINE_OFFSETS = {
         double lastOutlineRight = 0.0;
         double lastBackgroundBottom = 0.0;
         boolean removeVelocity = ModuleManager.antiKnockback.isEnabled();
-        boolean useShaderGlow = Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled()
-                && HudGlowHelper.isAvailable();
-        if (useShaderGlow) {
-            renderArrayListGlowPass(hudFont, removeVelocity, rowHeight, horizontalTextPadding,
-                    textTopOffset, textTopPadding);
-        }
         if (drawBackground.isToggled()) {
             drawArrayListBackground(collectRowWidths(hudFont, removeVelocity),
                     posY, horizontalTextPadding, rowHeight);
@@ -393,6 +443,7 @@ private static final int[][] OUTLINE_OFFSETS = {
             double bottomPhase = hudWavePhase(verticalWaveAccum, bottomCenterX);
             RenderUtils.drawRect(lastOutlineLeft, lastBackgroundBottom, lastOutlineRight, lastBackgroundBottom + outlineThickness, getHudColor(bottomPhase));
         }
+        spotifyMiniPlayer.onRenderTick(event);
     }
 
     public static int getLongestModule() {
@@ -944,9 +995,6 @@ private static void drawHudRow(MindlessFontRenderer hudFont, Module module, floa
         }
     }
 private static void drawDecoration(MindlessFontRenderer hudFont, String text, float xPos, float textY, int color) {
-        if (Settings.arrayListGlow != null && Settings.arrayListGlow.isToggled() && !HudGlowHelper.isAvailable()) {
-            TextGlowUtils.drawGlow(hudFont, text, xPos, textY, color);
-        }
         if (!shouldDrawTextShadow()) {
             return;
         }
@@ -982,47 +1030,6 @@ private static void drawDecoration(MindlessFontRenderer hudFont, String text, fl
                 break;
         }
     }
-private static void renderArrayListGlowPass(MindlessFontRenderer hudFont, boolean removeVelocity,
-                                                 int rowHeight, int horizontalTextPadding,
-                                                 int textTopOffset, int textTopPadding) {
-        HudGlowHelper.beginMask();
-        GlyphBatch.begin();
-        try {
-            float yPos = posY;
-            double verticalWaveAccum = 0.0;
-            for (Module module : ModuleManager.organizedModules) {
-                if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
-                    continue;
-                }
-                String moduleName = getHudRenderText(module);
-                int moduleWidth = hudFont.getStringWidth(moduleName);
-                float xPos = posX;
-                float textY = getHudTextY(yPos, textTopOffset, textTopPadding);
-                if (alignRight.isToggled()) {
-                    xPos -= moduleWidth;
-                }
-                double backgroundLeft = xPos - horizontalTextPadding;
-                double backgroundRight = xPos + moduleWidth + horizontalTextPadding;
-                double rowCenterX = (backgroundLeft + backgroundRight) * 0.5;
-                double wavePhase = hudWavePhase(verticalWaveAccum, rowCenterX);
-                int color = getHudColor(wavePhase);
-                hudFont.drawString(moduleName, xPos, textY, color, false);
-                if (hudWaveIsVertical()) {
-                    verticalWaveAccum += getVerticalWaveStep();
-                }
-                yPos += rowHeight;
-            }
-        }
-        finally {
-            GlyphBatch.end();
-        }
-        int baseColor = getHudColor(0.0);
-        int r = (baseColor >> 16) & 0xFF;
-        int g = (baseColor >> 8) & 0xFF;
-        int b = baseColor & 0xFF;
-        HudGlowHelper.endAndComposite(6.0f, 1.0f, r, g, b);
-    }
-
     private static void drawTextSegment(MindlessFontRenderer hudFont, String text, float xPos, float textY,
                                         int color, boolean shadow) {
         if (!shouldUseHorizontalWaveText()) {

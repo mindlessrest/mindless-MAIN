@@ -1,9 +1,7 @@
 package mindless.mixin.impl.render;
 
-import mindless.module.impl.client.Settings;
 import mindless.module.impl.render.ChatModule;
 import mindless.utility.font.MindlessFontRenderer;
-import mindless.utility.TextGlowUtils;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import mindless.utility.ScaledResolutionCache;
@@ -160,14 +158,6 @@ public abstract class MixinGuiNewChat {
             }
 
             float textX = x + textIndent;
-            if (Settings.chatGlow != null && Settings.chatGlow.isToggled()) {
-                if (chatFont != null) {
-                    TextGlowUtils.drawGlow(chatFont, text, textX, y, textColor);
-                }
-                else {
-                    TextGlowUtils.drawGlow(mc.fontRendererObj, text, textX, y, textColor);
-                }
-            }
             if (chatFont != null) {
                 chatFont.drawString(text, textX, y, textColor, ChatModule.textShadow());
             }

@@ -1,11 +1,10 @@
 package mindless.mixin.impl.render;
 
 import mindless.module.ModuleManager;
+import mindless.module.impl.render.HUD;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
-import mindless.module.impl.client.Settings;
 import mindless.utility.HudRenderBounds;
-import mindless.utility.TextGlowUtils;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.module.impl.render.ScoreboardModule;
 import mindless.runtime.GuiIngameState;
@@ -54,17 +53,10 @@ public abstract class MixinGuiIngame {
 
     @Unique
     private void mindless$drawLine(MindlessFontRenderer custom, FontRenderer vanilla, String text,
-                                float x, float y, boolean glow) {
+                                float x, float y) {
         if (custom != null) {
-            if (glow) {
-                TextGlowUtils.drawGlow(custom, text, x, y, 0xFFFFFFFF);
-            }
             custom.drawString(text, x, y, 0xFFFFFFFF, false);
             return;
-        }
-
-        if (glow) {
-            TextGlowUtils.drawGlow(vanilla, text, x, y, 0xFFFFFFFF);
         }
         vanilla.drawString(text, x, y, 0xFFFFFFFF, false);
     }
@@ -130,8 +122,8 @@ public abstract class MixinGuiIngame {
         float defaultBottom = resolution.getScaledHeight() / 2.0f + rowsHeight / 3.0f + 5.0f;
         float defaultLeft = resolution.getScaledWidth() - 3.0f - panelWidth;
         float defaultTop = defaultBottom - panelHeight;
-        float left = Settings.getScoreboardX(panelWidth, resolution, defaultLeft);
-        float top = Settings.getScoreboardY(panelHeight, resolution, defaultTop);
+        float left = HUD.getScoreboardX(panelWidth, resolution, defaultLeft);
+        float top = HUD.getScoreboardY(panelHeight, resolution, defaultTop);
         float right = left + panelWidth;
         float bottom = top + panelHeight;
         HudRenderBounds.setScoreboard(left, top, right, bottom);
@@ -159,18 +151,17 @@ public abstract class MixinGuiIngame {
         GlStateManager.pushMatrix();
         GlStateManager.scale(fontScale, fontScale, 1.0f);
 
-        boolean glow = Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled();
         float titleVisualWidth = mindless$width(customFont, font, displayTitle) * fontScale;
         int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / fontScale);
         int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / fontScale);
-        mindless$drawLine(customFont, font, displayTitle, titleX, titleY, glow);
+        mindless$drawLine(customFont, font, displayTitle, titleX, titleY);
 
         for (int i = 0; i < mindless$visibleScores.size(); i++) {
             String playerText = mindless$visibleLines.get(i);
             int y = Math.round((bottom - GuiIngameState.VERTICAL_PADDING
                     - (i + 1) * scaledLineHeight) / fontScale);
             int lineX = Math.round((left + GuiIngameState.HORIZONTAL_PADDING) / fontScale);
-            mindless$drawLine(customFont, font, playerText, lineX, y, glow);
+            mindless$drawLine(customFont, font, playerText, lineX, y);
         }
 
         GlStateManager.popMatrix();

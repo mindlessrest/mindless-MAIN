@@ -13,7 +13,6 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.runtime.GuiIngameState;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
-import mindless.utility.TextGlowUtils;
 import mindless.utility.gui.MindlessButton;
 import mindless.utility.media.MediaPlayerRenderer;
 import mindless.utility.shader.BlurUtils;
@@ -499,7 +498,7 @@ private void beginResize(Element element, int handle) {
 
                 @Override
                 void reset() {
-                    Settings.resetScoreboardPosition();
+                    HUD.resetScoreboardPosition();
                 }
             });
 
@@ -822,10 +821,10 @@ private void beginResize(Element element, int handle) {
             float defaultTop = resolution.getScaledHeight() / 2.0F - panelHeight * 0.5F;
 
             if (requestedX != null && requestedY != null) {
-                Settings.setScoreboardPosition(requestedX, requestedY, panelWidth, panelHeight, resolution);
+                HUD.setScoreboardPosition(requestedX, requestedY, panelWidth, panelHeight, resolution);
             }
-            float left = Settings.getScoreboardX(panelWidth, resolution, defaultLeft);
-            float top = Settings.getScoreboardY(panelHeight, resolution, defaultTop);
+            float left = HUD.getScoreboardX(panelWidth, resolution, defaultLeft);
+            float top = HUD.getScoreboardY(panelHeight, resolution, defaultTop);
             float right = left + panelWidth;
             float bottom = top + panelHeight;
 
@@ -842,17 +841,11 @@ private void beginResize(Element element, int handle) {
             float titleWidth = font.getStringWidth(title) * scale;
             int titleX = Math.round((left + (panelWidth - titleWidth) * 0.5F) / scale);
             int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / scale);
-            if (Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled()) {
-                TextGlowUtils.drawGlow(font, title, titleX, titleY, 0xFFFFFFFF);
-            }
             font.drawString(title, titleX, titleY, 0xFFFFFFFF);
             for (int i = 0; i < rows.length; i++) {
                 int y = Math.round((bottom - GuiIngameState.VERTICAL_PADDING
                         - (i + 1) * lineHeight) / scale);
                 int rowX = Math.round((left + GuiIngameState.HORIZONTAL_PADDING) / scale);
-                if (Settings.scoreboardGlow != null && Settings.scoreboardGlow.isToggled()) {
-                    TextGlowUtils.drawGlow(font, rows[i], rowX, y, 0xFFFFFFFF);
-                }
                 font.drawString(rows[i], rowX, y, 0xFFFFFFFF);
             }
             GlStateManager.popMatrix();

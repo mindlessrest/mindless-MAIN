@@ -8,7 +8,6 @@ import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import net.minecraft.client.gui.GuiChat;
 import org.lwjgl.input.Keyboard;
-import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.gui.inventory.GuiInventory;
 
 public class Settings extends Module {
@@ -38,12 +37,6 @@ public class Settings extends Module {
     public static SliderSetting offset;
     public static SliderSetting timeMultiplier;
     public static SliderSetting defaultTheme;
-    public static SliderSetting scoreboardPosX;
-    public static SliderSetting scoreboardPosY;
-    public static ButtonSetting arrayListGlow;
-    public static ButtonSetting scoreboardGlow;
-    public static ButtonSetting chatGlow;
-
     public Settings() {
         super("Settings", "Client options that span every module.", category.client, 0);
         this.registerSetting(new ButtonSetting("Uninject", () -> Mindless.uninject()));
@@ -51,17 +44,6 @@ public class Settings extends Module {
         this.registerSetting(diagnostics = new ButtonSetting("Diagnostics", false));
         this.registerSetting(diagnosticsChat = new ButtonSetting("Diagnostics in chat", false));
         this.registerSetting(new ButtonSetting("Dump GL info", () -> mindless.utility.Diagnostics.dumpEnvironment()));
-        this.registerSetting(new DescriptionSetting("HUD layout"));
-        this.registerSetting(new ButtonSetting("Edit HUD elements", () -> mc.displayGuiScreen(new HudEditor.Screen())));
-        this.registerSetting(arrayListGlow = new ButtonSetting("Array List text glow", false));
-        this.registerSetting(scoreboardGlow = new ButtonSetting("Scoreboard text glow", false));
-        this.registerSetting(chatGlow = new ButtonSetting("Chat text glow", false));
-        this.registerSetting(scoreboardPosX = new SliderSetting("Scoreboard position X", 0.0, -1.0, 1.0, 0.001));
-        this.registerSetting(scoreboardPosY = new SliderSetting("Scoreboard position Y", 0.0, -1.0, 1.0, 0.001));
-        scoreboardPosX.visible = false;
-        scoreboardPosY.visible = false;
-        scoreboardPosX.setValueRaw(-1.0D);
-        scoreboardPosY.setValueRaw(-1.0D);
         this.registerSetting(new DescriptionSetting("General"));
         this.registerSetting(addBracketsToDistance = new ButtonSetting("Add brackets to distance", false));
         this.registerSetting(hideFirstPersonESP = new ButtonSetting("Hide first person self ESP", true));
@@ -100,33 +82,4 @@ public class Settings extends Module {
         return false;
     }
 
-    public static boolean hasCustomScoreboardPosition() {
-        return scoreboardPosX != null && scoreboardPosY != null
-                && scoreboardPosX.getInput() >= 0.0D && scoreboardPosY.getInput() >= 0.0D;
-    }
-
-    public static float getScoreboardX(float width, ScaledResolution resolution, float defaultX) {
-        if (!hasCustomScoreboardPosition()) return defaultX;
-        return (float) (Math.max(0.0F, resolution.getScaledWidth() - width) * scoreboardPosX.getInput());
-    }
-
-    public static float getScoreboardY(float height, ScaledResolution resolution, float defaultY) {
-        if (!hasCustomScoreboardPosition()) return defaultY;
-        return (float) (Math.max(0.0F, resolution.getScaledHeight() - height) * scoreboardPosY.getInput());
-    }
-
-    public static void setScoreboardPosition(float x, float y, float width, float height, ScaledResolution resolution) {
-        if (scoreboardPosX == null || scoreboardPosY == null || resolution == null) return;
-        float maxX = Math.max(0.0F, resolution.getScaledWidth() - width);
-        float maxY = Math.max(0.0F, resolution.getScaledHeight() - height);
-        float clampedX = Math.max(0.0F, Math.min(maxX, x));
-        float clampedY = Math.max(0.0F, Math.min(maxY, y));
-        scoreboardPosX.setValueRaw(maxX <= 0.0F ? 0.0D : clampedX / maxX);
-        scoreboardPosY.setValueRaw(maxY <= 0.0F ? 0.0D : clampedY / maxY);
-    }
-
-    public static void resetScoreboardPosition() {
-        if (scoreboardPosX != null) scoreboardPosX.setValueRaw(-1.0D);
-        if (scoreboardPosY != null) scoreboardPosY.setValueRaw(-1.0D);
-    }
 }

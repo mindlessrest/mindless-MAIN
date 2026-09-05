@@ -21,6 +21,7 @@ import java.awt.Color;
 
 public class SpotifyMiniPlayer extends Module {
     private static final double UNSET_CUSTOM_POSITION = -1.0D;
+    private final Module settingOwner;
 
     public static SliderSetting widgetStyle;
     public static SliderSetting widgetFont;
@@ -50,37 +51,39 @@ public static SliderSetting lyricsPosX;
     public static SliderSetting lyricsPosY;
     public static SliderSetting lyricsScale;
 
-    public SpotifyMiniPlayer() {
+    public SpotifyMiniPlayer(Module settingOwner) {
         super("Spotify Info", "Shows your current track, art and lyrics.", category.render);
-        this.registerSetting(widgetStyle = new SliderSetting("Mode", 0, new String[]{"Modern", "Old"}));
-        this.registerSetting(widgetFont = new SliderSetting("Font", 0, FONT_OPTIONS));
-        this.registerSetting(showAlbumArt = new ButtonSetting("Show album art", true));
-        this.registerSetting(showProgressBar = new ButtonSetting("Show progress bar", true));
-        this.registerSetting(progressBarColorMode = new SliderSetting("Progress bar colors", 0, new String[]{"HUD gradient", "Album accent"}));
-        this.registerSetting(showHeader = new ButtonSetting("Show header", true));
-        this.registerSetting(showDetails = new ButtonSetting("Show details", true));
-        this.registerSetting(showSourceApp = new ButtonSetting("Show source app", true));
-        this.registerSetting(showStatusBadge = new ButtonSetting("Show status badge", true));
-        this.registerSetting(new DescriptionSetting("Lyrics"));
-        this.registerSetting(showLyrics = new ButtonSetting("Show synced lyrics", true));
-        this.registerSetting(fullLyricsView = new ButtonSetting("Full lyrics view", false));
-        this.registerSetting(karaokeLyrics = new ButtonSetting("Karaoke highlight", false));
-        this.registerSetting(animateLyrics = new ButtonSetting("Animate lyrics", true));
-        this.registerSetting(lyricsFont = new SliderSetting("Lyrics font", 0, FONT_OPTIONS));
-        this.registerSetting(lyricTextScale = new SliderSetting("Lyrics size", "x", 1.0, 0.85, 1.4, 0.05));
-        this.registerSetting(lyricAnimationSpeed = new SliderSetting("Lyrics animation", "ms", 260, 80, 600, 20));
-        this.registerSetting(lyricSyncOffset = new SliderSetting("Lyrics sync", "ms", 350, -1500, 1500, 50));
-        this.registerSetting(showIdleCard = new ButtonSetting("Show when idle", true));
-        this.registerSetting(hideWhenPaused = new ButtonSetting("Hide when paused", false));
-        this.registerSetting(dynamicIslandStyle = new ButtonSetting("Accent tint", true));
-        this.registerSetting(noBackground = new ButtonSetting("No background", false));
-        this.registerSetting(new ButtonSetting("Edit position", () -> mc.displayGuiScreen(new EditScreen())));
-        this.registerSetting(scale = new SliderSetting("UI scale", "x", 0.5, 0.4, 1.75, 0.05));
-        this.registerSetting(lyricsScale = new SliderSetting("Lyrics bubble size", "x", 1.0, 0.5, 2.0, 0.05));
-        this.registerSetting(customPosX = new SliderSetting("Custom Position X", 0.0, -1.0, 1.0, 0.001));
-        this.registerSetting(customPosY = new SliderSetting("Custom Position Y", 0.0, -1.0, 1.0, 0.001));
-        this.registerSetting(lyricsPosX = new SliderSetting("Lyrics Position X", 0.0, -1.0, 1.0, 0.001));
-        this.registerSetting(lyricsPosY = new SliderSetting("Lyrics Position Y", 0.0, -1.0, 1.0, 0.001));
+        this.settingOwner = settingOwner;
+        settingOwner.registerSetting(new DescriptionSetting("Spotify info"));
+        settingOwner.registerSetting(widgetStyle = new SliderSetting("Spotify mode", 0, new String[]{"Modern", "Old"}));
+        settingOwner.registerSetting(widgetFont = new SliderSetting("Spotify font", 0, FONT_OPTIONS));
+        settingOwner.registerSetting(showAlbumArt = new ButtonSetting("Show album art", true));
+        settingOwner.registerSetting(showProgressBar = new ButtonSetting("Show progress bar", true));
+        settingOwner.registerSetting(progressBarColorMode = new SliderSetting("Progress bar colors", 0, new String[]{"HUD gradient", "Album accent"}));
+        settingOwner.registerSetting(showHeader = new ButtonSetting("Show header", true));
+        settingOwner.registerSetting(showDetails = new ButtonSetting("Show details", true));
+        settingOwner.registerSetting(showSourceApp = new ButtonSetting("Show source app", true));
+        settingOwner.registerSetting(showStatusBadge = new ButtonSetting("Show status badge", true));
+        settingOwner.registerSetting(new DescriptionSetting("Lyrics"));
+        settingOwner.registerSetting(showLyrics = new ButtonSetting("Show synced lyrics", true));
+        settingOwner.registerSetting(fullLyricsView = new ButtonSetting("Full lyrics view", false));
+        settingOwner.registerSetting(karaokeLyrics = new ButtonSetting("Karaoke highlight", false));
+        settingOwner.registerSetting(animateLyrics = new ButtonSetting("Animate lyrics", true));
+        settingOwner.registerSetting(lyricsFont = new SliderSetting("Lyrics font", 0, FONT_OPTIONS));
+        settingOwner.registerSetting(lyricTextScale = new SliderSetting("Lyrics size", "x", 1.0, 0.85, 1.4, 0.05));
+        settingOwner.registerSetting(lyricAnimationSpeed = new SliderSetting("Lyrics animation", "ms", 260, 80, 600, 20));
+        settingOwner.registerSetting(lyricSyncOffset = new SliderSetting("Lyrics sync", "ms", 350, -1500, 1500, 50));
+        settingOwner.registerSetting(showIdleCard = new ButtonSetting("Show when idle", true));
+        settingOwner.registerSetting(hideWhenPaused = new ButtonSetting("Hide when paused", false));
+        settingOwner.registerSetting(dynamicIslandStyle = new ButtonSetting("Accent tint", true));
+        settingOwner.registerSetting(noBackground = new ButtonSetting("No background", false));
+        settingOwner.registerSetting(new ButtonSetting("Edit Spotify position", () -> mc.displayGuiScreen(new EditScreen())));
+        settingOwner.registerSetting(scale = new SliderSetting("Spotify scale", "x", 0.5, 0.4, 1.75, 0.05));
+        settingOwner.registerSetting(lyricsScale = new SliderSetting("Lyrics bubble size", "x", 1.0, 0.5, 2.0, 0.05));
+        settingOwner.registerSetting(customPosX = new SliderSetting("Spotify Position X", 0.0, -1.0, 1.0, 0.001));
+        settingOwner.registerSetting(customPosY = new SliderSetting("Spotify Position Y", 0.0, -1.0, 1.0, 0.001));
+        settingOwner.registerSetting(lyricsPosX = new SliderSetting("Lyrics Position X", 0.0, -1.0, 1.0, 0.001));
+        settingOwner.registerSetting(lyricsPosY = new SliderSetting("Lyrics Position Y", 0.0, -1.0, 1.0, 0.001));
         customPosX.visible = false;
         customPosY.visible = false;
         lyricsPosX.visible = false;
@@ -125,37 +128,37 @@ public static SliderSetting lyricsPosX;
     @Override
     public void guiUpdate() {
         boolean widget = widgetStyle == null || (int) widgetStyle.getInput() == 0;
-        if (showHeader != null) showHeader.setVisible(!widget, this);
-        if (showDetails != null) showDetails.setVisible(!widget, this);
-        if (showSourceApp != null) showSourceApp.setVisible(!widget, this);
-        if (showStatusBadge != null) showStatusBadge.setVisible(!widget, this);
-        if (showAlbumArt != null) showAlbumArt.setVisible(!widget, this);
-        if (noBackground != null) noBackground.setVisible(!widget, this);
-        if (fullLyricsView != null) fullLyricsView.setVisible(!widget, this);
-        if (karaokeLyrics != null) karaokeLyrics.setVisible(!widget, this);
+        if (showHeader != null) showHeader.setVisible(!widget, settingOwner);
+        if (showDetails != null) showDetails.setVisible(!widget, settingOwner);
+        if (showSourceApp != null) showSourceApp.setVisible(!widget, settingOwner);
+        if (showStatusBadge != null) showStatusBadge.setVisible(!widget, settingOwner);
+        if (showAlbumArt != null) showAlbumArt.setVisible(!widget, settingOwner);
+        if (noBackground != null) noBackground.setVisible(!widget, settingOwner);
+        if (fullLyricsView != null) fullLyricsView.setVisible(!widget, settingOwner);
+        if (karaokeLyrics != null) karaokeLyrics.setVisible(!widget, settingOwner);
 
         boolean lyricsVisible = showLyrics != null && showLyrics.isToggled();
         if (fullLyricsView != null) {
-            fullLyricsView.setVisible(lyricsVisible && !widget, this);
+            fullLyricsView.setVisible(lyricsVisible && !widget, settingOwner);
         }
         if (karaokeLyrics != null) {
-            karaokeLyrics.setVisible(lyricsVisible && !widget, this);
+            karaokeLyrics.setVisible(lyricsVisible && !widget, settingOwner);
         }
         if (animateLyrics != null) {
-            animateLyrics.setVisible(lyricsVisible, this);
+            animateLyrics.setVisible(lyricsVisible, settingOwner);
         }
         if (lyricTextScale != null) {
-            lyricTextScale.setVisible(lyricsVisible, this);
+            lyricTextScale.setVisible(lyricsVisible, settingOwner);
         }
         if (lyricsScale != null) {
-            lyricsScale.setVisible(lyricsVisible && widget, this);
+            lyricsScale.setVisible(lyricsVisible && widget, settingOwner);
         }
         if (lyricSyncOffset != null) {
-            lyricSyncOffset.setVisible(lyricsVisible, this);
+            lyricSyncOffset.setVisible(lyricsVisible, settingOwner);
         }
         boolean animateVisible = lyricsVisible && animateLyrics != null && animateLyrics.isToggled();
         if (lyricAnimationSpeed != null) {
-            lyricAnimationSpeed.setVisible(animateVisible, this);
+            lyricAnimationSpeed.setVisible(animateVisible, settingOwner);
         }
     }
 private static final String[] FONT_OPTIONS = ModuleFont.options();

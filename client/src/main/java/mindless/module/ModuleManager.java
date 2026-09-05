@@ -119,7 +119,6 @@ public class ModuleManager {
         this.addModule(new mindless.module.impl.client.HudEditor());
         this.addModule(new HideModules());
         this.addModule(themeManager = new ThemeManager());
-        this.addModule(spotifyMiniPlayer = new SpotifyMiniPlayer());
         this.addModule(relationships = new Relationships());
         if (mindless.Mindless.playerRelationsManager == null || mindless.Mindless.playerRelationsManager.isActive()) {
             relationships.enable();
@@ -241,6 +240,7 @@ public class ModuleManager {
         this.addModule(dynamicIsland = new DynamicIsland());
         this.addModule(sessionInfo = new SessionInfo());
         this.addModule(hud = new HUD());
+        spotifyMiniPlayer = hud.getSpotifyMiniPlayer();
         this.addModule(new Notifications());
         this.addModule(new Indicators());
         this.addModule(new ItemESP());
@@ -305,24 +305,6 @@ public class ModuleManager {
 
         return categoryModules;
     }
-private static final Map<String, String> LEGACY_MODULE_NAMES = buildLegacyModuleNames();
-
-    private static Map<String, String> buildLegacyModuleNames() {
-        Map<String, String> names = new HashMap<>();
-        // Only renames that survive normalizeModuleName belong here; pure spacing and
-        // casing changes already resolve through modulesByNormalizedName.
-        names.put("HUD", "Stats HUD");
-        names.put("Hide", "Hide Modules");
-        names.put("WTap", "Sprint Reset");
-        names.put("Air Stuck", "Stasis");
-        names.put("InvMove", "Inventory Move");
-        names.put("InvManager", "Inventory Manager");
-        names.put("Anticheat", "Cheat Detector");
-        names.put("Sword Animation", "Animations");
-        names.put("Slow", "Slow Swing");
-        return names;
-    }
-
     public static Module getModule(String moduleName) {
         Module module = modulesByName.get(moduleName);
         if (module != null) {
@@ -332,8 +314,7 @@ private static final Map<String, String> LEGACY_MODULE_NAMES = buildLegacyModule
         if (module != null) {
             return module;
         }
-        String renamed = LEGACY_MODULE_NAMES.get(moduleName);
-        return renamed == null ? null : modulesByName.get(renamed);
+        return null;
     }
 
     public static Module getModule(Class<?> clazz) {

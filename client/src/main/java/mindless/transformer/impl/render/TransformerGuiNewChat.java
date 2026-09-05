@@ -1,11 +1,9 @@
 package mindless.transformer.impl.render;
 
-import mindless.module.impl.client.Settings;
 import mindless.module.impl.render.ChatModule;
 import mindless.runtime.GuiNewChatState;
 import mindless.runtime.HudTextRenderer;
 import mindless.utility.font.MindlessFontRenderer;
-import mindless.utility.TextGlowUtils;
 import mindless.utility.ScaledResolutionCache;
 import net.lenni0451.classtransform.InjectionCallback;
 import net.lenni0451.classtransform.annotations.CInline;
@@ -147,9 +145,8 @@ public abstract class TransformerGuiNewChat {
                         GL11.GL_ONE, GL11.GL_ZERO);
             }
 
-            boolean glow = Settings.chatGlow != null && Settings.chatGlow.isToggled();
             HudTextRenderer.draw(chatFont, mc.fontRendererObj, text, x + textIndent, y,
-                    textColor, ChatModule.textShadow(), glow);
+                    textColor, ChatModule.textShadow());
         }
         GlStateManager.disableBlend();
         if (chatOpen && isScrolled && rendered > 0) {
