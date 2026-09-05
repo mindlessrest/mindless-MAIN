@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
   workflow_dispatch:
 
 concurrency:
@@ -23,12 +26,43 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+
+      # Caches the Gradle distribution, the dependency cache and the local
+      # build cache, keyed from the wrapper and build scripts. Replaces
+      # setup-java's `cache: gradle`, which only cached ~/.gradle/caches and
+      # missed on every run here.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Resolve vcpkg revision
+        id: vcpkg
+        shell: pwsh
+        run: |
+          $rev = (git -C C:\vcpkg rev-parse HEAD).Trim()
+          if (-not $rev) { throw "could not resolve the vcpkg revision at C:\vcpkg" }
+          "rev=$rev" >> $env:GITHUB_OUTPUT
+          "archives=$env:LOCALAPPDATA\vcpkg\archives" >> $env:GITHUB_OUTPUT
+
+      # vcpkg's own binary cache. Each package is stored under its ABI hash,
+      # which covers the compiler, triplet, port version, features and
+      # dependency graph — a mismatch misses and rebuilds rather than reusing
+      # an incompatible binary. The key pins the vcpkg revision and the
+      # manifest so a toolchain or dependency bump starts a fresh entry, and
+      # the restore-keys let an unrelated dependency change still reuse the
+      # packages that did not move (openssl alone is ~10 minutes to build).
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.vcpkg.outputs.archives }}
+          key: vcpkg-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.vcpkg.outputs.rev }}-${{ hashFiles('loader/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.vcpkg.outputs.rev }}-
+            vcpkg-${{ runner.os }}-${{ env.ImageOS }}-
 
       - name: Build production client
         shell: pwsh
