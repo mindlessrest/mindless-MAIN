@@ -3,6 +3,7 @@ package obf.transform;
 import obf.ObfContext;
 import obf.Transform;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FrameNode;
@@ -36,7 +37,7 @@ public class ControlFlow implements Transform, Opcodes {
                 long seed = 31L * owner.name.hashCode() + method.name.hashCode() * 17L + method.desc.hashCode();
                 Random random = new Random(seed);
                 if (random.nextInt(100) >= 45) continue;
-                method.instructions.insert(createDiamond(random));
+                method.instructions.insert(createDiamond(owner.name, method, random));
                 method.maxStack = Math.max(method.maxStack, 2);
                 transformed++;
             }
@@ -52,7 +53,7 @@ public class ControlFlow implements Transform, Opcodes {
                 && (method.invisibleAnnotations == null || method.invisibleAnnotations.isEmpty());
     }
 
-    private InsnList createDiamond(Random random) {
+    private InsnList createDiamond(String ownerName, MethodNode method, Random random) {
         int salt = random.nextInt();
         LabelNode alternate = new LabelNode();
         LabelNode merge = new LabelNode();
@@ -67,11 +68,29 @@ public class ControlFlow implements Transform, Opcodes {
         addBalancedNoise(code, random);
         code.add(new JumpInsnNode(GOTO, merge));
         code.add(alternate);
-        code.add(new FrameNode(F_SAME, 0, null, 0, null));
+        Object[] entryLocals = entryLocals(ownerName, method);
+        code.add(new FrameNode(F_NEW, entryLocals.length, entryLocals, 0, new Object[0]));
         addBalancedNoise(code, random);
         code.add(merge);
-        code.add(new FrameNode(F_SAME, 0, null, 0, null));
+        code.add(new FrameNode(F_NEW, entryLocals.length, entryLocals, 0, new Object[0]));
         return code;
+    }
+
+    private Object[] entryLocals(String ownerName, MethodNode method) {
+        java.util.ArrayList<Object> locals = new java.util.ArrayList<>();
+        if ((method.access & ACC_STATIC) == 0) locals.add(ownerName);
+        for (Type argument : Type.getArgumentTypes(method.desc)) {
+            locals.add(switch (argument.getSort()) {
+                case Type.BOOLEAN, Type.BYTE, Type.CHAR, Type.SHORT, Type.INT -> INTEGER;
+                case Type.FLOAT -> FLOAT;
+                case Type.LONG -> LONG;
+                case Type.DOUBLE -> DOUBLE;
+                case Type.ARRAY -> argument.getDescriptor();
+                case Type.OBJECT -> argument.getInternalName();
+                default -> throw new IllegalArgumentException("Unsupported method argument: " + argument);
+            });
+        }
+        return locals.toArray();
     }
 
     private void addBalancedNoise(InsnList code, Random random) {

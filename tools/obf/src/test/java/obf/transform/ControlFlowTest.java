@@ -4,16 +4,22 @@ import obf.ObfConfig;
 import obf.ObfContext;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.analysis.Analyzer;
 import org.objectweb.asm.tree.analysis.BasicInterpreter;
 
 import java.lang.reflect.Method;
+import java.io.File;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,13 +35,55 @@ class ControlFlowTest {
         new ControlFlow().apply(context);
 
         assertTrue(value.instructions.size() > originalSize);
+        for (var instruction : value.instructions.toArray()) {
+            if (instruction instanceof FrameNode frame) {
+                assertEquals(Opcodes.F_NEW, frame.type,
+                        "expanded input must not be mixed with compressed frames");
+            }
+        }
         ClassNode node = context.classes().get("mindless/test/Sample");
         new Analyzer<>(new BasicInterpreter()).analyze(node.name, value);
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         node.accept(writer);
-        Class<?> sample = new ByteArrayLoader().define(writer.toByteArray());
+        byte[] firstWrite = writer.toByteArray();
+
+        // Lunar/Genesis reads and rewrites classes after Mindless loads. A
+        // second expanded-frame round trip catches malformed StackMapTable
+        // offsets that a direct JVM define alone can miss.
+        ClassNode reparsed = new ClassNode();
+        new ClassReader(firstWrite).accept(reparsed, ClassReader.EXPAND_FRAMES);
+        ClassWriter secondWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        reparsed.accept(secondWriter);
+        byte[] secondWrite = secondWriter.toByteArray();
+        ClassNode verified = new ClassNode();
+        new ClassReader(secondWrite).accept(verified, ClassReader.EXPAND_FRAMES);
+        parseWithLegacyAsm(secondWrite);
+
+        Class<?> sample = new ByteArrayLoader().define(secondWrite);
         Method method = sample.getMethod("value");
         assertEquals(42, method.invoke(null));
+    }
+
+    private void parseWithLegacyAsm(byte[] bytes) throws Exception {
+        String classpath = System.getProperty("legacyAsmClasspath");
+        assertTrue(classpath != null && !classpath.isBlank(), "legacy ASM test classpath missing");
+        URL[] urls = Arrays.stream(classpath.split(File.pathSeparator))
+                .map(File::new)
+                .map(file -> {
+                    try {
+                        return file.toURI().toURL();
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .toArray(URL[]::new);
+        try (URLClassLoader loader = new URLClassLoader(urls, null)) {
+            Class<?> readerClass = loader.loadClass("org.objectweb.asm.ClassReader");
+            Class<?> visitorClass = loader.loadClass("org.objectweb.asm.ClassVisitor");
+            Object reader = readerClass.getConstructor(byte[].class).newInstance((Object) bytes);
+            Object node = loader.loadClass("org.objectweb.asm.tree.ClassNode").getConstructor().newInstance();
+            readerClass.getMethod("accept", visitorClass, int.class).invoke(reader, node, 0);
+        }
     }
 
     @Test

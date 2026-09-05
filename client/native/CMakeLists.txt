@@ -94,6 +94,13 @@ endif()
 add_library(MindlessNative SHARED
     dllmain.c
     "${CMAKE_CURRENT_BINARY_DIR}/payload.rc")
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    # Voyager intentionally ships without a linker. This custom CMake linker
+    # type makes the compiler driver resolve the normal LLVM lld-link from
+    # PATH instead of looking beside Voyager for a nonexistent bundled lld.
+    set(CMAKE_C_USING_LINKER_MindlessLLD "-fuse-ld=lld-link")
+    set_property(TARGET MindlessNative PROPERTY LINKER_TYPE MindlessLLD)
+endif()
 set_target_properties(MindlessNative PROPERTIES
     PREFIX ""
     OUTPUT_NAME "MindlessNative"

@@ -288,6 +288,12 @@ jobs:
 
             cd /var/mindless/backend
 
+            # Promotion owns the canonical loader and mindless-native records.
+            # Refresh the managed checkout so legacy upload cleanup is always
+            # applied before the replacement files are registered.
+            git fetch origin main
+            git reset --hard origin/main
+
             go run ./cmd/promote-release \
               -config config.yaml \
               -loader "$staging/MindlessLoader.exe" \

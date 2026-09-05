@@ -476,7 +476,7 @@ def build_client(jdk17):
     return True
 
 
-def build_native_dll(cmake, clang, ninja, jdk, voyager=None, prod=False):
+def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     section("MindlessNative.dll - build")
 
     # Only use obfuscated JARs in --prod mode; never silently pick them up
@@ -534,6 +534,7 @@ def build_native_dll(cmake, clang, ninja, jdk, voyager=None, prod=False):
         str(cmake), "-S", str(NATIVE_DIR), "-B", str(NATIVE_BUILD_DIR),
         "-G", "Ninja",
         f"-DCMAKE_C_COMPILER={str(native_clang).replace(chr(92), '/')}",
+        f"-DCMAKE_LINKER={str(lld).replace(chr(92), '/')}",
         f"-DCMAKE_MAKE_PROGRAM={str(ninja).replace(chr(92), '/')}",
         f"-DMINDLESS_JAVA_HOME={str(jdk).replace(chr(92), '/')}",
         f"-DMINDLESS_FORGE_PAYLOAD_JAR={str(forge_jar).replace(chr(92), '/')}",
@@ -541,7 +542,11 @@ def build_native_dll(cmake, clang, ninja, jdk, voyager=None, prod=False):
     ]
     if hikari_cflags:
         cfg_cmd.append(f"-DCMAKE_C_FLAGS_RELEASE={hikari_cflags}")
-    extra_env = {"PATH": str(native_clang.parent) + os.pathsep + os.environ.get("PATH", "")}
+    extra_env = {
+        "PATH": str(native_clang.parent) + os.pathsep
+        + str(lld.parent) + os.pathsep
+        + os.environ.get("PATH", "")
+    }
 
     # Re-running `cmake configure` unconditionally regenerates build.ninja on
     # every invocation. Even when the regenerated file is logically the same,
@@ -782,7 +787,7 @@ def main():
                 sys.exit(1)
 
         if jdk_any and llvm and cmake and ninja:
-            if not build_native_dll(cmake, clang, ninja, jdk_any, voyager=voyager, prod=prod_flag):
+            if not build_native_dll(cmake, clang, lld, ninja, jdk_any, voyager=voyager, prod=prod_flag):
                 print(f"\n{BOLD}{RED}Build failed.{RESET}")
                 sys.exit(1)
         else:
