@@ -50,6 +50,7 @@ public class ObfConfig {
         if (config.transforms.isEmpty()) {
             config.transforms.add("renamer");
             config.transforms.add("stringobf");
+            config.transforms.add("cflow");
         }
         return config;
     }
@@ -60,6 +61,7 @@ public class ObfConfig {
         c.output = output;
         c.transforms.add("renamer");
         c.transforms.add("stringobf");
+        c.transforms.add("cflow");
         return c;
     }
 

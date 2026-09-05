@@ -128,6 +128,11 @@ add_custom_target(MindlessResources DEPENDS "${RES_FILE}")
 add_executable(MindlessLoader WIN32 ${SOURCES})
 add_dependencies(MindlessLoader MindlessResources)
 
+set(MINDLESS_PRODUCTION_OBFUSCATION_FLAGS "" CACHE STRING "Production compiler protection flags")
+if (MINDLESS_PRODUCTION_OBFUSCATION_FLAGS)
+    target_compile_options(MindlessLoader PRIVATE "SHELL:${MINDLESS_PRODUCTION_OBFUSCATION_FLAGS}")
+endif()
+
 # Link the compiled .res directly — clang-cl linker accepts it as an object file.
 target_link_options(MindlessLoader PRIVATE "${RES_FILE}")
 
