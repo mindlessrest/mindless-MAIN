@@ -120,6 +120,7 @@ static jclass load_class_via_loader(JNIEnv *env, jobject class_loader,
         jmethodID load_class, const char *dotted_name);
 
 void vape_log(const wchar_t *format, ...) {
+#ifdef _NONPROD
     wchar_t message[2048];
     wchar_t line[2304];
     SYSTEMTIME now;
@@ -135,6 +136,9 @@ void vape_log(const wchar_t *format, ...) {
             now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
             now.wSecond, now.wMilliseconds, message);
     OutputDebugStringW(line);
+#else
+    (void)format;
+#endif
 }
 
 static void log_throwable_line(JNIEnv *env, const wchar_t *prefix, jobject throwable) {
@@ -771,7 +775,11 @@ static int set_runtime_properties(JNIEnv *env,
     return set_system_property(env, "mindless.runtimeNamespace", namespace_name)
             && set_system_property(env, "mindless.runtimeProfile", profile_name)
             && set_system_property(env, "mindless.embeddedForge",
-                    embedded_forge ? "true" : "false");
+                    embedded_forge ? "true" : "false")
+#ifndef _NONPROD
+            && set_system_property(env, "mindless.production", "true")
+#endif
+            ;
 }
 
 static int set_current_context_class_loader(JNIEnv *env, jobject loader) {
@@ -1706,7 +1714,9 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
         DisableThreadLibraryCalls(instance);
         thread = CreateThread(NULL, 0, bootstrap_thread, instance, 0, NULL);
         if (thread == NULL) {
+#ifdef _NONPROD
             OutputDebugStringW(L"MindlessNative: CreateThread for bootstrap failed\r\n");
+#endif
             g_module = NULL;
             return FALSE;
         }

@@ -5,13 +5,16 @@ public static byte[] transform(String internalName, byte[] originalBytes) {
         try {
             return MindlessTransformerManager.get().transform(internalName, originalBytes);
         } catch (Throwable failure) {
-            System.err.println("[TransformerHooks] transform threw for "
-                    + internalName + ": " + failure);
-            failure.printStackTrace();
+            if (!Boolean.getBoolean("mindless.production")) {
+                System.err.println("[TransformerHooks] transform threw for "
+                        + internalName + ": " + failure);
+                failure.printStackTrace();
+            }
             return null;
         }
     }
 public static void log(String message) {
+        if (Boolean.getBoolean("mindless.production")) return;
         System.out.println("[TransformerHooks] " + message);
     }
 

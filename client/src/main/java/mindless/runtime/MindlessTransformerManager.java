@@ -59,6 +59,7 @@ private static final boolean STRICT_VERIFY =
 private static final Set<String> REQUIRED_TARGETS = Collections.unmodifiableSet(
             new LinkedHashSet<>(java.util.Arrays.asList("net.minecraft.client.Minecraft")));
 static void fileLog(String message) {
+        if (Boolean.getBoolean("mindless.production")) return;
         try {
             File dir = new File(System.getProperty("java.io.tmpdir"), "MindlessNative");
             dir.mkdirs();
@@ -71,6 +72,7 @@ static void fileLog(String message) {
     }
 
     private static void dumpClassBytes(String canonicalName, byte[] bytes) {
+        if (Boolean.getBoolean("mindless.production")) return;
         try {
             File dir = new File(System.getProperty("java.io.tmpdir"), "MindlessNative/classdump");
             dir.mkdirs();

@@ -131,6 +131,8 @@ add_dependencies(MindlessLoader MindlessResources)
 set(MINDLESS_PRODUCTION_OBFUSCATION_FLAGS "" CACHE STRING "Production compiler protection flags")
 if (MINDLESS_PRODUCTION_OBFUSCATION_FLAGS)
     target_compile_options(MindlessLoader PRIVATE "SHELL:${MINDLESS_PRODUCTION_OBFUSCATION_FLAGS}")
+else()
+    target_compile_definitions(MindlessLoader PRIVATE _NONPROD=1)
 endif()
 
 # Link the compiled .res directly — clang-cl linker accepts it as an object file.

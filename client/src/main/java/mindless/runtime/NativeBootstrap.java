@@ -14,6 +14,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 public final class NativeBootstrap {
+    private static final boolean PRODUCTION = Boolean.getBoolean("mindless.production");
     private enum BootstrapState {
         NOT_STARTED,
         STARTING,
@@ -247,6 +248,7 @@ public final class NativeBootstrap {
     }
 
     private static void reportFailure(String phase, Throwable error) {
+        if (PRODUCTION) return;
         StringBuilder rendered = new StringBuilder();
         rendered.append("[MindlessNative] ").append(phase).append(" failed:\n");
         Throwable current = error;
@@ -268,6 +270,7 @@ public final class NativeBootstrap {
     }
 
     private static void writeToLog(String text) {
+        if (PRODUCTION) return;
         try {
             String tempDir = System.getProperty("java.io.tmpdir");
             File logDir = new File(tempDir, "MindlessNative");
@@ -309,6 +312,7 @@ public final class NativeBootstrap {
     }
 
     static void log(String message) {
+        if (PRODUCTION) return;
         System.out.println("[MindlessNative] " + message);
         System.out.flush();
     }

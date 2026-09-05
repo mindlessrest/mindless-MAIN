@@ -8,6 +8,8 @@ endif()
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+option(MINDLESS_PRODUCTION "Disable diagnostic logging in production builds" OFF)
+
 # ---------------------------------------------------------------------------
 # Locate the JDK headers (jni.h / jvmti.h).
 # Pass -DMINDLESS_JAVA_HOME=... or set JAVA_HOME in the environment.
@@ -94,6 +96,9 @@ endif()
 add_library(MindlessNative SHARED
     dllmain.c
     "${CMAKE_CURRENT_BINARY_DIR}/payload.rc")
+if(NOT MINDLESS_PRODUCTION)
+    target_compile_definitions(MindlessNative PRIVATE _NONPROD=1)
+endif()
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
     # Voyager intentionally ships without a linker. This custom CMake linker
     # type makes the compiler driver resolve the normal LLVM lld-link from

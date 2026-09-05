@@ -26,7 +26,8 @@ public final class TransformSafety {
                 if (now - stableSince >= STABLE_MENU_MS) return true;
             } else {
                 stableSince = 0L;
-                if (!announced && minecraft != null && minecraft.theWorld != null) {
+                if (!announced && !Boolean.getBoolean("mindless.production")
+                        && minecraft != null && minecraft.theWorld != null) {
                     System.out.println("[MindlessNative] Waiting for the user to return to a menu before transforming render classes");
                     announced = true;
                 }

@@ -16,6 +16,10 @@
 #include <nlohmann/json.hpp>
 #include <shellapi.h>
 
+#ifndef _NONPROD
+#define OutputDebugStringA(...) ((void)0)
+#endif
+
 namespace mindless
 {
 

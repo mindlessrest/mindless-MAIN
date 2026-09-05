@@ -539,6 +539,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
         f"-DMINDLESS_JAVA_HOME={str(jdk).replace(chr(92), '/')}",
         f"-DMINDLESS_FORGE_PAYLOAD_JAR={str(forge_jar).replace(chr(92), '/')}",
         f"-DMINDLESS_LUNAR_PAYLOAD_JAR={str(lunar_jar).replace(chr(92), '/')}",
+        f"-DMINDLESS_PRODUCTION={'ON' if prod else 'OFF'}",
     ]
     if hikari_cflags:
         cfg_cmd.append(f"-DCMAKE_C_FLAGS_RELEASE={hikari_cflags}")
@@ -557,9 +558,12 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     # the cache is missing or CMakeLists.txt actually changed.
     cmake_cache = NATIVE_BUILD_DIR / "CMakeCache.txt"
     cmakelists = NATIVE_DIR / "CMakeLists.txt"
+    expected_production_cache = f"MINDLESS_PRODUCTION:BOOL={'ON' if prod else 'OFF'}"
+    cache_text = cmake_cache.read_text(encoding="utf-8", errors="ignore") if cmake_cache.is_file() else ""
     needs_configure = (
         not cmake_cache.is_file()
         or (cmakelists.is_file() and cmakelists.stat().st_mtime > cmake_cache.stat().st_mtime)
+        or expected_production_cache not in cache_text
     )
     if needs_configure:
         if not run(cfg_cmd, CLIENT_DIR, extra_env):
