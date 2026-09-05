@@ -100,3 +100,4 @@ loader/CMakePresets.json
 
 # Unrelated tooling dropped in the repo root
 Xtools_Package_*/
+.ci/

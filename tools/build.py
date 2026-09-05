@@ -35,9 +35,6 @@ LOADER_RUNTIME   = LOADER_DIR / "assets" / "runtime" / "MindlessNative.dll"
 OBF_JAR          = ROOT / "tools" / "obf" / "build" / "libs" / "mindless-obf.jar"
 OBF_DIR          = ROOT / "tools" / "obf"
 
-# Voyager LLVM obfuscator path (set via VOYAGER_PATH env or default)
-VOYAGER_DEFAULT  = r"D:\Hikari-LLVM19\build\bin"
-
 VS_ROOTS = [
     r"C:\Program Files\Microsoft Visual Studio",
     r"C:\Program Files (x86)\Microsoft Visual Studio",
@@ -348,7 +345,7 @@ def run(cmd, cwd, env=None):
     return result.returncode == 0
 
 
-def update_preset(clang, lld, ninja, vcpkg, hikari=None):
+def update_preset(clang, lld, ninja, vcpkg, voyager=None):
     # The preset carries absolute toolchain paths, so it is not tracked -- it used to flip back
     # and forth in every commit as each contributor rebuilt. A fresh clone seeds it from the
     # template instead, and every path below is overwritten anyway.
@@ -363,23 +360,19 @@ def update_preset(clang, lld, ninja, vcpkg, hikari=None):
     for preset in data.get("configurePresets", []):
         if preset.get("name") == "windows-clang":
             cv = preset.setdefault("cacheVariables", {})
-            loader_clang = clang
-            loader_lld = lld
-            if hikari:
-                hc = hikari / "clang-cl.exe"
-                hl = hikari / "lld-link.exe"
-                if hc.is_file():
-                    loader_clang = hc
-                if hl.is_file():
-                    loader_lld = hl
-            cv["CMAKE_C_COMPILER"]     = str(loader_clang).replace("\\", "/")
-            cv["CMAKE_CXX_COMPILER"]   = str(loader_clang).replace("\\", "/")
-            cv["CMAKE_LINKER"]         = str(loader_lld).replace("\\", "/")
+            loader_c = clang
+            loader_cxx = clang
+            if voyager:
+                loader_c = voyager / "bin" / "clang.exe"
+                loader_cxx = voyager_cxx(voyager)
+            cv["CMAKE_C_COMPILER"]     = str(loader_c).replace("\\", "/")
+            cv["CMAKE_CXX_COMPILER"]   = str(loader_cxx).replace("\\", "/")
+            cv["CMAKE_LINKER"]         = str(lld).replace("\\", "/")
             cv["CMAKE_MAKE_PROGRAM"]   = str(ninja).replace("\\", "/")
             cv["CMAKE_TOOLCHAIN_FILE"] = toolchain
             cv["VCPKG_INSTALLED_DIR"]  = str(LOADER_DIR / "vcpkg_installed").replace("\\", "/")
             cv["VCPKG_TARGET_TRIPLET"] = "x64-windows-static"
-            if hikari:
+            if voyager:
                 hikari_flags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-subobf -mllvm -sub_prob=30 -mllvm -enable-indibran -mllvm -enable-strcry"
                 cv["CMAKE_C_FLAGS_RELEASE"]   = hikari_flags
                 cv["CMAKE_CXX_FLAGS_RELEASE"] = hikari_flags
@@ -402,14 +395,19 @@ def update_preset(clang, lld, ninja, vcpkg, hikari=None):
 
 def detect_voyager():
     env_path = os.environ.get("VOYAGER_PATH")
-    if env_path:
-        p = Path(env_path)
-        if (p / "clang-cl.exe").is_file():
-            return p
-    p = Path(VOYAGER_DEFAULT)
-    if (p / "clang-cl.exe").is_file():
-        return p
-    return None
+    if not env_path:
+        return None
+    root = Path(env_path).resolve()
+    cxx = root / "bin" / "clang-cl.exe"
+    if not cxx.is_file():
+        cxx = root / "bin" / "clang++.exe"
+    required = [root / "bin" / "clang.exe", cxx, root / "lib" / "clang" / "20"]
+    return root if all(path.exists() for path in required) else None
+
+
+def voyager_cxx(root):
+    clang_cl = root / "bin" / "clang-cl.exe"
+    return clang_cl if clang_cl.is_file() else root / "bin" / "clang++.exe"
 
 
 def build_obf_jar(jdk):
@@ -478,7 +476,7 @@ def build_client(jdk17):
     return True
 
 
-def build_native_dll(cmake, clang, ninja, jdk, hikari=None, prod=False):
+def build_native_dll(cmake, clang, ninja, jdk, voyager=None, prod=False):
     section("MindlessNative.dll - build")
 
     # Only use obfuscated JARs in --prod mode; never silently pick them up
@@ -506,8 +504,8 @@ def build_native_dll(cmake, clang, ninja, jdk, hikari=None, prod=False):
 
     # Use Hikari for the native DLL if available
     native_clang = clang
-    if hikari:
-        hikari_clang = hikari / "clang.exe"
+    if voyager:
+        hikari_clang = voyager / "bin" / "clang.exe"
         if hikari_clang.is_file():
             native_clang = hikari_clang
             ok(f"Hikari clang  : {native_clang}")
@@ -529,7 +527,7 @@ def build_native_dll(cmake, clang, ninja, jdk, hikari=None, prod=False):
         warn("MindlessNative.dll is in use by another process, skipping deletion")
 
     hikari_cflags = ""
-    if hikari and native_clang != clang:
+    if voyager and native_clang != clang:
         hikari_cflags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-subobf -mllvm -sub_prob=30 -mllvm -enable-indibran -mllvm -enable-strcry"
 
     cfg_cmd = [
@@ -747,8 +745,9 @@ def main():
         if voyager:
             ok(f"Voyager       : {voyager}")
         else:
-            warn("Voyager not found — native code won't be obfuscated")
-            warn("Set VOYAGER_PATH or install at D:\\Hikari-LLVM19\\build\\bin")
+            err("Voyager compiler validation failed")
+            err("Set VOYAGER_PATH to the extracted root containing bin and lib\\clang\\20")
+            sys.exit(1)
 
     save_tool_cache({
         "clang": clang, "lld": lld, "ninja": ninja, "vcpkg": vcpkg, "cmake": cmake,
@@ -783,7 +782,7 @@ def main():
                 sys.exit(1)
 
         if jdk_any and llvm and cmake and ninja:
-            if not build_native_dll(cmake, clang, ninja, jdk_any, hikari=voyager, prod=prod_flag):
+            if not build_native_dll(cmake, clang, ninja, jdk_any, voyager=voyager, prod=prod_flag):
                 print(f"\n{BOLD}{RED}Build failed.{RESET}")
                 sys.exit(1)
         else:
@@ -791,11 +790,11 @@ def main():
 
     if build_loader_flag and llvm and ninja and vcpkg and cmake:
         section("Updating CMakePresets.json")
-        update_preset(clang, lld, ninja, vcpkg, hikari=voyager)
+        update_preset(clang, lld, ninja, vcpkg, voyager=voyager)
         ok("preset updated")
 
         if voyager:
-            extra_env["PATH"] = str(voyager) + os.pathsep + extra_env.get("PATH", os.environ.get("PATH", ""))
+            extra_env["PATH"] = str(voyager / "bin") + os.pathsep + extra_env.get("PATH", os.environ.get("PATH", ""))
 
         if not build_loader(cmake, extra_env):
             success = False
