@@ -352,6 +352,16 @@ public class KillAura extends Module {
         float fovValue = (float) fov.getInput();
         int maxTargets = Math.max(8, (int) targets.getInput() * 3);
 
+        if (target != null) {
+            Candidate locked = getCandidateTarget(target, maxRange, fovValue);
+            if (locked != null && target.getHealth() > 0.0F && target.deathTime == 0) {
+                targetDistance = locked.distance;
+                return;
+            }
+            setTarget(null);
+            smartTargetId = -1;
+        }
+
         List<Candidate> rawCandidates = new ArrayList<>();
         for (Entity entity : mc.theWorld.loadedEntityList) {
             Candidate candidate = getCandidateTarget(entity, maxRange, fovValue);
