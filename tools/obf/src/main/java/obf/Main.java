@@ -19,6 +19,7 @@ public class Main {
 
     static {
         register(new Renamer());
+        register(new ConstantObf());
         register(new StringObf());
         register(new ControlFlow());
     }
