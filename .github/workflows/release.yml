@@ -56,8 +56,10 @@ jobs:
         id: voyager-cache
         uses: actions/cache@v4
         with:
-          path: .ci/voyager
-          key: voyager-${{ runner.os }}-${{ steps.voyager.outputs.revision }}
+          path: |
+            .ci/voyager
+            .ci/mindless-protector
+          key: voyager-protector-v1-${{ runner.os }}-${{ steps.voyager.outputs.revision }}
 
       - name: Download and extract Voyager compiler
         if: steps.voyager-cache.outputs.cache-hit != 'true'
@@ -72,10 +74,13 @@ jobs:
 
           $archive = Join-Path $env:GITHUB_WORKSPACE ".ci\voyager-source\Voyager.7z"
           $destination = Join-Path $env:GITHUB_WORKSPACE ".ci\voyager"
+          $protectorArchive = Join-Path $env:GITHUB_WORKSPACE ".ci\voyager-source\Ryujin.zip"
+          $protectorDestination = Join-Path $env:GITHUB_WORKSPACE ".ci\mindless-protector"
           $archiveDirectory = Split-Path -Parent $archive
 
           New-Item -ItemType Directory -Path $archiveDirectory -Force | Out-Null
           New-Item -ItemType Directory -Path $destination -Force | Out-Null
+          New-Item -ItemType Directory -Path $protectorDestination -Force | Out-Null
 
           $headers = @{
             Authorization = "Bearer $env:VOYAGER_TOKEN"
@@ -90,16 +95,37 @@ jobs:
             -Headers $headers `
             -OutFile $archive
 
+          $protectorUrl = "https://api.github.com/repos/mindlessrest/ci/contents/Ryujin.zip?ref=$env:VOYAGER_REVISION"
+          Invoke-WebRequest `
+            -Uri $protectorUrl `
+            -Headers $headers `
+            -OutFile $protectorArchive
+
           if (
             !(Test-Path -LiteralPath $archive -PathType Leaf) -or
             (Get-Item -LiteralPath $archive).Length -eq 0
           ) {
             throw "Voyager archive download failed"
           }
+          if (
+            !(Test-Path -LiteralPath $protectorArchive -PathType Leaf) -or
+            (Get-Item -LiteralPath $protectorArchive).Length -eq 0
+          ) {
+            throw "Mindless protector archive download failed"
+          }
 
           & 7z x $archive "-o$destination" -y
           if ($LASTEXITCODE -ne 0) {
             throw "7-Zip failed to extract Voyager.7z (exit $LASTEXITCODE)"
+          }
+
+          Expand-Archive -LiteralPath $protectorArchive -DestinationPath $protectorDestination -Force
+
+          foreach ($file in @("Mindless.exe", "MindlessCore.dll")) {
+            $path = Join-Path $protectorDestination $file
+            if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Ryujin.zip does not contain $file at its archive root"
+            }
           }
 
       - name: Resolve and validate Voyager compiler
@@ -154,24 +180,10 @@ jobs:
             throw "clang -print-resource-dir failed"
           }
 
-      - name: Extract Mindless protector
+      - name: Resolve and validate Mindless protector
         shell: pwsh
         run: |
-          $archive = Get-ChildItem `
-            -LiteralPath "$env:GITHUB_WORKSPACE\.ci\voyager" `
-            -Filter "Ryujin.zip" `
-            -File `
-            -Recurse |
-            Select-Object -First 1
-
-          if (!$archive) {
-            throw "Ryujin.zip was not found in the extracted Voyager bundle"
-          }
-
           $destination = Join-Path $env:GITHUB_WORKSPACE ".ci\mindless-protector"
-          New-Item -ItemType Directory -Path $destination -Force | Out-Null
-          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $destination -Force
-
           $protector = Join-Path $destination "Mindless.exe"
           $core = Join-Path $destination "MindlessCore.dll"
           if (!(Test-Path -LiteralPath $protector -PathType Leaf)) {
