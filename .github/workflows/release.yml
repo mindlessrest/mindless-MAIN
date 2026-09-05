@@ -96,6 +96,7 @@ jobs:
             -OutFile $archive
 
           $protectorUrl = "https://api.github.com/repos/mindlessrest/ci/contents/Ryujin.zip?ref=$env:VOYAGER_REVISION"
+
           Invoke-WebRequest `
             -Uri $protectorUrl `
             -Headers $headers `
@@ -107,6 +108,7 @@ jobs:
           ) {
             throw "Voyager archive download failed"
           }
+
           if (
             !(Test-Path -LiteralPath $protectorArchive -PathType Leaf) -or
             (Get-Item -LiteralPath $protectorArchive).Length -eq 0
@@ -119,10 +121,14 @@ jobs:
             throw "7-Zip failed to extract Voyager.7z (exit $LASTEXITCODE)"
           }
 
-          Expand-Archive -LiteralPath $protectorArchive -DestinationPath $protectorDestination -Force
+          Expand-Archive `
+            -LiteralPath $protectorArchive `
+            -DestinationPath $protectorDestination `
+            -Force
 
           foreach ($file in @("Mindless.exe", "MindlessCore.dll")) {
             $path = Join-Path $protectorDestination $file
+
             if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
               throw "Ryujin.zip does not contain $file at its archive root"
             }
@@ -186,9 +192,11 @@ jobs:
           $destination = Join-Path $env:GITHUB_WORKSPACE ".ci\mindless-protector"
           $protector = Join-Path $destination "Mindless.exe"
           $core = Join-Path $destination "MindlessCore.dll"
+
           if (!(Test-Path -LiteralPath $protector -PathType Leaf)) {
             throw "Ryujin.zip does not contain Mindless.exe at its archive root"
           }
+
           if (!(Test-Path -LiteralPath $core -PathType Leaf)) {
             throw "Ryujin.zip does not contain MindlessCore.dll at its archive root"
           }
@@ -250,6 +258,7 @@ jobs:
           }
 
           Push-Location $env:MINDLESS_PROTECTOR_ROOT
+
           try {
             & $protector `
               --input $input `
@@ -266,6 +275,15 @@ jobs:
               --MemoryProtection `
               --MutateMiniVM `
               --procs 'wWinMain,mindless::Application::start_auth,mindless::Application::start_download'
+
+            $protectorExitCode = $LASTEXITCODE
+
+            # Mindless intentionally returns 1 on successful protection.
+            if ($protectorExitCode -ne 1) {
+              throw "Mindless protector failed with exit code $protectorExitCode"
+            }
+
+            Write-Host "Mindless protector completed successfully (exit code 1)"
           }
           finally {
             Pop-Location
@@ -274,11 +292,19 @@ jobs:
           if (!(Test-Path -LiteralPath $output -PathType Leaf)) {
             throw "Mindless did not produce the protected loader"
           }
+
           if ((Get-Item -LiteralPath $output).Length -eq 0) {
             throw "Mindless produced an empty protected loader"
           }
 
-          Move-Item -LiteralPath $output -Destination $input -Force
+          Write-Host "Protected loader size: $((Get-Item -LiteralPath $output).Length) bytes"
+
+          Move-Item `
+            -LiteralPath $output `
+            -Destination $input `
+            -Force
+
+          Write-Host "Protected loader replaced original MindlessLoader.exe"
 
       - name: Verify release files
         shell: pwsh
