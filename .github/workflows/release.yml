@@ -1,0 +1,102 @@
+name: Build and Publish Client
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: production-client
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build production client
+        shell: pwsh
+        run: python tools/build.py --prod --no-cache
+
+      - name: Verify release files
+        shell: pwsh
+        run: |
+          $files = @(
+            "MindlessLoader.exe",
+            "client/native_build/dist/MindlessNative.dll"
+          )
+          foreach ($file in $files) {
+            if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Missing release file: $file"
+            }
+            if ((Get-Item -LiteralPath $file).Length -eq 0) {
+              throw "Empty release file: $file"
+            }
+          }
+          New-Item -ItemType Directory -Path release | Out-Null
+          Copy-Item -LiteralPath "MindlessLoader.exe" -Destination "release/MindlessLoader.exe"
+          Copy-Item -LiteralPath "client/native_build/dist/MindlessNative.dll" -Destination "release/MindlessNative.dll"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mindless-client-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mindless-client-${{ github.sha }}
+          path: release
+
+      - name: Upload release to VPS staging
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "release/MindlessLoader.exe,release/MindlessNative.dll"
+          target: "/tmp/mindless-${{ github.sha }}"
+          strip_components: 1
+
+      - name: Publish release to panel
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -eu
+            staging="/tmp/mindless-${{ github.sha }}"
+            test -s "$staging/MindlessLoader.exe"
+            test -s "$staging/MindlessNative.dll"
+            cd /var/mindless/backend
+            go run ./cmd/promote-release \
+              -config config.yaml \
+              -loader "$staging/MindlessLoader.exe" \
+              -native "$staging/MindlessNative.dll"
+            rm -f "$staging/MindlessLoader.exe" "$staging/MindlessNative.dll"
+            rmdir "$staging"
