@@ -34,8 +34,23 @@ find_package(CURL REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# Auth SDK — build as a static library from the external SDK source
-set(AUTHSDK_DIR "$ENV{USERPROFILE}/authsdk/cpp")
+# Auth SDK — build as a static library from the SDK source bundled in the repo.
+# Mirrors the Java SDK handling in client/build.gradle.kts: prefer the bundled
+# copy so a clean checkout builds, fall back to a local SDK checkout for
+# machines that still develop against one.
+get_filename_component(MINDLESS_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+set(BUNDLED_AUTHSDK_DIR "${MINDLESS_ROOT_DIR}/shared/authsdk/cpp")
+set(LOCAL_AUTHSDK_DIR   "$ENV{USERPROFILE}/authsdk/cpp")
+if (EXISTS "${BUNDLED_AUTHSDK_DIR}/src/authclient.cpp")
+    set(AUTHSDK_DIR "${BUNDLED_AUTHSDK_DIR}")
+elseif (EXISTS "${LOCAL_AUTHSDK_DIR}/src/authclient.cpp")
+    set(AUTHSDK_DIR "${LOCAL_AUTHSDK_DIR}")
+else()
+    message(FATAL_ERROR
+        "Auth SDK C++ sources not found. Expected them at "
+        "${BUNDLED_AUTHSDK_DIR} or ${LOCAL_AUTHSDK_DIR}.")
+endif()
+message(STATUS "Auth SDK source: ${AUTHSDK_DIR}")
 add_library(authclient STATIC
     "${AUTHSDK_DIR}/src/crypto.cpp"
     "${AUTHSDK_DIR}/src/hwid.cpp"
