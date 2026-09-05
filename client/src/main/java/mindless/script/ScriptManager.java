@@ -481,17 +481,20 @@ private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<
             File[] scriptFiles = scriptDirectory.listFiles();
             if (scriptFiles != null) {
                 for (File scriptFile : scriptFiles) {
-                    if (scriptFile.isFile() && scriptFile.getName().endsWith(".jar")) {
-                        String fileName = scriptFile.getName();
-                        String hash = calculateHash(scriptFile);
+                    if (!scriptFile.isFile()) continue;
+                    String fileName = scriptFile.getName();
+                    if (!fileName.endsWith(".jar") && !fileName.endsWith(".java")) continue;
+                    String hash = calculateHash(scriptFile);
 
-                        String cachedHash = loadedHashes.get(fileName);
-                        if (cachedHash != null && cachedHash.equals(hash)) {
-                            continue;
-                        }
-                        if (loadJarScript(scriptFile)) {
-                            loadedHashes.put(fileName, hash);
-                        }
+                    String cachedHash = loadedHashes.get(fileName);
+                    if (cachedHash != null && cachedHash.equals(hash)) {
+                        continue;
+                    }
+                    boolean loaded = fileName.endsWith(".jar")
+                            ? loadJarScript(scriptFile)
+                            : parseFile(scriptFile);
+                    if (loaded) {
+                        loadedHashes.put(fileName, hash);
                     }
                 }
             }
@@ -533,20 +536,26 @@ private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<
         String scriptName = jarFile.getName().replace(".jar", "");
         if (scriptName.isEmpty() || scriptName.startsWith("_")) return false;
         try {
-            java.net.URL jarUrl = jarFile.toURI().toURL();
-            java.net.URLClassLoader jarLoader = new java.net.URLClassLoader(
-                    new java.net.URL[]{jarUrl}, ScriptManager.class.getClassLoader()
-            );
-
             String className = "sc_" + scriptName;
-            String[] candidates = null;
+            String[] candidates;
+            Map<String, byte[]> classes = new HashMap<>();
             try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jarFile)) {
                 candidates = jf.stream()
                         .filter(e -> e.getName().endsWith(".class") && e.getName().startsWith("sc_")
                                 && !e.getName().contains("$"))
                         .map(e -> e.getName().replace("/", ".").replace(".class", ""))
                         .toArray(String[]::new);
+                java.util.Enumeration<java.util.jar.JarEntry> entries = jf.entries();
+                while (entries.hasMoreElements()) {
+                    java.util.jar.JarEntry entry = entries.nextElement();
+                    if (entry.isDirectory() || !entry.getName().endsWith(".class")) continue;
+                    try (java.io.InputStream input = jf.getInputStream(entry)) {
+                        classes.put(entry.getName().replace("/", ".").replace(".class", ""), readAllBytes(input));
+                    }
+                }
             }
+
+            SecureClassLoader jarLoader = new SecureClassLoader(classes, scriptParentClassLoader());
 
             Class<?> scriptClass = null;
             if (candidates != null && candidates.length > 0) {
@@ -558,6 +567,7 @@ private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<
 
             Script script = new Script(scriptName);
             script.file = jarFile;
+            script.loader = jarLoader;
             script.clazz = scriptClass;
             script.instance = scriptClass.newInstance();
 

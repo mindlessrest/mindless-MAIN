@@ -6,6 +6,7 @@ import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -36,6 +37,8 @@ import java.util.Set;
  * nothing this list does not already allow.
  */
 public class SecureClassLoader extends URLClassLoader {
+
+    private final Map<String, byte[]> inMemoryClasses;
 
     /** Package prefixes a script may use freely. The scripting API, and nothing else. */
     private static final List<String> ALLOWED_PACKAGES = Arrays.asList(
@@ -123,6 +126,12 @@ public class SecureClassLoader extends URLClassLoader {
 
     public SecureClassLoader(URL[] urls, ClassLoader parent) {
         super(urls, parent);
+        this.inMemoryClasses = null;
+    }
+
+    public SecureClassLoader(Map<String, byte[]> inMemoryClasses, ClassLoader parent) {
+        super(new URL[0], parent);
+        this.inMemoryClasses = inMemoryClasses;
     }
 
     public String getRejectedClass() {
@@ -136,6 +145,17 @@ public class SecureClassLoader extends URLClassLoader {
             throw new ClassNotFoundException("Blocked by the script sandbox: " + name);
         }
         return super.loadClass(name, resolve);
+    }
+
+    @Override
+    protected Class<?> findClass(String name) throws ClassNotFoundException {
+        if (inMemoryClasses != null) {
+            byte[] bytes = inMemoryClasses.get(name);
+            if (bytes != null) {
+                return defineClass(name, bytes, 0, bytes.length);
+            }
+        }
+        return super.findClass(name);
     }
 
     private boolean isClassSafe(String rawName) {

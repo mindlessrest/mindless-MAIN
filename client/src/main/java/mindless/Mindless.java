@@ -21,6 +21,7 @@ import mindless.script.model.Entity;
 import mindless.script.model.NetworkPlayer;
 import mindless.utility.AttackPacketTimingTracker;
 import mindless.utility.BlockHighlightSharedHandler;
+import mindless.utility.FileDropManager;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.ModuleUtils;
@@ -103,6 +104,7 @@ public class Mindless {
         scriptManager.loadScripts();
         profileManager.loadProfiles();
         ReflectionUtils.setKeyBindings();
+        FileDropManager.install();
 
         commandManager = new CommandManager();
     }
@@ -378,6 +380,8 @@ public static synchronized void uninject() {
             mindless.runtime.NativeBootstrap.resetStateForReinject();
         } catch (Throwable ignored) {
         }
+
+        FileDropManager.uninstall();
 
         markNativeLog("Mindless self-destructed; ready for loader re-injection");
         try {

@@ -421,6 +421,14 @@ private static String javaIdentifier(String name) {
     public void delete() {
         this.clazz = null;
         this.instance = null;
+        if (this.loader != null) {
+            try {
+                this.loader.close();
+            }
+            catch (Exception ignored) {
+            }
+            this.loader = null;
+        }
         final File file = new File(Mindless.scriptManager.COMPILED_DIR + File.separator + this.scriptName + ".class");
         if (file.exists()) {
             file.delete();
