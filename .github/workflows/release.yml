@@ -306,6 +306,8 @@ jobs:
 
           Write-Host "Protected loader replaced original MindlessLoader.exe"
 
+          exit 0
+
       - name: Verify release files
         shell: pwsh
         run: |
