@@ -442,12 +442,16 @@ def obfuscate_jar(jdk, input_jar, output_jar, label):
     java = jdk / "bin" / "java.exe" if jdk else Path("java.exe")
     cmd = [str(java), "-jar", str(OBF_JAR), str(input_jar), str(output_jar)]
     info(f"Obfuscating {label}...")
+    if output_jar.is_file():
+        output_jar.unlink()
     if not run(cmd, ROOT):
         err(f"{label} obfuscation failed")
         return False
-    if output_jar.is_file():
-        size_kb = output_jar.stat().st_size // 1024
-        ok(f"{label} obfuscated ({size_kb} KB)")
+    if not output_jar.is_file() or output_jar.stat().st_size == 0:
+        err(f"{label} obfuscation did not produce an output JAR")
+        return False
+    size_kb = output_jar.stat().st_size // 1024
+    ok(f"{label} obfuscated ({size_kb} KB)")
     return True
 
 
@@ -766,12 +770,17 @@ def main():
         if prod_flag:
             section("JAR obfuscation")
             if not build_obf_jar(jdk17):
-                warn("Skipping JAR obfuscation — MindlessObf build failed")
-            else:
-                if FORGE_JAR.is_file():
-                    obfuscate_jar(jdk17, FORGE_JAR, FORGE_JAR_OBF, "Forge JAR")
-                if LUNAR_JAR.is_file():
-                    obfuscate_jar(jdk17, LUNAR_JAR, LUNAR_JAR_OBF, "Lunar JAR")
+                err("MindlessObf build failed")
+                sys.exit(1)
+            forge_obfuscated = FORGE_JAR.is_file() and obfuscate_jar(
+                jdk17, FORGE_JAR, FORGE_JAR_OBF, "Forge JAR"
+            )
+            lunar_obfuscated = LUNAR_JAR.is_file() and obfuscate_jar(
+                jdk17, LUNAR_JAR, LUNAR_JAR_OBF, "Lunar JAR"
+            )
+            if not forge_obfuscated or not lunar_obfuscated:
+                print(f"\n{BOLD}{RED}Production build failed during JAR obfuscation.{RESET}")
+                sys.exit(1)
 
         if jdk_any and llvm and cmake and ninja:
             if not build_native_dll(cmake, clang, ninja, jdk_any, hikari=voyager, prod=prod_flag):

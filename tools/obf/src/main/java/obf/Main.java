@@ -3,7 +3,9 @@ package obf;
 import obf.transform.*;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FrameNode;
 
 import java.io.*;
 import java.nio.file.*;
@@ -98,7 +100,7 @@ public class Main {
                     try {
                         ClassReader cr = new ClassReader(data);
                         ClassNode cn = new ClassNode();
-                        cr.accept(cn, 0);
+                        cr.accept(cn, ClassReader.EXPAND_FRAMES);
                         ctx.classes().put(cn.name, cn);
                     } catch (Exception e) {
                         ctx.resources().put(entry.getName(), data);
@@ -138,8 +140,18 @@ public class Main {
                 : new JarOutputStream(new FileOutputStream(config.output), ctx.manifest())) {
             // Write classes
             for (Map.Entry<String, ClassNode> entry : ctx.classes().entrySet()) {
+                ClassNode classNode = entry.getValue();
+                if (classNode.version <= Opcodes.V1_5) {
+                    for (var method : classNode.methods) {
+                        for (var instruction : method.instructions.toArray()) {
+                            if (instruction instanceof FrameNode) {
+                                method.instructions.remove(instruction);
+                            }
+                        }
+                    }
+                }
                 ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
-                entry.getValue().accept(cw);
+                classNode.accept(cw);
                 byte[] bytes = cw.toByteArray();
                 jos.putNextEntry(new ZipEntry(entry.getKey() + ".class"));
                 jos.write(bytes);
