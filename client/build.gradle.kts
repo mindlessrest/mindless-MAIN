@@ -64,7 +64,9 @@ loom {
     }
 }
 
-val authSdkJavaDir = file("${System.getProperty("user.home")}/authsdk/java/src/main/java")
+val bundledAuthSdkJavaDir = rootProject.file("../shared/authsdk/java/src/main/java")
+val localAuthSdkJavaDir = file("${System.getProperty("user.home")}/authsdk/java/src/main/java")
+val authSdkJavaDir = if (bundledAuthSdkJavaDir.exists()) bundledAuthSdkJavaDir else localAuthSdkJavaDir
 
 sourceSets.main {
     output.setResourcesDir(sourceSets.main.flatMap { it.java.classesDirectory })

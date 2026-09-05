@@ -1,0 +1,10 @@
+package dev.authsys;
+
+public enum WebhookEventType {
+    CRACK_ATTEMPT,
+    INTEGRITY_VIOLATION,
+    DEBUG_DETECTED,
+    INJECTION_DETECTED,
+    TAMPER_DETECTED,
+    SUSPICIOUS_ACTIVITY
+}
