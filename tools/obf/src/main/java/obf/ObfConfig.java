@@ -49,8 +49,6 @@ public class ObfConfig {
         ObfConfig config = new Gson().fromJson(json, ObfConfig.class);
         if (config.transforms.isEmpty()) {
             config.transforms.add("renamer");
-            config.transforms.add("stringobf");
-            config.transforms.add("cflow");
         }
         return config;
     }
@@ -60,8 +58,6 @@ public class ObfConfig {
         c.input = input;
         c.output = output;
         c.transforms.add("renamer");
-        c.transforms.add("stringobf");
-        c.transforms.add("cflow");
         return c;
     }
 
