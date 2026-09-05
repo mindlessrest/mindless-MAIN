@@ -21,7 +21,10 @@ public class ObfConfig {
             "com/google/",
             "org/apache/",
             "org/slf4j/",
-            "mindless/runtime/"
+            "mindless/runtime/",
+            "mindless/mixin/",
+            "mindless/transformer/",
+            "mindless/script/"
     ));
     public List<String> transforms = new ArrayList<>();
     public RenamerConfig renamer = new RenamerConfig();

@@ -17,13 +17,11 @@ import java.util.jar.Manifest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RenamerTest {
     @Test
-    void renamesMixinClassesAndSynchronizesConfigWithoutRenamingMembers() {
+    void preservesMixinClassesAndConfigWithoutRenamingMembers() {
         ObfConfig config = ObfConfig.defaults("input.jar", "output.jar");
         ObfContext context = new ObfContext(config);
         ClassNode mixin = classNode("mindless/mixin/impl/client/MixinMinecraft");
@@ -37,11 +35,9 @@ class RenamerTest {
 
         new Renamer().apply(context);
 
-        String mapped = context.classMapping().get(mixin.name);
-        assertNotNull(mapped);
-        assertNotEquals(mixin.name, mapped);
-        assertTrue(context.classes().containsKey(mapped));
-        ClassNode renamed = context.classes().get(mapped);
+        assertFalse(context.classMapping().containsKey(mixin.name));
+        assertTrue(context.classes().containsKey(mixin.name));
+        ClassNode renamed = context.classes().get(mixin.name);
         assertEquals("shadowedField", renamed.fields.get(0).name);
         assertEquals("injectedMethod", renamed.methods.get(0).name);
 
@@ -49,7 +45,19 @@ class RenamerTest {
                 context.resources().get("mixins.mindless.json"), StandardCharsets.UTF_8)).getAsJsonObject();
         String configured = json.get("package").getAsString().replace('.', '/') + "/"
                 + json.getAsJsonArray("mixins").get(0).getAsString().replace('.', '/');
-        assertEquals(mapped, configured);
+        assertEquals(mixin.name, configured);
+    }
+
+    @Test
+    void preservesRuntimeContractPackages() {
+        ObfConfig config = ObfConfig.defaults("input.jar", "output.jar");
+        ObfContext context = new ObfContext(config);
+
+        assertTrue(context.isExcluded("mindless/runtime/MindlessTransformerManager"));
+        assertTrue(context.isExcluded("mindless/mixin/impl/client/MixinMinecraft"));
+        assertTrue(context.isExcluded("mindless/transformer/impl/client/TransformerMinecraft"));
+        assertTrue(context.isExcluded("mindless/script/ScriptDefaults"));
+        assertFalse(context.isExcluded("mindless/module/ModuleManager"));
     }
 
     @Test
