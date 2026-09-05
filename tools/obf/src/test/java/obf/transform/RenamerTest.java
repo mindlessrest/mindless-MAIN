@@ -9,6 +9,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.AnnotationNode;
 
 import java.nio.charset.StandardCharsets;
 import java.util.jar.Attributes;
@@ -79,6 +80,34 @@ class RenamerTest {
         assertEquals(mappedOuter.replace('/', '.') + "\n",
                 new String(context.resources().get(serviceName), StandardCharsets.UTF_8));
         assertFalse(context.resources().containsKey("META-INF/OLD.SF"));
+    }
+
+    @Test
+    void preservesExternalAndAnnotatedMembersWhileRenamingPrivateImplementation() {
+        ObfConfig config = ObfConfig.defaults("input.jar", "output.jar");
+        ObfContext context = new ObfContext(config);
+        ClassNode owner = classNode("mindless/example/Feature");
+        owner.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "publicState", "I", null, null));
+        owner.fields.add(new FieldNode(Opcodes.ACC_PRIVATE, "privateState", "I", null, null));
+        FieldNode annotatedField = new FieldNode(Opcodes.ACC_PRIVATE, "serializedState", "I", null, null);
+        annotatedField.visibleAnnotations = java.util.List.of(new AnnotationNode("Lcom/google/gson/annotations/SerializedName;"));
+        owner.fields.add(annotatedField);
+        owner.methods.add(new MethodNode(Opcodes.ACC_PUBLIC, "eventHandler", "()V", null, null));
+        owner.methods.add(new MethodNode(Opcodes.ACC_PRIVATE, "implementation", "()V", null, null));
+        MethodNode annotatedMethod = new MethodNode(Opcodes.ACC_PRIVATE, "subscribed", "()V", null, null);
+        annotatedMethod.visibleAnnotations = java.util.List.of(new AnnotationNode("Lnet/minecraftforge/fml/common/eventhandler/SubscribeEvent;"));
+        owner.methods.add(annotatedMethod);
+        context.classes().put(owner.name, owner);
+
+        new Renamer().apply(context);
+
+        ClassNode renamed = context.classes().get(context.classMapping().get(owner.name));
+        assertEquals("publicState", renamed.fields.get(0).name);
+        assertNotEquals("privateState", renamed.fields.get(1).name);
+        assertEquals("serializedState", renamed.fields.get(2).name);
+        assertEquals("eventHandler", renamed.methods.get(0).name);
+        assertNotEquals("implementation", renamed.methods.get(1).name);
+        assertEquals("subscribed", renamed.methods.get(2).name);
     }
 
     private ClassNode classNode(String name) {

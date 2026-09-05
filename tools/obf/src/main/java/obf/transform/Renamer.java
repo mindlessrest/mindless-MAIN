@@ -112,7 +112,10 @@ public class Renamer implements Transform {
         for (ClassNode owner : ctx.classes().values()) {
             if (ctx.isExcluded(owner.name) || mixinClasses.contains(owner.name)) continue;
             for (FieldNode field : owner.fields) {
-                if ((field.access & Opcodes.ACC_ENUM) != 0 || reflectiveNames.contains(field.name)) continue;
+                if ((field.access & Opcodes.ACC_PRIVATE) == 0
+                        || (field.access & Opcodes.ACC_ENUM) != 0
+                        || hasAnnotations(field.visibleAnnotations, field.invisibleAnnotations)
+                        || reflectiveNames.contains(field.name)) continue;
                 fieldMap.put(owner.name + "." + field.name, generator.next());
             }
         }
@@ -164,29 +167,17 @@ public class Renamer implements Transform {
         for (MethodNode method : family) {
             ClassNode owner = owners.get(method);
             if (fixedNames.contains(method.name) || reflectiveNames.contains(method.name)
-                    || ctx.isExcluded(owner.name) || mixinClasses.contains(owner.name)) {
+                    || ctx.isExcluded(owner.name) || mixinClasses.contains(owner.name)
+                    || (method.access & Opcodes.ACC_PRIVATE) == 0
+                    || hasAnnotations(method.visibleAnnotations, method.invisibleAnnotations)) {
                 return false;
             }
-            boolean virtual = (method.access & (Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC)) == 0;
-            if (virtual && hasUnknownParent(ctx, owner)) return false;
         }
         return true;
     }
 
-    private boolean hasUnknownParent(ObfContext ctx, ClassNode owner) {
-        Queue<String> queue = new ArrayDeque<>();
-        Set<String> visited = new HashSet<>();
-        if (owner.superName != null && !"java/lang/Object".equals(owner.superName)) queue.add(owner.superName);
-        if (owner.interfaces != null) queue.addAll(owner.interfaces);
-        while (!queue.isEmpty()) {
-            String name = queue.remove();
-            if (!visited.add(name)) continue;
-            ClassNode parent = ctx.classes().get(name);
-            if (parent == null) return true;
-            if (parent.superName != null && !"java/lang/Object".equals(parent.superName)) queue.add(parent.superName);
-            if (parent.interfaces != null) queue.addAll(parent.interfaces);
-        }
-        return false;
+    private boolean hasAnnotations(List<AnnotationNode> visible, List<AnnotationNode> invisible) {
+        return (visible != null && !visible.isEmpty()) || (invisible != null && !invisible.isEmpty());
     }
 
     private boolean isRelated(ObfContext ctx, String first, String second) {
