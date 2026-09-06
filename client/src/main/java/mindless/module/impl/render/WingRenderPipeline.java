@@ -101,7 +101,7 @@ final class WingRenderPipeline {
                 if (stream != null) {
                     BufferedImage image = ImageIO.read(stream);
                     if (image != null) {
-                        DynamicTexture dynamic = new DynamicTexture(image);
+                        DynamicTexture dynamic = new DynamicTexture(soften(image));
                         dynamic.setBlurMipmap(true, true);
                         TEXTURES[part] = Minecraft.getMinecraft().getTextureManager()
                                 .getDynamicTextureLocation(PART_NAMES[part], dynamic);
@@ -129,6 +129,53 @@ final class WingRenderPipeline {
             if (texture(part) == null) return false;
         }
         return true;
+    }
+
+    /**
+     * Softens photographic barb detail once at upload time. At Minecraft scale the untouched
+     * source resolves into dozens of dark parallel lines, which makes the wing look skeletal.
+     * A tiny premultiplied-alpha blur and restrained contrast preserve the silhouette without
+     * adding another texture sample or blend pass to every rendered frame.
+     */
+    private static BufferedImage soften(BufferedImage source) {
+        int width = source.getWidth();
+        int height = source.getHeight();
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int sumA = 0, sumR = 0, sumG = 0, sumB = 0, weight = 0;
+                for (int oy = -1; oy <= 1; oy++) {
+                    int sy = Math.max(0, Math.min(height - 1, y + oy));
+                    for (int ox = -1; ox <= 1; ox++) {
+                        int sx = Math.max(0, Math.min(width - 1, x + ox));
+                        int sample = source.getRGB(sx, sy);
+                        int alpha = (sample >>> 24) & 0xFF;
+                        int kernel = ox == 0 && oy == 0 ? 4 : (ox == 0 || oy == 0 ? 2 : 1);
+                        sumA += alpha * kernel;
+                        sumR += ((sample >> 16) & 0xFF) * alpha * kernel;
+                        sumG += ((sample >> 8) & 0xFF) * alpha * kernel;
+                        sumB += (sample & 0xFF) * alpha * kernel;
+                        weight += kernel;
+                    }
+                }
+                int alpha = sumA / weight;
+                if (alpha == 0) {
+                    result.setRGB(x, y, 0);
+                    continue;
+                }
+                int divisor = Math.max(1, sumA);
+                int red = softenChannel(sumR / divisor);
+                int green = softenChannel(sumG / divisor);
+                int blue = softenChannel(sumB / divisor);
+                result.setRGB(x, y, (alpha << 24) | (red << 16) | (green << 8) | blue);
+            }
+        }
+        return result;
+    }
+
+    private static int softenChannel(int value) {
+        // Compress contrast toward a soft off-white without erasing all material texture.
+        return Math.max(0, Math.min(255, Math.round(205.0f + (value - 205.0f) * 0.46f)));
     }
 
     static void beginDepthPrepass() {
