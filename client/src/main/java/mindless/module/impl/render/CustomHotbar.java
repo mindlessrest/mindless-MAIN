@@ -7,6 +7,7 @@ import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
+import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
@@ -16,15 +17,22 @@ import net.minecraft.item.ItemStack;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
+import java.awt.Color;
+
 public class CustomHotbar extends Module {
 
-    private static final int BAR_WIDTH = 182;
-    private static final int BAR_HEIGHT = 22;
-    private static final int SLOT_WIDTH = 20;
+    private static final float BASE_BAR_HEIGHT = 22.0f;
+    private static final float BASE_SLOT_WIDTH = 20.0f;
 
     private final ColorSetting background;
     private final SliderSetting rounding;
     private final ColorSetting selectionColor;
+    private final SliderSetting scale;
+    private final SliderSetting verticalOffset;
+    private final SliderSetting slotSpacing;
+    private final SliderSetting itemScale;
+    private final ButtonSetting outline;
+    private final ColorSetting outlineColor;
     private final ButtonSetting animated;
     private final SliderSetting selectionSpeed;
     private final ButtonSetting itemBob;
@@ -43,6 +51,12 @@ public class CustomHotbar extends Module {
         this.registerSetting(background = new ColorSetting("Background", 0, 0, 0, 140));
         this.registerSetting(rounding = new SliderSetting("Rounding", 4.0, 0.0, 10.0, 0.5));
         this.registerSetting(selectionColor = new ColorSetting("Selection", 255, 255, 255, 70));
+        this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.7, 1.5, 0.05));
+        this.registerSetting(verticalOffset = new SliderSetting("Vertical offset", 0.0, 0.0, 60.0, 1.0));
+        this.registerSetting(slotSpacing = new SliderSetting("Slot spacing", 0.0, -2.0, 8.0, 0.5));
+        this.registerSetting(itemScale = new SliderSetting("Item scale", 1.0, 0.65, 1.3, 0.05));
+        this.registerSetting(outline = new ButtonSetting("Outline", false));
+        this.registerSetting(outlineColor = new ColorSetting("Outline color", 255, 255, 255, 70));
         this.registerSetting(animated = new ButtonSetting("Animated selection", true));
         this.registerSetting(selectionSpeed = new SliderSetting("Selection speed", 0.35, 0.05, 1.0, 0.05));
         this.registerSetting(itemBob = new ButtonSetting("Item bob", true));
@@ -58,7 +72,9 @@ public class CustomHotbar extends Module {
         selectionSpeed.setVisible(animated.isToggled(), this);
         xpBackground.setVisible(showXP.isToggled(), this);
         xpColor.setVisible(showXP.isToggled(), this);
-        levelColor.setVisible(showLevel.isToggled(), this);
+        showLevel.setVisible(showXP.isToggled(), this);
+        levelColor.setVisible(showXP.isToggled() && showLevel.isToggled(), this);
+        outlineColor.setVisible(outline.isToggled(), this);
     }
 
     /** Direct render entry used by the vanilla/Lunar HUD transformer path. */
@@ -111,23 +127,34 @@ public class CustomHotbar extends Module {
     private void render(ScaledResolution res, EntityPlayer player, float partialTicks) {
         int sw = res.getScaledWidth();
         int sh = res.getScaledHeight();
-        float barLeft = sw / 2.0f - BAR_WIDTH / 2.0f;
-        float barTop = sh - BAR_HEIGHT;
-        float radius = (float) rounding.getInput();
+        float uiScale = (float) scale.getInput();
+        float slotWidth = (BASE_SLOT_WIDTH + (float) slotSpacing.getInput()) * uiScale;
+        float barWidth = 2.0f * uiScale + slotWidth * 9.0f;
+        float barHeight = BASE_BAR_HEIGHT * uiScale;
+        float barLeft = sw / 2.0f - barWidth / 2.0f;
+        float barTop = sh - barHeight - (float) verticalOffset.getInput();
+        float radius = (float) rounding.getInput() * uiScale;
         int slot = player.inventory.currentItem;
 
         long now = System.nanoTime();
         float dtMs = lastNanos == 0L ? 16.6f : Math.min(120.0f, (now - lastNanos) / 1.0E6f);
         lastNanos = now;
 
-        RenderUtils.drawRoundedRectangle(barLeft, barTop, barLeft + BAR_WIDTH, barTop + BAR_HEIGHT,
-                radius, background.getColor());
+        if (outline.isToggled()) {
+            RoundedUtils.drawRoundOutline(barLeft, barTop, barWidth, barHeight, radius,
+                    Math.max(0.6f, uiScale), new Color(background.getColor(), true),
+                    new Color(outlineColor.getColor(), true));
+        }
+        else {
+            RenderUtils.drawRoundedRectangle(barLeft, barTop, barLeft + barWidth, barTop + barHeight,
+                    radius, background.getColor());
+        }
 
         if (showXP.isToggled()) {
             float xpLeft = barLeft;
-            float xpTop = barTop - 4.0f;
-            float xpW = BAR_WIDTH;
-            float xpH = 3.0f;
+            float xpTop = barTop - 4.0f * uiScale;
+            float xpW = barWidth;
+            float xpH = 3.0f * uiScale;
             float xpR = Math.min(radius, 1.5f);
             float target = Math.max(0.0f, Math.min(1.0f, player.experience));
             xpProgress = Float.isNaN(xpProgress) ? target : lerp(xpProgress, target, smoothing(dtMs));
@@ -145,14 +172,17 @@ public class CustomHotbar extends Module {
             }
         }
 
-        float targetSelX = barLeft + 1.0f + slot * SLOT_WIDTH;
+        float inset = uiScale;
+        float targetSelX = barLeft + inset + slot * slotWidth;
         if (animated.isToggled()) {
             selectionX = Float.isNaN(selectionX) ? targetSelX : lerp(selectionX, targetSelX, smoothing(dtMs));
         } else {
             selectionX = targetSelX;
         }
-        RenderUtils.drawRoundedRectangle(selectionX, barTop + 1.0f, selectionX + (SLOT_WIDTH - 2.0f),
-                barTop + BAR_HEIGHT - 1.0f, Math.min(radius, 6.0f), selectionColor.getColor());
+        RenderUtils.drawRoundedRectangle(selectionX, barTop + inset,
+                selectionX + Math.max(1.0f, slotWidth - inset * 2.0f),
+                barTop + barHeight - inset, Math.min(radius, 6.0f * uiScale),
+                selectionColor.getColor());
 
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         GlStateManager.enableRescaleNormal();
@@ -165,24 +195,22 @@ public class CustomHotbar extends Module {
             for (int i = 0; i < slots; i++) {
                 ItemStack stack = player.inventory.mainInventory[i];
                 if (stack == null) continue;
-                int ix = (int) (barLeft + 3.0f + i * SLOT_WIDTH);
-                int iy = (int) (barTop + 3.0f);
+                float centerX = barLeft + inset + i * slotWidth + slotWidth * 0.5f;
+                float centerY = barTop + barHeight * 0.5f;
                 float bob = itemBob.isToggled() ? Math.max(0.0f, stack.animationsToGo - partialTicks) : 0.0f;
-                boolean transformed = bob > 0.0f;
-                if (transformed) {
-                    GlStateManager.pushMatrix();
-                    float s = 1.0f + bob / 5.0f;
-                    GlStateManager.translate(ix + 8, iy + 12, 0.0f);
-                    GlStateManager.scale(1.0f / s, (s + 1.0f) / 2.0f, 1.0f);
-                    GlStateManager.translate(-(ix + 8), -(iy + 12), 0.0f);
-                }
+                float renderScale = uiScale * (float) itemScale.getInput();
+                float bobX = bob > 0.0f ? 1.0f / (1.0f + bob / 5.0f) : 1.0f;
+                float bobY = bob > 0.0f ? (2.0f + bob / 5.0f) * 0.5f : 1.0f;
+                GlStateManager.pushMatrix();
+                GlStateManager.translate(centerX, centerY, 0.0f);
+                GlStateManager.scale(renderScale * bobX, renderScale * bobY, renderScale);
                 try {
-                    renderItem.renderItemAndEffectIntoGUI(stack, ix, iy);
+                    renderItem.renderItemAndEffectIntoGUI(stack, -8, -8);
+                    renderItem.renderItemOverlays(mc.fontRendererObj, stack, -8, -8);
                 }
                 finally {
-                    if (transformed) GlStateManager.popMatrix();
+                    GlStateManager.popMatrix();
                 }
-                renderItem.renderItemOverlays(mc.fontRendererObj, stack, ix, iy);
             }
         }
         finally {
