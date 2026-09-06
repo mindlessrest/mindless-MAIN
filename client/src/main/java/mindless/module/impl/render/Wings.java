@@ -87,11 +87,14 @@ public class Wings extends Module {
     };
 
     // Realistic: four overlapping rows — primaries, secondaries, greater coverts, marginal coverts.
+    // Widths and counts are set so a feather overlaps its neighbours along its whole length. At
+    // the previous 0.120-0.150 they only met near the root; by the tip they had fanned apart and
+    // every feather stood alone, which serrated the whole silhouette into a fan of spikes.
     private static final float[][] REAL_LAYERS = {
-            {0.20f, 1.00f, 11.0f, 1.16f, 0.150f,  0.02f, -0.020f, 0.80f},
-            {0.08f, 0.90f, 10.0f, 0.82f, 0.150f, -0.10f,  0.020f, 0.90f},
-            {0.02f, 0.82f, 12.0f, 0.52f, 0.140f, -0.26f,  0.070f, 1.02f},
-            {0.00f, 0.70f, 14.0f, 0.30f, 0.120f, -0.42f,  0.120f, 1.12f}
+            {0.20f, 1.00f, 14.0f, 1.16f, 0.225f,  0.02f, -0.020f, 0.80f},
+            {0.08f, 0.90f, 13.0f, 0.82f, 0.235f, -0.10f,  0.020f, 0.90f},
+            {0.02f, 0.82f, 15.0f, 0.52f, 0.225f, -0.26f,  0.070f, 1.02f},
+            {0.00f, 0.70f, 17.0f, 0.30f, 0.200f, -0.42f,  0.120f, 1.12f}
     };
 
     private static final float[] FEATHER_PROFILE = {
@@ -105,17 +108,21 @@ public class Wings extends Module {
     };
 
     // Higher-resolution asymmetric vane used by the Realistic mode (u, halfWidth).
+    // Convex rather than linear: it holds most of its width through the middle and rounds off,
+    // instead of tapering to the 0.03 needle point that made every feather read as a spike.
     private static final float[] REAL_PROFILE = {
-            0.00f, 0.05f,
-            0.09f, 0.30f,
-            0.20f, 0.50f,
-            0.34f, 0.60f,
-            0.50f, 0.61f,
-            0.64f, 0.55f,
-            0.77f, 0.44f,
-            0.87f, 0.30f,
-            0.95f, 0.15f,
-            1.00f, 0.03f
+            0.000f, 0.06f,
+            0.070f, 0.34f,
+            0.160f, 0.56f,
+            0.280f, 0.72f,
+            0.420f, 0.80f,
+            0.560f, 0.82f,
+            0.680f, 0.79f,
+            0.790f, 0.71f,
+            0.880f, 0.58f,
+            0.945f, 0.40f,
+            0.980f, 0.24f,
+            1.000f, 0.07f
     };
 
     private final SliderSetting shape;
@@ -125,6 +132,7 @@ public class Wings extends Module {
     private final SliderSetting colorSpeed;
     private final SliderSetting colorSpread;
     private final ButtonSetting transparent;
+    private final SliderSetting fade;
     private final SliderSetting size;
     private final SliderSetting spread;
     private final SliderSetting flapSpeed;
@@ -139,6 +147,15 @@ public class Wings extends Module {
     private final float[] pointC = new float[3];
     private final float[] ribs = new float[FEATHER_PROFILE.length / 2 * 12];
     private final float[] realRibs = new float[REAL_PROFILE.length / 2 * 12];
+    // One wing buffered whole before anything is drawn: the vertical fade needs the wing's full
+    // height before it can place a vertex on that ramp, and the two passes both read it back.
+    private final float[] realBuffer = new float[64 * (REAL_PROFILE.length / 2) * 3 * 5];
+    private final int[] realFeatherPart = new int[64];
+    private final int[] realFeatherRGB = new int[64];
+    private final float[] realFeatherShade = new float[64];
+    private int realFeatherCount;
+    private float realMinY;
+    private float realMaxY;
     private final float[] shardCorners = new float[PANELS_SHARD * 12];
 
     public Wings() {
@@ -150,6 +167,7 @@ public class Wings extends Module {
         this.registerSetting(colorSpeed = new SliderSetting("Color speed", 1.0, 0.0, 5.0, 0.1));
         this.registerSetting(colorSpread = new SliderSetting("Color spread", 1.0, 0.0, 4.0, 0.1));
         this.registerSetting(transparent = new ButtonSetting("Transparent", false));
+        this.registerSetting(fade = new SliderSetting("Bottom fade", 0.78, 0.0, 1.0, 0.02));
         this.registerSetting(size = new SliderSetting("Size", 1.0, 0.4, 2.5, 0.05));
         this.registerSetting(spread = new SliderSetting("Spread", 1.0, 0.4, 2.0, 0.05));
         this.registerSetting(flapSpeed = new SliderSetting("Flap speed", 1.0, 0.0, 4.0, 0.1));
@@ -168,6 +186,7 @@ public class Wings extends Module {
         colorSpeed.setVisible(mode != COLOR_STATIC, this);
         colorSpread.setVisible(mode != COLOR_STATIC, this);
         flapAmount.setVisible(flapSpeed.getInput() > 0.0, this);
+        fade.setVisible((int) shape.getInput() == SHAPE_REALISTIC, this);
         edgeColor.setVisible(outline.isToggled() && mode == COLOR_STATIC, this);
         edgeWidth.setVisible(outline.isToggled(), this);
     }
@@ -212,11 +231,16 @@ public class Wings extends Module {
         float phase = phase();
         float amplitude = (float) Math.toRadians(flapAmount.getInput()) * flapDrive(player);
 
-        for (int side = -1; side <= 1; side += 2) {
-            if (style == SHAPE_REALISTIC) drawRealisticWing(side, scale, span, phase, amplitude);
-            else if (style == SHAPE_SIMPLE) drawSimpleWing(side, scale, span, phase, amplitude);
-            else if (style == SHAPE_WINGS) drawPixelWing(side, scale, span, phase, amplitude);
-            else drawShardWing(side, scale, span, phase, amplitude);
+        if (style == SHAPE_REALISTIC && WingRenderPipeline.texturesReady()) {
+            drawFeatheredWings(scale, span, phase, amplitude);
+        }
+        else {
+            for (int side = -1; side <= 1; side += 2) {
+                if (style == SHAPE_REALISTIC) drawRealisticWing(side, scale, span, phase, amplitude);
+                else if (style == SHAPE_SIMPLE) drawSimpleWing(side, scale, span, phase, amplitude);
+                else if (style == SHAPE_WINGS) drawPixelWing(side, scale, span, phase, amplitude);
+                else drawShardWing(side, scale, span, phase, amplitude);
+            }
         }
 
         GL11.glLineWidth(1.0f);
@@ -270,6 +294,207 @@ public class Wings extends Module {
         int g = Math.round(ag + (bg - ag) * m);
         int bl = Math.round(ab + (bb - ab) * m);
         return (r << 16) | (g << 8) | bl;
+    }
+
+    // ---------------------------------------------------------------- feathered (textured)
+
+    /**
+     * The textured path.
+     *
+     * Geometry for one wing is generated into realBuffer first and only then drawn, twice. The
+     * buffering is not an optimisation: the vertical fade places each vertex on a ramp measured
+     * across the wing's full height, and that height is not known until the last feather has been
+     * transformed. Drawing straight out of the generator would mean fading each feather against
+     * itself, which is what the old root-to-tip ramp did and why it never read as a gradient.
+     */
+    private void drawFeatheredWings(float scale, float span, float phase, float amplitude) {
+        boolean glass = transparent.isToggled();
+        boolean walls = throughWalls.isToggled();
+
+        for (int side = -1; side <= 1; side += 2) {
+            buildFeatheredWing(side, scale, span, phase, amplitude);
+
+            if (glass) {
+                WingRenderPipeline.beginGlass(walls);
+                emitFeatherPasses(false);
+            }
+            else {
+                WingRenderPipeline.beginCore(walls);
+                emitFeatherPasses(true);
+                WingRenderPipeline.beginFringe(walls);
+                emitFeatherPasses(false);
+            }
+        }
+
+        WingRenderPipeline.end();
+        if (outline.isToggled()) {
+            GlStateManager.disableTexture2D();
+            GlStateManager.enableBlend();
+            GlStateManager.depthMask(false);
+            for (int side = -1; side <= 1; side += 2) {
+                drawRealisticLeadingEdge(side, scale, span, phase, amplitude);
+            }
+            GlStateManager.depthMask(true);
+            GlStateManager.enableTexture2D();
+        }
+    }
+
+    /** Fills realBuffer with one wing and records the height range the fade ramps over. */
+    private void buildFeatheredWing(int side, float scale, float span, float phase, float amplitude) {
+        int steps = REAL_PROFILE.length / 2;
+        int cursor = 0;
+        realFeatherCount = 0;
+        realMinY = Float.MAX_VALUE;
+        realMaxY = -Float.MAX_VALUE;
+
+        for (int layer = 0; layer < REAL_LAYERS.length; layer++) {
+            float[] spec = REAL_LAYERS[layer];
+            int count = (int) spec[2];
+            for (int i = 0; i < count; i++) {
+                float along = count == 1 ? 0.5f : i / (float) (count - 1);
+                float t = spec[0] + (spec[1] - spec[0]) * along;
+                float width = spec[4] * (0.90f + 0.14f * (float) Math.sin((i + layer) * 2.13f));
+
+                realFeatherPart[realFeatherCount] = layer;
+                realFeatherRGB[realFeatherCount] = baseColor(t);
+                realFeatherShade[realFeatherCount] = spec[7];
+                cursor = buildFeather(cursor, side, t, scale, span, phase, amplitude,
+                        spec[3], width, spec[5], spec[6], layer, steps);
+                realFeatherCount++;
+            }
+        }
+    }
+
+    private int buildFeather(int cursor, int side, float t, float scale, float span, float phase,
+                             float amplitude, float lengthScale, float widthScale, float angleBias,
+                             float lift, int layer, int steps) {
+        float rootX = realisticSpineX(t);
+        float rootY = realisticSpineY(t) - lift;
+        float rootZ = realisticDepth(rootX) - layer * 0.016f;
+        float baseLength = 0.46f + 0.42f * (float) Math.sin(Math.PI * (0.15f + 0.72f * t)) + 0.12f * t;
+        float length = baseLength * lengthScale;
+        float angle = 0.12f + 1.28f * t + angleBias;
+        float dirX = (float) Math.sin(angle) * 0.76f;
+        float dirY = -(float) Math.cos(angle);
+        float dirZ = 0.13f + 0.18f * t;
+        float dirLength = (float) Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+        dirX /= dirLength; dirY /= dirLength; dirZ /= dirLength;
+
+        float wideX = -dirY, wideY = dirX;
+        float wideLength = (float) Math.sqrt(wideX * wideX + wideY * wideY);
+        wideX /= wideLength; wideY /= wideLength;
+
+        for (int i = 0; i < steps; i++) {
+            float u = REAL_PROFILE[i * 2];
+            float bend = (float) Math.sin(Math.PI * u);
+            float barb = 1.0f + 0.06f * (float) Math.sin(u * (float) Math.PI * 7.0f);
+            float leadHalf = REAL_PROFILE[i * 2 + 1] * widthScale * 0.72f;
+            float trailHalf = REAL_PROFILE[i * 2 + 1] * widthScale * barb;
+            float cx = rootX + dirX * length * u + 0.025f * bend * (1.0f - t);
+            float cy = rootY + dirY * length * u - 0.035f * bend * t;
+            float cz = rootZ + dirZ * length * u - 0.025f * bend;
+
+            // v across the chord: 0 leading edge, 0.5 shaft, 1 trailing edge
+            transformRealistic(cx - wideX * leadHalf, cy - wideY * leadHalf, cz,
+                    side, scale, span, phase, amplitude, point);
+            cursor = store(cursor, point, u, 0.0f);
+            transformRealistic(cx, cy, cz - 0.010f, side, scale, span, phase, amplitude, point);
+            cursor = store(cursor, point, u, 0.5f);
+            transformRealistic(cx + wideX * trailHalf, cy + wideY * trailHalf, cz,
+                    side, scale, span, phase, amplitude, point);
+            cursor = store(cursor, point, u, 1.0f);
+        }
+        return cursor;
+    }
+
+    private int store(int cursor, float[] source, float u, float v) {
+        realBuffer[cursor] = source[0];
+        realBuffer[cursor + 1] = source[1];
+        realBuffer[cursor + 2] = source[2];
+        realBuffer[cursor + 3] = u;
+        realBuffer[cursor + 4] = v;
+        if (source[1] < realMinY) realMinY = source[1];
+        if (source[1] > realMaxY) realMaxY = source[1];
+        return cursor + 5;
+    }
+
+    /**
+     * Alpha for one vertex.
+     *
+     * Two things drive it. The vertical ramp is measured across the whole wing, so the bottom
+     * edge dissolves as one continuous gradient no matter which row or feather a vertex belongs
+     * to. The bias exponent pushes the falloff into the lower part of the wing rather than
+     * spreading it evenly, so the top stays solid and only the bottom reads as a suggestion.
+     */
+    private int vertexAlpha(int baseAlpha, float u, float y) {
+        float tipAlpha = baseAlpha * tipFade();
+        float alpha = baseAlpha + (tipAlpha - baseAlpha) * u;
+        float amount = (float) fade.getInput();
+        if (amount > 0.0f && realMaxY > realMinY) {
+            float bottom = 1.0f - 0.94f * amount;
+            float height = (y - realMinY) / (realMaxY - realMinY);
+            float bias = 1.0f + 0.9f * amount;
+            alpha *= bottom + (1.0f - bottom) * (float) Math.pow(height, bias);
+        }
+        return Math.max(0, Math.min(255, Math.round(alpha)));
+    }
+
+    private void emitFeatherPasses(boolean core) {
+        int steps = REAL_PROFILE.length / 2;
+        int featherStride = steps * 3 * 5;
+        int baseAlpha = fillAlpha();
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer buffer = tessellator.getWorldRenderer();
+
+        for (int part = 0; part < WingRenderPipeline.PART_COUNT; part++) {
+            boolean any = false;
+            for (int f = 0; f < realFeatherCount; f++) {
+                if (realFeatherPart[f] != part) continue;
+                if (!any) {
+                    WingRenderPipeline.bind(part);
+                    buffer.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_TEX_COLOR);
+                    any = true;
+                }
+                emitFeather(buffer, f * featherStride, steps, realFeatherRGB[f],
+                        realFeatherShade[f], baseAlpha);
+            }
+            if (any) tessellator.draw();
+        }
+    }
+
+    private void emitFeather(WorldRenderer buffer, int base, int steps, int rgb, float shade,
+                             int baseAlpha) {
+        int red = (rgb >> 16) & 0xFF, green = (rgb >> 8) & 0xFF, blue = rgb & 0xFF;
+        for (int i = 0; i + 1 < steps; i++) {
+            float tipRamp = 1.0f - 0.30f * (i / (float) (steps - 1));
+            int r = shade(red, shade * tipRamp);
+            int g = shade(green, shade * tipRamp);
+            int b = shade(blue, shade * tipRamp);
+            int lo = base + i * 15;
+            int hi = base + (i + 1) * 15;
+            // leading vane, then trailing vane
+            featherTri(buffer, lo, lo + 5, hi + 5, r, g, b, baseAlpha);
+            featherTri(buffer, lo, hi + 5, hi, r, g, b, baseAlpha);
+            featherTri(buffer, lo + 5, lo + 10, hi + 10, r, g, b, baseAlpha);
+            featherTri(buffer, lo + 5, hi + 10, hi + 5, r, g, b, baseAlpha);
+        }
+    }
+
+    private void featherTri(WorldRenderer buffer, int a, int b, int c,
+                            int red, int green, int blue, int baseAlpha) {
+        featherVertex(buffer, a, red, green, blue, baseAlpha);
+        featherVertex(buffer, b, red, green, blue, baseAlpha);
+        featherVertex(buffer, c, red, green, blue, baseAlpha);
+    }
+
+    private void featherVertex(WorldRenderer buffer, int offset, int red, int green, int blue,
+                               int baseAlpha) {
+        float y = realBuffer[offset + 1];
+        float u = realBuffer[offset + 3];
+        buffer.pos(realBuffer[offset], y, realBuffer[offset + 2])
+                .tex(u, realBuffer[offset + 4])
+                .color(red, green, blue, vertexAlpha(baseAlpha, u, y))
+                .endVertex();
     }
 
     // ---------------------------------------------------------------- realistic (feathered)
