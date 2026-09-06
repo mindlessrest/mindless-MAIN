@@ -366,12 +366,9 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
                 # LLVM lld-link.exe through CMAKE_LINKER below.
                 hikari_flags = (
                     "-mllvm -voyager"
-                    " -mllvm -enable-bcfobf"
-                    " -mllvm -bcf_prob=40"
-                    " -mllvm -bcf_loop=1"
-                    " -mllvm -bcf_cond_compl=2"
+                    " -mllvm -enable-cffobf"
                     " -mllvm -enable-subobf"
-                    " -mllvm -sub_prob=40"
+                    " -mllvm -sub_prob=50"
                     " -mllvm -sub_loop=1"
                     " -mllvm -enable-splitobf"
                     " -mllvm -split_num=2"
