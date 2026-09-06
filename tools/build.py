@@ -373,7 +373,7 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
             cv["VCPKG_INSTALLED_DIR"]  = str(LOADER_DIR / "vcpkg_installed").replace("\\", "/")
             cv["VCPKG_TARGET_TRIPLET"] = "x64-windows-static"
             if voyager:
-                hikari_flags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-subobf -mllvm -sub_prob=70 -mllvm -sub_loop=2 -mllvm -enable-constenc -mllvm -constenc_times=1"
+                hikari_flags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-subobf -mllvm -sub_prob=70 -mllvm -sub_loop=2"
                 cv["MINDLESS_PRODUCTION_OBFUSCATION_FLAGS"] = hikari_flags
                 cv["MINDLESS_PRIVATE_PDB"] = "ON"
             else:

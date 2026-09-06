@@ -59,8 +59,7 @@ jobs:
         with:
           path: |
             .ci/voyager
-            .ci/mindless-protector
-          key: voyager-protector-v1-${{ runner.os }}-${{ steps.voyager.outputs.revision }}
+          key: voyager-v1-${{ runner.os }}-${{ steps.voyager.outputs.revision }}
 
       - name: Download and extract Voyager compiler
         if: steps.voyager-cache.outputs.cache-hit != 'true'
@@ -76,14 +75,10 @@ jobs:
           $archive = Join-Path $env:GITHUB_WORKSPACE ".ci\voyager-source\Voyager.7z"
           $destination = Join-Path $env:GITHUB_WORKSPACE ".ci\voyager"
 
-          $protectorArchive = Join-Path $env:GITHUB_WORKSPACE ".ci\voyager-source\Ryujin.zip"
-          $protectorDestination = Join-Path $env:GITHUB_WORKSPACE ".ci\mindless-protector"
-
           $archiveDirectory = Split-Path -Parent $archive
 
           New-Item -ItemType Directory -Path $archiveDirectory -Force | Out-Null
           New-Item -ItemType Directory -Path $destination -Force | Out-Null
-          New-Item -ItemType Directory -Path $protectorDestination -Force | Out-Null
 
           $headers = @{
             Authorization = "Bearer $env:VOYAGER_TOKEN"
@@ -109,47 +104,6 @@ jobs:
 
           if ($LASTEXITCODE -ne 0) {
             throw "7-Zip failed to extract Voyager.7z (exit $LASTEXITCODE)"
-          }
-
-          # The Mindless protector (Ryujin.zip) is optional. When it is absent from
-          # mindlessrest/ci the loader simply ships unprotected instead of failing the
-          # whole release, so a 404 here is expected rather than an error.
-          $protectorUrl = "https://api.github.com/repos/mindlessrest/ci/contents/Ryujin.zip?ref=$env:VOYAGER_REVISION"
-
-          try {
-            Invoke-WebRequest `
-              -Uri $protectorUrl `
-              -Headers $headers `
-              -OutFile $protectorArchive `
-              -ErrorAction Stop
-          }
-          catch {
-            $status = $_.Exception.Response.StatusCode.value__
-            Write-Warning "Mindless protector download failed (HTTP $status). Loader will ship UNPROTECTED."
-
-            if (Test-Path -LiteralPath $protectorArchive) {
-              Remove-Item -LiteralPath $protectorArchive -Force
-            }
-          }
-
-          # Only extract and validate when the archive actually came down; a missing
-          # protector is tolerated, but a corrupt or incomplete one is still a failure.
-          if (
-            (Test-Path -LiteralPath $protectorArchive -PathType Leaf) -and
-            (Get-Item -LiteralPath $protectorArchive).Length -gt 0
-          ) {
-            Expand-Archive `
-              -LiteralPath $protectorArchive `
-              -DestinationPath $protectorDestination `
-              -Force
-
-            foreach ($file in @("Mindless.exe", "MindlessCore.dll")) {
-              $path = Join-Path $protectorDestination $file
-
-              if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
-                throw "Ryujin.zip does not contain $file at its archive root"
-              }
-            }
           }
 
       - name: Resolve and validate Voyager compiler
@@ -206,44 +160,6 @@ jobs:
             throw "clang -print-resource-dir failed"
           }
 
-      - name: Detect Mindless protector
-        id: protector
-        shell: pwsh
-        run: |
-          $destination = Join-Path $env:GITHUB_WORKSPACE ".ci\mindless-protector"
-          $protector = Join-Path $destination "Mindless.exe"
-          $core = Join-Path $destination "MindlessCore.dll"
-
-          if (
-            (Test-Path -LiteralPath $protector -PathType Leaf) -and
-            (Test-Path -LiteralPath $core -PathType Leaf)
-          ) {
-            "available=true" >> $env:GITHUB_OUTPUT
-            Write-Host "Mindless protector present; loader will be protected."
-          }
-          else {
-            "available=false" >> $env:GITHUB_OUTPUT
-            Write-Warning "Mindless protector not available; loader will ship UNPROTECTED."
-          }
-
-      - name: Resolve and validate Mindless protector
-        if: steps.protector.outputs.available == 'true'
-        shell: pwsh
-        run: |
-          $destination = Join-Path $env:GITHUB_WORKSPACE ".ci\mindless-protector"
-          $protector = Join-Path $destination "Mindless.exe"
-          $core = Join-Path $destination "MindlessCore.dll"
-
-          if (!(Test-Path -LiteralPath $protector -PathType Leaf)) {
-            throw "Ryujin.zip does not contain Mindless.exe at its archive root"
-          }
-
-          if (!(Test-Path -LiteralPath $core -PathType Leaf)) {
-            throw "Ryujin.zip does not contain MindlessCore.dll at its archive root"
-          }
-
-          "MINDLESS_PROTECTOR_ROOT=$destination" >> $env:GITHUB_ENV
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -283,81 +199,6 @@ jobs:
       - name: Build production client
         shell: pwsh
         run: python tools/build.py --prod --no-cache
-
-      - name: Protect production loader
-        if: steps.protector.outputs.available == 'true'
-        shell: pwsh
-        run: |
-          $input = Join-Path $env:GITHUB_WORKSPACE "MindlessLoader.exe"
-          $pdb = Join-Path $env:GITHUB_WORKSPACE "loader\out\build\windows-clang\Release\MindlessLoader.pdb"
-          $output = Join-Path $env:GITHUB_WORKSPACE "MindlessLoader.protected.exe"
-          $protector = Join-Path $env:MINDLESS_PROTECTOR_ROOT "Mindless.exe"
-
-          foreach ($file in @($input, $pdb, $protector)) {
-            if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
-              throw "Missing loader protection input: $file"
-            }
-          }
-
-          # Prevent stale output from an earlier invocation.
-          if (Test-Path -LiteralPath $output) {
-            Remove-Item -LiteralPath $output -Force
-          }
-
-          Push-Location $env:MINDLESS_PROTECTOR_ROOT
-
-          try {
-            & $protector `
-              --input $input `
-              --pdb $pdb `
-              --output $output `
-              --virtualize `
-              --junk `
-              --encrypt `
-              --iat `
-              --mangle-sections `
-              --ai-refuse `
-              --AntiDebug `
-              --AntiDump `
-              --MemoryProtection `
-              --MutateMiniVM `
-              --procs 'wWinMain,mindless::Application::start_auth,mindless::Application::start_download'
-
-            # Mindless has non-standard exit behavior.
-            # Ignore its process exit code completely.
-            $mindlessExitCode = $LASTEXITCODE
-            Write-Host "Mindless returned: $mindlessExitCode (ignored)"
-          }
-          finally {
-            Pop-Location
-          }
-
-          # The output is what determines whether we can use the protected build.
-          if (Test-Path -LiteralPath $output -PathType Leaf) {
-            $outputSize = (Get-Item -LiteralPath $output).Length
-
-            if ($outputSize -gt 0) {
-              Write-Host "Protected loader size: $outputSize bytes"
-
-              Move-Item `
-                -LiteralPath $output `
-                -Destination $input `
-                -Force
-
-              Write-Host "Protected loader replaced original MindlessLoader.exe"
-            }
-            else {
-              Write-Warning "Protected output is empty. Keeping original MindlessLoader.exe."
-            }
-          }
-          else {
-            Write-Warning "Mindless produced no output. Keeping original MindlessLoader.exe."
-          }
-
-          # CRITICAL:
-          # Mindless may return literally anything.
-          # The GitHub Actions step ALWAYS succeeds.
-          exit 0
 
       - name: Verify release files
         shell: pwsh
