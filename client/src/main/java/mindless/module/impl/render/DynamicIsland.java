@@ -12,8 +12,9 @@ import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.font.ModuleFont;
 import mindless.utility.shader.BlurUtils;
-import mindless.utility.shader.HudGlowHelper;
 import mindless.utility.shader.RoundedUtils;
+import mindless.utility.media.SystemMediaClient;
+import mindless.utility.media.SystemMediaInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.multiplayer.ServerData;
@@ -33,12 +34,8 @@ import org.lwjgl.opengl.GL11;
  */
 public class DynamicIsland extends Module {
 
-    private static final String[] MODES = {"Island", "Text"};
+    private static final String[] MODES = {"Dynamic", "Classic"};
     private static final String[] ANCHORS = {"Top centre", "Top left", "Top right", "Custom"};
-
-    private static final float DEFAULT_TEXT_X = 5.0f;
-    private static final float DEFAULT_TEXT_Y = 5.0f;
-    private static final float WATERMARK_SCALE = 3.0f;
 
     private static final float PAD_X = 9.0f;
     private static final float PAD_Y = 5.5f;
@@ -108,13 +105,11 @@ public class DynamicIsland extends Module {
     private long lastPollAt;
     private long sessionStart = System.currentTimeMillis();
 
-    public float textPosX = DEFAULT_TEXT_X;
-    public float textPosY = DEFAULT_TEXT_Y;
     public float islandPosX = -1.0f;
     public float islandPosY = -1.0f;
 
     public DynamicIsland() {
-        super("Dynamic Island", "A pill with your account, FPS and client info.", category.render);
+        super("Dynamic Island", "A live pill for music, breaking, building and module activity.", category.render);
 
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(anchor = new SliderSetting("Anchor", 0, ANCHORS));
@@ -147,10 +142,9 @@ public class DynamicIsland extends Module {
 
     @Override
     public void guiUpdate() {
-        boolean island = (int) mode.getInput() == 0;
-        anchor.setVisible(island, this);
-        contentGroup.setVisible(island, this);
-        styleGroup.setVisible(island, this);
+        anchor.setVisible(true, this);
+        contentGroup.setVisible(true, this);
+        styleGroup.setVisible(true, this);
     }
 
     @Override
@@ -167,8 +161,6 @@ public class DynamicIsland extends Module {
     }
 
     public void resetPosition() {
-        textPosX = DEFAULT_TEXT_X;
-        textPosY = DEFAULT_TEXT_Y;
         islandPosX = -1.0f;
         islandPosY = -1.0f;
     }
@@ -178,11 +170,7 @@ public class DynamicIsland extends Module {
         if (event.phase != TickEvent.Phase.END || !Utils.nullCheck()) return;
         if (mc.currentScreen != null || mc.gameSettings.showDebugInfo) return;
 
-        if ((int) mode.getInput() == 1) {
-            renderTextWatermark();
-        } else {
-            renderIsland();
-        }
+        renderIsland();
     }
 
     // ------------------------------------------------------------------ island
@@ -560,6 +548,11 @@ public class DynamicIsland extends Module {
     private void buildSegments(MindlessFontRenderer text) {
         segmentCount = 0;
 
+        if ((int) mode.getInput() == 0) {
+            buildActivitySegments();
+            return;
+        }
+
         if (showLogo.isToggled()) {
             addLogo();
         }
@@ -587,6 +580,56 @@ public class DynamicIsland extends Module {
         if (showStatus.isToggled()) {
             addToggleChips(System.currentTimeMillis());
         }
+    }
+
+    private void buildActivitySegments() {
+        mindless.module.impl.player.BedAura breaker = mindless.module.ModuleManager.bedAura;
+        if (breaker != null && breaker.isActivelyMining()) {
+            int progress = Math.max(0, Math.min(100, Math.round(breaker.getAuraBreakProgress() * 100.0f)));
+            addChip("Bed Breaker  " + progress + "%", 0xFF6B72, 1.0f);
+            return;
+        }
+
+        if (addLatestToggle()) return;
+
+        SystemMediaInfo media = SystemMediaClient.getInstance().getCurrentInfo();
+        if (media != null && media.isAvailable() && media.isPlaying() && !media.getTitle().trim().isEmpty()) {
+            String artist = media.getArtist().trim();
+            addChip(media.getTitle().trim() + (artist.isEmpty() ? "" : "  ·  " + artist),
+                    SystemMediaClient.getInstance().getAlbumAccentColor(), 1.0f);
+            return;
+        }
+
+        mindless.module.impl.player.Scaffold scaffold = mindless.module.ModuleManager.scaffold;
+        BlockCounter counter = mindless.module.ModuleManager.blockCounter;
+        if (scaffold != null && scaffold.isEnabled() && counter != null) {
+            int blocks = counter.getBlockCount();
+            net.minecraft.item.ItemStack stack = counter.islandBlock();
+            if (stack != null) {
+                addItemChip(Integer.toString(blocks), stack);
+            } else {
+                addChip("Scaffold  " + blocks + " blocks", 0x6FA8FF, 1.0f);
+            }
+            return;
+        }
+
+        addLogo();
+        add(Segment.ICON_ACCOUNT, MindlessAccount.displayName(), true);
+    }
+
+    private boolean addLatestToggle() {
+        if (showStatus.isToggled() && !recentToggles.isEmpty()) {
+            Toggle toggle = recentToggles.get(recentToggles.size() - 1);
+            long life = Math.max(1L, (long) (statusDuration.getInput() * 1000.0));
+            float age = (System.currentTimeMillis() - toggle.bornAt) / (float) life;
+            if (age < 1.0f) {
+                float fade = age < 0.66f ? 1.0f : Math.max(0.0f, (1.0f - age) / 0.34f);
+                addChip(toggle.name + "  " + (toggle.enabled ? "ON" : "OFF"),
+                        toggle.enabled ? ACCENT_ON : ACCENT_OFF, fade);
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -910,50 +953,11 @@ public class DynamicIsland extends Module {
     }
 
     public boolean isIslandMode() {
-        return (int) mode.getInput() == 0;
+        return true;
     }
-
-    // ------------------------------------------------------------------ text mode
 
     private MindlessFontRenderer islandFont() {
         return FontManager.getHudRenderer(ModuleFont.nameOf(font), HUD.getSelectedFontScale());
-    }
-
-    private MindlessFontRenderer getWatermarkFont() {
-        return FontManager.getHudRenderer(ModuleFont.nameOf(font),
-                HUD.getSelectedFontScale() * WATERMARK_SCALE);
-    }
-
-    private void renderTextWatermark() {
-        MindlessFontRenderer watermarkFont = getWatermarkFont();
-        if (watermarkFont == null) return;
-
-        String value = "Mindless";
-        int baseColor = ThemeManager.getWatermarkColor(0.0);
-        int r = (baseColor >> 16) & 0xFF;
-        int g = (baseColor >> 8) & 0xFF;
-        int b = baseColor & 0xFF;
-
-        if (HudGlowHelper.isAvailable()) {
-            HudGlowHelper.beginMask();
-            watermarkFont.drawGlyphString(value, textPosX, textPosY,
-                    (character, xOffset, width, formattingColor)
-                            -> ThemeManager.getWatermarkColor(xOffset * 0.1), false);
-            HudGlowHelper.endAndComposite(8.0f, 1.2f, r, g, b);
-        }
-
-        watermarkFont.drawGlyphString(value, textPosX, textPosY,
-                (character, xOffset, width, formattingColor)
-                        -> ThemeManager.getWatermarkColor(xOffset * 0.1), false);
-    }
-
-    public float[] getTextBounds() {
-        MindlessFontRenderer watermarkFont = getWatermarkFont();
-        if (watermarkFont == null) return null;
-        String value = "Mindless";
-        return new float[]{textPosX, textPosY,
-                textPosX + watermarkFont.getStringWidth(value),
-                textPosY + watermarkFont.getFontHeight()};
     }
 
     // ------------------------------------------------------------------ helpers

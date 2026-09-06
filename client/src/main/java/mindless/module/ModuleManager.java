@@ -19,6 +19,7 @@ import mindless.module.impl.render.*;
 import mindless.module.impl.world.*;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.profile.Manager;
+import mindless.hud.HudItemManager;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 public class ModuleManager {
+    public static final HudItemManager hudItems = new HudItemManager();
     public static List<Module> modules = new ArrayList<>();
     public static List<Module> organizedModules = Collections.synchronizedList(new ArrayList<>());
     private static final Map<String, Module> modulesByName = new HashMap<>();
@@ -72,6 +74,8 @@ public class ModuleManager {
     public static StatsHUD statsHUD;
     public static Radar radar;
     public static DynamicIsland dynamicIsland;
+    public static Watermark watermark;
+    public static Keybinds keybinds;
     public static NoFall noFall;
     public static SexyESP sexyESP;
     public static MobESP mobESP;
@@ -237,9 +241,13 @@ public class ModuleManager {
         this.addModule(freelook = new Freelook());
         this.addModule(new FallView());
         this.addModule(new Holdlook());
+        this.addModule(watermark = new Watermark());
+        hudItems.register(watermark);
         this.addModule(dynamicIsland = new DynamicIsland());
         this.addModule(sessionInfo = new SessionInfo());
         this.addModule(hud = new HUD());
+        this.addModule(keybinds = new Keybinds());
+        hudItems.register(keybinds);
         spotifyMiniPlayer = hud.getSpotifyMiniPlayer();
         this.addModule(new Notifications());
         this.addModule(new Indicators());

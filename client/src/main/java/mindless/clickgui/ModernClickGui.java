@@ -47,6 +47,15 @@ import java.util.Set;
 
 import javax.imageio.ImageIO;
 public final class ModernClickGui extends ClickGui {
+    public void openModuleFromHudEditor(Module module) {
+        if (module == null) return;
+        pinnedCategory = module.moduleCategory();
+        pinnedModule = module;
+        pinnedSearch = "";
+        pinnedModuleScroll = 0f;
+        pinnedSettingScroll = 0f;
+        viewPinned = true;
+    }
     private static final String LOGO_RESOURCE = "/assets/mindless/textures/gui/logo.png";
     private static final String FALLBACK_FONT_REGULAR = "Sf-Regular";
     private static final String FALLBACK_FONT_BOLD = "Sf-Bold";
@@ -1749,6 +1758,22 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
                 for (Profile profile : Mindless.profileManager.profiles) profiles.add(profile.getModule());
             }
             return profiles;
+        }
+        if (category == Module.category.scripts && Mindless.scriptManager != null) {
+            List<Module> scripts = new ArrayList<Module>();
+            if (Mindless.getModuleManager() != null) {
+                for (Module module : Mindless.getModuleManager().inCategory(category)) {
+                    if (module instanceof mindless.script.Manager && Gui.shouldShowModule(module)) {
+                        scripts.add(module);
+                        break;
+                    }
+                }
+            }
+            for (Module module : Mindless.scriptManager.scripts.values()) {
+                if (module != null && Gui.shouldShowModule(module) && !scripts.contains(module)) scripts.add(module);
+            }
+            pinManagerToTop(scripts);
+            return scripts;
         }
         if (categories != null) for (CategoryComponent c : categories) if (c.category == category) {
             List<Module> result = new ArrayList<Module>();
