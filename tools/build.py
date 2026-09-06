@@ -22,7 +22,7 @@ OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
 # Lives beside this script rather than in the repository root: it is a cache of detected
 # compiler and JDK paths that build.py owns outright, and nothing else ever reads it.
 TOOL_CACHE_FILE = Path(__file__).resolve().parent / ".build_tools_cache.json"
-CPU_COUNT = max(1, (os.cpu_count() or 4) // 2)
+CPU_COUNT = max(1, os.cpu_count() or 4)
 
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
@@ -381,9 +381,10 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
                 cv["MINDLESS_PRIVATE_PDB"] = "OFF"
             cv.pop("CMAKE_C_FLAGS_RELEASE", None)
             cv.pop("CMAKE_CXX_FLAGS_RELEASE", None)
-    with open(PRESET_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-        f.write("\n")
+    preset_contents = json.dumps(data, indent=4) + "\n"
+    current_contents = PRESET_FILE.read_text(encoding="utf-8-sig") if PRESET_FILE.is_file() else ""
+    if current_contents != preset_contents:
+        PRESET_FILE.write_text(preset_contents, encoding="utf-8")
     new_text = json.dumps(data, sort_keys=True)
     # If the preset changed (e.g. Hikari flags were added or removed), the
     # existing CMakeCache will have stale compiler/flag values baked in.
@@ -414,6 +415,9 @@ def voyager_cxx(root):
 
 def build_obf_jar(jdk):
     """Build the MindlessObf tool when its source is newer than the jar."""
+    if OBF_JAR.is_file() and os.environ.get("MINDLESS_OBF_CACHE_HIT") == "1":
+        ok("MindlessObf restored from cache")
+        return True
     inputs = list((OBF_DIR / "src").rglob("*")) + [
         OBF_DIR / "build.gradle.kts",
         OBF_DIR / "settings.gradle.kts",
@@ -563,12 +567,14 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     cmake_cache = NATIVE_BUILD_DIR / "CMakeCache.txt"
     cmakelists = NATIVE_DIR / "CMakeLists.txt"
     expected_production_cache = f"MINDLESS_PRODUCTION:BOOL={'ON' if prod else 'OFF'}"
+    expected_debug_cache = f"MINDLESS_DEBUG_LOGS:BOOL={'ON' if os.environ.get('MINDLESS_DEBUG_LOGS') == '1' else 'OFF'}"
     expected_build_type_cache = "CMAKE_BUILD_TYPE:STRING=Release"
     cache_text = cmake_cache.read_text(encoding="utf-8", errors="ignore") if cmake_cache.is_file() else ""
     needs_configure = (
         not cmake_cache.is_file()
         or (cmakelists.is_file() and cmakelists.stat().st_mtime > cmake_cache.stat().st_mtime)
         or expected_production_cache not in cache_text
+        or expected_debug_cache not in cache_text
         or expected_build_type_cache not in cache_text
     )
     if needs_configure:
@@ -786,12 +792,15 @@ def main():
             if not build_obf_jar(jdk17):
                 err("MindlessObf build failed")
                 sys.exit(1)
-            forge_obfuscated = FORGE_JAR.is_file() and obfuscate_jar(
-                jdk17, FORGE_JAR, FORGE_JAR_OBF, "Forge JAR"
-            )
-            lunar_obfuscated = LUNAR_JAR.is_file() and obfuscate_jar(
-                jdk17, LUNAR_JAR, LUNAR_JAR_OBF, "Lunar JAR"
-            )
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                forge_future = pool.submit(
+                    obfuscate_jar, jdk17, FORGE_JAR, FORGE_JAR_OBF, "Forge JAR"
+                ) if FORGE_JAR.is_file() else None
+                lunar_future = pool.submit(
+                    obfuscate_jar, jdk17, LUNAR_JAR, LUNAR_JAR_OBF, "Lunar JAR"
+                ) if LUNAR_JAR.is_file() else None
+                forge_obfuscated = forge_future.result() if forge_future else False
+                lunar_obfuscated = lunar_future.result() if lunar_future else False
             if not forge_obfuscated or not lunar_obfuscated:
                 print(f"\n{BOLD}{RED}Production build failed during JAR obfuscation.{RESET}")
                 sys.exit(1)

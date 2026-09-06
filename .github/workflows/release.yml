@@ -169,11 +169,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Resolve vcpkg revision
         id: vcpkg
         shell: pwsh
@@ -196,6 +191,26 @@ jobs:
             vcpkg-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.vcpkg.outputs.rev }}-
             vcpkg-${{ runner.os }}-${{ env.ImageOS }}-
 
+      - name: Restore native build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            client/native_build
+            loader/out/build
+            loader/CMakePresets.json
+            loader/vcpkg_installed
+          key: native-v2-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.voyager.outputs.revision }}-${{ steps.vcpkg.outputs.rev }}-${{ github.sha }}
+          restore-keys: |
+            native-v2-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.voyager.outputs.revision }}-${{ steps.vcpkg.outputs.rev }}-
+            native-v2-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.voyager.outputs.revision }}-
+
+      - name: Restore obfuscator cache
+        id: obfuscator-cache
+        uses: actions/cache@v4
+        with:
+          path: tools/obf/build/libs/mindless-obf.jar
+          key: obfuscator-v2-${{ runner.os }}-${{ hashFiles('tools/obf/src/**', 'tools/obf/*.gradle.kts') }}
+
       - name: Build production client
         shell: pwsh
         run: |
@@ -203,6 +218,9 @@ jobs:
           if ($message -match '\[debug\]') {
             $env:MINDLESS_DEBUG_LOGS = "1"
             Write-Host "[debug] detected; native DbgView logging remains enabled."
+          }
+          if ('${{ steps.obfuscator-cache.outputs.cache-hit }}' -eq 'true') {
+            $env:MINDLESS_OBF_CACHE_HIT = "1"
           }
           python tools/build.py --prod --no-cache
 
@@ -241,6 +259,7 @@ jobs:
           path: release/
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
 
   publish:
     needs: build
