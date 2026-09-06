@@ -360,32 +360,30 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
                 #   -enable-funcwra       : wraps callsites in thunks; obscures call graph
                 #     -fw_prob=80         : wrap 80 % of callsites
                 #     -fw_times=3         : triple-wrap
+                # Production profile: keep the custom Voyager clang for compilation,
+                # but avoid the multiplicative pass settings that can make LLVM exhaust
+                # memory on CI runners. Linking still uses the separately detected normal
+                # LLVM lld-link.exe through CMAKE_LINKER below.
                 hikari_flags = (
                     "-mllvm -voyager"
                     " -mllvm -enable-cffobf"
                     " -mllvm -enable-bcfobf"
-                    " -mllvm -bcf_prob=100"
-                    " -mllvm -bcf_loop=3"
-                    " -mllvm -bcf_cond_compl=5"
-                    " -mllvm -bcf_junkasm"
+                    " -mllvm -bcf_prob=70"
+                    " -mllvm -bcf_loop=1"
+                    " -mllvm -bcf_cond_compl=3"
                     " -mllvm -enable-subobf"
-                    " -mllvm -sub_prob=100"
-                    " -mllvm -sub_loop=3"
+                    " -mllvm -sub_prob=70"
+                    " -mllvm -sub_loop=1"
                     " -mllvm -enable-splitobf"
-                    " -mllvm -split_num=10"
+                    " -mllvm -split_num=3"
                     " -mllvm -enable-constenc"
-                    " -mllvm -constenc_times=3"
+                    " -mllvm -constenc_times=1"
                     " -mllvm -constenc_togv"
-                    " -mllvm -constenc_togv_prob=80"
-                    " -mllvm -constenc_subxor"
-                    " -mllvm -constenc_subxor_prob=80"
+                    " -mllvm -constenc_togv_prob=50"
                     " -mllvm -enable-strcry"
                     " -mllvm -strcry_prob=100"
                     " -mllvm -enable-indibran"
                     " -mllvm -indibran-enc-jump-target"
-                    " -mllvm -enable-funcwra"
-                    " -mllvm -fw_prob=80"
-                    " -mllvm -fw_times=3"
                 )
                 cv["MINDLESS_PRODUCTION_OBFUSCATION_FLAGS"] = hikari_flags
                 cv["MINDLESS_PRIVATE_PDB"] = "ON"
@@ -568,29 +566,24 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
             "-mllvm -voyager"
             " -mllvm -enable-cffobf"
             " -mllvm -enable-bcfobf"
-            " -mllvm -bcf_prob=100"
-            " -mllvm -bcf_loop=3"
-            " -mllvm -bcf_cond_compl=5"
-            " -mllvm -bcf_junkasm"
+            " -mllvm -bcf_prob=70"
+            " -mllvm -bcf_loop=1"
+            " -mllvm -bcf_cond_compl=3"
             " -mllvm -enable-subobf"
-            " -mllvm -sub_prob=100"
-            " -mllvm -sub_loop=3"
+            " -mllvm -sub_prob=70"
+            " -mllvm -sub_loop=1"
             " -mllvm -enable-splitobf"
-            " -mllvm -split_num=10"
+            " -mllvm -split_num=3"
             " -mllvm -enable-constenc"
-            " -mllvm -constenc_times=3"
+            " -mllvm -constenc_times=1"
             " -mllvm -constenc_togv"
-            " -mllvm -constenc_togv_prob=80"
-            " -mllvm -constenc_subxor"
-            " -mllvm -constenc_subxor_prob=80"
+            " -mllvm -constenc_togv_prob=50"
             " -mllvm -enable-strcry"
             " -mllvm -strcry_prob=100"
             " -mllvm -enable-indibran"
             " -mllvm -indibran-enc-jump-target"
-            " -mllvm -enable-funcwra"
-            " -mllvm -fw_prob=80"
-            " -mllvm -fw_times=3"
         )
+
 
     cfg_cmd = [
         str(cmake), "-S", str(NATIVE_DIR), "-B", str(NATIVE_BUILD_DIR),
@@ -634,8 +627,9 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     else:
         info("configure skipped (CMakeCache up to date)")
 
+    native_jobs = 2 if voyager else CPU_COUNT
     build_cmd = [str(cmake), "--build", str(NATIVE_BUILD_DIR), "--config", "Release",
-                 "--parallel", str(CPU_COUNT)]
+                 "--parallel", str(native_jobs)]
     if not run(build_cmd, CLIENT_DIR, extra_env):
         err("MindlessNative build failed")
         return False
