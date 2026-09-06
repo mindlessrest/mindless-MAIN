@@ -1,108 +1,165 @@
 #pragma once
+
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
-namespace mindless
+namespace mindless::detail
 {
 
-namespace detail
-{
-
-constexpr uint64_t xorstr_seed()
-{
-    uint64_t h = 0;
-    for (const char* p = __TIME__ __DATE__; *p; ++p)
-        h = h * 131 + static_cast<uint64_t>(*p);
-    return h;
-}
-
-constexpr uint64_t xorstr_key(uint64_t seed, size_t index)
-{
-    uint64_t k = seed ^ (index * 0x9E3779B97F4A7C15ULL);
-    k ^= k >> 33;
-    k *= 0xFF51AFD7ED558CCDULL;
-    k ^= k >> 33;
-    k *= 0xC4CEB9FE1A85EC53ULL;
-    k ^= k >> 33;
-    return k;
-}
-
-template<size_t N>
-class XorString
-{
-public:
-    constexpr XorString(const char (&str)[N], uint64_t seed)
-        : seed_(seed)
+    constexpr std::uint64_t mix64(std::uint64_t x) noexcept
     {
-        for (size_t i = 0; i < N; ++i)
-            data_[i] = str[i] ^ static_cast<char>(xorstr_key(seed, i) & 0xFF);
+        x ^= x >> 30;
+        x *= 0xBF58476D1CE4E5B9ULL;
+        x ^= x >> 27;
+        x *= 0x94D049BB133111EBULL;
+        x ^= x >> 31;
+        return x;
     }
 
-    const char* decrypt() const
+    consteval std::uint64_t hash_file(const char* s) noexcept
     {
-        for (size_t i = 0; i < N; ++i)
-            buf_[i] = data_[i] ^ static_cast<char>(xorstr_key(seed_, i) & 0xFF);
-        return buf_;
+        std::uint64_t h = 0xCBF29CE484222325ULL;
+
+        while (*s)
+        {
+            h ^= static_cast<std::uint8_t>(*s++);
+            h *= 0x100000001B3ULL;
+        }
+
+        return mix64(h);
     }
 
-    void clear() const
+    constexpr std::uint64_t stream(
+        std::uint64_t seed,
+        std::size_t index) noexcept
     {
-        volatile char* p = buf_;
-        for (size_t i = 0; i < N; ++i)
-            p[i] = 0;
+        return mix64(
+            seed +
+            0x9E3779B97F4A7C15ULL *
+            (static_cast<std::uint64_t>(index) + 1ULL));
     }
 
-private:
-    char data_[N]{};
-    uint64_t seed_;
-    mutable char buf_[N]{};
-};
-
-template<size_t N>
-class XorWString
-{
-public:
-    constexpr XorWString(const wchar_t (&str)[N], uint64_t seed)
-        : seed_(seed)
+    template<typename T>
+    constexpr T key_for(
+        std::uint64_t seed,
+        std::size_t index) noexcept
     {
-        for (size_t i = 0; i < N; ++i)
-            data_[i] = str[i] ^ static_cast<wchar_t>(xorstr_key(seed, i) & 0xFFFF);
+        using U = std::make_unsigned_t<T>;
+
+        std::uint64_t x = stream(seed, index);
+
+        if constexpr (sizeof(U) == 1)
+        {
+            x ^= x >> 8;
+            x ^= x >> 16;
+            x ^= x >> 32;
+        }
+        else if constexpr (sizeof(U) == 2)
+        {
+            x ^= x >> 16;
+            x ^= x >> 32;
+        }
+        else
+        {
+            x ^= x >> 32;
+        }
+
+        return static_cast<T>(static_cast<U>(x));
     }
 
-    const wchar_t* decrypt() const
+    template<typename T>
+    inline void secure_zero(T* data, std::size_t count) noexcept
     {
-        for (size_t i = 0; i < N; ++i)
-            buf_[i] = data_[i] ^ static_cast<wchar_t>(xorstr_key(seed_, i) & 0xFFFF);
-        return buf_;
+        volatile T* p = data;
+
+        while (count--)
+            *p++ = T{};
     }
 
-    void clear() const
+    template<typename CharT, std::size_t N, std::uint64_t Seed>
+    class CryptString
     {
-        volatile wchar_t* p = buf_;
-        for (size_t i = 0; i < N; ++i)
-            p[i] = 0;
+        using U = std::make_unsigned_t<CharT>;
+
+    public:
+        consteval CryptString(const CharT(&str)[N]) noexcept
+        {
+            for (std::size_t i = 0; i < N; ++i)
+            {
+                const U value = static_cast<U>(str[i]);
+                const U key = static_cast<U>(key_for<U>(Seed, i));
+
+                encrypted_[i] = static_cast<CharT>(value ^ key);
+            }
+        }
+
+        CryptString(const CryptString&) = delete;
+        CryptString& operator=(const CryptString&) = delete;
+
+        CryptString(CryptString&&) = default;
+        CryptString& operator=(CryptString&&) = default;
+
+        ~CryptString()
+        {
+            clear();
+            secure_zero(encrypted_, N);
+        }
+
+        const CharT* decrypt() const noexcept
+        {
+            for (std::size_t i = 0; i < N; ++i)
+            {
+                const U value = static_cast<U>(encrypted_[i]);
+                const U key = static_cast<U>(key_for<U>(Seed, i));
+
+                buffer_[i] = static_cast<CharT>(value ^ key);
+            }
+
+            return buffer_;
+        }
+
+        void clear() const noexcept
+        {
+            secure_zero(buffer_, N);
+        }
+
+        constexpr std::size_t size() const noexcept
+        {
+            return N - 1;
+        }
+
+    private:
+        CharT encrypted_[N]{};
+        mutable CharT buffer_[N]{};
+    };
+
+    template<std::uint64_t Seed, typename CharT, std::size_t N>
+    consteval auto make_crypt(const CharT(&str)[N]) noexcept
+    {
+        return CryptString<CharT, N, Seed>(str);
     }
 
-private:
-    wchar_t data_[N]{};
-    uint64_t seed_;
-    mutable wchar_t buf_[N]{};
-};
+} // namespace mindless::detail
 
-} // namespace detail
 
-} // namespace mindless
+#define MINDLESS_CRYPT_SEED(counter)                                      \
+    (::mindless::detail::mix64(                                           \
+        ::mindless::detail::hash_file(__FILE__) ^                         \
+        (static_cast<std::uint64_t>(__LINE__) *                           \
+         0x9E3779B97F4A7C15ULL) ^                                        \
+        (static_cast<std::uint64_t>(counter) *                            \
+         0xD1B54A32D192ED03ULL)))
 
-#define XORSTR(s) ([]() -> const char* {                             \
-    constexpr auto _xor = ::mindless::detail::XorString<sizeof(s)>(  \
-        s, ::mindless::detail::xorstr_seed() ^ __LINE__);            \
-    static const auto _inst = _xor;                                  \
-    return _inst.decrypt();                                          \
-}())
+#define MINDLESS_CRYPT_IMPL(s, counter)                                   \
+    ([]() -> const auto*                                                  \
+    {                                                                     \
+        static auto instance =                                            \
+            ::mindless::detail::make_crypt<                               \
+                MINDLESS_CRYPT_SEED(counter)>(s);                         \
+                                                                          \
+        return instance.decrypt();                                        \
+    }())
 
-#define XORSTRW(s) ([]() -> const wchar_t* {                                        \
-    constexpr auto _xor = ::mindless::detail::XorWString<sizeof(s)/sizeof(s[0])>(    \
-        s, ::mindless::detail::xorstr_seed() ^ __LINE__);                            \
-    static const auto _inst = _xor;                                                  \
-    return _inst.decrypt();                                                          \
-}())
+#define XORSTR(s)  MINDLESS_CRYPT_IMPL(s, __COUNTER__)
+#define XORSTRW(s) MINDLESS_CRYPT_IMPL(s, __COUNTER__)

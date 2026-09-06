@@ -39,7 +39,7 @@ public class Sprint extends Module {
         if (!Utils.nullCheck()) {
             return;
         }
-        Scaffold scaffold = Module.getModule(Scaffold.class);
+        Scaffold scaffold = (Scaffold) Module.getModule(Scaffold.class);
         if (scaffold != null && scaffold.isEnabled()) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
             mc.thePlayer.setSprinting(false);
