@@ -30,9 +30,13 @@ public class Wings extends Module {
     private static final int COLOR_RAINBOW = 2;
     private static final String[] COLOR_MODES = {"Static", "Gradient", "Rainbow"};
 
+    private static final int ANIMATION_CLASSIC = 0;
+    private static final int ANIMATION_REALISTIC = 1;
+    private static final String[] ANIMATION_MODES = {"Classic", "Realistic"};
+
     private static final int PANELS_SHARD = 6;
     private static final float ROOT_Y = 1.32f;
-    private static final float ROOT_Z = 0.14f;
+    private static final float ROOT_Z = 0.17f;
     private static final float SNEAK_DROP = 0.22f;
     private static final float TIP_FADE_GLASS = 0.34f;
     private static final float TIP_FADE_SOLID = 0.88f;
@@ -141,6 +145,7 @@ public class Wings extends Module {
     private final SliderSetting spread;
     private final SliderSetting flapSpeed;
     private final SliderSetting flapAmount;
+    private final SliderSetting animationMode;
     private final ButtonSetting outline;
     private final ColorSetting edgeColor;
     private final SliderSetting edgeWidth;
@@ -159,6 +164,12 @@ public class Wings extends Module {
     private final float[] realFeatherShade = new float[MAX_REAL_FEATHERS];
     private int realFeatherCount;
     private final float[] shardCorners = new float[PANELS_SHARD * 12];
+    private long lastAnimationNanos;
+    private float smoothedFlapDrive = 0.42f;
+    private float smoothedAirborne;
+    private float smoothedVerticalMotion;
+    private float reactiveTipLift;
+    private float reactiveTipSweep;
 
     public Wings() {
         super("Wings", "Wings that sit on your back.", category.render);
@@ -175,6 +186,8 @@ public class Wings extends Module {
         this.registerSetting(spread = new SliderSetting("Spread", 1.0, 0.4, 2.0, 0.05));
         this.registerSetting(flapSpeed = new SliderSetting("Flap speed", 1.0, 0.0, 4.0, 0.1));
         this.registerSetting(flapAmount = new SliderSetting("Flap amount", "°", 12.0, 0.0, 40.0, 1.0));
+        this.registerSetting(animationMode = new SliderSetting("Animation", ANIMATION_REALISTIC,
+                ANIMATION_MODES));
         this.registerSetting(outline = new ButtonSetting("Outline", false));
         this.registerSetting(edgeColor = new ColorSetting("Edge color", 255, 255, 255, 205));
         this.registerSetting(edgeWidth = new SliderSetting("Edge width", 1.1, 0.0, 3.0, 0.1));
@@ -231,8 +244,15 @@ public class Wings extends Module {
         int style = (int) shape.getInput();
         float scale = (float) size.getInput();
         float span = (float) spread.getInput();
+        updateAnimation(player);
         float phase = phase();
-        float amplitude = (float) Math.toRadians(flapAmount.getInput()) * flapDrive(player);
+        float amplitude = (float) Math.toRadians(flapAmount.getInput()) * smoothedFlapDrive;
+
+        // Bed Wars armour and the wing roots can land on nearly identical depth values. Bias the
+        // cosmetic forward by a tiny amount to stop alternating visibility without drawing it
+        // through blocks or disabling the world's depth test.
+        GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
+        GL11.glPolygonOffset(-1.0f, -2.0f);
 
         if (style == SHAPE_REALISTIC && WingRenderPipeline.texturesReady()) {
             drawFeatheredWings(scale, span, phase, amplitude);
@@ -245,6 +265,8 @@ public class Wings extends Module {
                 else drawShardWing(side, scale, span, phase, amplitude);
             }
         }
+
+        GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
 
         GL11.glLineWidth(1.0f);
         GL11.glDisable(GL11.GL_LINE_SMOOTH);
@@ -959,6 +981,12 @@ public class Wings extends Module {
     private void transformRealistic(float x, float y, float z, int side, float scale, float span,
                                     float phase, float amplitude, float[] out) {
         float t = Math.max(0.0f, Math.min(1.0f, x / 1.25f));
+        if ((int) animationMode.getInput() == ANIMATION_REALISTIC) {
+            // React through the outer feathers instead of bouncing the attachment point itself.
+            float response = t * t * (3.0f - 2.0f * t);
+            y += reactiveTipLift * response;
+            z += reactiveTipSweep * response;
+        }
         if (amplitude != 0.0f) {
             float flex = (float) Math.sin(phase - 0.92f * t) * amplitude * t * t;
             y += flex * 0.58f;
@@ -1017,12 +1045,50 @@ public class Wings extends Module {
         return (float) ((System.nanoTime() / 1.0E9) * speed * 1.65);
     }
 
-    private float flapDrive(EntityPlayerSP player) {
-        if (flapSpeed.getInput() <= 0.0) return 0.0f;
+    private void updateAnimation(EntityPlayerSP player) {
+        long now = System.nanoTime();
+        float elapsed = lastAnimationNanos == 0L ? 1.0f / 60.0f
+                : (now - lastAnimationNanos) / 1.0E9f;
+        lastAnimationNanos = now;
+        if (elapsed <= 0.0f || elapsed > 0.25f) elapsed = 1.0f / 60.0f;
+
+        if (flapSpeed.getInput() <= 0.0) {
+            smoothedFlapDrive = 0.0f;
+            reactiveTipLift = 0.0f;
+            reactiveTipSweep = 0.0f;
+            return;
+        }
+
         double dx = player.posX - player.lastTickPosX;
         double dz = player.posZ - player.lastTickPosZ;
         float motion = (float) Math.min(1.0, Math.sqrt(dx * dx + dz * dz) * 3.2);
-        float drive = 0.42f + 0.58f * motion;
-        return player.onGround ? drive : Math.min(1.28f, drive + 0.30f);
+        float vertical = (float) (player.posY - player.lastTickPosY);
+        float airborneTarget = player.onGround ? 0.0f : 1.0f;
+        float stateBlend = 1.0f - (float) Math.exp(-elapsed * 7.0f);
+        smoothedAirborne += (airborneTarget - smoothedAirborne) * stateBlend;
+        smoothedVerticalMotion += (vertical - smoothedVerticalMotion) * stateBlend;
+
+        if ((int) animationMode.getInput() == ANIMATION_REALISTIC) {
+            float verticalEnergy = Math.min(0.28f, Math.abs(smoothedVerticalMotion) * 2.6f);
+            float targetDrive = 0.24f + motion * 0.50f + smoothedAirborne * 0.22f
+                    + verticalEnergy;
+            float driveBlend = 1.0f - (float) Math.exp(-elapsed * 5.0f);
+            smoothedFlapDrive += (targetDrive - smoothedFlapDrive) * driveBlend;
+
+            float targetLift = Math.max(-0.11f, Math.min(0.14f,
+                    -smoothedVerticalMotion * 1.35f));
+            float targetSweep = smoothedAirborne * 0.035f
+                    + Math.min(0.055f, Math.abs(smoothedVerticalMotion) * 0.55f);
+            reactiveTipLift += (targetLift - reactiveTipLift) * driveBlend;
+            reactiveTipSweep += (targetSweep - reactiveTipSweep) * driveBlend;
+        }
+        else {
+            float targetDrive = 0.42f + 0.58f * motion;
+            float driveBlend = 1.0f - (float) Math.exp(-elapsed * 9.0f);
+            smoothedFlapDrive += (targetDrive - smoothedFlapDrive) * driveBlend;
+            reactiveTipLift += (0.0f - reactiveTipLift) * driveBlend;
+            reactiveTipSweep += (0.0f - reactiveTipSweep) * driveBlend;
+        }
+        smoothedFlapDrive = Math.max(0.0f, Math.min(1.22f, smoothedFlapDrive));
     }
 }
