@@ -100,10 +100,11 @@ if(NOT MINDLESS_PRODUCTION)
     target_compile_definitions(MindlessNative PRIVATE _NONPROD=1)
 endif()
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-    # Voyager intentionally ships without a linker. This custom CMake linker
-    # type makes the compiler driver resolve the normal LLVM lld-link from
-    # PATH instead of looking beside Voyager for a nonexistent bundled lld.
-    set(CMAKE_C_USING_LINKER_MindlessLLD "-fuse-ld=lld-link")
+    if(CMAKE_C_LINK_MODE STREQUAL "LINKER")
+        set(CMAKE_C_USING_LINKER_MindlessLLD "${CMAKE_LINKER}")
+    else()
+        set(CMAKE_C_USING_LINKER_MindlessLLD "-fuse-ld=lld-link")
+    endif()
     set_property(TARGET MindlessNative PROPERTY LINKER_TYPE MindlessLLD)
 endif()
 set_target_properties(MindlessNative PROPERTIES

@@ -538,6 +538,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
         f"-DCMAKE_C_COMPILER={str(native_clang).replace(chr(92), '/')}",
         f"-DCMAKE_LINKER={str(lld).replace(chr(92), '/')}",
         f"-DCMAKE_MAKE_PROGRAM={str(ninja).replace(chr(92), '/')}",
+        "-DCMAKE_BUILD_TYPE=Release",
         f"-DMINDLESS_JAVA_HOME={str(jdk).replace(chr(92), '/')}",
         f"-DMINDLESS_FORGE_PAYLOAD_JAR={str(forge_jar).replace(chr(92), '/')}",
         f"-DMINDLESS_LUNAR_PAYLOAD_JAR={str(lunar_jar).replace(chr(92), '/')}",
@@ -561,11 +562,13 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     cmake_cache = NATIVE_BUILD_DIR / "CMakeCache.txt"
     cmakelists = NATIVE_DIR / "CMakeLists.txt"
     expected_production_cache = f"MINDLESS_PRODUCTION:BOOL={'ON' if prod else 'OFF'}"
+    expected_build_type_cache = "CMAKE_BUILD_TYPE:STRING=Release"
     cache_text = cmake_cache.read_text(encoding="utf-8", errors="ignore") if cmake_cache.is_file() else ""
     needs_configure = (
         not cmake_cache.is_file()
         or (cmakelists.is_file() and cmakelists.stat().st_mtime > cmake_cache.stat().st_mtime)
         or expected_production_cache not in cache_text
+        or expected_build_type_cache not in cache_text
     )
     if needs_configure:
         if not run(cfg_cmd, CLIENT_DIR, extra_env):
