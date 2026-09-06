@@ -151,8 +151,8 @@ public class Wings extends Module {
     private final float[] pointC = new float[3];
     private final float[] ribs = new float[FEATHER_PROFILE.length / 2 * 12];
     private final float[] realRibs = new float[REAL_PROFILE.length / 2 * 12];
-    // One wing buffered whole before anything is drawn: the vertical fade needs the wing's full
-    // height before it can place a vertex on that ramp, and the two passes both read it back.
+    // Both wings share one frame buffer so their roots and feather rows participate in the same
+    // coverage pass. This keeps intersections opaque and ordered instead of alpha-stacking.
     private final float[] realBuffer = new float[MAX_REAL_FEATHERS * (REAL_PROFILE.length / 2) * 3 * 5];
     private final int[] realFeatherPart = new int[MAX_REAL_FEATHERS];
     private final int[] realFeatherRGB = new int[MAX_REAL_FEATHERS];
@@ -375,9 +375,13 @@ public class Wings extends Module {
         float rootX = realisticSpineX(t);
         float rootY = realisticSpineY(t) - lift;
         float rootZ = realisticDepth(rootX) - layer * 0.016f;
+        // Small deterministic variation prevents the rows from reading as duplicated cards while
+        // remaining stable frame-to-frame (random animation here would shimmer badly in motion).
+        float variation = 0.5f + 0.5f * (float) Math.sin(t * 37.0f + layer * 11.3f);
+        rootZ += (variation - 0.5f) * 0.012f;
         float baseLength = 0.46f + 0.42f * (float) Math.sin(Math.PI * (0.15f + 0.72f * t)) + 0.12f * t;
-        float length = baseLength * lengthScale;
-        float angle = 0.12f + 1.28f * t + angleBias;
+        float length = baseLength * lengthScale * (0.97f + 0.06f * variation);
+        float angle = 0.12f + 1.28f * t + angleBias + (variation - 0.5f) * 0.035f;
         float dirX = (float) Math.sin(angle) * 0.76f;
         float dirY = -(float) Math.cos(angle);
         float dirZ = 0.13f + 0.18f * t;
