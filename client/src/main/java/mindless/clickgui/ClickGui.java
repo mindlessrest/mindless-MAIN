@@ -149,7 +149,8 @@ public class ClickGui extends GuiScreen {
                 categoryComponent.limitPositions();
             }
         }
-        reloadModulesForCurrentMode();
+        // Module/profile/script mutation paths refresh their own components. Rebuilding every
+        // module and every setting here made opening the GUI stall for work that was already done.
         (this.commandLineInput = new GuiTextField(1, this.mc.fontRendererObj, 22, this.height - 100, 150, 20)).setMaxStringLength(256);
         this.buttonList.add(this.commandLineSend = new MindlessButton(2, 22, this.height - 70, 150, 20, "Send"));
         this.previousScale = configuredScale;
@@ -165,8 +166,6 @@ public class ClickGui extends GuiScreen {
                 categoryComponent.reloadModules();
             }
         }
-        (this.commandLineInput = new GuiTextField(1, this.mc.fontRendererObj, 22, this.height - 100, 150, 20)).setMaxStringLength(256);
-        this.buttonList.add(this.commandLineSend = new MindlessButton(2, 22, this.height - 70, 150, 20, "Send"));
     }
 
     /** Categories in render order: least recently interacted first (so most recent drawn on top). */

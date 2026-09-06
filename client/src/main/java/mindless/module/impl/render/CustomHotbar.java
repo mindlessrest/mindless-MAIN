@@ -34,6 +34,8 @@ public class CustomHotbar extends Module {
     private final SliderSetting itemScale;
     private final ButtonSetting outline;
     private final ColorSetting outlineColor;
+    private final SliderSetting outlineThickness;
+    private final SliderSetting outlineMode;
     private final ButtonSetting animated;
     private final SliderSetting selectionSpeed;
     private final ButtonSetting itemBob;
@@ -58,6 +60,8 @@ public class CustomHotbar extends Module {
         this.registerSetting(itemScale = new SliderSetting("Item scale", 1.0, 0.65, 1.3, 0.05));
         this.registerSetting(outline = new ButtonSetting("Outline", false));
         this.registerSetting(outlineColor = new ColorSetting("Outline color", 255, 255, 255, 70));
+        this.registerSetting(outlineThickness = new SliderSetting("Outline thickness", "px", 1.0, 0.5, 4.0, 0.1));
+        this.registerSetting(outlineMode = new SliderSetting("Outline mode", 0, new String[]{"Whole bar", "Each slot"}));
         this.registerSetting(animated = new ButtonSetting("Animated selection", true));
         this.registerSetting(selectionSpeed = new SliderSetting("Selection speed", 0.35, 0.05, 1.0, 0.05));
         this.registerSetting(itemBob = new ButtonSetting("Item bob", true));
@@ -76,6 +80,8 @@ public class CustomHotbar extends Module {
         showLevel.setVisible(showXP.isToggled(), this);
         levelColor.setVisible(showXP.isToggled() && showLevel.isToggled(), this);
         outlineColor.setVisible(outline.isToggled(), this);
+        outlineThickness.setVisible(outline.isToggled(), this);
+        outlineMode.setVisible(outline.isToggled(), this);
     }
 
     /** Direct render entry used by the vanilla/Lunar HUD transformer path. */
@@ -146,9 +152,11 @@ public class CustomHotbar extends Module {
         float dtMs = lastNanos == 0L ? 16.6f : Math.min(120.0f, (now - lastNanos) / 1.0E6f);
         lastNanos = now;
 
-        if (outline.isToggled()) {
+        boolean individualOutlines = outline.isToggled() && (int) outlineMode.getInput() == 1;
+        float borderThickness = Math.max(0.5f, (float) outlineThickness.getInput() * uiScale);
+        if (outline.isToggled() && !individualOutlines) {
             RoundedUtils.drawRoundOutline(barLeft, barTop, barWidth, barHeight, radius,
-                    Math.max(0.6f, uiScale), new Color(background.getColor(), true),
+                    borderThickness, new Color(background.getColor(), true),
                     new Color(outlineColor.getColor(), true));
         }
         else {
@@ -189,6 +197,19 @@ public class CustomHotbar extends Module {
                 selectionX + Math.max(1.0f, slotWidth - inset * 2.0f),
                 barTop + barHeight - inset, Math.min(radius, 6.0f * uiScale),
                 selectionColor.getColor());
+
+        if (individualOutlines) {
+            float slotHeight = barHeight - inset * 2.0f;
+            float slotRadius = Math.min(radius, 6.0f * uiScale);
+            Color transparent = new Color(0, 0, 0, 0);
+            Color border = new Color(outlineColor.getColor(), true);
+            for (int i = 0; i < 9; i++) {
+                float slotLeft = barLeft + inset + i * slotWidth;
+                RoundedUtils.drawRoundOutline(slotLeft, barTop + inset,
+                        Math.max(1.0f, slotWidth - inset * 2.0f), slotHeight,
+                        slotRadius, borderThickness, transparent, border);
+            }
+        }
 
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         GlStateManager.enableRescaleNormal();

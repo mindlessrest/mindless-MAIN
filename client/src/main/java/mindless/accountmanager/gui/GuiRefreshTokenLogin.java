@@ -2,6 +2,7 @@ package mindless.accountmanager.gui;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -12,6 +13,7 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import mindless.accountmanager.AccountManager;
+import mindless.accountmanager.AutoSkinSettings;
 import mindless.accountmanager.auth.Account;
 import mindless.accountmanager.auth.AccountType;
 import mindless.accountmanager.auth.RefreshTokenAuth;
@@ -120,10 +122,10 @@ extends GuiScreen {
         this.status = "\u00a77Processing accounts...\u00a7r";
         this.loginButton.enabled = false;
         ArrayList<CompletableFuture<Void>> loginTasks = new ArrayList<CompletableFuture<Void>>();
-        ArrayList<String> failedAccounts = new ArrayList<String>();
-        ArrayList<String> successfulAccounts = new ArrayList<String>();
+        List<String> failedAccounts = Collections.synchronizedList(new ArrayList<String>());
+        List<String> successfulAccounts = Collections.synchronizedList(new ArrayList<String>());
         for (String refreshToken : refreshTokens) {
-            CompletableFuture<Void> task = RefreshTokenAuth.authenticate(refreshToken, this.executor).thenAcceptAsync((Account account) -> {
+            CompletableFuture<Void> task = RefreshTokenAuth.authenticate(refreshToken, this.executor).thenComposeAsync((Account account) -> {
                 Optional<Account> existing = AccountManager.accounts.stream().filter(stored -> stored.getRefreshToken().equals(refreshToken) || stored.getAccessToken().equals(account.getAccessToken())).findFirst();
                 if (existing.isPresent()) {
                     Account stored2 = existing.get();
@@ -136,6 +138,7 @@ extends GuiScreen {
                     AccountManager.accounts.add((Account)account);
                 }
                 successfulAccounts.add(account.getUsername());
+                return AutoSkinSettings.applyIfEnabled(account, this.executor).thenApply(applied -> (Void) null);
             }, (Executor)this.executor).exceptionally((Throwable error) -> {
                 String errorMessage = "Login failed!";
                 if (error != null) {
@@ -198,4 +201,3 @@ extends GuiScreen {
         return tokens;
     }
 }
-

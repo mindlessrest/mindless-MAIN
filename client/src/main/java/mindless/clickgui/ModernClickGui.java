@@ -256,6 +256,9 @@ private static float guiDragOffsetX = 0f;
     private ResourceLocation logoTexture;
     private ResourceLocation mascotTextureCat;
     private ResourceLocation mascotTextureMindless;
+    private boolean mascotCatLoadAttempted;
+    private boolean mascotMindlessLoadAttempted;
+    private int categoryIconLoadIndex;
     private final Map<Module.category, ResourceLocation> categoryIcons = new IdentityHashMap<Module.category, ResourceLocation>();
 
     @Override
@@ -420,6 +423,16 @@ private float pixelScale() {
 
         ensureUiTextures();
 
+        if (input == 0 && mascotTextureMindless == null && !mascotMindlessLoadAttempted) {
+            mascotMindlessLoadAttempted = true;
+            mascotTextureMindless = loadBundledTexture("mindless_mascot_1",
+                    "/assets/mindless/textures/gui/mascot_1.png", true);
+        } else if (input == 1 && mascotTextureCat == null && !mascotCatLoadAttempted) {
+            mascotCatLoadAttempted = true;
+            mascotTextureCat = loadBundledTexture("mindless_mascot_0",
+                    "/assets/mindless/textures/gui/mascot_0.png", true);
+        }
+
         ResourceLocation targetTexture = (input == 0) ? mascotTextureMindless : mascotTextureCat;
         if (targetTexture == null) return;
 
@@ -482,17 +495,19 @@ private float pixelScale() {
         float t = guiOpenProgress;
         float eased = t * t * (3f - 2f * t);
         float configured = Gui.backgroundBlur == null ? 0f : (float) Gui.backgroundBlur.getInput();
-        float blurRadius = 1.65f + configured * .012f;
-        BlurUtils.prepareBlur();
-        GlStateManager.pushMatrix();
-        GlStateManager.scale(renderScale, renderScale, 1.0D);
-        rounded(baseX, baseY, baseX + sideW, baseY + panelH, 7f, 0xFFFFFFFF);
-        rounded(centerX, baseY, centerX + centerW, baseY + panelH, 7f, 0xFFFFFFFF);
-        if (detailW > 2f) {
-            rounded(detailX, baseY, detailX + detailW, baseY + panelH, 7f, 0xFFFFFFFF);
+        if (configured > 0.01f) {
+            float blurRadius = 1.65f + configured * .012f;
+            BlurUtils.prepareBlur();
+            GlStateManager.pushMatrix();
+            GlStateManager.scale(renderScale, renderScale, 1.0D);
+            rounded(baseX, baseY, baseX + sideW, baseY + panelH, 7f, 0xFFFFFFFF);
+            rounded(centerX, baseY, centerX + centerW, baseY + panelH, 7f, 0xFFFFFFFF);
+            if (detailW > 2f) {
+                rounded(detailX, baseY, detailX + detailW, baseY + panelH, 7f, 0xFFFFFFFF);
+            }
+            GlStateManager.popMatrix();
+            BlurUtils.blurEnd(2, blurRadius, eased * .9f);
         }
-        GlStateManager.popMatrix();
-        BlurUtils.blurEnd(2, blurRadius, eased * .9f);
         int overlayAlpha = (int)(128 * eased);
         net.minecraft.client.gui.Gui.drawRect(0, 0, backdropWidth, backdropHeight, argb(overlayAlpha, 2, 4, 5));
     }
@@ -500,6 +515,7 @@ private float pixelScale() {
     private void drawSidebar(int mx, int my) {
         float headerH = 48f;
         ensureUiTextures();
+        loadNextCategoryIcon();
         if (logoTexture != null) {
             drawTextureRegion(logoTexture, baseX + 13, baseY + 12, LOGO_DRAW_W, LOGO_DRAW_H,
                     0, 0, 1, 1, 1, 1,
@@ -2335,14 +2351,17 @@ private static float corner(float radius, float w, float h) {
         uiTextureLoadAttempted = true;
         logoTexture = loadBundledTexture("mindless_modern_logo", LOGO_RESOURCE, true,
                 LOGO_RASTER_W, LOGO_RASTER_H);
-        mascotTextureCat = loadBundledTexture("mindless_mascot_0", "/assets/mindless/textures/gui/mascot_0.png", true);
-        mascotTextureMindless = loadBundledTexture("mindless_mascot_1", "/assets/mindless/textures/gui/mascot_1.png", true);
-        for (Module.category cat : Module.category.values()) {
-            String iconName = categoryIconName(cat);
-            String path = "/assets/mindless/textures/gui/icons/" + iconName + ".png";
-            ResourceLocation loc = loadBundledTexture("mindless_icon_" + iconName, path, true);
-            if (loc != null) categoryIcons.put(cat, loc);
-        }
+    }
+
+    /** Upload one small icon per frame so the first GUI frame never decodes the entire icon set. */
+    private void loadNextCategoryIcon() {
+        Module.category[] values = Module.category.values();
+        if (categoryIconLoadIndex >= values.length) return;
+        Module.category cat = values[categoryIconLoadIndex++];
+        String iconName = categoryIconName(cat);
+        String path = "/assets/mindless/textures/gui/icons/" + iconName + ".png";
+        ResourceLocation loc = loadBundledTexture("mindless_icon_" + iconName, path, true);
+        if (loc != null) categoryIcons.put(cat, loc);
     }
 
     private String categoryIconName(Module.category cat) {

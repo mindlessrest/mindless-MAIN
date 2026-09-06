@@ -10,6 +10,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import mindless.accountmanager.AccountAuthStatus;
 import mindless.accountmanager.AccountManager;
+import mindless.accountmanager.AutoSkinSettings;
 import mindless.accountmanager.PlayerHeadCache;
 import mindless.accountmanager.auth.Account;
 import mindless.accountmanager.auth.AccountLogin;
@@ -17,6 +18,7 @@ import mindless.accountmanager.auth.AccountType;
 import mindless.accountmanager.auth.CrackedAuth;
 import mindless.accountmanager.auth.SessionManager;
 import mindless.accountmanager.utils.Notification;
+import mindless.accountmanager.utils.ModernFileChooser;
 import mindless.accountmanager.utils.TextFormatting;
 import mindless.utility.font.MinecraftFontAdapter;
 import mindless.utility.font.MindlessFontRenderer;
@@ -45,6 +47,9 @@ public class GuiAccountManager extends GuiScreen {
     private GuiButton pasteTokenButton   = null;
     private GuiButton nicealtsButton     = null;
     private GuiButton localtsButton      = null;
+    private GuiButton presetSkinButton  = null;
+    private GuiButton autoSkinButton    = null;
+    private GuiButton skinModelButton   = null;
     private GuiAccountList guiAccountList = null;
     public static Notification notification = null;
 
@@ -69,11 +74,11 @@ public class GuiAccountManager extends GuiScreen {
     static final int C_BORDER   = 0x34D2D2CC;
     static final int C_DANGER   = 0xFFDB6864;
     static final int C_SUCCESS  = 0xFF6EBF7A;
-    private static final int HEADER_H   = 32;
-    private static final int SEARCH_TOP = HEADER_H + 6;
-    private static final int SEARCH_H   = 20;
-    private static final int LIST_TOP   = SEARCH_TOP + SEARCH_H + 6;
-    private static final int FOOTER_H   = 108;
+    private static final int HEADER_H   = 42;
+    private static final int SEARCH_TOP = HEADER_H + 8;
+    private static final int SEARCH_H   = 24;
+    private static final int LIST_TOP   = SEARCH_TOP + SEARCH_H + 8;
+    private static final int FOOTER_H   = 94;
 
     public GuiAccountManager(GuiScreen previousScreen) {
         this.previousScreen = previousScreen;
@@ -87,6 +92,7 @@ public class GuiAccountManager extends GuiScreen {
     @Override
     public void initGui() {
         AccountManager.load();
+        AutoSkinSettings.load();
         Keyboard.enableRepeatEvents(true);
         buttonList.clear();
 
@@ -94,49 +100,56 @@ public class GuiAccountManager extends GuiScreen {
             String launchName = SessionManager.getLaunchSession().getUsername();
             String label = "Restore: " + launchName;
             int rw = Math.min(220, fontRendererObj.getStringWidth(label) + 12);
-            restoreButton = new GuiButton(4, width - rw - 8, 6, rw, 20, label);
+            restoreButton = new GuiButton(4, width - rw - 14, 11, rw, 20, label);
             buttonList.add(restoreButton);
         } else {
             restoreButton = null;
         }
 
-        int sfW = Math.min(340, width - 20);
+        int contentW = Math.min(620, width - 32);
+        int contentX = width / 2 - contentW / 2;
+        int sfW = contentW;
         int sfX = width / 2 - sfW / 2;
         searchField = new GuiTextField(0, fontRendererObj, sfX + 8, SEARCH_TOP + 4, sfW - 16, SEARCH_H - 8);
         searchField.setMaxStringLength(64);
         searchField.setCanLoseFocus(true);
         searchField.setEnableBackgroundDrawing(false);
 
-        int bFooterTop = height - FOOTER_H + 4;
-        int colW = 96, gap = 4;
-        int totalW = colW * 3 + gap * 2;
-        int col1 = width / 2 - totalW / 2;
-        int col2 = col1 + colW + gap;
-        int col3 = col2 + colW + gap;
-        int wideW = (totalW - gap) / 2;
-
-        localtsButton  = new GuiButton(9,  col1,             bFooterTop,      wideW, 20, "Localts");
-        nicealtsButton = new GuiButton(10, col1 + wideW + gap, bFooterTop,    wideW, 20, "NiceAlts");
+        int bFooterTop = height - FOOTER_H + 6;
+        int gap = 5;
+        int fourW = (contentW - gap * 3) / 4;
+        localtsButton  = new GuiButton(9, contentX, bFooterTop, fourW, 20, "Localts");
+        nicealtsButton = new GuiButton(10, contentX + (fourW + gap), bFooterTop, fourW, 20, "NiceAlts");
         buttonList.add(localtsButton);
         buttonList.add(nicealtsButton);
-
-        deleteInvalidButton = new GuiButton(7, col1,             bFooterTop + 26, wideW, 20, "Delete invalid");
-        pasteTokenButton    = new GuiButton(8, col1 + wideW + gap, bFooterTop + 26, wideW, 20, "Paste token");
+        deleteInvalidButton = new GuiButton(7, contentX + 2 * (fourW + gap), bFooterTop, fourW, 20, "Delete invalid");
+        pasteTokenButton    = new GuiButton(8, contentX + 3 * (fourW + gap), bFooterTop, fourW, 20, "Paste token");
         buttonList.add(deleteInvalidButton);
         buttonList.add(pasteTokenButton);
 
-        loginButton  = new GuiButton(0, col1, bFooterTop + 52, colW, 20, "Login");
-        renameButton = new GuiButton(5, col2, bFooterTop + 52, colW, 20, "Rename");
+        int sixW = (contentW - gap * 5) / 6;
+        loginButton  = new GuiButton(0, contentX, bFooterTop + 25, sixW, 20, "Login");
+        renameButton = new GuiButton(5, contentX + 2 * (sixW + gap), bFooterTop + 25, sixW, 20, "Rename");
         buttonList.add(loginButton);
         buttonList.add(renameButton);
-        buttonList.add(new GuiButton(1, col3, bFooterTop + 52, colW, 20, "Add"));
-
-        deleteButton = new GuiButton(2, col1, bFooterTop + 76, colW, 20, "Delete");
-        skinButton   = new GuiButton(6, col2, bFooterTop + 76, colW, 20, "Skin");
-        cancelButton = new GuiButton(3, col3, bFooterTop + 76, colW, 20, "Cancel");
+        buttonList.add(new GuiButton(1, contentX + (sixW + gap), bFooterTop + 25, sixW, 20, "Add"));
+        skinButton   = new GuiButton(6, contentX + 3 * (sixW + gap), bFooterTop + 25, sixW, 20, "Skin");
+        deleteButton = new GuiButton(2, contentX + 4 * (sixW + gap), bFooterTop + 25, sixW, 20, "Delete");
+        cancelButton = new GuiButton(3, contentX + 5 * (sixW + gap), bFooterTop + 25, sixW, 20, "Done");
         buttonList.add(deleteButton);
         buttonList.add(skinButton);
         buttonList.add(cancelButton);
+
+        int threeW = (contentW - gap * 2) / 3;
+        presetSkinButton = new GuiButton(13, contentX, bFooterTop + 50, threeW, 20,
+                AutoSkinSettings.hasPreset() ? "Replace preset skin" : "Select preset skin");
+        autoSkinButton = new GuiButton(14, contentX + threeW + gap, bFooterTop + 50, threeW, 20,
+                autoSkinLabel());
+        skinModelButton = new GuiButton(15, contentX + 2 * (threeW + gap), bFooterTop + 50, threeW, 20,
+                skinModelLabel());
+        buttonList.add(presetSkinButton);
+        buttonList.add(autoSkinButton);
+        buttonList.add(skinModelButton);
 
         int listBottom = bFooterTop - 6;
         guiAccountList = new GuiAccountList(mc, listBottom);
@@ -193,6 +206,9 @@ public class GuiAccountManager extends GuiScreen {
         if (nicealtsButton != null) nicealtsButton.enabled = true;
         if (localtsButton  != null) localtsButton.enabled  = true;
         if (restoreButton  != null) restoreButton.enabled = !SessionManager.isUsingLaunchSession() && !busy;
+        if (presetSkinButton != null) presetSkinButton.enabled = !busy;
+        if (autoSkinButton != null) autoSkinButton.enabled = AutoSkinSettings.hasPreset() && !busy;
+        if (skinModelButton != null) skinModelButton.enabled = AutoSkinSettings.hasPreset() && !busy;
     }
 
     @Override
@@ -203,24 +219,32 @@ public class GuiAccountManager extends GuiScreen {
         RoundedUtils.drawRound(0, 0, width, HEADER_H, 0f, C_PANEL);
         drawRect(0, HEADER_H - 1, width, HEADER_H, C_BORDER);
 
-        sfBold.drawString("Account Manager", width / 2f - sfBold.getStringWidth("Account Manager") / 2f, 10f, C_TEXT, false);
+        sfBold.drawString("Account Manager", width / 2f - sfBold.getStringWidth("Account Manager") / 2f, 15f, C_TEXT, false);
 
         Session sess = SessionManager.get();
         if (sess != null) {
-            sfReg.drawString("\u00a77" + sess.getUsername(), 8f, 12f, C_MUTED, false);
+            sfReg.drawString("\u00a77" + sess.getUsername(), 14f, 16f, C_MUTED, false);
         }
         String countStr = AccountManager.accounts.size() + " accounts";
-        sfReg.drawString(countStr, width - sfReg.getStringWidth(countStr) - 8f, 12f, C_DIM, false);
-        int sfW = Math.min(340, width - 20);
+        if (restoreButton == null) {
+            sfReg.drawString(countStr, width - sfReg.getStringWidth(countStr) - 14f, 16f, C_DIM, false);
+        }
+        int sfW = Math.min(620, width - 32);
         int sfX = width / 2 - sfW / 2;
-        RoundedUtils.drawRound(sfX, SEARCH_TOP, sfW, SEARCH_H, 4f, C_ROW);
+        RoundedUtils.drawRound(sfX, SEARCH_TOP, sfW, SEARCH_H, 5f, C_ROW);
         drawRect(sfX, SEARCH_TOP + SEARCH_H - 1, sfX + sfW, SEARCH_TOP + SEARCH_H, C_ACCENT_DIM);
         searchField.drawTextBox();
         if (searchField.getText().isEmpty() && !searchField.isFocused()) {
             sfReg.drawString("Search accounts...", sfX + 9f, SEARCH_TOP + 5f, C_DIM, false);
         }
-        if (guiAccountList != null) guiAccountList.drawScreen(mx, my, pt);
         int footerTop = height - FOOTER_H;
+        RoundedUtils.drawRound(sfX, LIST_TOP - 3, sfW, Math.max(12, footerTop - LIST_TOP - 3), 6f, 0x780D1012);
+        if (guiAccountList != null) guiAccountList.drawScreen(mx, my, pt);
+        if (filteredList.isEmpty()) {
+            String empty = AccountManager.accounts.isEmpty() ? "No accounts yet" : "No matching accounts";
+            sfReg.drawString(empty, width / 2f - sfReg.getStringWidth(empty) / 2f,
+                    LIST_TOP + 18f, C_DIM, false);
+        }
         drawRect(0, footerTop, width, footerTop + 1, C_BORDER);
         drawRect(0, footerTop, width, height, C_PANEL);
         drawStyledButtons(mx, my, sfReg);
@@ -260,6 +284,14 @@ public class GuiAccountManager extends GuiScreen {
         float tw = fr.getStringWidth(b.displayString);
         fr.drawString(b.displayString, b.xPosition + b.width / 2f - tw / 2f,
                 b.yPosition + b.height / 2f - fr.getFontHeight() / 2f, fg, false);
+    }
+
+    private String autoSkinLabel() {
+        return "Auto skin: " + (AutoSkinSettings.isEnabled() ? "On" : "Off");
+    }
+
+    private String skinModelLabel() {
+        return "Preset model: " + (AutoSkinSettings.isSlim() ? "Slim" : "Classic");
     }
 
     @Override
@@ -424,6 +456,33 @@ public class GuiAccountManager extends GuiScreen {
                 mc.displayGuiScreen(nk != null ? new GuiNicealtsMenu(this, nk) : new GuiNicealtsSetup(this));
                 break;
             }
+            case 13: {
+                ModernFileChooser.showOpenDialog("Select preset skin", null,
+                        "PNG images (*.png)", new String[]{"png"}, file -> {
+                            try {
+                                AutoSkinSettings.setPreset(file);
+                                presetSkinButton.displayString = "Replace preset skin";
+                                autoSkinButton.displayString = autoSkinLabel();
+                                skinModelButton.displayString = skinModelLabel();
+                                notification = new Notification(TextFormatting.translate(
+                                        "&aPreset skin saved. Turn Auto skin on to use it after refresh login.&r"), 5000L);
+                            } catch (IOException error) {
+                                notification = new Notification(TextFormatting.translate(
+                                        "&c" + error.getMessage() + "&r"), 5000L);
+                            }
+                            updateScreen();
+                        }, null);
+                break;
+            }
+            case 14:
+                AutoSkinSettings.setEnabled(!AutoSkinSettings.isEnabled());
+                autoSkinButton.displayString = autoSkinLabel();
+                updateScreen();
+                break;
+            case 15:
+                AutoSkinSettings.setSlim(!AutoSkinSettings.isSlim());
+                skinModelButton.displayString = skinModelLabel();
+                break;
         }
     }
 
@@ -438,7 +497,7 @@ public class GuiAccountManager extends GuiScreen {
 
         @Override protected int getSize()             { return filteredList.size(); }
         @Override protected boolean isSelected(int i) { return i == selectedAccount; }
-        @Override public int getListWidth()           { return Math.min(380, width - 20); }
+        @Override public int getListWidth()           { return Math.min(620, width - 32); }
         @Override protected int getContentHeight()    { return filteredList.size() * SLOT_H; }
         @Override protected int getScrollBarX()       { return (width + getListWidth()) / 2 + 2; }
 
@@ -464,6 +523,8 @@ public class GuiAccountManager extends GuiScreen {
                 drawRect(x, y + 5, x + 2, y + h - 5, C_ACCENT);
             } else if (hov) {
                 RoundedUtils.drawRound(x, y + 1, getListWidth(), h - 2, 4f, C_ROW_HOV);
+            } else {
+                RoundedUtils.drawRound(x, y + 1, getListWidth(), h - 2, 4f, C_ROW);
             }
 
             String rawName = account.getUsername();

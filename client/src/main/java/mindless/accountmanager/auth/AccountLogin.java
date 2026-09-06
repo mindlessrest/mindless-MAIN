@@ -5,6 +5,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import mindless.accountmanager.AccountAuthStatus;
 import mindless.accountmanager.AccountManager;
+import mindless.accountmanager.AutoSkinSettings;
 import mindless.accountmanager.auth.Account;
 import mindless.accountmanager.auth.AccountType;
 import mindless.accountmanager.auth.CookieAuth;
@@ -39,6 +40,12 @@ public final class AccountLogin {
                 });
 
         return handledFuture.thenComposeAsync(f -> f, executor)
+                .thenComposeAsync(ignored -> {
+                    if (account.authStatus != AccountAuthStatus.AUTHED || account.getType() != AccountType.REFRESH) {
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    return AutoSkinSettings.applyIfEnabled(account, executor).thenApply(applied -> (Void) null);
+                }, executor)
                 .exceptionally((Throwable error) -> {
                     String message = error.getCause() != null ? error.getCause().getMessage() : error.getMessage();
                     account.authStatus = AccountAuthStatus.FAILED;
