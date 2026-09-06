@@ -320,15 +320,10 @@ private static final int[][] OUTLINE_OFFSETS = {
 
         syncPositionToResolution();
 
-        if (showInfo.isToggled()) {
-            for (Module module : ModuleManager.organizedModules) {
-                if (!module.isEnabled() || module == this) {
-                    continue;
-                }
-                module.getInfoUpdate();
-                if (Module.sort) {
-                    break;
-                }
+        for (Module module : ModuleManager.organizedModules) {
+            module.getInfoUpdate();
+            if (Module.sort) {
+                break;
             }
         }
 
@@ -359,7 +354,6 @@ private static final int[][] OUTLINE_OFFSETS = {
                     posY, horizontalTextPadding, rowHeight);
         }
 
-        GlyphBatch.begin();
         try {
             for (Module module : ModuleManager.organizedModules) {
                 if (!module.isEnabled() || module == this || shouldSkipModule(module, removeVelocity)) {
@@ -442,9 +436,6 @@ private static final int[][] OUTLINE_OFFSETS = {
         catch (Exception exception) {
             Utils.sendMessage("&cAn error occurred rendering HUD. check your logs");
             exception.printStackTrace();
-        }
-        finally {
-            GlyphBatch.end();
         }
 
         if (outline.getInput() == 1 && !previousModule.isEmpty()) {

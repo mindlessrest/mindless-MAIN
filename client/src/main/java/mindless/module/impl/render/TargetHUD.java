@@ -294,8 +294,8 @@ private int ringColor(int ringIndex) {
             float hudW = targetStrWithPadding + padding * 2;
             float hudH = (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding * 2 + 13;
 
-            if (PlayerESP.projectionContext != null &&
-                    mindless.utility.RenderUtils.projectTo2D(PlayerESP.projectionContext, tx - camX, ty - camY + entityH / 2, tz - camZ, projected)) {
+            if (SexyESP.projectionContext != null &&
+                    mindless.utility.RenderUtils.projectTo2D(SexyESP.projectionContext, tx - camX, ty - camY + entityH / 2, tz - camZ, projected)) {
                 float screenX = (float) projected[0];
                 float screenY = (float) projected[1];
                 switch (posMode) {

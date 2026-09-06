@@ -8,10 +8,8 @@ import mindless.module.impl.render.Radar;
 import mindless.module.impl.render.DynamicIsland;
 import mindless.module.impl.render.StatsHUD;
 import mindless.module.impl.render.TargetHUD;
+import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
-import mindless.Mindless;
-import mindless.clickgui.ModernClickGui;
-import mindless.hud.HudItem;
 import mindless.runtime.GuiIngameState;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
@@ -44,9 +42,19 @@ import java.util.List;
  */
 public class HudEditor extends Module {
 
+    public static ButtonSetting depthOfField;
+    public static SliderSetting blurStrength;
+
     public HudEditor() {
         super("HUD Editor", "Drag and resize your HUD elements.", category.client);
         this.liteModule = true;
+        this.registerSetting(depthOfField = new ButtonSetting("Depth of field", true));
+        this.registerSetting(blurStrength = new SliderSetting("Blur strength", "%", 100.0, 0.0, 100.0, 5.0));
+    }
+
+    @Override
+    public void guiUpdate() {
+        blurStrength.setVisible(depthOfField.isToggled(), this);
     }
 
     @Override
@@ -63,11 +71,12 @@ public class HudEditor extends Module {
         private static final float HANDLE_HALF = 2.5f;
         private static final float GRAB_HALF = 6.0f;
         private static final float MIN_SPAN = 6.0f;
-        private static final int GRID_SIZE = 4;
+        private static final int GRID_SIZE = 8;
         private static final float GUIDE_THRESHOLD = 4.0f;
 
         private static final int DOF_PASSES = 2;
         private static final float DOF_RADIUS = 4.2f;
+        /** Fractions of the screen diagonal: sharp inside the first, fully soft past the second. */
         private static final float DOF_NEAR = 0.15f;
         private static final float DOF_FAR = 0.52f;
         private static final int DOF_SEGMENTS = 28;
@@ -80,6 +89,7 @@ public class HudEditor extends Module {
         private final List<Element> elements = new ArrayList<Element>();
         private MindlessButton doneButton;
         private MindlessButton resetAllButton;
+        private MindlessButton snapButton;
         private Element hovered;
         private Element selected;
         private Element dragging;
@@ -93,6 +103,7 @@ public class HudEditor extends Module {
         private float resizeStartHeight;
         private float resizeAnchorX;
         private float resizeAnchorY;
+        private boolean snapEnabled = true;
         private boolean guideX;
         private boolean guideY;
 
@@ -102,11 +113,11 @@ public class HudEditor extends Module {
             buildElements();
             buttonList.add(doneButton = new MindlessButton(1, width - 63, 5, 58, 20, "Done"));
             buttonList.add(resetAllButton = new MindlessButton(3, width - 132, 5, 64, 20, "Reset"));
+            buttonList.add(snapButton = new MindlessButton(2, width - 222, 5, 85, 20, snapLabel()));
         }
 
         @Override
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-            hovered = findTopmost(mouseX, mouseY);
             drawBackdrop(mouseX, mouseY);
             drawGrid();
 
@@ -154,18 +165,6 @@ public class HudEditor extends Module {
 
         @Override
         protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
-            if (mouseY <= 30 || mouseY >= height - 20) {
-                super.mouseClicked(mouseX, mouseY, mouseButton);
-                return;
-            }
-            if (mouseButton == 1) {
-                Element target = findTopmost(mouseX, mouseY);
-                if (target != null && target.module() != null && Mindless.clickGui instanceof ModernClickGui) {
-                    ((ModernClickGui) Mindless.clickGui).openModuleFromHudEditor(target.module());
-                    mc.displayGuiScreen(Mindless.clickGui);
-                    return;
-                }
-            }
             if (mouseButton == 0) {
                 int handle = hovered != null ? hovered.handleAt(mouseX, mouseY) : -1;
                 if (handle >= 0) {
@@ -191,7 +190,6 @@ public class HudEditor extends Module {
         protected void mouseReleased(int mouseX, int mouseY, int state) {
             super.mouseReleased(mouseX, mouseY, state);
             if (state == 0) {
-                if (dragging != null || resizing != null) markLayoutDirty();
                 dragging = null;
                 resizing = null;
                 resizeHandle = -1;
@@ -205,18 +203,25 @@ public class HudEditor extends Module {
             if (button == doneButton) {
                 mc.displayGuiScreen(null);
             }
+            else if (button == snapButton) {
+                snapEnabled = !snapEnabled;
+                snapButton.displayString = snapLabel();
+            }
             else if (button == resetAllButton) {
                 for (Element element : elements) element.reset();
                 selected = null;
-                markLayoutDirty();
             }
         }
 
         @Override
         protected void keyTyped(char typedChar, int keyCode) throws IOException {
+            if (keyCode == Keyboard.KEY_G) {
+                snapEnabled = !snapEnabled;
+                snapButton.displayString = snapLabel();
+                return;
+            }
             if (selected != null && keyCode == Keyboard.KEY_R) {
                 selected.reset();
-                markLayoutDirty();
                 return;
             }
             if (selected != null && (keyCode == Keyboard.KEY_LEFT || keyCode == Keyboard.KEY_RIGHT
@@ -230,16 +235,13 @@ public class HudEditor extends Module {
                 if (keyCode == Keyboard.KEY_UP) y -= step;
                 if (keyCode == Keyboard.KEY_DOWN) y += step;
                 selected.moveClamped(x, y, width, height);
-                markLayoutDirty();
                 return;
             }
             super.keyTyped(typedChar, keyCode);
         }
 
-        private void markLayoutDirty() {
-            if (Mindless.currentProfile != null && Mindless.currentProfile.getModule() != null) {
-                Mindless.currentProfile.getModule().saved = false;
-            }
+        private String snapLabel() {
+            return snapEnabled ? "Snap 8px" : "Snap off";
         }
 
         private void drawGrid() {
@@ -261,8 +263,11 @@ public class HudEditor extends Module {
             float elementWidth = dragging.right - dragging.left;
             float elementHeight = dragging.bottom - dragging.top;
 
-            requestedLeft = Math.round(requestedLeft / GRID_SIZE) * GRID_SIZE;
-            requestedTop = Math.round(requestedTop / GRID_SIZE) * GRID_SIZE;
+            if (snapEnabled && !Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)
+                    && !Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)) {
+                requestedLeft = Math.round(requestedLeft / GRID_SIZE) * GRID_SIZE;
+                requestedTop = Math.round(requestedTop / GRID_SIZE) * GRID_SIZE;
+            }
 
             float centeredLeft = (width - elementWidth) * 0.5F;
             float centeredTop = (height - elementHeight) * 0.5F;
@@ -282,7 +287,32 @@ public class HudEditor extends Module {
             return false;
         }
 
+        /**
+         * The world behind, thrown out of focus around whatever you are working on.
+         *
+         * A true depth of field wants the depth buffer, and 1.8.9 attaches its depth as a
+         * renderbuffer rather than a texture, so there is nothing here to sample -- reworking the
+         * game's framebuffer to get one would be a large change to pay for a backdrop. This does
+         * the part you actually see. One blur of the frame is composited back through a mask that
+         * is clear over the element under the cursor and opaque out towards the edges, so focus
+         * falls away from where you are looking.
+         *
+         * The cost is one blur chain. The pyramid it builds is cached per frame inside KawaseBlur
+         * and shared with every other blur on screen, the mask is three draw calls, and the
+         * composite is a single full screen quad -- so this is one pass whatever the screen holds.
+         */
         private void drawBackdrop(int mouseX, int mouseY) {
+            if (HudEditor.depthOfField == null || !HudEditor.depthOfField.isToggled()) {
+                drawRect(0, 0, width, height, 0x88000000);
+                return;
+            }
+
+            float strength = (float) (HudEditor.blurStrength.getInput() / 100.0);
+            if (strength <= 0.01f) {
+                drawRect(0, 0, width, height, 0x88000000);
+                return;
+            }
+
             Element focus = dragging != null ? dragging : resizing != null ? resizing : hovered;
             boolean framed = focus != null && focus.hasBounds();
             float targetX = framed ? (focus.left + focus.right) * 0.5f : mouseX;
@@ -297,11 +327,18 @@ public class HudEditor extends Module {
             float diagonal = (float) Math.sqrt(width * (double) width + height * (double) height);
             BlurUtils.prepareBlur();
             drawFocusMask(focusX, focusY, diagonal * DOF_NEAR, diagonal * DOF_FAR);
-            BlurUtils.blurEnd(DOF_PASSES, DOF_RADIUS, 1.0f);
+            BlurUtils.blurEnd(DOF_PASSES, DOF_RADIUS, strength);
 
             drawRect(0, 0, width, height, SCRIM);
         }
 
+        /**
+         * Writes the circle of confusion into the blur mask.
+         *
+         * Blending is off on purpose: the shapes overwrite one another rather than mixing, so the
+         * ring's ramp lands exactly on top of the screen fill instead of adding to it. Alpha is
+         * what the composite shader reads, and the colour never matters.
+         */
         private void drawFocusMask(float centreX, float centreY, float near, float far) {
             GlStateManager.disableTexture2D();
             GlStateManager.disableBlend();
@@ -518,36 +555,6 @@ private void beginResize(Element element, int handle) {
                 });
             }
 
-            for (final HudItem item : ModuleManager.hudItems) {
-                elements.add(new Element(item.getHudItemName()) {
-                    @Override
-                    void render() {
-                        setBounds(item.render());
-                    }
-
-                    @Override
-                    void moveTo(float left, float top) {
-                        item.setPosition(left, top);
-                        setBounds(item.render());
-                    }
-
-                    @Override
-                    void reset() {
-                        item.resetHudItem();
-                    }
-
-                    @Override
-                    SliderSetting scaleSetting() {
-                        return item.getHudItemScale();
-                    }
-
-                    @Override
-                    Module module() {
-                        return item.getHudItemModule();
-                    }
-                });
-            }
-
             if (ModuleManager.audioVisualizer != null) {
                 final mindless.module.impl.render.AudioVisualizer visualizer =
                         ModuleManager.audioVisualizer;
@@ -747,6 +754,28 @@ private void beginResize(Element element, int handle) {
 
             if (ModuleManager.dynamicIsland != null) {
                 final DynamicIsland island = ModuleManager.dynamicIsland;
+                elements.add(new Element("Island Text") {
+                    @Override
+                    void render() {
+                        setBounds(island.isIslandMode() ? null : island.getTextBounds());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        island.textPosX = left;
+                        island.textPosY = top;
+                        setBounds(island.getTextBounds());
+                    }
+
+                    @Override
+                    void reset() {
+                        island.resetPosition();
+                    }
+                });
+
+                // Grabbable on every anchor. It used to be offered only on Custom, so the pill was
+                // the one element here you could not drag -- you had to know to go and change a
+                // setting first. Taking hold of it switches the anchor for you.
                 elements.add(new Element("Dynamic Island") {
                     @Override
                     void render() {
@@ -869,14 +898,6 @@ private Element findTopmost(float mouseX, float mouseY) {
             abstract void render();
             abstract void moveTo(float left, float top);
             abstract void reset();
-            Module module() {
-                if ("Array List".equals(name) || "Music Player".equals(name)) return ModuleManager.hud;
-                if ("FPS".equals(name) || "BPS".equals(name) || "Ping".equals(name)) return ModuleManager.statsHUD;
-                if ("Dynamic Island".equals(name)) return ModuleManager.dynamicIsland;
-                if ("Watermark".equals(name)) return ModuleManager.watermark;
-                return ModuleManager.getModule(name);
-            }
-
 SliderSetting scaleSetting() {
                 return null;
             }
