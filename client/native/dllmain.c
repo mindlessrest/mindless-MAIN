@@ -219,9 +219,9 @@ void vape_log(const wchar_t *format, ...) {
     va_end(arguments);
     GetLocalTime(&now);
     _snwprintf_s(line, sizeof(line) / sizeof(line[0]), _TRUNCATE,
-            L"[%04u-%02u-%02u %02u:%02u:%02u.%03u] %ls\r\n",
+            L"[MindlessNative] [%04u-%02u-%02u %02u:%02u:%02u.%03u] [tid=%lu] %ls\r\n",
             now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
-            now.wSecond, now.wMilliseconds, message);
+            now.wSecond, now.wMilliseconds, GetCurrentThreadId(), message);
     OutputDebugStringW(line);
 #else
     (void)format;
@@ -967,9 +967,14 @@ static void JNICALL class_file_load_hook(
         return;
     }
     if (g_hooks_class == NULL || g_hooks_transform == NULL) return;
+    vape_log(L"ClassFileLoadHook begin name=%hs input=%d redefine=%p loader=%p",
+            name, class_data_len, class_being_redefined, loader);
 
     original = (*env)->NewByteArray(env, class_data_len);
-    if (original == NULL) return;
+    if (original == NULL) {
+        vape_log(L"ClassFileLoadHook NewByteArray failed name=%hs input=%d", name, class_data_len);
+        return;
+    }
     (*env)->SetByteArrayRegion(env, original, 0, class_data_len, (const jbyte *)class_data);
     name_string = (*env)->NewStringUTF(env, name);
     if (name_string == NULL) {
@@ -986,14 +991,19 @@ static void JNICALL class_file_load_hook(
     }
     (*env)->DeleteLocalRef(env, name_string);
     (*env)->DeleteLocalRef(env, original);
-    if (transformed == NULL) return;
+    if (transformed == NULL) {
+        vape_log(L"ClassFileLoadHook unchanged name=%hs", name);
+        return;
+    }
 
     transformed_length = (*env)->GetArrayLength(env, transformed);
+    vape_log(L"ClassFileLoadHook transformed name=%hs output=%d", name, transformed_length);
     if (transformed_length <= 0) {
         (*env)->DeleteLocalRef(env, transformed);
         return;
     }
     if ((*g_jvmti)->Allocate(g_jvmti, transformed_length, &allocated) != JVMTI_ERROR_NONE) {
+        vape_log(L"ClassFileLoadHook JVMTI allocation failed name=%hs output=%d", name, transformed_length);
         (*env)->DeleteLocalRef(env, transformed);
         return;
     }
@@ -1001,6 +1011,8 @@ static void JNICALL class_file_load_hook(
     (*env)->DeleteLocalRef(env, transformed);
     *new_class_data = allocated;
     *new_class_data_len = transformed_length;
+    vape_log(L"ClassFileLoadHook complete name=%hs output=%d buffer=%p",
+            name, transformed_length, allocated);
 }
 
 JNIEXPORT jboolean JNICALL Java_mindless_runtime_TransformerHooks_untransformNative0(JNIEnv *env, jclass clazz);
@@ -1054,8 +1066,14 @@ static int install_class_file_load_hook(void) {
     jvmtiEventCallbacks callbacks;
     jvmtiError error;
     jvmtiCapabilities have;
-    if (InterlockedCompareExchange(&g_hook_registered, 0, 0) != 0) return 1;
-    if (g_jvmti == NULL) return 0;
+    if (InterlockedCompareExchange(&g_hook_registered, 0, 0) != 0) {
+        vape_log(L"ClassFileLoadHook already installed");
+        return 1;
+    }
+    if (g_jvmti == NULL) {
+        vape_log(L"ClassFileLoadHook install refused: JVMTI is null");
+        return 0;
+    }
 
     memset(&requested, 0, sizeof(requested));
     memset(&have, 0, sizeof(have));
@@ -1088,6 +1106,7 @@ static int install_class_file_load_hook(void) {
     }
     InterlockedExchange(&g_hook_registered, 1);
     InterlockedExchange(&g_hook_ever_published, 1);
+    vape_log(L"ClassFileLoadHook installed jvmti=%p", g_jvmti);
     return 1;
 }
 static int disable_class_file_load_hook(void) {
@@ -1368,8 +1387,12 @@ static int retransform_registered_targets(JNIEnv *env, jobject class_loader) {
             char *sig = NULL;
             (*g_jvmti)->GetClassSignature(g_jvmti,
                     classes_to_retransform[i], &sig, NULL);
+            vape_log(L"Retransform begin index=%d/%d class=%hs handle=%p",
+                    i + 1, retransform_count, sig ? sig : "<unknown>", classes_to_retransform[i]);
             err = (*g_jvmti)->RetransformClasses(g_jvmti, 1,
                     &classes_to_retransform[i]);
+            vape_log(L"Retransform end index=%d/%d class=%hs result=%d (%ls)",
+                    i + 1, retransform_count, sig ? sig : "<unknown>", err, jvmti_error_name(err));
             {
                 float step = 0.83f + 0.14f * (float)(i + 1)
                         / (float)retransform_count;
@@ -1561,10 +1584,13 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     HMODULE worker_module = (HMODULE)parameter;
     DWORD exit_code = 1;
 
+    vape_log(L"bootstrap entered image=%p thread=%lu", parameter, GetCurrentThreadId());
+
     if (g_exception_handler == NULL) {
         g_exception_handler = AddVectoredExceptionHandler(
                 1, native_exception_handler);
     }
+    vape_log(L"exception handler=%p", g_exception_handler);
     open_progress_channel();
     Sleep(150);
     send_progress(0.21f, "Waiting for Java runtime");
@@ -1584,6 +1610,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         exit_code = 2;
         goto cleanup;
     }
+    vape_log(L"jvm.dll=%p", jvm_module);
     send_progress(0.34f, "Java runtime detected");
     created_vms_address = GetProcAddress(jvm_module, "JNI_GetCreatedJavaVMs");
     if (created_vms_address == NULL) {
@@ -1606,6 +1633,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         exit_code = 4;
         goto cleanup;
     }
+    vape_log(L"Java VM=%p count=%d", vm, vm_count);
     send_progress(0.43f, "Java VM ready");
     if ((*vm)->AttachCurrentThreadAsDaemon(vm, (void **)&env, NULL) != JNI_OK || env == NULL) {
         vape_log(L"AttachCurrentThreadAsDaemon failed");
@@ -1613,6 +1641,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         goto cleanup;
     }
     attached = 1;
+    vape_log(L"JNI attached env=%p", env);
     send_progress(0.45f, "Attached to Java VM");
 {
         wchar_t section_name[128];
@@ -1671,6 +1700,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         exit_code = 6;
         goto cleanup;
     }
+    vape_log(L"JVMTI initialized env=%p", g_jvmti);
     send_progress(0.48f, "JVMTI agent initialized");
     send_progress(0.50f, "Searching for Minecraft class loader");
     for (attempt = 0; attempt < 600 && loader == NULL; ++attempt) {
@@ -1686,6 +1716,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         exit_code = 8;
         goto cleanup;
     }
+    vape_log(L"Minecraft ClassLoader=%p", loader);
     g_game_loader = (*env)->NewGlobalRef(env, loader);
     if (g_game_loader == NULL) {
         vape_log_pending_exception(env, L"create global game ClassLoader reference");
@@ -1698,6 +1729,7 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         exit_code = 15;
         goto cleanup;
     }
+    vape_log(L"runtime namespace=%d", runtime_namespace);
     send_progress(0.55f, "Detected runtime namespace");
 embedded_forge = runtime_namespace == MINDLESS_NAMESPACE_MCP
             && !(loader_has_class(env, loader,
@@ -1811,6 +1843,9 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
         g_module = instance;
+#ifdef _NONPROD
+        OutputDebugStringW(L"[MindlessNative] DllMain process attach\r\n");
+#endif
         /*
          * Do not call loader bookkeeping APIs with this base here. The primary
          * injector manually maps this image, so it is not a registered HMODULE.
