@@ -115,253 +115,17 @@ static jmethodID g_hooks_transform = NULL;  /* static byte[] transform(String, b
 static jobject   g_game_loader = NULL;      /* global ref; filters duplicate class names */
 static volatile LONG g_hook_registered = 0;
 static volatile LONG g_hook_ever_published = 0;
-static PVOID g_exception_handler = NULL;
-static volatile LONG g_native_crash_logged = 0;
 
 static jclass load_class_via_loader(JNIEnv *env, jobject class_loader,
         jmethodID load_class, const char *dotted_name);
 
-static SIZE_T native_image_size(void) {
-    const IMAGE_DOS_HEADER *dos;
-    const IMAGE_NT_HEADERS64 *nt;
-    if (g_module == NULL) return 0;
-    dos = (const IMAGE_DOS_HEADER *)(const void *)g_module;
-    if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0) return 0;
-    nt = (const IMAGE_NT_HEADERS64 *)((const BYTE *)(const void *)g_module
-            + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE) return 0;
-    return (SIZE_T)nt->OptionalHeader.SizeOfImage;
-}
-
-/*
- * Manual-mapped images are absent from Windows' module list, so a crash in
- * this DLL is otherwise reported only as "faulting module: unknown". Keep a
- * tiny, secret-free local breadcrumb with the native RVA. It lets a production
- * crash be resolved against the matching PDB without dumping process memory.
- */
-static LONG CALLBACK native_exception_handler(EXCEPTION_POINTERS *exception) {
-    uintptr_t instruction;
-    uintptr_t image_base;
-    SIZE_T image_size;
-    char temp_path[MAX_PATH];
-    char directory[MAX_PATH];
-    char log_path[MAX_PATH];
-    char line[512];
-    SYSTEMTIME now;
-    HANDLE file;
-    DWORD length;
-    DWORD written = 0;
-    ULONG_PTR operation = ~(ULONG_PTR)0;
-    ULONG_PTR address = 0;
-
-    if (exception == NULL || exception->ExceptionRecord == NULL
-            || exception->ContextRecord == NULL
-            || exception->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION) {
-        return EXCEPTION_CONTINUE_SEARCH;
-    }
-#if defined(_M_X64) || defined(__x86_64__)
-    instruction = (uintptr_t)exception->ContextRecord->Rip;
-#else
-    instruction = (uintptr_t)exception->ExceptionRecord->ExceptionAddress;
-#endif
-    image_base = (uintptr_t)g_module;
-    image_size = native_image_size();
-    if (image_base == 0 || image_size == 0 || instruction < image_base
-            || instruction - image_base >= image_size) {
-        return EXCEPTION_CONTINUE_SEARCH;
-    }
-    if (InterlockedCompareExchange(&g_native_crash_logged, 1, 0) != 0) {
-        return EXCEPTION_CONTINUE_SEARCH;
-    }
-    if (exception->ExceptionRecord->NumberParameters >= 2) {
-        operation = exception->ExceptionRecord->ExceptionInformation[0];
-        address = exception->ExceptionRecord->ExceptionInformation[1];
-    }
-    if (GetTempPathA(MAX_PATH, temp_path) == 0) return EXCEPTION_CONTINUE_SEARCH;
-    if (_snprintf_s(directory, sizeof(directory), _TRUNCATE,
-            "%sMindlessNative", temp_path) < 0) return EXCEPTION_CONTINUE_SEARCH;
-    CreateDirectoryA(directory, NULL);
-    if (_snprintf_s(log_path, sizeof(log_path), _TRUNCATE,
-            "%s\\native-crash.log", directory) < 0) return EXCEPTION_CONTINUE_SEARCH;
-    file = CreateFileA(log_path, FILE_APPEND_DATA,
-            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS,
-            FILE_ATTRIBUTE_NORMAL, NULL);
-    if (file == INVALID_HANDLE_VALUE) return EXCEPTION_CONTINUE_SEARCH;
-    GetLocalTime(&now);
-    length = (DWORD)_snprintf_s(line, sizeof(line), _TRUNCATE,
-            "%04u-%02u-%02u %02u:%02u:%02u.%03u code=0x%08lX "
-            "ip=0x%p base=0x%p rva=0x%llX operation=%llu address=0x%p thread=%lu\r\n",
-            now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
-            now.wSecond, now.wMilliseconds,
-            exception->ExceptionRecord->ExceptionCode,
-            (void *)instruction, (void *)image_base,
-            (unsigned long long)(instruction - image_base),
-            (unsigned long long)operation, (void *)address,
-            GetCurrentThreadId());
-    if (length > 0 && length < sizeof(line)) {
-        WriteFile(file, line, length, &written, NULL);
-        FlushFileBuffers(file);
-    }
-    CloseHandle(file);
-    return EXCEPTION_CONTINUE_SEARCH;
-}
-
 void vape_log(const wchar_t *format, ...) {
-#ifdef _NONPROD
-    wchar_t message[2048];
-    wchar_t line[2304];
-    char utf8[6912];
-    char temp_path[MAX_PATH];
-    char directory[MAX_PATH];
-    char log_path[MAX_PATH];
-    SYSTEMTIME now;
-    HANDLE file;
-    DWORD written;
-    int length;
-    va_list arguments;
-
-    va_start(arguments, format);
-    _vsnwprintf_s(message, sizeof(message) / sizeof(message[0]),
-            _TRUNCATE, format, arguments);
-    va_end(arguments);
-    GetLocalTime(&now);
-    _snwprintf_s(line, sizeof(line) / sizeof(line[0]), _TRUNCATE,
-            L"[MindlessNative] [%04u-%02u-%02u %02u:%02u:%02u.%03u] [tid=%lu] %ls\r\n",
-            now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
-            now.wSecond, now.wMilliseconds, GetCurrentThreadId(), message);
-    OutputDebugStringW(line);
-    length = WideCharToMultiByte(CP_UTF8, 0, line, -1, utf8,
-            (int)sizeof(utf8), NULL, NULL);
-    if (length <= 1 || GetTempPathA(MAX_PATH, temp_path) == 0) return;
-    if (_snprintf_s(directory, sizeof(directory), _TRUNCATE,
-            "%sMindlessNative", temp_path) < 0) return;
-    CreateDirectoryA(directory, NULL);
-    if (_snprintf_s(log_path, sizeof(log_path), _TRUNCATE,
-            "%s\\native-debug.log", directory) < 0) return;
-    file = CreateFileA(log_path, FILE_APPEND_DATA,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (file == INVALID_HANDLE_VALUE) return;
-    WriteFile(file, utf8, (DWORD)(length - 1), &written, NULL);
-    CloseHandle(file);
-#else
     (void)format;
-#endif
-}
-
-static void log_throwable_line(JNIEnv *env, const wchar_t *prefix, jobject throwable) {
-    jclass throwable_class;
-    jmethodID to_string;
-    jstring text;
-    const jchar *characters;
-    jsize length;
-    wchar_t buffer[1536];
-    throwable_class = (*env)->FindClass(env, "java/lang/Throwable");
-    to_string = throwable_class == NULL ? NULL : (*env)->GetMethodID(
-            env, throwable_class, "toString", "()Ljava/lang/String;");
-    text = to_string == NULL ? NULL : (jstring)(*env)->CallObjectMethod(
-            env, throwable, to_string);
-    if (text == NULL || (*env)->ExceptionCheck(env)) {
-        (*env)->ExceptionClear(env);
-        vape_log(L"%ls: <unreadable throwable>", prefix);
-        return;
-    }
-    characters = (*env)->GetStringChars(env, text, NULL);
-    length = (*env)->GetStringLength(env, text);
-    if (characters != NULL) {
-        size_t copied = (size_t)length < 1535 ? (size_t)length : 1535;
-        memcpy(buffer, characters, copied * sizeof(wchar_t));
-        buffer[copied] = L'\0';
-        (*env)->ReleaseStringChars(env, text, characters);
-        vape_log(L"%ls: %ls", prefix, buffer);
-    }
-}
-
-static void log_java_string(JNIEnv *env, const wchar_t *prefix, jstring text) {
-    const jchar *characters;
-    jsize length;
-    wchar_t buffer[1536];
-    size_t copied;
-    if (text == NULL) {
-        vape_log(L"%ls: <null>", prefix);
-        return;
-    }
-    characters = (*env)->GetStringChars(env, text, NULL);
-    if (characters == NULL || (*env)->ExceptionCheck(env)) {
-        (*env)->ExceptionClear(env);
-        vape_log(L"%ls: <unreadable>", prefix);
-        return;
-    }
-    length = (*env)->GetStringLength(env, text);
-    copied = (size_t)length < 1535 ? (size_t)length : 1535;
-    memcpy(buffer, characters, copied * sizeof(wchar_t));
-    buffer[copied] = L'\0';
-    (*env)->ReleaseStringChars(env, text, characters);
-    vape_log(L"%ls: %ls", prefix, buffer);
-}
-
-static void log_top_stack_frames(JNIEnv *env, jobject throwable, int max_frames) {
-    jclass throwable_class;
-    jclass frame_class;
-    jmethodID get_stack;
-    jmethodID frame_to_string;
-    jobjectArray frames;
-    jsize count;
-    jsize index;
-    throwable_class = (*env)->FindClass(env, "java/lang/Throwable");
-    frame_class = (*env)->FindClass(env, "java/lang/StackTraceElement");
-    get_stack = throwable_class == NULL ? NULL : (*env)->GetMethodID(
-            env, throwable_class, "getStackTrace", "()[Ljava/lang/StackTraceElement;");
-    frame_to_string = frame_class == NULL ? NULL : (*env)->GetMethodID(
-            env, frame_class, "toString", "()Ljava/lang/String;");
-    if (get_stack == NULL || frame_to_string == NULL) return;
-    frames = (jobjectArray)(*env)->CallObjectMethod(env, throwable, get_stack);
-    if (frames == NULL || (*env)->ExceptionCheck(env)) {
-        (*env)->ExceptionClear(env);
-        return;
-    }
-    count = (*env)->GetArrayLength(env, frames);
-    if (count > max_frames) count = max_frames;
-    for (index = 0; index < count; ++index) {
-        jobject frame = (*env)->GetObjectArrayElement(env, frames, index);
-        if (frame == NULL) continue;
-        log_throwable_line(env, L"    at", frame);
-        (*env)->DeleteLocalRef(env, frame);
-    }
 }
 
 void vape_log_pending_exception(JNIEnv *env, const wchar_t *context) {
-    jthrowable throwable;
-    jclass throwable_class;
-    jmethodID get_cause;
-    jobject current;
-    int depth;
-    if (env == NULL || !(*env)->ExceptionCheck(env)) {
-        vape_log(L"%ls failed without a Java exception", context);
-        return;
-    }
-    throwable = (*env)->ExceptionOccurred(env);
-    (*env)->ExceptionClear(env);
-    throwable_class = (*env)->FindClass(env, "java/lang/Throwable");
-    get_cause = throwable_class == NULL ? NULL : (*env)->GetMethodID(
-            env, throwable_class, "getCause", "()Ljava/lang/Throwable;");
-    vape_log(L"%ls raised:", context);
-    current = throwable;
-    depth = 0;
-    while (current != NULL && depth < 8) {
-        log_throwable_line(env, depth == 0 ? L"  " : L"  caused by", current);
-        log_top_stack_frames(env, current, 10);
-        if (get_cause == NULL) break;
-        {
-            jobject next = (*env)->CallObjectMethod(env, current, get_cause);
-            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
-            if (depth > 0) (*env)->DeleteLocalRef(env, current);
-            current = next;
-        }
-        ++depth;
-    }
-    if (current != NULL && depth > 0) (*env)->DeleteLocalRef(env, current);
-    vape_log(L"  (java-side trace written to native-debug.log)");
+    (void)context;
+    if (env != NULL && (*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 }
 
 jint mindless_initialize_jvmti(JavaVM *vm) {
@@ -1620,11 +1384,6 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
 
     vape_log(L"bootstrap entered image=%p thread=%lu", parameter, GetCurrentThreadId());
 
-    if (g_exception_handler == NULL) {
-        g_exception_handler = AddVectoredExceptionHandler(
-                1, native_exception_handler);
-    }
-    vape_log(L"exception handler=%p", g_exception_handler);
     open_progress_channel();
     Sleep(150);
     send_progress(0.21f, "Waiting for Java runtime");
@@ -1898,18 +1657,12 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
         g_module = instance;
-#ifdef _NONPROD
-        OutputDebugStringW(L"[MindlessNative] DllMain process attach\r\n");
-#endif
         /*
          * Do not call loader bookkeeping APIs with this base here. The primary
          * injector manually maps this image, so it is not a registered HMODULE.
          */
         thread = CreateThread(NULL, 0, bootstrap_thread, instance, 0, NULL);
         if (thread == NULL) {
-#ifdef _NONPROD
-            OutputDebugStringW(L"MindlessNative: CreateThread for bootstrap failed\r\n");
-#endif
             g_module = NULL;
             return FALSE;
         }

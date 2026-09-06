@@ -217,11 +217,6 @@ jobs:
       - name: Build production client
         shell: pwsh
         run: |
-          $message = git log -1 --pretty=%B
-          if ($message -match '\[debug\]') {
-            $env:MINDLESS_DEBUG_LOGS = "1"
-            Write-Host "[debug] detected; native DbgView logging remains enabled."
-          }
           if ('${{ steps.obfuscator-cache.outputs.cache-hit }}' -eq 'true') {
             $env:MINDLESS_OBF_CACHE_HIT = "1"
           }

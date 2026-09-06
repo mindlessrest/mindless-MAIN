@@ -4,7 +4,6 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.combat.AntiKnockback;
 import mindless.module.impl.combat.Velocity;
-import mindless.module.impl.client.SpotifyMiniPlayer;
 import mindless.module.impl.client.HudEditor;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
@@ -32,7 +31,6 @@ import net.minecraftforge.fml.common.gameevent.TickEvent.RenderTickEvent;
 import java.awt.Color;
 
 public class HUD extends Module {
-    private final SpotifyMiniPlayer spotifyMiniPlayer;
     private static final String[] COLOR_MODES = new String[] { "Static", "Gradient", "Rainbow" };
     private static final String[] WAVE_AXES = new String[] { "Vertical", "Horizontal" };
     private static final String[] VERTICAL_WAVE_DIRECTIONS = new String[] { "Down", "Up" };
@@ -108,7 +106,7 @@ private static final int[][] OUTLINE_OFFSETS = {
     private float lastHudFontScale = -1.0f;
 
     public HUD() {
-        super("HUD", "Controls the array list and media HUD.", Module.category.render);
+        super("Array List", "Shows enabled modules on screen.", Module.category.render);
         this.registerSetting(new DescriptionSetting("Array list"));
         this.registerSetting(useTheme = new ButtonSetting("Use theme", true));
         this.registerSetting(colorMode = new SliderSetting("Color mode", 0, COLOR_MODES));
@@ -154,12 +152,10 @@ private static final int[][] OUTLINE_OFFSETS = {
         scoreboardPosY.visible = false;
         scoreboardPosX.setValueRaw(-1.0D);
         scoreboardPosY.setValueRaw(-1.0D);
-        spotifyMiniPlayer = new SpotifyMiniPlayer(this);
     }
 
     @Override
     public void guiUpdate() {
-        spotifyMiniPlayer.guiUpdate();
         boolean ownColors = useTheme != null && !useTheme.isToggled();
         int mode = colorMode == null ? 0 : (int) colorMode.getInput();
         if (colorMode != null) {
@@ -236,20 +232,12 @@ private static final int[][] OUTLINE_OFFSETS = {
 
     @Override
     public void onEnable() {
-        spotifyMiniPlayer.setEnabled(true);
-        spotifyMiniPlayer.onEnable();
         guiUpdate();
         ModuleManager.sort();
     }
 
     @Override
     public void onDisable() {
-        spotifyMiniPlayer.setEnabled(false);
-        spotifyMiniPlayer.onDisable();
-    }
-
-    public SpotifyMiniPlayer getSpotifyMiniPlayer() {
-        return spotifyMiniPlayer;
     }
 
     public static boolean hasCustomScoreboardPosition() {
@@ -443,7 +431,6 @@ private static final int[][] OUTLINE_OFFSETS = {
             double bottomPhase = hudWavePhase(verticalWaveAccum, bottomCenterX);
             RenderUtils.drawRect(lastOutlineLeft, lastBackgroundBottom, lastOutlineRight, lastBackgroundBottom + outlineThickness, getHudColor(bottomPhase));
         }
-        spotifyMiniPlayer.onRenderTick(event);
     }
 
     public static int getLongestModule() {

@@ -240,7 +240,9 @@ public class ModuleManager {
         this.addModule(dynamicIsland = new DynamicIsland());
         this.addModule(sessionInfo = new SessionInfo());
         this.addModule(hud = new HUD());
-        spotifyMiniPlayer = hud.getSpotifyMiniPlayer();
+        modulesByName.put("HUD", hud);
+        modulesByNormalizedName.put(normalizeModuleName("HUD"), hud);
+        this.addModule(spotifyMiniPlayer = new SpotifyMiniPlayer());
         this.addModule(new Notifications());
         this.addModule(new Indicators());
         this.addModule(new ItemESP());

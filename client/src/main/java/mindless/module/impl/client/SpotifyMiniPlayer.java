@@ -51,9 +51,13 @@ public static SliderSetting lyricsPosX;
     public static SliderSetting lyricsPosY;
     public static SliderSetting lyricsScale;
 
-    public SpotifyMiniPlayer(Module settingOwner) {
+    public SpotifyMiniPlayer() {
+        this(null);
+    }
+
+    public SpotifyMiniPlayer(Module owner) {
         super("Spotify Info", "Shows your current track, art and lyrics.", category.render);
-        this.settingOwner = settingOwner;
+        this.settingOwner = owner == null ? this : owner;
         settingOwner.registerSetting(new DescriptionSetting("Spotify info"));
         settingOwner.registerSetting(widgetStyle = new SliderSetting("Spotify mode", 0, new String[]{"Modern", "Old"}));
         settingOwner.registerSetting(widgetFont = new SliderSetting("Spotify font", 0, FONT_OPTIONS));
