@@ -8,6 +8,14 @@ endif()
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# MindlessNative is manually mapped into JVMs that may ship their own, older
+# MSVC runtime DLLs (Lunar does this).  A dynamic CRT import would then be
+# resolved against whichever vcruntime140.dll the game loaded first, which is
+# not necessarily ABI-compatible with the one used to build this DLL.
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 option(MINDLESS_PRODUCTION "Disable diagnostic logging in production builds" OFF)
 
 # ---------------------------------------------------------------------------

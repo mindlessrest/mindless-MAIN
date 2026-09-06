@@ -48,6 +48,64 @@ namespace mindless
             return api.AllocateVirtualMemory && api.WriteVirtualMemory
                 && api.FreeVirtualMemory && api.CreateThreadEx && api.WaitForSingleObject;
         }
+
+        uintptr_t find_remote_module_base(uint32_t processId, const wchar_t* moduleName)
+        {
+            HANDLE snap = CreateToolhelp32Snapshot(
+                TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
+            if (snap == INVALID_HANDLE_VALUE) return 0;
+
+            MODULEENTRY32W me = {};
+            me.dwSize = sizeof(me);
+            uintptr_t result = 0;
+            if (Module32FirstW(snap, &me))
+            {
+                do
+                {
+                    if (_wcsicmp(me.szModule, moduleName) == 0)
+                    {
+                        result = reinterpret_cast<uintptr_t>(me.modBaseAddr);
+                        break;
+                    }
+                } while (Module32NextW(snap, &me));
+            }
+            CloseHandle(snap);
+            return result;
+        }
+
+        // GetProcAddress can return an address owned by a forwarding module
+        // (for example KernelBase or ucrtbase), not by the HMODULE passed to
+        // it. Translate through the function's real owner and the target's
+        // corresponding module base. Copying a local absolute address into a
+        // different process is invalid when ASLR bases differ.
+        uintptr_t remote_address_for_local_proc(uint32_t processId, FARPROC localProc)
+        {
+            if (!localProc) return 0;
+
+            MEMORY_BASIC_INFORMATION memory = {};
+            if (VirtualQuery(reinterpret_cast<const void*>(localProc),
+                    &memory, sizeof(memory)) != sizeof(memory)
+                || !memory.AllocationBase)
+                return 0;
+
+            auto localOwner = static_cast<HMODULE>(memory.AllocationBase);
+            wchar_t ownerPath[MAX_PATH] = {};
+            DWORD pathLength = GetModuleFileNameW(
+                localOwner, ownerPath, MAX_PATH);
+            if (pathLength == 0 || pathLength >= MAX_PATH) return 0;
+
+            const wchar_t* ownerName = wcsrchr(ownerPath, L'\\');
+            ownerName = ownerName ? ownerName + 1 : ownerPath;
+            uintptr_t remoteOwner = find_remote_module_base(processId, ownerName);
+            if (!remoteOwner) return 0;
+
+            return remoteOwner
+                + (reinterpret_cast<uintptr_t>(localProc)
+                    - reinterpret_cast<uintptr_t>(localOwner));
+        }
+
+        uintptr_t remote_proc(uint32_t processId, const wchar_t* moduleName,
+            const char* procName);
         // ---------------------------------------------------------------------------
         // Trampoline context — written to remote process alongside the trampoline code.
         // The trampoline reads this struct to call RtlAddFunctionTable + DllMain.
@@ -142,8 +200,14 @@ namespace mindless
             SIZE_T written = 0;
             nt.WriteVirtualMemory(process, remoteName,
                 const_cast<char*>(dllName), nameLen, &written);
-            auto loadLib = reinterpret_cast<PVOID>(
-                GetProcAddress(GetModuleHandleW(XORSTRW(L"kernel32.dll")), XORSTR("LoadLibraryA")));
+            auto loadLib = reinterpret_cast<PVOID>(remote_proc(
+                processId, XORSTRW(L"kernel32.dll"), XORSTR("LoadLibraryA")));
+            if (!loadLib)
+            {
+                SIZE_T freeSize = 0;
+                nt.FreeVirtualMemory(process, &remoteName, &freeSize, MEM_RELEASE);
+                return false;
+            }
             HANDLE thread = nullptr;
             NTSTATUS status = nt.CreateThreadEx(&thread, THREAD_ALL_ACCESS, nullptr,
                 process, loadLib, remoteName, 0, 0, 0, 0, nullptr);
@@ -201,8 +265,9 @@ namespace mindless
                             staged + orig->u1.AddressOfData);
                         proc = GetProcAddress(localMod, import->Name);
                     }
-                    if (!proc) return false;
-                    thunk->u1.Function = reinterpret_cast<ULONGLONG>(proc);
+                    uintptr_t remoteProc = remote_address_for_local_proc(processId, proc);
+                    if (!remoteProc) return false;
+                    thunk->u1.Function = static_cast<ULONGLONG>(remoteProc);
                     ++thunk;
                     ++orig;
                 }
@@ -218,27 +283,7 @@ namespace mindless
         {
             HMODULE localMod = GetModuleHandleW(moduleName);
             FARPROC localProc = localMod ? GetProcAddress(localMod, procName) : nullptr;
-            if (!localProc) return 0;
-            HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
-            if (snap == INVALID_HANDLE_VALUE) return 0;
-            MODULEENTRY32W me = {};
-            me.dwSize = sizeof(me);
-            uintptr_t remoteBase = 0;
-            if (Module32FirstW(snap, &me))
-            {
-                do
-                {
-                    if (_wcsicmp(me.szModule, moduleName) == 0)
-                    {
-                        remoteBase = reinterpret_cast<uintptr_t>(me.modBaseAddr);
-                        break;
-                    }
-                } while (Module32NextW(snap, &me));
-            }
-            CloseHandle(snap);
-            if (!remoteBase) return 0;
-            return remoteBase + (reinterpret_cast<uintptr_t>(localProc)
-                - reinterpret_cast<uintptr_t>(localMod));
+            return remote_address_for_local_proc(processId, localProc);
         }
     } // namespace
     bool manual_map_inject(HANDLE process, uint32_t processId,
