@@ -41,8 +41,6 @@ VOYAGER_PRODUCTION_FLAGS = (
     " -mllvm -split_num=3"
     " -mllvm -enable-strcry"
     " -mllvm -strcry_prob=100"
-    " -mllvm -enable-indibran"
-    " -mllvm -indibran-enc-jump-target"
     " -mllvm -enable-funcwra"
     " -mllvm -fw_prob=70"
     " -mllvm -fw_times=1"
@@ -378,9 +376,6 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
                 #     -constenc_subxor_prob=80
                 #   -enable-strcry        : encrypts every string literal; defeats grep/strings
                 #     -strcry_prob=100    : encrypt all string elements
-                #   -enable-indibran      : replaces direct jumps with indirect ones via a
-                #                           runtime-computed jump table; defeats static CFG
-                #     -indibran-enc-jump-target : encrypt jump-table targets for extra depth
                 #   -enable-funcwra       : wraps callsites in thunks; obscures call graph
                 #     -fw_prob=80         : wrap 80 % of callsites
                 #     -fw_times=3         : triple-wrap
@@ -558,8 +553,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     #     -constenc_subxor_prob=80
     #   -enable-strcry              : string encryption
     #     -strcry_prob=100          : all string elements
-    #   -enable-indibran            : indirect branching via runtime jump table
-    #     -indibran-enc-jump-target : encrypt jump-table targets
     #   -enable-funcwra             : callsite thunk wrapping (obscures call graph)
     #     -fw_prob=80
     #     -fw_times=3
@@ -601,6 +594,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
         or expected_production_cache not in cache_text
         or expected_debug_cache not in cache_text
         or expected_build_type_cache not in cache_text
+        or (bool(hikari_cflags) and hikari_cflags not in cache_text)
     )
     if needs_configure:
         if not run(cfg_cmd, CLIENT_DIR, extra_env):
