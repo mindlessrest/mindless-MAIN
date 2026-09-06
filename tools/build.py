@@ -27,7 +27,17 @@ CPU_COUNT = max(1, os.cpu_count() or 4)
 # Voyager passes are deliberately broad in production, but their expansion must
 # stay bounded: constenc and repeated pass loops can make a single clang process
 # exhaust the memory available on a GitHub-hosted runner.
-VOYAGER_PRODUCTION_FLAGS = (
+VOYAGER_LOADER_FLAGS = (
+    "-mllvm -voyager"
+    " -mllvm -enable-cffobf"
+    " -mllvm -enable-subobf"
+    " -mllvm -sub_prob=50"
+    " -mllvm -sub_loop=1"
+    " -mllvm -enable-splitobf"
+    " -mllvm -split_num=2"
+)
+
+VOYAGER_NATIVE_FLAGS = (
     "-mllvm -voyager"
     " -mllvm -enable-cffobf"
     " -mllvm -enable-bcfobf"
@@ -383,7 +393,7 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
                 # but avoid the multiplicative pass settings that can make LLVM exhaust
                 # memory on CI runners. Linking still uses the separately detected normal
                 # LLVM lld-link.exe through CMAKE_LINKER below.
-                cv["MINDLESS_PRODUCTION_OBFUSCATION_FLAGS"] = VOYAGER_PRODUCTION_FLAGS
+                cv["MINDLESS_PRODUCTION_OBFUSCATION_FLAGS"] = VOYAGER_LOADER_FLAGS
                 cv["MINDLESS_PRIVATE_PDB"] = "ON"
             else:
                 cv.pop("MINDLESS_PRODUCTION_OBFUSCATION_FLAGS", None)
@@ -558,7 +568,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     #     -fw_times=3
     hikari_cflags = ""
     if voyager and native_clang != clang:
-        hikari_cflags = VOYAGER_PRODUCTION_FLAGS
+        hikari_cflags = VOYAGER_NATIVE_FLAGS
 
 
     cfg_cmd = [
