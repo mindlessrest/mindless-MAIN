@@ -779,12 +779,23 @@ cleanup:
 
 static int loader_has_class(JNIEnv *env, jobject loader,
         const char *dotted_name) {
+    vape_log(L"class probe begin: %hs loader=%p env=%p", dotted_name, loader, env);
     jclass loader_class = (*env)->FindClass(env, "java/lang/ClassLoader");
+    if ((*env)->ExceptionCheck(env)) {
+        vape_log_pending_exception(env, L"class probe FindClass(java.lang.ClassLoader)");
+        return 0;
+    }
     jmethodID load_class = loader_class == NULL ? NULL : (*env)->GetMethodID(env,
             loader_class, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    if ((*env)->ExceptionCheck(env)) {
+        vape_log_pending_exception(env, L"class probe resolve ClassLoader.loadClass");
+        if (loader_class != NULL) (*env)->DeleteLocalRef(env, loader_class);
+        return 0;
+    }
     jclass found = load_class == NULL ? NULL : load_class_via_loader(
             env, loader, load_class, dotted_name);
     int result = found != NULL;
+    vape_log(L"class probe end: %hs present=%d class=%p", dotted_name, result, found);
     if (found != NULL) (*env)->DeleteLocalRef(env, found);
     if (loader_class != NULL) (*env)->DeleteLocalRef(env, loader_class);
     return result;
@@ -852,6 +863,7 @@ static int set_system_property(JNIEnv *env, const char *property_name,
     jstring value = NULL;
     jobject previous = NULL;
     int result = 0;
+    vape_log(L"system property begin: %hs=%hs", property_name, property_value);
     if (set_property == NULL) {
         vape_log_pending_exception(env, L"resolve System.setProperty");
         goto cleanup;
@@ -865,6 +877,7 @@ static int set_system_property(JNIEnv *env, const char *property_name,
         goto cleanup;
     }
     result = 1;
+    vape_log(L"system property end: %hs=%hs", property_name, property_value);
 
 cleanup:
     if (previous != NULL) (*env)->DeleteLocalRef(env, previous);
@@ -1751,27 +1764,48 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
         goto cleanup;
     }
     vape_log(L"runtime namespace=%d", runtime_namespace);
+    vape_log(L"progress update begin: namespace detected");
     send_progress(0.55f, "Detected runtime namespace");
-embedded_forge = runtime_namespace == MINDLESS_NAMESPACE_MCP
-            && !(loader_has_class(env, loader,
-                    "net.minecraftforge.common.MinecraftForge")
-                 && loader_has_class(env, loader,
-                    "net.minecraftforge.fml.common.eventhandler.EventBus"));
+    vape_log(L"progress update end: namespace detected");
+    embedded_forge = 0;
+    if (runtime_namespace == MINDLESS_NAMESPACE_MCP) {
+        int has_minecraft_forge;
+        int has_event_bus;
+        vape_log(L"Lunar compatibility probe begin");
+        has_minecraft_forge = loader_has_class(env, loader,
+                "net.minecraftforge.common.MinecraftForge");
+        vape_log(L"Lunar compatibility probe midpoint: MinecraftForge=%d",
+                has_minecraft_forge);
+        has_event_bus = loader_has_class(env, loader,
+                "net.minecraftforge.fml.common.eventhandler.EventBus");
+        vape_log(L"Lunar compatibility probe end: MinecraftForge=%d EventBus=%d",
+                has_minecraft_forge, has_event_bus);
+        embedded_forge = !(has_minecraft_forge && has_event_bus);
+    }
+    vape_log(L"runtime contracts selected: embedded_forge=%d", embedded_forge);
+    vape_log(L"runtime property configuration begin");
     if (!set_runtime_properties(env, runtime_namespace, embedded_forge)) {
+        vape_log(L"runtime property configuration failed");
         exit_code = 17;
         goto cleanup;
     }
+    vape_log(L"runtime property configuration end");
     send_progress(0.57f, "Runtime properties configured");
     if (runtime_namespace == MINDLESS_NAMESPACE_MCP) {
         payload_resource_id = MINDLESS_LUNAR_PAYLOAD_RESOURCE_ID;
     } else {
         payload_resource_id = MINDLESS_FORGE_PAYLOAD_RESOURCE_ID;
     }
+    vape_log(L"payload selection: resource=%d namespace=%d embedded_forge=%d",
+            payload_resource_id, runtime_namespace, embedded_forge);
     send_progress(0.59f, "Loading payload");
+    vape_log(L"payload load begin: resource=%d", payload_resource_id);
     if (!load_payload_from_memory(env, loader, payload_resource_id)) {
+        vape_log(L"payload load failed: resource=%d", payload_resource_id);
         exit_code = 7;
         goto cleanup;
     }
+    vape_log(L"payload load end: resource=%d", payload_resource_id);
     send_progress(0.65f, "Payload loaded");
 if (!validate_required_forge_api(env, loader)) {
         exit_code = 16;
