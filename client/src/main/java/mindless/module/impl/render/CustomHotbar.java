@@ -9,6 +9,7 @@ import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.gui.GuiChat;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.renderer.entity.RenderItem;
@@ -133,6 +134,11 @@ public class CustomHotbar extends Module {
         float barHeight = BASE_BAR_HEIGHT * uiScale;
         float barLeft = sw / 2.0f - barWidth / 2.0f;
         float barTop = sh - barHeight - (float) verticalOffset.getInput();
+        if (mc.currentScreen instanceof GuiChat) {
+            // GuiChat owns the bottom 15 scaled pixels. Keep the cosmetic and its selection
+            // animation fully above that input surface instead of blending both panels together.
+            barTop -= 17.0f;
+        }
         float radius = (float) rounding.getInput() * uiScale;
         int slot = player.inventory.currentItem;
 
