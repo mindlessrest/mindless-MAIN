@@ -376,10 +376,6 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
                     " -mllvm -sub_loop=1"
                     " -mllvm -enable-splitobf"
                     " -mllvm -split_num=3"
-                    " -mllvm -enable-constenc"
-                    " -mllvm -constenc_times=1"
-                    " -mllvm -constenc_togv"
-                    " -mllvm -constenc_togv_prob=50"
                     " -mllvm -enable-strcry"
                     " -mllvm -strcry_prob=100"
                     " -mllvm -enable-indibran"
@@ -574,10 +570,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
             " -mllvm -sub_loop=1"
             " -mllvm -enable-splitobf"
             " -mllvm -split_num=3"
-            " -mllvm -enable-constenc"
-            " -mllvm -constenc_times=1"
-            " -mllvm -constenc_togv"
-            " -mllvm -constenc_togv_prob=50"
             " -mllvm -enable-strcry"
             " -mllvm -strcry_prob=100"
             " -mllvm -enable-indibran"
@@ -627,7 +619,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     else:
         info("configure skipped (CMakeCache up to date)")
 
-    native_jobs = 2 if voyager else CPU_COUNT
+    native_jobs = 1 if voyager else CPU_COUNT
     build_cmd = [str(cmake), "--build", str(NATIVE_BUILD_DIR), "--config", "Release",
                  "--parallel", str(native_jobs)]
     if not run(build_cmd, CLIENT_DIR, extra_env):
