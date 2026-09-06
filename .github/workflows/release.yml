@@ -98,25 +98,11 @@ jobs:
             -Headers $headers `
             -OutFile $archive
 
-          $protectorUrl = "https://api.github.com/repos/mindlessrest/ci/contents/Ryujin.zip?ref=$env:VOYAGER_REVISION"
-
-          Invoke-WebRequest `
-            -Uri $protectorUrl `
-            -Headers $headers `
-            -OutFile $protectorArchive
-
           if (
             !(Test-Path -LiteralPath $archive -PathType Leaf) -or
             (Get-Item -LiteralPath $archive).Length -eq 0
           ) {
             throw "Voyager archive download failed"
-          }
-
-          if (
-            !(Test-Path -LiteralPath $protectorArchive -PathType Leaf) -or
-            (Get-Item -LiteralPath $protectorArchive).Length -eq 0
-          ) {
-            throw "Mindless protector archive download failed"
           }
 
           & 7z x $archive "-o$destination" -y
@@ -125,16 +111,44 @@ jobs:
             throw "7-Zip failed to extract Voyager.7z (exit $LASTEXITCODE)"
           }
 
-          Expand-Archive `
-            -LiteralPath $protectorArchive `
-            -DestinationPath $protectorDestination `
-            -Force
+          # The Mindless protector (Ryujin.zip) is optional. When it is absent from
+          # mindlessrest/ci the loader simply ships unprotected instead of failing the
+          # whole release, so a 404 here is expected rather than an error.
+          $protectorUrl = "https://api.github.com/repos/mindlessrest/ci/contents/Ryujin.zip?ref=$env:VOYAGER_REVISION"
 
-          foreach ($file in @("Mindless.exe", "MindlessCore.dll")) {
-            $path = Join-Path $protectorDestination $file
+          try {
+            Invoke-WebRequest `
+              -Uri $protectorUrl `
+              -Headers $headers `
+              -OutFile $protectorArchive `
+              -ErrorAction Stop
+          }
+          catch {
+            $status = $_.Exception.Response.StatusCode.value__
+            Write-Warning "Mindless protector download failed (HTTP $status). Loader will ship UNPROTECTED."
 
-            if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
-              throw "Ryujin.zip does not contain $file at its archive root"
+            if (Test-Path -LiteralPath $protectorArchive) {
+              Remove-Item -LiteralPath $protectorArchive -Force
+            }
+          }
+
+          # Only extract and validate when the archive actually came down; a missing
+          # protector is tolerated, but a corrupt or incomplete one is still a failure.
+          if (
+            (Test-Path -LiteralPath $protectorArchive -PathType Leaf) -and
+            (Get-Item -LiteralPath $protectorArchive).Length -gt 0
+          ) {
+            Expand-Archive `
+              -LiteralPath $protectorArchive `
+              -DestinationPath $protectorDestination `
+              -Force
+
+            foreach ($file in @("Mindless.exe", "MindlessCore.dll")) {
+              $path = Join-Path $protectorDestination $file
+
+              if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
+                throw "Ryujin.zip does not contain $file at its archive root"
+              }
             }
           }
 
@@ -192,7 +206,28 @@ jobs:
             throw "clang -print-resource-dir failed"
           }
 
+      - name: Detect Mindless protector
+        id: protector
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:GITHUB_WORKSPACE ".ci\mindless-protector"
+          $protector = Join-Path $destination "Mindless.exe"
+          $core = Join-Path $destination "MindlessCore.dll"
+
+          if (
+            (Test-Path -LiteralPath $protector -PathType Leaf) -and
+            (Test-Path -LiteralPath $core -PathType Leaf)
+          ) {
+            "available=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Mindless protector present; loader will be protected."
+          }
+          else {
+            "available=false" >> $env:GITHUB_OUTPUT
+            Write-Warning "Mindless protector not available; loader will ship UNPROTECTED."
+          }
+
       - name: Resolve and validate Mindless protector
+        if: steps.protector.outputs.available == 'true'
         shell: pwsh
         run: |
           $destination = Join-Path $env:GITHUB_WORKSPACE ".ci\mindless-protector"
@@ -250,6 +285,7 @@ jobs:
         run: python tools/build.py --prod --no-cache
 
       - name: Protect production loader
+        if: steps.protector.outputs.available == 'true'
         shell: pwsh
         run: |
           $input = Join-Path $env:GITHUB_WORKSPACE "MindlessLoader.exe"
