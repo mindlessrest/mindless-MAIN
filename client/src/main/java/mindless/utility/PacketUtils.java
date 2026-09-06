@@ -27,14 +27,6 @@ public class PacketUtils implements IMinecraftInstance {
         return skipReceiveEvent.remove(packet);
     }
 
-    public static boolean consumeSendEvent(Packet<?> packet) {
-        return false;
-    }
-
-    public static boolean consumeReceiveEvent(Packet<?> packet) {
-        return false;
-    }
-
     public static void sendPacketNoEvent(Packet packet) {
         if (packet == null || isClientboundPacket(packet)) {
             return;

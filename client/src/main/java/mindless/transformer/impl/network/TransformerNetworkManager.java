@@ -24,7 +24,7 @@ public class TransformerNetworkManager {
     @CInject(method = "sendPacket(Lnet/minecraft/network/Packet;)V",
             target = @CTarget("HEAD"), cancellable = true)
     public void sendPacket(Packet packet, InjectionCallback ci) {
-        if (PacketUtils.consumeSendEvent(packet)) {
+        if (PacketUtils.consumeSendEventSkip(packet)) {
             MinecraftForge.EVENT_BUS.post(new NoEventPacketEvent(packet));
             SentPlayerState.record(packet);
             return;
@@ -49,7 +49,7 @@ public class TransformerNetworkManager {
     @CInline
     @CInject(method = "channelRead0", target = @CTarget("HEAD"), cancellable = true)
     public void receivePacket(ChannelHandlerContext ctx, Packet packet, InjectionCallback ci) {
-        if (PacketUtils.consumeReceiveEvent(packet)) return;
+        if (PacketUtils.consumeReceiveEventSkip(packet)) return;
         ReceivePacketEvent event = new ReceivePacketEvent(packet);
         MinecraftForge.EVENT_BUS.post(event);
         if (event.isCanceled()) ci.setCancelled(true);
