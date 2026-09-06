@@ -19,6 +19,9 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      forge-jar-sha256: ${{ steps.release-metadata.outputs.forge-jar-sha256 }}
+      lunar-jar-sha256: ${{ steps.release-metadata.outputs.lunar-jar-sha256 }}
 
     steps:
       - name: Check out source
@@ -225,11 +228,14 @@ jobs:
           python tools/build.py --prod --no-cache
 
       - name: Verify release files
+        id: release-metadata
         shell: pwsh
         run: |
           $files = @(
             "MindlessLoader.exe",
             "client/native_build/dist/MindlessNative.dll",
+            "client/build/libs/mindless-obf.jar",
+            "client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar",
             "client/build/mappings/forge.json",
             "client/build/mappings/lunar.json"
           )
@@ -243,6 +249,11 @@ jobs:
               throw "Empty release file: $file"
             }
           }
+
+          $forgeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath "client/build/libs/mindless-obf.jar").Hash.ToLowerInvariant()
+          $lunarHash = (Get-FileHash -Algorithm SHA256 -LiteralPath "client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar").Hash.ToLowerInvariant()
+          "forge-jar-sha256=$forgeHash" >> $env:GITHUB_OUTPUT
+          "lunar-jar-sha256=$lunarHash" >> $env:GITHUB_OUTPUT
 
           New-Item -ItemType Directory -Path release -Force | Out-Null
 
@@ -346,7 +357,9 @@ jobs:
               -native "$staging/MindlessNative.dll" \
               -build-id "${{ github.sha }}" \
               -forge-mapping "$staging/forge.json" \
-              -lunar-mapping "$staging/lunar.json"
+              -lunar-mapping "$staging/lunar.json" \
+              -forge-jar-sha256 "${{ needs.build.outputs.forge-jar-sha256 }}" \
+              -lunar-jar-sha256 "${{ needs.build.outputs.lunar-jar-sha256 }}"
 
             rm -f \
               "$staging/MindlessLoader.exe" \
