@@ -58,11 +58,6 @@ def section(title): print(f"\n{BOLD}{title}{RESET}")
 
 
 def load_tool_cache():
-    """Cached results from a previous run's tool detection. The Program Files
-    / Visual Studio crawl this script does is the slowest part of a cold run
-    (can be seconds on a big disk), and the answer almost never changes
-    between builds - so we trust a cached path as long as it still exists
-    on disk, and re-scan from scratch otherwise."""
     if not TOOL_CACHE_FILE.is_file():
         return {}
     try:
@@ -116,13 +111,6 @@ def glob_first(pattern):
 
 
 def find_in_vs_installs(relative_sub_path):
-    """
-    Walk every Visual Studio root/year/variant combo that actually exists
-    on disk and look for relative_sub_path inside it. Year folders are
-    discovered dynamically (not hardcoded), so this works for any VS
-    version - 2019, 2022, 2026, whatever comes next.
-    Years are checked newest-first.
-    """
     for root in VS_ROOTS:
         root_p = Path(root)
         if not root_p.is_dir():
@@ -197,8 +185,6 @@ def detect_cmake():
     return find_in_vs_installs(sub)
 
 
-# Roots to crawl looking for javaw.exe. Covers the common vendor install
-# locations plus user-level installs (sdkman-on-windows style, scoop, jenv).
 JAVA_SEARCH_ROOTS = [
     r"C:\Program Files\Eclipse Adoptium",
     r"C:\Program Files\Java",
@@ -212,8 +198,6 @@ JAVA_SEARCH_ROOTS = [
 
 
 def _find_javaw_under(root, max_depth=6):
-    """os.walk with a depth cap - a plain recursive glob over Program Files
-    is slow and JDK installs are never nested more than a few levels deep."""
     found = []
     root_p = Path(root)
     if not root_p.is_dir():
@@ -230,22 +214,12 @@ def _find_javaw_under(root, max_depth=6):
 
 
 def _java_home_from_javaw(javaw_path):
-    # javaw.exe normally lives in <jdk_home>/bin/javaw.exe
     bin_dir = javaw_path.parent
     home = bin_dir.parent if bin_dir.name.lower() == "bin" else bin_dir
     return home
 
 
 def _query_java_version(java_home):
-    """Resolves the major version of a JDK/JRE home.
-
-    Fast path: every JDK 9+ ships a plain-text `release` file right next to
-    `bin/` with a `JAVA_VERSION="17.0.9"` line - reading it is a single
-    file read with no process spawn. Only JDK 8 and earlier lack this file
-    (or if it's missing/corrupt for some other reason), so `java -version`
-    - which pays for a full JVM bootstrap, ~100-300ms per install - is kept
-    strictly as a fallback rather than the default path.
-    """
     release_file = java_home / "release"
     if release_file.is_file():
         try:
@@ -280,20 +254,6 @@ def _query_java_version(java_home):
 
 
 def scan_java_installs():
-    """
-    Finds every javaw.exe reachable under the known install roots (plus
-    JAVA_HOME if set), resolves each to a JDK home, and queries its real
-    version via `java -version` rather than trusting the folder name.
-
-    Returns a list of dicts: {home, major, has_javac}, deduped by home,
-    sorted best-first (real JDK before JRE, higher version first).
-
-    The root walk and the per-install `java -version` calls are both
-    I/O-bound (disk seeks / subprocess wait), so both are fanned out
-    across a thread pool instead of run one-after-another - on a machine
-    with several JDKs installed this is the difference between walking
-    Program Files N times sequentially and walking it once in parallel.
-    """
     homes = set()
 
     env_home = os.environ.get("JAVA_HOME")
@@ -327,9 +287,6 @@ def scan_java_installs():
 
 
 def find_jdk(installs, major=None):
-    """Pick the best install from scan_java_installs(). If major is given,
-    prefer an exact version match (still preferring a real JDK over a bare
-    JRE); otherwise just return the best available."""
     if major is not None:
         exact = [i for i in installs if i["major"] == major]
         if exact:
@@ -348,9 +305,6 @@ def run(cmd, cwd, env=None):
 
 
 def update_preset(clang, lld, ninja, vcpkg, voyager=None):
-    # The preset carries absolute toolchain paths, so it is not tracked -- it used to flip back
-    # and forth in every commit as each contributor rebuilt. A fresh clone seeds it from the
-    # template instead, and every path below is overwritten anyway.
     source = PRESET_FILE if PRESET_FILE.is_file() else PRESET_TEMPLATE
     if not source.is_file():
         err(f"{source.name} not found in loader/")
@@ -375,7 +329,64 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
             cv["VCPKG_INSTALLED_DIR"]  = str(LOADER_DIR / "vcpkg_installed").replace("\\", "/")
             cv["VCPKG_TARGET_TRIPLET"] = "x64-windows-static"
             if voyager:
-                hikari_flags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-subobf -mllvm -sub_prob=70 -mllvm -sub_loop=2"
+                # ── Loader --prod obfuscation (Voyager/Hikari LLVM passes) ────────────────
+                # Rationale for each pass:
+                #   -enable-cffobf        : flattens every function into a dispatch-switch loop;
+                #                           the strongest single anti-analysis pass
+                #   -enable-bcfobf        : inserts opaque predicates + dead branches; forces
+                #                           decompilers to reason about unreachable code paths
+                #     -bcf_prob=100       : apply to every eligible basic block
+                #     -bcf_loop=3         : run the pass three times per function for deeper nesting
+                #     -bcf_cond_compl=5   : maximally complex opaque predicate expressions
+                #     -bcf_junkasm        : inject junk inline asm into altered blocks
+                #   -enable-subobf        : replaces arithmetic/logic with equivalent but
+                #                           harder-to-pattern-match sequences
+                #     -sub_prob=100       : substitute every eligible instruction
+                #     -sub_loop=3         : loop substitution 3x for compounding effect
+                #   -enable-splitobf      : splits every basic block into multiple; inflates CFG
+                #     -split_num=10       : maximum allowed splits per block
+                #   -enable-constenc      : XOR-encrypts integer constants at compile time,
+                #                           decrypts at runtime; defeats constant-propagation
+                #     -constenc_times=3   : loop 3x
+                #     -constenc_togv      : also move constants to global variables
+                #     -constenc_togv_prob=80
+                #     -constenc_subxor    : obfuscate the XOR itself
+                #     -constenc_subxor_prob=80
+                #   -enable-strcry        : encrypts every string literal; defeats grep/strings
+                #     -strcry_prob=100    : encrypt all string elements
+                #   -enable-indibran      : replaces direct jumps with indirect ones via a
+                #                           runtime-computed jump table; defeats static CFG
+                #     -indibran-enc-jump-target : encrypt jump-table targets for extra depth
+                #   -enable-funcwra       : wraps callsites in thunks; obscures call graph
+                #     -fw_prob=80         : wrap 80 % of callsites
+                #     -fw_times=3         : triple-wrap
+                hikari_flags = (
+                    "-mllvm -voyager"
+                    " -mllvm -enable-cffobf"
+                    " -mllvm -enable-bcfobf"
+                    " -mllvm -bcf_prob=100"
+                    " -mllvm -bcf_loop=3"
+                    " -mllvm -bcf_cond_compl=5"
+                    " -mllvm -bcf_junkasm"
+                    " -mllvm -enable-subobf"
+                    " -mllvm -sub_prob=100"
+                    " -mllvm -sub_loop=3"
+                    " -mllvm -enable-splitobf"
+                    " -mllvm -split_num=10"
+                    " -mllvm -enable-constenc"
+                    " -mllvm -constenc_times=3"
+                    " -mllvm -constenc_togv"
+                    " -mllvm -constenc_togv_prob=80"
+                    " -mllvm -constenc_subxor"
+                    " -mllvm -constenc_subxor_prob=80"
+                    " -mllvm -enable-strcry"
+                    " -mllvm -strcry_prob=100"
+                    " -mllvm -enable-indibran"
+                    " -mllvm -indibran-enc-jump-target"
+                    " -mllvm -enable-funcwra"
+                    " -mllvm -fw_prob=80"
+                    " -mllvm -fw_times=3"
+                )
                 cv["MINDLESS_PRODUCTION_OBFUSCATION_FLAGS"] = hikari_flags
                 cv["MINDLESS_PRIVATE_PDB"] = "ON"
             else:
@@ -388,9 +399,6 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
     if current_contents != preset_contents:
         PRESET_FILE.write_text(preset_contents, encoding="utf-8")
     new_text = json.dumps(data, sort_keys=True)
-    # If the preset changed (e.g. Hikari flags were added or removed), the
-    # existing CMakeCache will have stale compiler/flag values baked in.
-    # Delete it so the next build_loader call is forced to reconfigure.
     if old_text != new_text:
         cmake_cache = BUILD_DIR / "CMakeCache.txt"
         if cmake_cache.is_file():
@@ -416,7 +424,6 @@ def voyager_cxx(root):
 
 
 def build_obf_jar(jdk):
-    """Build the MindlessObf tool when its source is newer than the jar."""
     if OBF_JAR.is_file() and os.environ.get("MINDLESS_OBF_CACHE_HIT") == "1":
         ok("MindlessObf restored from cache")
         return True
@@ -441,7 +448,6 @@ def build_obf_jar(jdk):
 
 
 def obfuscate_jar(jdk, input_jar, output_jar, mapping_file, label):
-    """Run MindlessObf on a JAR."""
     if not OBF_JAR.is_file():
         warn(f"MindlessObf jar not found, skipping {label} obfuscation")
         return False
@@ -487,8 +493,6 @@ def build_client(jdk17):
 def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     section("MindlessNative.dll - build")
 
-    # Only use obfuscated JARs in --prod mode; never silently pick them up
-    # from a previous prod run when building normally.
     if prod:
         forge_jar = FORGE_JAR_OBF if FORGE_JAR_OBF.is_file() else FORGE_JAR
         lunar_jar = LUNAR_JAR_OBF if LUNAR_JAR_OBF.is_file() else LUNAR_JAR
@@ -510,7 +514,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     if lunar_jar == LUNAR_JAR_OBF:
         ok(f"Using obfuscated Lunar JAR")
 
-    # Use Hikari for the native DLL if available
     native_clang = clang
     if voyager:
         hikari_clang = voyager / "bin" / "clang.exe"
@@ -520,11 +523,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
 
     NATIVE_BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Force Ninja to re-embed the JAR by removing the compiled resource artifact
-    # and the output DLL. Ninja only tracks .rc file timestamps, not the content
-    # of files referenced inside .rc (the JAR). Simply touching payload.rc is
-    # unreliable because configure_file may write the same bytes without changing
-    # the mtime. Deleting the .res and output DLL guarantees a full recompile.
     for res_file in NATIVE_BUILD_DIR.rglob("payload.rc.res"):
         res_file.unlink(missing_ok=True)
     dist_dll = NATIVE_BUILD_DIR / "dist" / "MindlessNative.dll"
@@ -534,9 +532,65 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     except PermissionError:
         warn("MindlessNative.dll is in use by another process, skipping deletion")
 
+    # ── MindlessNative.dll --prod obfuscation (Voyager/Hikari LLVM passes) ───
+    # Stronger than the loader flags intentionally: the native DLL is the
+    # highest-value target (it carries the embedded JARs and injection logic),
+    # so it receives the full suite.  Passes not used for the loader
+    # (bcfobf, splitobf, constenc, funcwra) are added here.
+    #
+    #   -enable-cffobf              : control-flow flattening (dispatch loop)
+    #   -enable-bcfobf              : bogus control flow + opaque predicates
+    #     -bcf_prob=100             : all blocks
+    #     -bcf_loop=3               : three nesting passes
+    #     -bcf_cond_compl=5         : most complex predicate form
+    #     -bcf_junkasm              : inject junk asm into altered blocks
+    #   -enable-subobf              : instruction substitution
+    #     -sub_prob=100             : all eligible instructions
+    #     -sub_loop=3               : three substitution passes
+    #   -enable-splitobf            : basic-block splitting (inflates CFG)
+    #     -split_num=10             : maximum splits per block
+    #   -enable-constenc            : constant encryption (XOR at rest)
+    #     -constenc_times=3
+    #     -constenc_togv            : hoist constants into global vars
+    #     -constenc_togv_prob=80
+    #     -constenc_subxor          : obfuscate the XOR operator itself
+    #     -constenc_subxor_prob=80
+    #   -enable-strcry              : string encryption
+    #     -strcry_prob=100          : all string elements
+    #   -enable-indibran            : indirect branching via runtime jump table
+    #     -indibran-enc-jump-target : encrypt jump-table targets
+    #   -enable-funcwra             : callsite thunk wrapping (obscures call graph)
+    #     -fw_prob=80
+    #     -fw_times=3
     hikari_cflags = ""
     if voyager and native_clang != clang:
-        hikari_cflags = "-mllvm -voyager -mllvm -enable-cffobf -mllvm -enable-subobf -mllvm -sub_prob=30 -mllvm -enable-indibran -mllvm -enable-strcry"
+        hikari_cflags = (
+            "-mllvm -voyager"
+            " -mllvm -enable-cffobf"
+            " -mllvm -enable-bcfobf"
+            " -mllvm -bcf_prob=100"
+            " -mllvm -bcf_loop=3"
+            " -mllvm -bcf_cond_compl=5"
+            " -mllvm -bcf_junkasm"
+            " -mllvm -enable-subobf"
+            " -mllvm -sub_prob=100"
+            " -mllvm -sub_loop=3"
+            " -mllvm -enable-splitobf"
+            " -mllvm -split_num=10"
+            " -mllvm -enable-constenc"
+            " -mllvm -constenc_times=3"
+            " -mllvm -constenc_togv"
+            " -mllvm -constenc_togv_prob=80"
+            " -mllvm -constenc_subxor"
+            " -mllvm -constenc_subxor_prob=80"
+            " -mllvm -enable-strcry"
+            " -mllvm -strcry_prob=100"
+            " -mllvm -enable-indibran"
+            " -mllvm -indibran-enc-jump-target"
+            " -mllvm -enable-funcwra"
+            " -mllvm -fw_prob=80"
+            " -mllvm -fw_times=3"
+        )
 
     cfg_cmd = [
         str(cmake), "-S", str(NATIVE_DIR), "-B", str(NATIVE_BUILD_DIR),
@@ -559,13 +613,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
         + os.environ.get("PATH", "")
     }
 
-    # Re-running `cmake configure` unconditionally regenerates build.ninja on
-    # every invocation. Even when the regenerated file is logically the same,
-    # Ninja treats a changed build.ninja mtime as a reason to re-verify (and
-    # sometimes fully re-run) build steps beyond just the payload relink we
-    # actually want forced above - so a full native recompile was being
-    # triggered by *this* step, not by real source changes. Skip it unless
-    # the cache is missing or CMakeLists.txt actually changed.
     cmake_cache = NATIVE_BUILD_DIR / "CMakeCache.txt"
     cmakelists = NATIVE_DIR / "CMakeLists.txt"
     expected_production_cache = f"MINDLESS_PRODUCTION:BOOL={'ON' if prod else 'OFF'}"
@@ -623,12 +670,9 @@ def build_loader(cmake, extra_env):
     else:
         info("configure skipped (CMakeCache up to date)")
 
-    # Force rebuild when embedded assets change: touch the generated .rc so
-    # Ninja re-links the EXE with fresh MindlessNative.dll / other resources.
     loader_rc = BUILD_DIR / "resources_gen.rc"
     if loader_rc.is_file():
         loader_rc.touch()
-    # Also remove the cached .res and the EXE to guarantee full re-link.
     loader_res = BUILD_DIR / "resources_gen.res"
     if loader_res.is_file():
         loader_res.unlink()
@@ -675,11 +719,6 @@ def main():
 
     section("Detecting tools")
 
-    # clang/lld, ninja, vcpkg and cmake detection are each independent disk
-    # crawls (Program Files, VS install trees, PATH) with no shared state,
-    # so they're run concurrently instead of one after another. A cached
-    # path from a previous run skips the crawl entirely as long as it still
-    # points at a real file/dir on disk.
     cache = {} if no_cache_flag else load_tool_cache()
 
     def resolve_llvm():
@@ -761,7 +800,6 @@ def main():
     else:
         warn("No JDK found - MindlessNative.dll build will fail")
 
-    # Voyager (LLVM obfuscator) — only used in --prod mode
     voyager = None
     if prod_flag:
         voyager = detect_voyager()
@@ -788,7 +826,6 @@ def main():
             print(f"\n{BOLD}{RED}Build failed.{RESET}")
             sys.exit(1)
 
-        # Obfuscate JARs in --prod mode
         if prod_flag:
             section("JAR obfuscation")
             if not build_obf_jar(jdk17):
