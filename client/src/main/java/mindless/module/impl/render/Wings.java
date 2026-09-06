@@ -167,7 +167,7 @@ public class Wings extends Module {
         this.registerSetting(colorSpeed = new SliderSetting("Color speed", 1.0, 0.0, 5.0, 0.1));
         this.registerSetting(colorSpread = new SliderSetting("Color spread", 1.0, 0.0, 4.0, 0.1));
         this.registerSetting(transparent = new ButtonSetting("Transparent", false));
-        this.registerSetting(fade = new SliderSetting("Bottom fade", 0.78, 0.0, 1.0, 0.02));
+        this.registerSetting(fade = new SliderSetting("Bottom fade", 0.45, 0.0, 1.0, 0.02));
         this.registerSetting(size = new SliderSetting("Size", 1.0, 0.4, 2.5, 0.05));
         this.registerSetting(spread = new SliderSetting("Spread", 1.0, 0.4, 2.0, 0.05));
         this.registerSetting(flapSpeed = new SliderSetting("Flap speed", 1.0, 0.0, 4.0, 0.1));
@@ -319,9 +319,11 @@ public class Wings extends Module {
                 emitFeatherPasses(false);
             }
             else {
-                WingRenderPipeline.beginCore(walls);
+                // coverage first, with vertex alpha forced opaque so the alpha test sees the
+                // texture alpha alone. the fade must not decide what occludes what.
+                WingRenderPipeline.beginDepthPrepass(walls);
                 emitFeatherPasses(true);
-                WingRenderPipeline.beginFringe(walls);
+                WingRenderPipeline.beginColour(walls);
                 emitFeatherPasses(false);
             }
         }
@@ -431,7 +433,7 @@ public class Wings extends Module {
         float alpha = baseAlpha + (tipAlpha - baseAlpha) * u;
         float amount = (float) fade.getInput();
         if (amount > 0.0f && realMaxY > realMinY) {
-            float bottom = 1.0f - 0.94f * amount;
+            float bottom = 1.0f - 0.80f * amount;
             float height = (y - realMinY) / (realMaxY - realMinY);
             float bias = 1.0f + 0.9f * amount;
             alpha *= bottom + (1.0f - bottom) * (float) Math.pow(height, bias);
@@ -439,10 +441,10 @@ public class Wings extends Module {
         return Math.max(0, Math.min(255, Math.round(alpha)));
     }
 
-    private void emitFeatherPasses(boolean core) {
+    private void emitFeatherPasses(boolean coverageOnly) {
         int steps = REAL_PROFILE.length / 2;
         int featherStride = steps * 3 * 5;
-        int baseAlpha = fillAlpha();
+        int baseAlpha = coverageOnly ? 255 : fillAlpha();
         Tessellator tessellator = Tessellator.getInstance();
         WorldRenderer buffer = tessellator.getWorldRenderer();
 
@@ -456,14 +458,14 @@ public class Wings extends Module {
                     any = true;
                 }
                 emitFeather(buffer, f * featherStride, steps, realFeatherRGB[f],
-                        realFeatherShade[f], baseAlpha);
+                        realFeatherShade[f], baseAlpha, coverageOnly);
             }
             if (any) tessellator.draw();
         }
     }
 
     private void emitFeather(WorldRenderer buffer, int base, int steps, int rgb, float shade,
-                             int baseAlpha) {
+                             int baseAlpha, boolean coverageOnly) {
         int red = (rgb >> 16) & 0xFF, green = (rgb >> 8) & 0xFF, blue = rgb & 0xFF;
         for (int i = 0; i + 1 < steps; i++) {
             float tipRamp = 1.0f - 0.30f * (i / (float) (steps - 1));
@@ -473,27 +475,28 @@ public class Wings extends Module {
             int lo = base + i * 15;
             int hi = base + (i + 1) * 15;
             // leading vane, then trailing vane
-            featherTri(buffer, lo, lo + 5, hi + 5, r, g, b, baseAlpha);
-            featherTri(buffer, lo, hi + 5, hi, r, g, b, baseAlpha);
-            featherTri(buffer, lo + 5, lo + 10, hi + 10, r, g, b, baseAlpha);
-            featherTri(buffer, lo + 5, hi + 10, hi + 5, r, g, b, baseAlpha);
+            featherTri(buffer, lo, lo + 5, hi + 5, r, g, b, baseAlpha, coverageOnly);
+            featherTri(buffer, lo, hi + 5, hi, r, g, b, baseAlpha, coverageOnly);
+            featherTri(buffer, lo + 5, lo + 10, hi + 10, r, g, b, baseAlpha, coverageOnly);
+            featherTri(buffer, lo + 5, hi + 10, hi + 5, r, g, b, baseAlpha, coverageOnly);
         }
     }
 
     private void featherTri(WorldRenderer buffer, int a, int b, int c,
-                            int red, int green, int blue, int baseAlpha) {
-        featherVertex(buffer, a, red, green, blue, baseAlpha);
-        featherVertex(buffer, b, red, green, blue, baseAlpha);
-        featherVertex(buffer, c, red, green, blue, baseAlpha);
+                            int red, int green, int blue, int baseAlpha, boolean coverageOnly) {
+        featherVertex(buffer, a, red, green, blue, baseAlpha, coverageOnly);
+        featherVertex(buffer, b, red, green, blue, baseAlpha, coverageOnly);
+        featherVertex(buffer, c, red, green, blue, baseAlpha, coverageOnly);
     }
 
     private void featherVertex(WorldRenderer buffer, int offset, int red, int green, int blue,
-                               int baseAlpha) {
+                               int baseAlpha, boolean coverageOnly) {
         float y = realBuffer[offset + 1];
         float u = realBuffer[offset + 3];
+        int alpha = coverageOnly ? baseAlpha : vertexAlpha(baseAlpha, u, y);
         buffer.pos(realBuffer[offset], y, realBuffer[offset + 2])
                 .tex(u, realBuffer[offset + 4])
-                .color(red, green, blue, vertexAlpha(baseAlpha, u, y))
+                .color(red, green, blue, alpha)
                 .endVertex();
     }
 

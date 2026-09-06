@@ -14,25 +14,36 @@ import javax.imageio.ImageIO;
 /**
  * Render state and textures for the feathered wing.
  *
- * The rest of the module draws with depth writes off, culling off and no ordering, so every
+ * The module's shared state draws with depth writes off, culling off and no ordering, so every
  * surface blends over every surface behind it and the wing reads as a hologram rather than an
- * object. That is fine for the glass look but wrong for the solid one, and no amount of tuning
- * the alpha fixes it, because the problem is that nothing occludes anything.
+ * object. Opacity was never the problem: nothing occludes anything.
  *
- * The solid path therefore runs two passes instead:
+ * The fix has to keep two things apart that are easy to conflate.
  *
- *   core    depth writes on, alpha test at CORE_CUTOFF, blending off. Only texels that are
- *           substantially opaque survive, and they populate the depth buffer, so a feather in
- *           front genuinely hides the one behind it whatever order they were emitted in. No
- *           sorting needed, which matters because 59 feathers a wing have no stable back to
- *           front order once the flap rotates them.
+ *   coverage      where a feather physically is. Comes from the texture alpha alone. Decides
+ *                 what occludes what.
+ *   transparency  how much you see through it. Comes from the vertical fade, the tip fade and
+ *                 the palette alpha. Decides how it blends.
  *
- *   fringe   depth writes off, depth test kept, blending on, alpha test at FRINGE_CUTOFF. Draws
- *           the soft edges, the barb gaps and the faded lower feathers over the core. These are
- *           unsorted and can misorder against each other, but they are nearly transparent by
- *           definition so it does not read.
+ * A single alpha value cannot carry both, because the fixed-function alpha test sees
+ * texture * vertex. Fold the fade into vertex alpha and a faded feather stops passing the test,
+ * stops writing depth, and falls back to unordered blending -- so the deeper the gradient the
+ * more hologram you get, which is exactly backwards.
  *
- * Glass mode keeps the single blended pass, because there the see-through stacking is the point.
+ * So depth is laid down separately, before any colour:
+ *
+ *   depth pre-pass  colour writes masked off, depth writes on, alpha test against the texture
+ *                   alpha only (vertex alpha forced opaque). Establishes which feather is in
+ *                   front, independently of how transparent it is going to be drawn. No sorting
+ *                   needed, which matters because 59 feathers a wing have no stable back to
+ *                   front order once the flap rotates them.
+ *
+ *   colour pass     colour writes on, depth writes off, depth test LEQUAL, blending on, real
+ *                   faded alpha. Anything behind a nearer feather fails the depth test and never
+ *                   contributes, so the stacking is gone, while what remains blends at its true
+ *                   gradient value.
+ *
+ * Glass mode skips the pre-pass entirely; there the see-through stacking is the intended look.
  *
  * Textures are read straight off the classpath rather than through a ResourceLocation lookup.
  * Lunar does not mount the client's assets into the resource manager, so a lookup there resolves
@@ -61,8 +72,10 @@ final class WingRenderPipeline {
             "mindless_feather_covert_marginal"
     };
 
-    private static final float CORE_CUTOFF = 0.55f;
-    private static final float FRINGE_CUTOFF = 0.012f;
+    /** Texture-alpha level at which a feather counts as solid enough to occlude. */
+    private static final float COVERAGE_CUTOFF = 0.45f;
+    /** Discards fully empty texels so the blend does not pay for them. */
+    private static final float COLOUR_CUTOFF = 0.004f;
 
     private static final ResourceLocation[] TEXTURES = new ResourceLocation[PART_COUNT];
     private static final boolean[] ATTEMPTED = new boolean[PART_COUNT];
@@ -118,41 +131,47 @@ final class WingRenderPipeline {
         return true;
     }
 
-    static void beginCore(boolean throughWalls) {
+    static void beginDepthPrepass(boolean throughWalls) {
         GlStateManager.enableTexture2D();
         GlStateManager.disableLighting();
         GlStateManager.disableBlend();
         GlStateManager.enableAlpha();
-        GlStateManager.alphaFunc(GL11.GL_GREATER, CORE_CUTOFF);
+        GlStateManager.alphaFunc(GL11.GL_GREATER, COVERAGE_CUTOFF);
         GlStateManager.enableCull();
         GlStateManager.enableDepth();
         GlStateManager.depthFunc(GL11.GL_LEQUAL);
         GlStateManager.depthMask(true);
+        GlStateManager.colorMask(false, false, false, false);
         if (throughWalls) GlStateManager.disableDepth();
         GL11.glShadeModel(GL11.GL_SMOOTH);
     }
 
-    static void beginFringe(boolean throughWalls) {
+    static void beginColour(boolean throughWalls) {
+        GlStateManager.colorMask(true, true, true, true);
         GlStateManager.enableTexture2D();
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ZERO);
         GlStateManager.enableAlpha();
-        GlStateManager.alphaFunc(GL11.GL_GREATER, FRINGE_CUTOFF);
+        GlStateManager.alphaFunc(GL11.GL_GREATER, COLOUR_CUTOFF);
         GlStateManager.enableCull();
         GlStateManager.depthMask(false);
         if (throughWalls) GlStateManager.disableDepth();
-        else GlStateManager.enableDepth();
+        else {
+            GlStateManager.enableDepth();
+            GlStateManager.depthFunc(GL11.GL_LEQUAL);
+        }
     }
 
     /** Single blended pass, no depth writes: the deliberate see-through look. */
     static void beginGlass(boolean throughWalls) {
+        GlStateManager.colorMask(true, true, true, true);
         GlStateManager.enableTexture2D();
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ZERO);
         GlStateManager.enableAlpha();
-        GlStateManager.alphaFunc(GL11.GL_GREATER, FRINGE_CUTOFF);
+        GlStateManager.alphaFunc(GL11.GL_GREATER, COLOUR_CUTOFF);
         GlStateManager.disableCull();
         GlStateManager.depthMask(false);
         if (throughWalls) GlStateManager.disableDepth();
@@ -165,6 +184,7 @@ final class WingRenderPipeline {
     }
 
     static void end() {
+        GlStateManager.colorMask(true, true, true, true);
         GlStateManager.depthMask(true);
         GlStateManager.enableDepth();
         GlStateManager.depthFunc(GL11.GL_LEQUAL);
