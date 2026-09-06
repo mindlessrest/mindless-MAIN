@@ -1,7 +1,9 @@
 #include "manual_map.hpp"
 #include "auth/xorstr.hpp"
 #include <TlHelp32.h>
+#include <algorithm>
 #include <cstring>
+#include <string>
 #include <vector>
 namespace mindless
 {
@@ -49,22 +51,29 @@ namespace mindless
                 && api.FreeVirtualMemory && api.CreateThreadEx && api.WaitForSingleObject;
         }
 
-        uintptr_t find_remote_module_base(uint32_t processId, const wchar_t* moduleName)
+        struct RemoteModule
+        {
+            uintptr_t base = 0;
+            DWORD size = 0;
+        };
+
+        RemoteModule find_remote_module(uint32_t processId, const wchar_t* moduleName)
         {
             HANDLE snap = CreateToolhelp32Snapshot(
                 TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
-            if (snap == INVALID_HANDLE_VALUE) return 0;
+            if (snap == INVALID_HANDLE_VALUE) return {};
 
             MODULEENTRY32W me = {};
             me.dwSize = sizeof(me);
-            uintptr_t result = 0;
+            RemoteModule result = {};
             if (Module32FirstW(snap, &me))
             {
                 do
                 {
                     if (_wcsicmp(me.szModule, moduleName) == 0)
                     {
-                        result = reinterpret_cast<uintptr_t>(me.modBaseAddr);
+                        result.base = reinterpret_cast<uintptr_t>(me.modBaseAddr);
+                        result.size = me.modBaseSize;
                         break;
                     }
                 } while (Module32NextW(snap, &me));
@@ -73,39 +82,164 @@ namespace mindless
             return result;
         }
 
-        // GetProcAddress can return an address owned by a forwarding module
-        // (for example KernelBase or ucrtbase), not by the HMODULE passed to
-        // it. Translate through the function's real owner and the target's
-        // corresponding module base. Copying a local absolute address into a
-        // different process is invalid when ASLR bases differ.
-        uintptr_t remote_address_for_local_proc(uint32_t processId, FARPROC localProc)
+        bool read_remote(HANDLE process, uintptr_t address, void* output, size_t size)
         {
-            if (!localProc) return 0;
-
-            MEMORY_BASIC_INFORMATION memory = {};
-            if (VirtualQuery(reinterpret_cast<const void*>(localProc),
-                    &memory, sizeof(memory)) != sizeof(memory)
-                || !memory.AllocationBase)
-                return 0;
-
-            auto localOwner = static_cast<HMODULE>(memory.AllocationBase);
-            wchar_t ownerPath[MAX_PATH] = {};
-            DWORD pathLength = GetModuleFileNameW(
-                localOwner, ownerPath, MAX_PATH);
-            if (pathLength == 0 || pathLength >= MAX_PATH) return 0;
-
-            const wchar_t* ownerName = wcsrchr(ownerPath, L'\\');
-            ownerName = ownerName ? ownerName + 1 : ownerPath;
-            uintptr_t remoteOwner = find_remote_module_base(processId, ownerName);
-            if (!remoteOwner) return 0;
-
-            return remoteOwner
-                + (reinterpret_cast<uintptr_t>(localProc)
-                    - reinterpret_cast<uintptr_t>(localOwner));
+            SIZE_T bytesRead = 0;
+            return size != 0
+                && ReadProcessMemory(process, reinterpret_cast<const void*>(address),
+                    output, size, &bytesRead)
+                && bytesRead == size;
         }
 
-        uintptr_t remote_proc(uint32_t processId, const wchar_t* moduleName,
-            const char* procName);
+        bool read_remote_string(HANDLE process, uintptr_t address,
+            std::string& output, size_t maxLength = 512)
+        {
+            output.clear();
+            for (size_t i = 0; i < maxLength; ++i)
+            {
+                char value = 0;
+                if (!read_remote(process, address + i, &value, sizeof(value)))
+                    return false;
+                if (value == '\0') return true;
+                output.push_back(value);
+            }
+            return false;
+        }
+
+        uintptr_t remote_export(HANDLE process, uint32_t processId,
+            const wchar_t* moduleName, const char* procName, WORD ordinal,
+            bool byOrdinal, unsigned depth = 0)
+        {
+            if (!moduleName || depth > 8) return 0;
+
+            RemoteModule module = find_remote_module(processId, moduleName);
+            if (!module.base || module.size < sizeof(IMAGE_DOS_HEADER)) return 0;
+
+            IMAGE_DOS_HEADER dos = {};
+            if (!read_remote(process, module.base, &dos, sizeof(dos))
+                || dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew <= 0
+                || static_cast<uintptr_t>(dos.e_lfanew) + sizeof(IMAGE_NT_HEADERS64) > module.size)
+                return 0;
+
+            IMAGE_NT_HEADERS64 pe = {};
+            if (!read_remote(process, module.base + dos.e_lfanew, &pe, sizeof(pe))
+                || pe.Signature != IMAGE_NT_SIGNATURE
+                || pe.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+                return 0;
+
+            const IMAGE_DATA_DIRECTORY& exportData =
+                pe.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+            if (!exportData.VirtualAddress
+                || exportData.VirtualAddress + sizeof(IMAGE_EXPORT_DIRECTORY) > module.size)
+                return 0;
+
+            IMAGE_EXPORT_DIRECTORY exports = {};
+            if (!read_remote(process, module.base + exportData.VirtualAddress,
+                    &exports, sizeof(exports))
+                || exports.NumberOfFunctions == 0 || exports.NumberOfFunctions > (1u << 20))
+                return 0;
+
+            DWORD functionIndex = 0;
+            if (byOrdinal)
+            {
+                if (ordinal < exports.Base) return 0;
+                functionIndex = ordinal - exports.Base;
+                if (functionIndex >= exports.NumberOfFunctions) return 0;
+            }
+            else
+            {
+                if (!procName || exports.NumberOfNames == 0
+                    || exports.NumberOfNames > (1u << 20))
+                    return 0;
+
+                const size_t namesSize = static_cast<size_t>(exports.NumberOfNames) * sizeof(DWORD);
+                const size_t ordinalsSize = static_cast<size_t>(exports.NumberOfNames) * sizeof(WORD);
+                if (exports.AddressOfNames >= module.size
+                    || namesSize > module.size - exports.AddressOfNames
+                    || exports.AddressOfNameOrdinals >= module.size
+                    || ordinalsSize > module.size - exports.AddressOfNameOrdinals)
+                    return 0;
+
+                std::vector<DWORD> names(exports.NumberOfNames);
+                std::vector<WORD> ordinals(exports.NumberOfNames);
+                if (!read_remote(process, module.base + exports.AddressOfNames,
+                        names.data(), namesSize)
+                    || !read_remote(process, module.base + exports.AddressOfNameOrdinals,
+                        ordinals.data(), ordinalsSize))
+                    return 0;
+
+                bool found = false;
+                for (DWORD i = 0; i < exports.NumberOfNames; ++i)
+                {
+                    if (names[i] >= module.size) continue;
+                    std::string candidate;
+                    if (read_remote_string(process, module.base + names[i], candidate)
+                        && candidate == procName)
+                    {
+                        functionIndex = ordinals[i];
+                        found = functionIndex < exports.NumberOfFunctions;
+                        break;
+                    }
+                }
+                if (!found) return 0;
+            }
+
+            const size_t functionsSize =
+                static_cast<size_t>(exports.NumberOfFunctions) * sizeof(DWORD);
+            if (exports.AddressOfFunctions >= module.size
+                || functionsSize > module.size - exports.AddressOfFunctions)
+                return 0;
+            DWORD functionRva = 0;
+            if (!read_remote(process,
+                    module.base + exports.AddressOfFunctions
+                        + static_cast<uintptr_t>(functionIndex) * sizeof(DWORD),
+                    &functionRva, sizeof(functionRva))
+                || functionRva == 0)
+                return 0;
+
+            const uint64_t exportEnd = static_cast<uint64_t>(exportData.VirtualAddress)
+                + exportData.Size;
+            if (functionRva >= exportData.VirtualAddress && functionRva < exportEnd)
+            {
+                std::string forwarder;
+                if (!read_remote_string(process, module.base + functionRva, forwarder))
+                    return 0;
+                const size_t separator = forwarder.rfind('.');
+                if (separator == std::string::npos || separator == 0
+                    || separator + 1 >= forwarder.size())
+                    return 0;
+
+                std::string forwardedModule = forwarder.substr(0, separator);
+                if (forwardedModule.find('.') == std::string::npos)
+                    forwardedModule += ".dll";
+                wchar_t wideModule[256] = {};
+                if (!MultiByteToWideChar(CP_ACP, 0, forwardedModule.c_str(), -1,
+                        wideModule, static_cast<int>(_countof(wideModule))))
+                    return 0;
+
+                const std::string forwardedProc = forwarder.substr(separator + 1);
+                if (forwardedProc.size() > 1 && forwardedProc[0] == '#')
+                {
+                    char* end = nullptr;
+                    const unsigned long forwardedOrdinal =
+                        strtoul(forwardedProc.c_str() + 1, &end, 10);
+                    if (!end || *end != '\0' || forwardedOrdinal > 0xFFFF) return 0;
+                    return remote_export(process, processId, wideModule, nullptr,
+                        static_cast<WORD>(forwardedOrdinal), true, depth + 1);
+                }
+                return remote_export(process, processId, wideModule,
+                    forwardedProc.c_str(), 0, false, depth + 1);
+            }
+
+            if (functionRva >= module.size) return 0;
+            return module.base + functionRva;
+        }
+
+        uintptr_t remote_proc(HANDLE process, uint32_t processId,
+            const wchar_t* moduleName, const char* procName)
+        {
+            return remote_export(process, processId, moduleName, procName, 0, false);
+        }
         // ---------------------------------------------------------------------------
         // Trampoline context — written to remote process alongside the trampoline code.
         // The trampoline reads this struct to call RtlAddFunctionTable + DllMain.
@@ -159,15 +293,9 @@ namespace mindless
         };
         static_assert(sizeof(TRAMPOLINE) == 56, "trampoline size mismatch");
         // ---------------------------------------------------------------------------
-        // Import resolution from the injector process.
-        //
-        // On Windows, system DLLs (kernel32, ntdll, user32, ...) are mapped at the
-        // same base address in every process within a boot session.  We exploit this
-        // by calling LoadLibraryA / GetProcAddress *locally* — the returned addresses
-        // are valid in the target process too.
-        //
-        // For any DLL not yet loaded in the target, we first load it there via a
-        // remote NtCreateThreadEx → LoadLibraryA call.
+        // Import resolution must use the export tables loaded in the target.
+        // Translating a local function by RVA is unsafe when an application ships a
+        // different build of a runtime DLL (Lunar does this for VCRUNTIME140.dll).
         // ---------------------------------------------------------------------------
         bool is_module_loaded(uint32_t processId, const char* dllName)
         {
@@ -206,7 +334,7 @@ namespace mindless
             nt.WriteVirtualMemory(process, remoteName,
                 const_cast<char*>(dllName), nameLen, &written);
             auto loadLib = reinterpret_cast<PVOID>(remote_proc(
-                processId, XORSTRW(L"kernel32.dll"), XORSTR("LoadLibraryA")));
+                process, processId, XORSTRW(L"kernel32.dll"), XORSTR("LoadLibraryA")));
             if (!loadLib)
             {
                 SIZE_T freeSize = 0;
@@ -222,6 +350,9 @@ namespace mindless
                 LARGE_INTEGER timeout;
                 timeout.QuadPart = -100000000LL; // 10 seconds
                 ok = nt.WaitForSingleObject(thread, FALSE, &timeout) == 0;
+                DWORD exitCode = 0;
+                if (ok && (!GetExitCodeThread(thread, &exitCode) || exitCode == 0))
+                    ok = false;
                 CloseHandle(thread);
             }
             SIZE_T freeSize = 0;
@@ -243,13 +374,14 @@ namespace mindless
             {
                 if (desc->Name >= imageSize) break;
                 auto* dllName = reinterpret_cast<const char*>(staged + desc->Name);
-                // Load locally — system DLLs share the same base across processes
-                HMODULE localMod = LoadLibraryA(dllName);
-                if (!localMod) return false;
                 // Ensure it's loaded in the target too
                 if (!load_library_remote(process, processId, dllName, nt))
                     return false;
-                // Resolve each import using local GetProcAddress
+                wchar_t wideName[256] = {};
+                if (!MultiByteToWideChar(CP_ACP, 0, dllName, -1,
+                        wideName, static_cast<int>(_countof(wideName))))
+                    return false;
+                // Resolve each import against the target module's own export table.
                 if (desc->FirstThunk == 0 || desc->FirstThunk >= imageSize) { ++desc; continue; }
                 auto* thunk = reinterpret_cast<IMAGE_THUNK_DATA*>(staged + desc->FirstThunk);
                 auto* orig = (desc->OriginalFirstThunk && desc->OriginalFirstThunk < imageSize)
@@ -257,20 +389,20 @@ namespace mindless
                     : thunk;
                 while (orig->u1.AddressOfData)
                 {
-                    FARPROC proc = nullptr;
+                    uintptr_t remoteProc = 0;
                     if (IMAGE_SNAP_BY_ORDINAL64(orig->u1.Ordinal))
                     {
-                        proc = GetProcAddress(localMod,
-                            reinterpret_cast<LPCSTR>(IMAGE_ORDINAL64(orig->u1.Ordinal)));
+                        remoteProc = remote_export(process, processId, wideName, nullptr,
+                            static_cast<WORD>(IMAGE_ORDINAL64(orig->u1.Ordinal)), true);
                     }
                     else
                     {
                         if (orig->u1.AddressOfData >= imageSize) break;
                         auto* import = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(
                             staged + orig->u1.AddressOfData);
-                        proc = GetProcAddress(localMod, import->Name);
+                        remoteProc = remote_export(process, processId, wideName,
+                            reinterpret_cast<const char*>(import->Name), 0, false);
                     }
-                    uintptr_t remoteProc = remote_address_for_local_proc(processId, proc);
                     if (!remoteProc) return false;
                     thunk->u1.Function = static_cast<ULONGLONG>(remoteProc);
                     ++thunk;
@@ -281,15 +413,7 @@ namespace mindless
             return true;
         }
         // ---------------------------------------------------------------------------
-        // Find RtlAddFunctionTable in the target process's ntdll.  We need the
-        // *remote* address because RtlAddFunctionTable modifies process-local state.
         // ---------------------------------------------------------------------------
-        uintptr_t remote_proc(uint32_t processId, const wchar_t* moduleName, const char* procName)
-        {
-            HMODULE localMod = GetModuleHandleW(moduleName);
-            FARPROC localProc = localMod ? GetProcAddress(localMod, procName) : nullptr;
-            return remote_address_for_local_proc(processId, localProc);
-        }
     } // namespace
     bool manual_map_inject(HANDLE process, uint32_t processId,
         const void* dllData, size_t dllSize)
@@ -428,7 +552,8 @@ namespace mindless
         ctx.imageBase  = remoteBase;
         ctx.entryPoint = static_cast<BYTE*>(remoteBase) + entryRVA;
 
-        uintptr_t rtlAddr = remote_proc(processId, XORSTRW(L"kernel32.dll"), XORSTR("RtlAddFunctionTable"));
+        uintptr_t rtlAddr = remote_proc(process, processId,
+            XORSTRW(L"kernel32.dll"), XORSTR("RtlAddFunctionTable"));
         if (rtlAddr && dirExcept.Size > 0 && dirExcept.VirtualAddress != 0)
         {
             ctx.fnRtlAddFunctionTable = reinterpret_cast<void*>(rtlAddr);
