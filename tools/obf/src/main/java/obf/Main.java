@@ -1,6 +1,7 @@
 package obf;
 
 import obf.transform.*;
+import com.google.gson.GsonBuilder;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
@@ -35,6 +36,7 @@ public class Main {
         System.out.println();
 
         ObfConfig config;
+        String mappingOutput = null;
 
         if (args.length == 1 && args[0].endsWith(".json")) {
             config = ObfConfig.load(args[0]);
@@ -42,7 +44,14 @@ public class Main {
             config = ObfConfig.defaults(args[0], args[1]);
             if (args.length >= 3) {
                 config.transforms.clear();
-                for (int i = 2; i < args.length; i++) config.transforms.add(args[i]);
+                for (int i = 2; i < args.length; i++) {
+                    if ("--mapping".equals(args[i]) && i + 1 < args.length) {
+                        mappingOutput = args[++i];
+                    } else {
+                        config.transforms.add(args[i]);
+                    }
+                }
+                if (config.transforms.isEmpty()) config.transforms.addAll(ObfConfig.defaults(args[0], args[1]).transforms);
             }
         } else {
             System.out.println("  Usage:");
@@ -129,6 +138,19 @@ public class Main {
             long elapsed = System.currentTimeMillis() - start;
             System.out.println("  Done in " + elapsed + "ms");
             System.out.println();
+        }
+
+        if (mappingOutput != null) {
+            Path mappingPath = Path.of(mappingOutput);
+            Path mappingParent = mappingPath.toAbsolutePath().getParent();
+            if (mappingParent != null) Files.createDirectories(mappingParent);
+            Map<String, Object> mappings = new LinkedHashMap<>();
+            mappings.put("format", 1);
+            mappings.put("classes", ctx.classMapping());
+            mappings.put("fields", ctx.fieldMapping());
+            mappings.put("methods", ctx.methodMapping());
+            Files.writeString(mappingPath, new GsonBuilder().setPrettyPrinting().create().toJson(mappings));
+            System.out.println("  Mapping:    " + mappingOutput);
         }
 
         // Write output JAR

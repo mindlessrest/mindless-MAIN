@@ -210,7 +210,14 @@ void vape_log(const wchar_t *format, ...) {
 #ifdef _NONPROD
     wchar_t message[2048];
     wchar_t line[2304];
+    char utf8[6912];
+    char temp_path[MAX_PATH];
+    char directory[MAX_PATH];
+    char log_path[MAX_PATH];
     SYSTEMTIME now;
+    HANDLE file;
+    DWORD written;
+    int length;
     va_list arguments;
 
     va_start(arguments, format);
@@ -223,6 +230,20 @@ void vape_log(const wchar_t *format, ...) {
             now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
             now.wSecond, now.wMilliseconds, GetCurrentThreadId(), message);
     OutputDebugStringW(line);
+    length = WideCharToMultiByte(CP_UTF8, 0, line, -1, utf8,
+            (int)sizeof(utf8), NULL, NULL);
+    if (length <= 1 || GetTempPathA(MAX_PATH, temp_path) == 0) return;
+    if (_snprintf_s(directory, sizeof(directory), _TRUNCATE,
+            "%sMindlessNative", temp_path) < 0) return;
+    CreateDirectoryA(directory, NULL);
+    if (_snprintf_s(log_path, sizeof(log_path), _TRUNCATE,
+            "%s\\native-debug.log", directory) < 0) return;
+    file = CreateFileA(log_path, FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return;
+    WriteFile(file, utf8, (DWORD)(length - 1), &written, NULL);
+    CloseHandle(file);
 #else
     (void)format;
 #endif
@@ -340,7 +361,7 @@ void vape_log_pending_exception(JNIEnv *env, const wchar_t *context) {
         ++depth;
     }
     if (current != NULL && depth > 0) (*env)->DeleteLocalRef(env, current);
-    vape_log(L"  (java-side trace written to OutputDebugString)");
+    vape_log(L"  (java-side trace written to native-debug.log)");
 }
 
 jint mindless_initialize_jvmti(JavaVM *vm) {

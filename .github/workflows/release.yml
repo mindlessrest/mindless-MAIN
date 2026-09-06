@@ -229,7 +229,9 @@ jobs:
         run: |
           $files = @(
             "MindlessLoader.exe",
-            "client/native_build/dist/MindlessNative.dll"
+            "client/native_build/dist/MindlessNative.dll",
+            "client/build/mappings/forge.json",
+            "client/build/mappings/lunar.json"
           )
 
           foreach ($file in $files) {
@@ -260,6 +262,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+
+      - name: Upload private crash mappings
+        uses: actions/upload-artifact@v4
+        with:
+          name: mindless-mappings-${{ github.sha }}
+          path: client/build/mappings/*.json
+          if-no-files-found: error
+          retention-days: 1
 
   publish:
     needs: build
@@ -293,13 +303,19 @@ jobs:
           name: mindless-client-${{ github.sha }}
           path: release
 
+      - name: Download private crash mappings
+        uses: actions/download-artifact@v4
+        with:
+          name: mindless-mappings-${{ github.sha }}
+          path: mappings
+
       - name: Upload release to VPS staging
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "release/MindlessLoader.exe,release/MindlessNative.dll"
+          source: "release/MindlessLoader.exe,release/MindlessNative.dll,mappings/forge.json,mappings/lunar.json"
           target: "/tmp/mindless-${{ github.sha }}"
           strip_components: 1
 
@@ -316,6 +332,8 @@ jobs:
 
             test -s "$staging/MindlessLoader.exe"
             test -s "$staging/MindlessNative.dll"
+            test -s "$staging/forge.json"
+            test -s "$staging/lunar.json"
 
             cd /var/mindless/backend
 
@@ -325,10 +343,15 @@ jobs:
             go run ./cmd/promote-release \
               -config config.yaml \
               -loader "$staging/MindlessLoader.exe" \
-              -native "$staging/MindlessNative.dll"
+              -native "$staging/MindlessNative.dll" \
+              -build-id "${{ github.sha }}" \
+              -forge-mapping "$staging/forge.json" \
+              -lunar-mapping "$staging/lunar.json"
 
             rm -f \
               "$staging/MindlessLoader.exe" \
-              "$staging/MindlessNative.dll"
+              "$staging/MindlessNative.dll" \
+              "$staging/forge.json" \
+              "$staging/lunar.json"
 
             rmdir "$staging"

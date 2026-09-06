@@ -28,6 +28,8 @@ FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
 FORGE_JAR_OBF   = CLIENT_DIR / "build" / "libs" / "mindless-obf.jar"
 LUNAR_JAR_OBF   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge-obf.jar"
+FORGE_MAPPING   = CLIENT_DIR / "build" / "mappings" / "forge.json"
+LUNAR_MAPPING   = CLIENT_DIR / "build" / "mappings" / "lunar.json"
 NATIVE_BUILD_DIR = CLIENT_DIR / "native_build"
 NATIVE_DLL_OUT   = NATIVE_BUILD_DIR / "dist" / "MindlessNative.dll"
 
@@ -438,13 +440,13 @@ def build_obf_jar(jdk):
     return True
 
 
-def obfuscate_jar(jdk, input_jar, output_jar, label):
+def obfuscate_jar(jdk, input_jar, output_jar, mapping_file, label):
     """Run MindlessObf on a JAR."""
     if not OBF_JAR.is_file():
         warn(f"MindlessObf jar not found, skipping {label} obfuscation")
         return False
     java = jdk / "bin" / "java.exe" if jdk else Path("java.exe")
-    cmd = [str(java), "-jar", str(OBF_JAR), str(input_jar), str(output_jar)]
+    cmd = [str(java), "-jar", str(OBF_JAR), str(input_jar), str(output_jar), "--mapping", str(mapping_file)]
     info(f"Obfuscating {label}...")
     if output_jar.is_file():
         output_jar.unlink()
@@ -794,10 +796,10 @@ def main():
                 sys.exit(1)
             with ThreadPoolExecutor(max_workers=2) as pool:
                 forge_future = pool.submit(
-                    obfuscate_jar, jdk17, FORGE_JAR, FORGE_JAR_OBF, "Forge JAR"
+                    obfuscate_jar, jdk17, FORGE_JAR, FORGE_JAR_OBF, FORGE_MAPPING, "Forge JAR"
                 ) if FORGE_JAR.is_file() else None
                 lunar_future = pool.submit(
-                    obfuscate_jar, jdk17, LUNAR_JAR, LUNAR_JAR_OBF, "Lunar JAR"
+                    obfuscate_jar, jdk17, LUNAR_JAR, LUNAR_JAR_OBF, LUNAR_MAPPING, "Lunar JAR"
                 ) if LUNAR_JAR.is_file() else None
                 forge_obfuscated = forge_future.result() if forge_future else False
                 lunar_obfuscated = lunar_future.result() if lunar_future else False
