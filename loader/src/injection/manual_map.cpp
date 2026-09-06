@@ -3,12 +3,26 @@
 #include <TlHelp32.h>
 #include <algorithm>
 #include <cstring>
+#include <cstdarg>
+#include <cstdio>
 #include <string>
 #include <vector>
 namespace mindless
 {
     namespace
     {
+        void mm_log(const char* format, ...)
+        {
+            char message[512];
+            char line[640];
+            va_list arguments;
+            va_start(arguments, format);
+            _vsnprintf_s(message, sizeof(message), _TRUNCATE, format, arguments);
+            va_end(arguments);
+            _snprintf_s(line, sizeof(line), _TRUNCATE, "[Mindless] MM: %s\n", message);
+            OutputDebugStringA(line);
+        }
+
         using NtAllocateVirtualMemory_t = NTSTATUS(NTAPI*)(
             HANDLE ProcessHandle, PVOID* BaseAddress, ULONG_PTR ZeroBits,
             PSIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
@@ -320,6 +334,26 @@ namespace mindless
             CloseHandle(snap);
             return found;
         }
+        void resolve_import_module(const char* name, char* output, size_t outputSize)
+        {
+            strncpy_s(output, outputSize, name, _TRUNCATE);
+            if (_strnicmp(name, "api-ms-", 7) != 0 && _strnicmp(name, "ext-ms-", 7) != 0)
+                return;
+            HMODULE local = GetModuleHandleA(name);
+            if (!local)
+                local = LoadLibraryExA(name, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            if (!local)
+            {
+                mm_log("could not resolve API set %s locally", name);
+                return;
+            }
+            char path[MAX_PATH] = {};
+            if (!GetModuleFileNameA(local, path, sizeof(path))) return;
+            const char* base = strrchr(path, '\\');
+            strncpy_s(output, outputSize, base ? base + 1 : path, _TRUNCATE);
+            mm_log("API set %s -> %s", name, output);
+        }
+
         bool load_library_remote(HANDLE process, uint32_t processId,
             const char* dllName, const NtApi& nt)
         {
@@ -373,10 +407,15 @@ namespace mindless
             while (desc->Name)
             {
                 if (desc->Name >= imageSize) break;
-                auto* dllName = reinterpret_cast<const char*>(staged + desc->Name);
+                auto* rawName = reinterpret_cast<const char*>(staged + desc->Name);
+                char dllName[256] = {};
+                resolve_import_module(rawName, dllName, sizeof(dllName));
                 // Ensure it's loaded in the target too
                 if (!load_library_remote(process, processId, dllName, nt))
+                {
+                    mm_log("import module could not be loaded in target: %s", dllName);
                     return false;
+                }
                 wchar_t wideName[256] = {};
                 if (!MultiByteToWideChar(CP_ACP, 0, dllName, -1,
                         wideName, static_cast<int>(_countof(wideName))))
@@ -390,20 +429,32 @@ namespace mindless
                 while (orig->u1.AddressOfData)
                 {
                     uintptr_t remoteProc = 0;
+                    const char* importName = nullptr;
+                    WORD importOrdinal = 0;
                     if (IMAGE_SNAP_BY_ORDINAL64(orig->u1.Ordinal))
                     {
+                        importOrdinal = static_cast<WORD>(IMAGE_ORDINAL64(orig->u1.Ordinal));
                         remoteProc = remote_export(process, processId, wideName, nullptr,
-                            static_cast<WORD>(IMAGE_ORDINAL64(orig->u1.Ordinal)), true);
+                            importOrdinal, true);
                     }
                     else
                     {
                         if (orig->u1.AddressOfData >= imageSize) break;
                         auto* import = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(
                             staged + orig->u1.AddressOfData);
+                        importName = reinterpret_cast<const char*>(import->Name);
                         remoteProc = remote_export(process, processId, wideName,
-                            reinterpret_cast<const char*>(import->Name), 0, false);
+                            importName, 0, false);
                     }
-                    if (!remoteProc) return false;
+                    if (!remoteProc)
+                    {
+                        if (importName)
+                            mm_log("unresolved import %s!%s", dllName, importName);
+                        else
+                            mm_log("unresolved import %s!#%u", dllName,
+                                (unsigned)importOrdinal);
+                        return false;
+                    }
                     thunk->u1.Function = static_cast<ULONGLONG>(remoteProc);
                     ++thunk;
                     ++orig;
@@ -418,26 +469,56 @@ namespace mindless
     bool manual_map_inject(HANDLE process, uint32_t processId,
         const void* dllData, size_t dllSize)
     {
-        if (!dllData || dllSize < sizeof(IMAGE_DOS_HEADER)) return false;
+        mm_log("begin pid=%lu payload=%zu bytes", (unsigned long)processId, dllSize);
+        if (!dllData || dllSize < sizeof(IMAGE_DOS_HEADER))
+        {
+            mm_log("payload missing or too small");
+            return false;
+        }
         NtApi nt;
-        if (!resolve_nt_api(nt)) return false;
+        if (!resolve_nt_api(nt))
+        {
+            mm_log("resolve_nt_api failed");
+            return false;
+        }
 
         std::vector<BYTE> raw(dllSize);
         std::memcpy(raw.data(), dllData, dllSize);
 
         auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(raw.data());
-        if (dos->e_magic != IMAGE_DOS_SIGNATURE) return false;
-        if (static_cast<size_t>(dos->e_lfanew) + sizeof(IMAGE_NT_HEADERS) > dllSize)
+        if (dos->e_magic != IMAGE_DOS_SIGNATURE)
+        {
+            mm_log("not a PE: e_magic=0x%04X first bytes %02X %02X %02X %02X",
+                (unsigned)dos->e_magic, raw[0], raw[1], raw[2], raw[3]);
             return false;
+        }
+        if (static_cast<size_t>(dos->e_lfanew) + sizeof(IMAGE_NT_HEADERS) > dllSize)
+        {
+            mm_log("e_lfanew 0x%lX out of range for %zu byte payload",
+                (unsigned long)dos->e_lfanew, dllSize);
+            return false;
+        }
         auto* peRaw = reinterpret_cast<const IMAGE_NT_HEADERS*>(raw.data() + dos->e_lfanew);
-        if (peRaw->Signature != IMAGE_NT_SIGNATURE) return false;
-        if (peRaw->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64) return false;
+        if (peRaw->Signature != IMAGE_NT_SIGNATURE)
+        {
+            mm_log("bad NT signature 0x%08lX", (unsigned long)peRaw->Signature);
+            return false;
+        }
+        if (peRaw->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64)
+        {
+            mm_log("wrong machine 0x%04X (expected AMD64)",
+                (unsigned)peRaw->FileHeader.Machine);
+            return false;
+        }
 
         SIZE_T imageSize  = peRaw->OptionalHeader.SizeOfImage;
         ULONGLONG prefBase = peRaw->OptionalHeader.ImageBase;
         DWORD  sizeOfHdrs = peRaw->OptionalHeader.SizeOfHeaders;
         DWORD  entryRVA   = peRaw->OptionalHeader.AddressOfEntryPoint;
         WORD   numSections = peRaw->FileHeader.NumberOfSections;
+        mm_log("PE ok imageSize=%llu sections=%u entryRVA=0x%lX prefBase=0x%llX",
+            (unsigned long long)imageSize, (unsigned)numSections,
+            (unsigned long)entryRVA, (unsigned long long)prefBase);
 
         IMAGE_DATA_DIRECTORY dirReloc   = peRaw->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
         IMAGE_DATA_DIRECTORY dirExcept  = peRaw->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
@@ -460,8 +541,14 @@ namespace mindless
             allocSize = imageSize;
             status = nt.AllocateVirtualMemory(process, &remoteBase, 0,
                 &allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            if (status != 0) return false;
+            if (status != 0)
+            {
+                mm_log("image allocation failed status=0x%08lX size=%llu",
+                    (unsigned long)status, (unsigned long long)imageSize);
+                return false;
+            }
         }
+        mm_log("image allocated at 0x%p", remoteBase);
 
         // Build staged image: headers + sections
         std::vector<BYTE> staged(imageSize, 0);
@@ -521,6 +608,7 @@ namespace mindless
 
         if (!resolve_imports(process, processId, staged.data(), imageSize, peStaged, nt))
         {
+            mm_log("resolve_imports failed");
             SIZE_T freeSize = 0;
             nt.FreeVirtualMemory(process, &remoteBase, &freeSize, MEM_RELEASE);
             return false;
@@ -542,10 +630,14 @@ namespace mindless
         SecureZeroMemory(staged.data(), staged.size());
         if (!writeOk)
         {
+            mm_log("image write failed status=0x%08lX", (unsigned long)status);
             SIZE_T freeSize = 0;
             nt.FreeVirtualMemory(process, &remoteBase, &freeSize, MEM_RELEASE);
             return false;
         }
+
+        mm_log("image written, entry at 0x%p",
+            static_cast<BYTE*>(remoteBase) + entryRVA);
 
         // Trampoline context
         TrampolineCtx ctx = {};
@@ -560,6 +652,8 @@ namespace mindless
             ctx.pdataAddr  = static_cast<BYTE*>(remoteBase) + dirExcept.VirtualAddress;
             ctx.pdataCount = dirExcept.Size / static_cast<uint32_t>(sizeof(RUNTIME_FUNCTION));
         }
+        mm_log("RtlAddFunctionTable=0x%p pdataCount=%u",
+            (void*)rtlAddr, (unsigned)ctx.pdataCount);
 
         SIZE_T totalSize = sizeof(TRAMPOLINE) + sizeof(TrampolineCtx);
         void* remoteTrampoline = nullptr;
@@ -567,6 +661,7 @@ namespace mindless
             &totalSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         if (status != 0)
         {
+            mm_log("trampoline allocation failed status=0x%08lX", (unsigned long)status);
             SIZE_T freeSize = 0;
             nt.FreeVirtualMemory(process, &remoteBase, &freeSize, MEM_RELEASE);
             return false;
@@ -580,6 +675,7 @@ namespace mindless
             const_cast<uint8_t*>(TRAMPOLINE), sizeof(TRAMPOLINE), &written);
         if (status != 0)
         {
+            mm_log("trampoline code write failed status=0x%08lX", (unsigned long)status);
             SIZE_T freeSize = 0;
             nt.FreeVirtualMemory(process, &remoteTrampoline, &freeSize, MEM_RELEASE);
             nt.FreeVirtualMemory(process, &remoteBase, &freeSize, MEM_RELEASE);
@@ -589,6 +685,7 @@ namespace mindless
         status = nt.WriteVirtualMemory(process, ctxAddr, &ctx, sizeof(ctx), &written);
         if (status != 0)
         {
+            mm_log("trampoline context write failed status=0x%08lX", (unsigned long)status);
             SIZE_T freeSize = 0;
             nt.FreeVirtualMemory(process, &remoteTrampoline, &freeSize, MEM_RELEASE);
             nt.FreeVirtualMemory(process, &remoteBase, &freeSize, MEM_RELEASE);
@@ -600,6 +697,7 @@ namespace mindless
             codeAddr, nullptr, 0, 0, 0, 0, nullptr);
         if (status != 0 || !thread)
         {
+            mm_log("remote thread creation failed status=0x%08lX", (unsigned long)status);
             SIZE_T freeSize = 0;
             nt.FreeVirtualMemory(process, &remoteTrampoline, &freeSize, MEM_RELEASE);
             nt.FreeVirtualMemory(process, &remoteBase, &freeSize, MEM_RELEASE);
@@ -610,7 +708,13 @@ namespace mindless
         // remote thread has exited. A timeout/failure deliberately leaks this
         // tiny allocation in the target rather than racing its instruction
         // pointer and causing an access violation.
-        bool success = WaitForSingleObject(thread, 15000) == WAIT_OBJECT_0;
+        mm_log("remote entry thread started at 0x%p", codeAddr);
+        DWORD waitResult = WaitForSingleObject(thread, 15000);
+        DWORD entryExit = 0;
+        GetExitCodeThread(thread, &entryExit);
+        bool success = waitResult == WAIT_OBJECT_0;
+        mm_log("entry thread wait=0x%08lX exit=%lu", (unsigned long)waitResult,
+            (unsigned long)entryExit);
         CloseHandle(thread);
 
         if (success)

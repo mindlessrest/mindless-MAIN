@@ -39,6 +39,7 @@ private:
     InjectionSession injection_;
     HICON       appIcon_ = nullptr;
     bool        notificationSent_ = false;
+    bool        injectGateLogged_ = false;
 
     // Auth
     std::thread authThread_;

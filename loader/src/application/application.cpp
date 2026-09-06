@@ -451,9 +451,27 @@ int Application::run()
 
             if (injection_.phase() == InjectionPhase::Idle &&
                 !state_.dllBytes.empty() &&
+                (state_.selectedIdx < 0 ||
+                 state_.selectedIdx >= static_cast<int>(state_.processes.size())))
+            {
+                if (!injectGateLogged_)
+                {
+                    injectGateLogged_ = true;
+                    char dbg[192];
+                    snprintf(dbg, sizeof(dbg),
+                             "[Mindless] Inject: payload ready but no target selected "
+                             "(selectedIdx=%d, processes=%zu)\n",
+                             state_.selectedIdx, state_.processes.size());
+                    OutputDebugStringA(dbg);
+                }
+            }
+
+            if (injection_.phase() == InjectionPhase::Idle &&
+                !state_.dllBytes.empty() &&
                 state_.selectedIdx >= 0 &&
                 state_.selectedIdx < static_cast<int>(state_.processes.size()))
             {
+                injectGateLogged_ = false;
                 uint32_t pid = state_.processes[state_.selectedIdx].pid;
 
                 if (authSection_) { CloseHandle(authSection_); authSection_ = nullptr; }
@@ -469,6 +487,14 @@ int Application::run()
                 }
                 authSection_ = create_auth_section(pid, shared);
                 SecureZeroMemory(&shared, sizeof(shared));
+                {
+                    char dbg[160];
+                    snprintf(dbg, sizeof(dbg),
+                             "[Mindless] Inject: target pid=%lu authSection=%s payload=%zu\n",
+                             (unsigned long)pid, authSection_ ? "ok" : "NULL",
+                             state_.dllBytes.size());
+                    OutputDebugStringA(dbg);
+                }
 
                 injection_.start(pid, state_.dllBytes.data(), state_.dllBytes.size());
             }

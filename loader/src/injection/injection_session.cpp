@@ -2,6 +2,8 @@
 #include "manual_map.hpp"
 #include "auth/xorstr.hpp"
 #include <TlHelp32.h>
+#include <cstdarg>
+#include <cstdio>
 #include <cwchar>
 
 namespace mindless
@@ -9,6 +11,18 @@ namespace mindless
 
 namespace
 {
+
+void inj_log(const char* format, ...)
+{
+    char message[512];
+    char line[640];
+    va_list arguments;
+    va_start(arguments, format);
+    _vsnprintf_s(message, sizeof(message), _TRUNCATE, format, arguments);
+    va_end(arguments);
+    _snprintf_s(line, sizeof(line), _TRUNCATE, "[Mindless] Inject: %s\n", message);
+    OutputDebugStringA(line);
+}
 
 bool target_is_x64(HANDLE process)
 {
@@ -38,8 +52,13 @@ InjectionSession::~InjectionSession()
 
 bool InjectionSession::start(uint32_t processId, const void* dllData, size_t dllSize)
 {
-    if (phase_ != InjectionPhase::Idle) return false;
+    if (phase_ != InjectionPhase::Idle)
+    {
+        inj_log("start ignored, phase is not Idle");
+        return false;
+    }
 
+    inj_log("start pid=%lu payload=%zu bytes", (unsigned long)processId, dllSize);
     targetProcessId_ = processId;
     phase_ = InjectionPhase::Injecting;
     status_ = "Connecting to Minecraft";
@@ -48,18 +67,21 @@ bool InjectionSession::start(uint32_t processId, const void* dllData, size_t dll
 
     if (!validate_target())
     {
+        inj_log("validate_target failed, err=%lu", GetLastError());
         fail("Could not connect to Minecraft",
              "Keep the selected client open, then launch Mindless again.");
         return false;
     }
     if (!validate_session())
     {
+        inj_log("validate_session failed, err=%lu", GetLastError());
         fail("The selected client session is not valid",
              "Select a Minecraft process running in your Windows session.");
         return false;
     }
     if (!open_progress_channel())
     {
+        inj_log("open_progress_channel failed, err=%lu", GetLastError());
         fail("Could not create the loading channel",
              "Close the loader and Minecraft, then try again.");
         return false;
@@ -71,11 +93,13 @@ bool InjectionSession::start(uint32_t processId, const void* dllData, size_t dll
     }
     else
     {
+        inj_log("no payload handed to start()");
         fail("No client payload available", "Authentication may have failed.");
         return false;
     }
 
     injectDone_ = false;
+    inj_log("preflight ok, spawning inject thread");
     injectThread_ = std::thread([this] {
         injectSuccess_ = inject_remote();
         injectDone_ = true;
@@ -106,23 +130,29 @@ bool InjectionSession::inject_remote()
                     FALSE, targetProcessId_);
     if (!process)
     {
+        inj_log("OpenProcess(%lu) failed, err=%lu",
+            (unsigned long)targetProcessId_, GetLastError());
         injectError_ = "Allow Mindless through Windows Security, then try again.";
         return false;
     }
     if (!target_is_x64(process))
     {
+        inj_log("target is not native x64");
         CloseHandle(process);
         injectError_ = "Restart Lunar at its main menu, then try again.";
         return false;
     }
+    inj_log("target opened, entering manual map");
 
     if (!manual_map_inject(process, targetProcessId_, dllData_, dllSize_))
     {
+        inj_log("manual_map_inject returned false");
         CloseHandle(process);
         injectError_ = "Could not map Mindless into the target process.";
         return false;
     }
 
+    inj_log("manual map complete, waiting for native progress");
     CloseHandle(process);
     return true;
 }
@@ -135,6 +165,7 @@ void InjectionSession::tick()
     if (phase_ != InjectionPhase::Injecting) return;
     if (!validate_target())
     {
+        inj_log("target vanished during injection");
         fail("Minecraft closed while loading",
              "Keep Minecraft open until Mindless finishes loading.");
         return;
@@ -142,6 +173,7 @@ void InjectionSession::tick()
 
     if (std::chrono::steady_clock::now() - startedAt_ > std::chrono::seconds(90))
     {
+        inj_log("90s timeout, native never signalled progress");
         fail("Mindless took too long to start",
              "Restart Minecraft and try again. Check mindless-native.log if it repeats.");
         return;
@@ -221,6 +253,7 @@ void InjectionSession::poll_progress()
 
     if (state == MINDLESS_PROGRESS_COMPLETE)
     {
+        inj_log("native reported COMPLETE");
         phase_ = InjectionPhase::Complete;
         status_ = "Ready";
         progress_ = 1.0f;
@@ -228,6 +261,7 @@ void InjectionSession::poll_progress()
     }
     else if (state == MINDLESS_PROGRESS_FAILED)
     {
+        inj_log("native reported FAILED, error=%ld status=%s", error, status);
         fail("Mindless failed to start",
              "Native bootstrap error " + std::to_string(error) + ". Check mindless-native.log.");
         close_progress_channel();
@@ -269,6 +303,7 @@ bool InjectionSession::validate_session() const
 
 void InjectionSession::fail(std::string status, std::string solution)
 {
+    inj_log("FAILED: %s | %s", status.c_str(), solution.c_str());
     close_progress_channel();
     phase_ = InjectionPhase::Failed;
     status_ = std::move(status);
