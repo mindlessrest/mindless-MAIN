@@ -38,7 +38,7 @@ public class CustomHotbar extends Module {
     private long lastNanos = 0L;
 
     public CustomHotbar() {
-        super("CustomHotbar", "Replaces the vanilla hotbar and XP bar.", category.render);
+        super("Custom Hotbar", "Replaces the vanilla hotbar and XP bar.", category.render);
         this.registerSetting(background = new ColorSetting("Background", 0, 0, 0, 140));
         this.registerSetting(rounding = new SliderSetting("Rounding", 4.0, 0.0, 10.0, 0.5));
         this.registerSetting(selectionColor = new ColorSetting("Selection", 255, 255, 255, 70));
@@ -62,15 +62,19 @@ public class CustomHotbar extends Module {
 
     @SubscribeEvent
     public void onRenderOverlay(RenderGameOverlayEvent.Pre event) {
+        if (!Utils.nullCheck() || !(mc.getRenderViewEntity() instanceof EntityPlayer)) return;
         if (event.type == RenderGameOverlayEvent.ElementType.EXPERIENCE) {
             event.setCanceled(true);
             return;
         }
         if (event.type != RenderGameOverlayEvent.ElementType.HOTBAR) return;
-        if (!Utils.nullCheck() || !(mc.getRenderViewEntity() instanceof EntityPlayer)) return;
 
-        event.setCanceled(true);
-        render(event.resolution, (EntityPlayer) mc.getRenderViewEntity(), event.partialTicks);
+        try {
+            render(event.resolution, (EntityPlayer) mc.getRenderViewEntity(), event.partialTicks);
+            event.setCanceled(true);
+        }
+        catch (RuntimeException ignored) {
+        }
     }
 
     private void render(ScaledResolution res, EntityPlayer player, float partialTicks) {
@@ -85,11 +89,9 @@ public class CustomHotbar extends Module {
         float dtMs = lastNanos == 0L ? 16.6f : Math.min(120.0f, (now - lastNanos) / 1.0E6f);
         lastNanos = now;
 
-        // Background panel.
         RenderUtils.drawRoundedRectangle(barLeft, barTop, barLeft + BAR_WIDTH, barTop + BAR_HEIGHT,
                 radius, background.getColor());
 
-        // XP bar hugging the top edge of the panel + centered level number above it.
         if (showXP.isToggled()) {
             float xpLeft = barLeft;
             float xpTop = barTop - 4.0f;
@@ -112,7 +114,6 @@ public class CustomHotbar extends Module {
             }
         }
 
-        // Animated selection highlight.
         float targetSelX = barLeft + 1.0f + slot * SLOT_WIDTH;
         if (animated.isToggled()) {
             selectionX = Float.isNaN(selectionX) ? targetSelX : lerp(selectionX, targetSelX, smoothing(dtMs));
@@ -122,34 +123,43 @@ public class CustomHotbar extends Module {
         RenderUtils.drawRoundedRectangle(selectionX, barTop + 1.0f, selectionX + (SLOT_WIDTH - 2.0f),
                 barTop + BAR_HEIGHT - 1.0f, Math.min(radius, 6.0f), selectionColor.getColor());
 
-        // Items.
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         GlStateManager.enableRescaleNormal();
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
         RenderHelper.enableGUIStandardItemLighting();
-        RenderItem renderItem = mc.getRenderItem();
-        for (int i = 0; i < 9; i++) {
-            ItemStack stack = player.inventory.mainInventory[i];
-            if (stack == null) continue;
-            int ix = (int) (barLeft + 3.0f + i * SLOT_WIDTH);
-            int iy = (int) (barTop + 3.0f);
-            float bob = itemBob.isToggled() ? stack.animationsToGo - partialTicks : 0.0f;
-            if (bob > 0.0f) {
-                GlStateManager.pushMatrix();
-                float s = 1.0f + bob / 5.0f;
-                GlStateManager.translate(ix + 8, iy + 12, 0.0f);
-                GlStateManager.scale(1.0f / s, (s + 1.0f) / 2.0f, 1.0f);
-                GlStateManager.translate(-(ix + 8), -(iy + 12), 0.0f);
+        try {
+            RenderItem renderItem = mc.getRenderItem();
+            int slots = Math.min(9, player.inventory.mainInventory.length);
+            for (int i = 0; i < slots; i++) {
+                ItemStack stack = player.inventory.mainInventory[i];
+                if (stack == null) continue;
+                int ix = (int) (barLeft + 3.0f + i * SLOT_WIDTH);
+                int iy = (int) (barTop + 3.0f);
+                float bob = itemBob.isToggled() ? Math.max(0.0f, stack.animationsToGo - partialTicks) : 0.0f;
+                boolean transformed = bob > 0.0f;
+                if (transformed) {
+                    GlStateManager.pushMatrix();
+                    float s = 1.0f + bob / 5.0f;
+                    GlStateManager.translate(ix + 8, iy + 12, 0.0f);
+                    GlStateManager.scale(1.0f / s, (s + 1.0f) / 2.0f, 1.0f);
+                    GlStateManager.translate(-(ix + 8), -(iy + 12), 0.0f);
+                }
+                try {
+                    renderItem.renderItemAndEffectIntoGUI(stack, ix, iy);
+                }
+                finally {
+                    if (transformed) GlStateManager.popMatrix();
+                }
+                renderItem.renderItemOverlays(mc.fontRendererObj, stack, ix, iy);
             }
-            renderItem.renderItemAndEffectIntoGUI(stack, ix, iy);
-            if (bob > 0.0f) GlStateManager.popMatrix();
-            renderItem.renderItemOverlays(mc.fontRendererObj, stack, ix, iy);
         }
-        RenderHelper.disableStandardItemLighting();
-        GlStateManager.disableRescaleNormal();
-        GlStateManager.disableBlend();
-        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        finally {
+            RenderHelper.disableStandardItemLighting();
+            GlStateManager.disableRescaleNormal();
+            GlStateManager.disableBlend();
+            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        }
     }
 
     private float smoothing(float dtMs) {

@@ -1,6 +1,7 @@
 package mindless.module.impl.movement;
 
 import mindless.module.Module;
+import mindless.module.impl.player.Scaffold;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.utility.Utils;
@@ -36,6 +37,12 @@ public class Sprint extends Module {
     @Override
     public void onUpdate() {
         if (!Utils.nullCheck()) {
+            return;
+        }
+        Scaffold scaffold = Module.getModule(Scaffold.class);
+        if (scaffold != null && scaffold.isEnabled()) {
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+            mc.thePlayer.setSprinting(false);
             return;
         }
         boolean inGame = mc.inGameHasFocus;

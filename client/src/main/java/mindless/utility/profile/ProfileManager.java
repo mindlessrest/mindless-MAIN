@@ -401,6 +401,7 @@ public void loadProfile(String name) {
         float[] savedModernGuiOffset = null;
         float[] savedMascotOffset = null;
         boolean loadedRelationshipsState = false;
+        JsonObject legacyHudData = null;
 
         for (JsonElement moduleJson : modules) {
             if (moduleJson == null || !moduleJson.isJsonObject()) {
@@ -426,6 +427,10 @@ public void loadProfile(String name) {
             }
             if (module == null) {
                 continue;
+            }
+
+            if (moduleName.equalsIgnoreCase("HUD")) {
+                legacyHudData = moduleInformation;
             }
 
             loadedModuleData.put(module, moduleInformation);
@@ -470,6 +475,15 @@ public void loadProfile(String name) {
             RequestedModuleState relationshipsState = requestedModuleStates.get(ModuleManager.relationships);
             if (relationshipsState != null) {
                 relationshipsState.enabled = Mindless.playerRelationsManager.isActive();
+            }
+        }
+
+        if (legacyHudData != null && ModuleManager.spotifyMiniPlayer != null
+                && !loadedModuleData.containsKey(ModuleManager.spotifyMiniPlayer)) {
+            loadedModuleData.put(ModuleManager.spotifyMiniPlayer, legacyHudData);
+            RequestedModuleState spotifyState = requestedModuleStates.get(ModuleManager.spotifyMiniPlayer);
+            if (spotifyState != null) {
+                readModuleState(legacyHudData, spotifyState);
             }
         }
 

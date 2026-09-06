@@ -263,7 +263,10 @@ public class ModuleManager {
         this.addModule(new TNTTimer());
         this.addModule(new Tracers());
         this.addModule(new mindless.module.impl.render.Wings());
-        this.addModule(new mindless.module.impl.render.CustomHotbar());
+        Module customHotbar = new mindless.module.impl.render.CustomHotbar();
+        this.addModule(customHotbar);
+        modulesByName.put("CustomHotbar", customHotbar);
+        modulesByNormalizedName.put(normalizeModuleName("CustomHotbar"), customHotbar);
         this.addModule(new Xray());
         this.addModule(new Animations());
         this.addModule(new AlwaysBlock());
