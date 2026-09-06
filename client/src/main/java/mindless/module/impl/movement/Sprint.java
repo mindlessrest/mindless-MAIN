@@ -1,7 +1,6 @@
 package mindless.module.impl.movement;
 
 import mindless.module.Module;
-import mindless.module.impl.player.Scaffold;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.utility.Utils;
@@ -15,6 +14,7 @@ public class Sprint extends Module {
     private final ButtonSetting allowBackwards;
     private final ButtonSetting allowSideways;
     private final ButtonSetting allowInInventory;
+    private final ButtonSetting testSprint;
 
     public Sprint() {
         super("Sprint", "Sprints without holding the sprint key.", category.movement, 0);
@@ -24,6 +24,7 @@ public class Sprint extends Module {
         this.registerSetting(allowBackwards = new ButtonSetting("Backwards", false));
         this.registerSetting(allowSideways = new ButtonSetting("Sideways", false));
         this.registerSetting(allowInInventory = new ButtonSetting("In inventory", false));
+        this.registerSetting(testSprint = new ButtonSetting("TestSprint", false));
         this.closetModule = true;
     }
 
@@ -39,10 +40,10 @@ public class Sprint extends Module {
         if (!Utils.nullCheck()) {
             return;
         }
-        Scaffold scaffold = (Scaffold) Module.getModule(Scaffold.class);
-        if (scaffold != null && scaffold.isEnabled()) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
-            mc.thePlayer.setSprinting(false);
+        if (testSprint.isToggled()) {
+            // Exact minimal sprint behavior retained as an opt-in test path. Because this branch
+            // returns immediately, it fully overrides the legacy Sprint logic below.
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), true);
             return;
         }
         boolean inGame = mc.inGameHasFocus;

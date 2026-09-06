@@ -7,6 +7,7 @@ import mindless.utility.shader.RoundedUtils;
 import mindless.utility.HudRenderBounds;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.module.impl.render.ScoreboardModule;
+import mindless.module.impl.render.CustomHotbar;
 import mindless.runtime.GuiIngameState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
@@ -64,6 +65,18 @@ public abstract class MixinGuiIngame {
     @Inject(method = "renderGameOverlay", at = @At("HEAD"))
     private void mindless$beginHudBlurFrame(float partialTicks, CallbackInfo callbackInfo) {
         BlurUtils.beginFrame();
+    }
+
+    @Inject(method = "renderTooltip", at = @At("HEAD"), cancellable = true)
+    private void mindless$renderCustomHotbar(ScaledResolution resolution, float partialTicks,
+                                              CallbackInfo callbackInfo) {
+        if (CustomHotbar.renderReplacement(resolution, partialTicks)) callbackInfo.cancel();
+    }
+
+    @Inject(method = "renderExpBar", at = @At("HEAD"), cancellable = true)
+    private void mindless$hideVanillaExperience(ScaledResolution resolution, int x,
+                                                 CallbackInfo callbackInfo) {
+        if (CustomHotbar.replacesExperienceBar()) callbackInfo.cancel();
     }
 
     @Inject(method = "renderScoreboard", at = @At("HEAD"), cancellable = true)

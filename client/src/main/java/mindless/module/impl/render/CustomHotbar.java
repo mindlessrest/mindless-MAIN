@@ -1,6 +1,7 @@
 package mindless.module.impl.render;
 
 import mindless.module.Module;
+import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
@@ -58,6 +59,36 @@ public class CustomHotbar extends Module {
         xpBackground.setVisible(showXP.isToggled(), this);
         xpColor.setVisible(showXP.isToggled(), this);
         levelColor.setVisible(showLevel.isToggled(), this);
+    }
+
+    /** Direct render entry used by the vanilla/Lunar HUD transformer path. */
+    public static boolean renderReplacement(ScaledResolution resolution, float partialTicks) {
+        Module module = ModuleManager.getModule(CustomHotbar.class);
+        if (!(module instanceof CustomHotbar) || !module.isEnabled() || !Utils.nullCheck()
+                || !(mc.getRenderViewEntity() instanceof EntityPlayer)) {
+            return false;
+        }
+        try {
+            ((CustomHotbar) module).render(resolution,
+                    (EntityPlayer) mc.getRenderViewEntity(), partialTicks);
+            return true;
+        }
+        catch (RuntimeException ignored) {
+            // Preserve the vanilla hotbar if a third-party renderer leaves incompatible GL state.
+            return false;
+        }
+    }
+
+    public static boolean replacesExperienceBar() {
+        Module module = ModuleManager.getModule(CustomHotbar.class);
+        return module instanceof CustomHotbar && module.isEnabled();
+    }
+
+    @Override
+    public void onEnable() {
+        selectionX = Float.NaN;
+        xpProgress = Float.NaN;
+        lastNanos = 0L;
     }
 
     @SubscribeEvent

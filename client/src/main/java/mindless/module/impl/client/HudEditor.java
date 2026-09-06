@@ -952,7 +952,7 @@ SliderSetting scaleSetting() {
                 if (!hasBounds()) return;
                 float elementWidth = right - left;
                 float elementHeight = bottom - top;
-                float margin = 2.0F;
+                float margin = 0.0F;
                 float maxLeft = Math.max(margin, screenWidth - elementWidth - margin);
                 float maxTop = Math.max(margin, screenHeight - elementHeight - margin);
                 float clampedLeft = Math.max(margin, Math.min(maxLeft, requestedLeft));
@@ -964,7 +964,7 @@ SliderSetting scaleSetting() {
                 if (!hasBounds()) return;
                 float elementWidth = right - left;
                 float elementHeight = bottom - top;
-                float margin = 2.0F;
+                float margin = 0.0F;
                 float clampedLeft = Math.max(margin,
                         Math.min(Math.max(margin, screenWidth - elementWidth - margin), left));
                 float clampedTop = Math.max(margin,

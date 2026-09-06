@@ -539,9 +539,25 @@ public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY)
 
     public static void setDesignerTopLeft(float left, float top) {
         MindlessFontRenderer font = getHudFontRenderer();
-        int width = Math.max(font.getStringWidth("Kill Aura"),
-                Math.max(font.getStringWidth("Player ESP"), font.getStringWidth("Music Player")));
+        int width = getDesignerPreviewWidth(font);
         setAbsolutePosition(alignRight != null && alignRight.isToggled() ? left + width : left, top);
+    }
+
+    private static int getDesignerPreviewWidth(MindlessFontRenderer font) {
+        int width = 0;
+        boolean removeVelocity = ModuleManager.antiKnockback != null
+                && ModuleManager.antiKnockback.isEnabled();
+        for (Module module : ModuleManager.organizedModules) {
+            if (module.isEnabled() && !(module instanceof HUD)
+                    && !shouldSkipModule(module, removeVelocity)) {
+                width = Math.max(width, font.getStringWidth(getHudRenderText(module)));
+            }
+        }
+        if (width == 0) {
+            width = Math.max(font.getStringWidth("Kill Aura"),
+                    Math.max(font.getStringWidth("Player ESP"), font.getStringWidth("Sprint")));
+        }
+        return width;
     }
 
     private static boolean shouldSkipModule(Module module, boolean removeVelocity) {

@@ -1,6 +1,7 @@
 package mindless.transformer.impl.render;
 
 import mindless.module.impl.render.HUD;
+import mindless.module.impl.render.CustomHotbar;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import mindless.runtime.GuiIngameState;
@@ -41,6 +42,22 @@ public abstract class TransformerGuiIngame {
         RenderUtils.syncGlStateFromDriver();
         HudRenderBounds.clearScoreboard();
         BlurUtils.beginFrame();
+    }
+
+    @CInline
+    @CInject(method = "renderTooltip", target = @CTarget("HEAD"), cancellable = true)
+    private void mindless$renderCustomHotbar(ScaledResolution resolution, float partialTicks,
+                                              InjectionCallback callbackInfo) {
+        if (CustomHotbar.renderReplacement(resolution, partialTicks)) {
+            callbackInfo.setCancelled(true);
+        }
+    }
+
+    @CInline
+    @CInject(method = "renderExpBar", target = @CTarget("HEAD"), cancellable = true)
+    private void mindless$hideVanillaExperience(ScaledResolution resolution, int x,
+                                                 InjectionCallback callbackInfo) {
+        if (CustomHotbar.replacesExperienceBar()) callbackInfo.setCancelled(true);
     }
 
     @CInline
