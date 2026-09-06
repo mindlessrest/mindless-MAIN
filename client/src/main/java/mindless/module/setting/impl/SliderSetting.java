@@ -37,6 +37,12 @@ public class SliderSetting extends Setting {
         this((GroupSetting) null, settingName, defaultValue, min, max, intervals);
     }
 
+    public SliderSetting(String settingName, double defaultValue, double min, double max,
+                         double intervals, String... legacyProfileKeys) {
+        this((GroupSetting) null, settingName, defaultValue, min, max, intervals);
+        this.legacyProfileKeys = legacyProfileKeys != null ? legacyProfileKeys : new String[0];
+    }
+
     public SliderSetting(GroupSetting groupSetting, String settingName, String suffix, double defaultValue, double min, double max, double intervals) {
         this(groupSetting, settingName, defaultValue, min, max, intervals);
         this.suffix = suffix;

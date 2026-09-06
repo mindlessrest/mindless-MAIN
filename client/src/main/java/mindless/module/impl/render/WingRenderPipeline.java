@@ -73,7 +73,7 @@ final class WingRenderPipeline {
     };
 
     /** Texture-alpha level at which a feather counts as solid enough to occlude. */
-    private static final float COVERAGE_CUTOFF = 0.45f;
+    private static final float COVERAGE_CUTOFF = 0.08f;
     /** Discards fully empty texels so the blend does not pay for them. */
     private static final float COLOUR_CUTOFF = 0.004f;
 
@@ -131,18 +131,20 @@ final class WingRenderPipeline {
         return true;
     }
 
-    static void beginDepthPrepass(boolean throughWalls) {
+    static void beginDepthPrepass() {
         GlStateManager.enableTexture2D();
         GlStateManager.disableLighting();
         GlStateManager.disableBlend();
         GlStateManager.enableAlpha();
         GlStateManager.alphaFunc(GL11.GL_GREATER, COVERAGE_CUTOFF);
-        GlStateManager.enableCull();
+        // The right wing is produced by mirroring X, which reverses winding.
+        // Feather sheets are intentionally two-sided, so culling either loses
+        // one complete wing or requires a second reversed index buffer.
+        GlStateManager.disableCull();
         GlStateManager.enableDepth();
         GlStateManager.depthFunc(GL11.GL_LEQUAL);
         GlStateManager.depthMask(true);
         GlStateManager.colorMask(false, false, false, false);
-        if (throughWalls) GlStateManager.disableDepth();
         GL11.glShadeModel(GL11.GL_SMOOTH);
     }
 
@@ -154,7 +156,7 @@ final class WingRenderPipeline {
                 GL11.GL_ONE, GL11.GL_ZERO);
         GlStateManager.enableAlpha();
         GlStateManager.alphaFunc(GL11.GL_GREATER, COLOUR_CUTOFF);
-        GlStateManager.enableCull();
+        GlStateManager.disableCull();
         GlStateManager.depthMask(false);
         if (throughWalls) GlStateManager.disableDepth();
         else {

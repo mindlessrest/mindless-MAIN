@@ -36,6 +36,10 @@ public class Wings extends Module {
     private static final float SNEAK_DROP = 0.22f;
     private static final float TIP_FADE_GLASS = 0.34f;
     private static final float TIP_FADE_SOLID = 0.88f;
+    private static final float REAL_TIP_FADE_START = 0.78f;
+    private static final float ROOT_COLLISION_INNER = 0.025f;
+    private static final float ROOT_COLLISION_OUTER = 0.135f;
+    private static final int MAX_REAL_FEATHERS = 128;
     private static final int SOLID_ALPHA = 242;
 
     // Outer silhouette of the pixel/angel wing (the only outline shown when "Outline" is off).
@@ -149,13 +153,11 @@ public class Wings extends Module {
     private final float[] realRibs = new float[REAL_PROFILE.length / 2 * 12];
     // One wing buffered whole before anything is drawn: the vertical fade needs the wing's full
     // height before it can place a vertex on that ramp, and the two passes both read it back.
-    private final float[] realBuffer = new float[64 * (REAL_PROFILE.length / 2) * 3 * 5];
-    private final int[] realFeatherPart = new int[64];
-    private final int[] realFeatherRGB = new int[64];
-    private final float[] realFeatherShade = new float[64];
+    private final float[] realBuffer = new float[MAX_REAL_FEATHERS * (REAL_PROFILE.length / 2) * 3 * 5];
+    private final int[] realFeatherPart = new int[MAX_REAL_FEATHERS];
+    private final int[] realFeatherRGB = new int[MAX_REAL_FEATHERS];
+    private final float[] realFeatherShade = new float[MAX_REAL_FEATHERS];
     private int realFeatherCount;
-    private float realMinY;
-    private float realMaxY;
     private final float[] shardCorners = new float[PANELS_SHARD * 12];
 
     public Wings() {
@@ -167,7 +169,8 @@ public class Wings extends Module {
         this.registerSetting(colorSpeed = new SliderSetting("Color speed", 1.0, 0.0, 5.0, 0.1));
         this.registerSetting(colorSpread = new SliderSetting("Color spread", 1.0, 0.0, 4.0, 0.1));
         this.registerSetting(transparent = new ButtonSetting("Transparent", false));
-        this.registerSetting(fade = new SliderSetting("Bottom fade", 0.45, 0.0, 1.0, 0.02));
+        this.registerSetting(fade = new SliderSetting("Tip fade", 0.45, 0.0, 1.0, 0.02,
+                "Bottom fade"));
         this.registerSetting(size = new SliderSetting("Size", 1.0, 0.4, 2.5, 0.05));
         this.registerSetting(spread = new SliderSetting("Spread", 1.0, 0.4, 2.0, 0.05));
         this.registerSetting(flapSpeed = new SliderSetting("Flap speed", 1.0, 0.0, 4.0, 0.1));
@@ -301,31 +304,32 @@ public class Wings extends Module {
     /**
      * The textured path.
      *
-     * Geometry for one wing is generated into realBuffer first and only then drawn, twice. The
-     * buffering is not an optimisation: the vertical fade places each vertex on a ramp measured
-     * across the wing's full height, and that height is not known until the last feather has been
-     * transformed. Drawing straight out of the generator would mean fading each feather against
-     * itself, which is what the old root-to-tip ramp did and why it never read as a gradient.
+     * Geometry for both wings is generated into one frame buffer before rendering. Keeping the
+     * mirrored sides in a shared depth pre-pass lets feathers occlude one another cleanly at the
+     * centre seam and halves the number of texture batches compared with drawing each side alone.
      */
     private void drawFeatheredWings(float scale, float span, float phase, float amplitude) {
         boolean glass = transparent.isToggled();
         boolean walls = throughWalls.isToggled();
 
-        for (int side = -1; side <= 1; side += 2) {
-            buildFeatheredWing(side, scale, span, phase, amplitude);
+        realFeatherCount = 0;
+        appendFeatheredWing(-1, scale, span, phase, amplitude);
+        appendFeatheredWing(1, scale, span, phase, amplitude);
 
-            if (glass) {
-                WingRenderPipeline.beginGlass(walls);
-                emitFeatherPasses(false);
-            }
-            else {
-                // coverage first, with vertex alpha forced opaque so the alpha test sees the
-                // texture alpha alone. the fade must not decide what occludes what.
-                WingRenderPipeline.beginDepthPrepass(walls);
-                emitFeatherPasses(true);
-                WingRenderPipeline.beginColour(walls);
-                emitFeatherPasses(false);
-            }
+        if (glass || walls) {
+            // Through-walls rendering cannot share the world's depth buffer for
+            // self-occlusion, so it deliberately uses the single blended path.
+            WingRenderPipeline.beginGlass(walls);
+            emitFeatherPasses(false);
+        }
+        else {
+            // Build and depth-test both wings together before either colour pass.
+            // This removes feather stacking within a wing and resolves the roots
+            // correctly where the left and right sides meet.
+            WingRenderPipeline.beginDepthPrepass();
+            emitFeatherPasses(true);
+            WingRenderPipeline.beginColour(false);
+            emitFeatherPasses(false);
         }
 
         WingRenderPipeline.end();
@@ -341,18 +345,16 @@ public class Wings extends Module {
         }
     }
 
-    /** Fills realBuffer with one wing and records the height range the fade ramps over. */
-    private void buildFeatheredWing(int side, float scale, float span, float phase, float amplitude) {
+    /** Appends one mirrored wing to the shared frame buffer. */
+    private void appendFeatheredWing(int side, float scale, float span, float phase, float amplitude) {
         int steps = REAL_PROFILE.length / 2;
-        int cursor = 0;
-        realFeatherCount = 0;
-        realMinY = Float.MAX_VALUE;
-        realMaxY = -Float.MAX_VALUE;
+        int cursor = realFeatherCount * steps * 3 * 5;
 
         for (int layer = 0; layer < REAL_LAYERS.length; layer++) {
             float[] spec = REAL_LAYERS[layer];
             int count = (int) spec[2];
             for (int i = 0; i < count; i++) {
+                if (realFeatherCount >= MAX_REAL_FEATHERS) return;
                 float along = count == 1 ? 0.5f : i / (float) (count - 1);
                 float t = spec[0] + (spec[1] - spec[0]) * along;
                 float width = spec[4] * (0.90f + 0.14f * (float) Math.sin((i + layer) * 2.13f));
@@ -415,30 +417,31 @@ public class Wings extends Module {
         realBuffer[cursor + 2] = source[2];
         realBuffer[cursor + 3] = u;
         realBuffer[cursor + 4] = v;
-        if (source[1] < realMinY) realMinY = source[1];
-        if (source[1] > realMaxY) realMaxY = source[1];
         return cursor + 5;
     }
 
     /**
      * Alpha for one vertex.
      *
-     * Two things drive it. The vertical ramp is measured across the whole wing, so the bottom
-     * edge dissolves as one continuous gradient no matter which row or feather a vertex belongs
-     * to. The bias exponent pushes the falloff into the lower part of the wing rather than
-     * spreading it evenly, so the top stays solid and only the bottom reads as a suggestion.
+     * Ordinary transparency is restricted to the final section of the feather.
+     * A second, local mask softens only the narrow centre seam where the two
+     * mirrored wing roots can physically intersect.
      */
-    private int vertexAlpha(int baseAlpha, float u, float y) {
-        float tipAlpha = baseAlpha * tipFade();
-        float alpha = baseAlpha + (tipAlpha - baseAlpha) * u;
-        float amount = (float) fade.getInput();
-        if (amount > 0.0f && realMaxY > realMinY) {
-            float bottom = 1.0f - 0.80f * amount;
-            float height = (y - realMinY) / (realMaxY - realMinY);
-            float bias = 1.0f + 0.9f * amount;
-            alpha *= bottom + (1.0f - bottom) * (float) Math.pow(height, bias);
-        }
+    private int vertexAlpha(int baseAlpha, float u, float x) {
+        float tip = smoothstep(REAL_TIP_FADE_START, 1.0f, u);
+        float alpha = baseAlpha * (1.0f - (float) fade.getInput() * tip);
+
+        float centreDistance = Math.abs(x);
+        float clearOfSeam = smoothstep(ROOT_COLLISION_INNER, ROOT_COLLISION_OUTER,
+                centreDistance);
+        float rootInfluence = 1.0f - smoothstep(0.18f, 0.48f, u);
+        alpha *= 1.0f - (1.0f - clearOfSeam) * rootInfluence;
         return Math.max(0, Math.min(255, Math.round(alpha)));
+    }
+
+    private float smoothstep(float edge0, float edge1, float value) {
+        float t = Math.max(0.0f, Math.min(1.0f, (value - edge0) / (edge1 - edge0)));
+        return t * t * (3.0f - 2.0f * t);
     }
 
     private void emitFeatherPasses(boolean coverageOnly) {
@@ -491,10 +494,11 @@ public class Wings extends Module {
 
     private void featherVertex(WorldRenderer buffer, int offset, int red, int green, int blue,
                                int baseAlpha, boolean coverageOnly) {
+        float x = realBuffer[offset];
         float y = realBuffer[offset + 1];
         float u = realBuffer[offset + 3];
-        int alpha = coverageOnly ? baseAlpha : vertexAlpha(baseAlpha, u, y);
-        buffer.pos(realBuffer[offset], y, realBuffer[offset + 2])
+        int alpha = coverageOnly ? baseAlpha : vertexAlpha(baseAlpha, u, x);
+        buffer.pos(x, y, realBuffer[offset + 2])
                 .tex(u, realBuffer[offset + 4])
                 .color(red, green, blue, alpha)
                 .endVertex();
