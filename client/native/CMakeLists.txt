@@ -17,6 +17,7 @@ if(MSVC)
 endif()
 
 option(MINDLESS_PRODUCTION "Disable diagnostic logging in production builds" OFF)
+option(MINDLESS_DEBUG_LOGS "Keep native diagnostic logging in production builds" OFF)
 
 # ---------------------------------------------------------------------------
 # Locate the JDK headers (jni.h / jvmti.h).
@@ -104,7 +105,7 @@ endif()
 add_library(MindlessNative SHARED
     dllmain.c
     "${CMAKE_CURRENT_BINARY_DIR}/payload.rc")
-if(NOT MINDLESS_PRODUCTION)
+if(NOT MINDLESS_PRODUCTION OR MINDLESS_DEBUG_LOGS)
     target_compile_definitions(MindlessNative PRIVATE _NONPROD=1)
 endif()
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")

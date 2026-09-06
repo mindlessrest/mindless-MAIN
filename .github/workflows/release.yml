@@ -198,7 +198,13 @@ jobs:
 
       - name: Build production client
         shell: pwsh
-        run: python tools/build.py --prod --no-cache
+        run: |
+          $message = git log -1 --pretty=%B
+          if ($message -match '\[debug\]') {
+            $env:MINDLESS_DEBUG_LOGS = "1"
+            Write-Host "[debug] detected; native DbgView logging remains enabled."
+          }
+          python tools/build.py --prod --no-cache
 
       - name: Verify release files
         shell: pwsh

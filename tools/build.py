@@ -543,6 +543,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
         f"-DMINDLESS_FORGE_PAYLOAD_JAR={str(forge_jar).replace(chr(92), '/')}",
         f"-DMINDLESS_LUNAR_PAYLOAD_JAR={str(lunar_jar).replace(chr(92), '/')}",
         f"-DMINDLESS_PRODUCTION={'ON' if prod else 'OFF'}",
+        f"-DMINDLESS_DEBUG_LOGS={'ON' if os.environ.get('MINDLESS_DEBUG_LOGS') == '1' else 'OFF'}",
     ]
     if hikari_cflags:
         cfg_cmd.append(f"-DCMAKE_C_FLAGS_RELEASE={hikari_cflags}")
