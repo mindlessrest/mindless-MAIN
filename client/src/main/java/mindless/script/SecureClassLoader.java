@@ -91,7 +91,22 @@ public class SecureClassLoader extends URLClassLoader {
             "java.util.stream.Stream", "java.util.stream.IntStream", "java.util.stream.DoubleStream",
             "java.util.stream.LongStream", "java.util.stream.Collectors",
 
-            "java.awt.Color"
+            "java.awt.Color",
+
+            // Throwables. Without these the loader refused any script containing a catch block,
+            // which silently dropped most of the scripts folder. None of them reach anything the
+            // list does not already allow: getClass() is inherited from Object and is not gated by
+            // a class loader, and java.lang.Class stays off the list either way.
+            "java.lang.Throwable", "java.lang.Exception", "java.lang.RuntimeException",
+            "java.lang.Error", "java.lang.AutoCloseable", "java.lang.StackTraceElement",
+            "java.lang.ArithmeticException", "java.lang.ArrayIndexOutOfBoundsException",
+            "java.lang.ClassCastException", "java.lang.IllegalArgumentException",
+            "java.lang.IllegalStateException", "java.lang.IndexOutOfBoundsException",
+            "java.lang.InterruptedException", "java.lang.NegativeArraySizeException",
+            "java.lang.NullPointerException", "java.lang.NumberFormatException",
+            "java.lang.StringIndexOutOfBoundsException",
+            "java.lang.UnsupportedOperationException",
+            "java.util.ConcurrentModificationException", "java.util.NoSuchElementException"
     ));
 
     /**
