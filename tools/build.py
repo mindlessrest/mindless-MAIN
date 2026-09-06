@@ -24,6 +24,30 @@ OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
 TOOL_CACHE_FILE = Path(__file__).resolve().parent / ".build_tools_cache.json"
 CPU_COUNT = max(1, os.cpu_count() or 4)
 
+# Voyager passes are deliberately broad in production, but their expansion must
+# stay bounded: constenc and repeated pass loops can make a single clang process
+# exhaust the memory available on a GitHub-hosted runner.
+VOYAGER_PRODUCTION_FLAGS = (
+    "-mllvm -voyager"
+    " -mllvm -enable-cffobf"
+    " -mllvm -enable-bcfobf"
+    " -mllvm -bcf_prob=85"
+    " -mllvm -bcf_loop=1"
+    " -mllvm -bcf_cond_compl=3"
+    " -mllvm -enable-subobf"
+    " -mllvm -sub_prob=85"
+    " -mllvm -sub_loop=1"
+    " -mllvm -enable-splitobf"
+    " -mllvm -split_num=3"
+    " -mllvm -enable-strcry"
+    " -mllvm -strcry_prob=100"
+    " -mllvm -enable-indibran"
+    " -mllvm -indibran-enc-jump-target"
+    " -mllvm -enable-funcwra"
+    " -mllvm -fw_prob=70"
+    " -mllvm -fw_times=1"
+)
+
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
 FORGE_JAR_OBF   = CLIENT_DIR / "build" / "libs" / "mindless-obf.jar"
@@ -364,16 +388,7 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
                 # but avoid the multiplicative pass settings that can make LLVM exhaust
                 # memory on CI runners. Linking still uses the separately detected normal
                 # LLVM lld-link.exe through CMAKE_LINKER below.
-                hikari_flags = (
-                    "-mllvm -voyager"
-                    " -mllvm -enable-cffobf"
-                    " -mllvm -enable-subobf"
-                    " -mllvm -sub_prob=50"
-                    " -mllvm -sub_loop=1"
-                    " -mllvm -enable-splitobf"
-                    " -mllvm -split_num=2"
-                )
-                cv["MINDLESS_PRODUCTION_OBFUSCATION_FLAGS"] = hikari_flags
+                cv["MINDLESS_PRODUCTION_OBFUSCATION_FLAGS"] = VOYAGER_PRODUCTION_FLAGS
                 cv["MINDLESS_PRIVATE_PDB"] = "ON"
             else:
                 cv.pop("MINDLESS_PRODUCTION_OBFUSCATION_FLAGS", None)
@@ -550,19 +565,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     #     -fw_times=3
     hikari_cflags = ""
     if voyager and native_clang != clang:
-        hikari_cflags = (
-            "-mllvm -voyager"
-            " -mllvm -enable-cffobf"
-            " -mllvm -enable-bcfobf"
-            " -mllvm -bcf_prob=50"
-            " -mllvm -bcf_loop=1"
-            " -mllvm -bcf_cond_compl=2"
-            " -mllvm -enable-subobf"
-            " -mllvm -sub_prob=50"
-            " -mllvm -sub_loop=1"
-            " -mllvm -enable-splitobf"
-            " -mllvm -split_num=2"
-        )
+        hikari_cflags = VOYAGER_PRODUCTION_FLAGS
 
 
     cfg_cmd = [
@@ -627,7 +630,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     return True
 
 
-def build_loader(cmake, extra_env):
+def build_loader(cmake, extra_env, voyager=False):
     section("Loader - configure")
     loader_cache = BUILD_DIR / "CMakeCache.txt"
     loader_cmakelists = LOADER_DIR / "CMakeLists.txt"
@@ -655,8 +658,9 @@ def build_loader(cmake, extra_env):
         loader_exe_build.unlink()
 
     section("Loader - build")
+    loader_jobs = 1 if voyager else CPU_COUNT
     cmd = [str(cmake), "--build", str(BUILD_DIR), "--config", "Release",
-           "--parallel", str(CPU_COUNT)]
+           "--parallel", str(loader_jobs)]
     if not run(cmd, LOADER_DIR, extra_env):
         err("cmake build failed")
         return False
@@ -833,7 +837,7 @@ def main():
         if voyager:
             extra_env["PATH"] = str(voyager / "bin") + os.pathsep + extra_env.get("PATH", os.environ.get("PATH", ""))
 
-        if not build_loader(cmake, extra_env):
+        if not build_loader(cmake, extra_env, voyager=bool(voyager)):
             success = False
 
     print()
