@@ -120,9 +120,13 @@ namespace mindless
             void* entryPoint;             // +0x20: absolute address of DllMain
         };
         // ---------------------------------------------------------------------------
-        // Handcrafted x64 position-independent trampoline (52 bytes).
+        // Handcrafted x64 position-independent trampoline (56 bytes).
         //
-        // Thread start receives TrampolineCtx* in RCX.  Flow:
+        // The context is stored immediately after the code and found through a
+        // RIP-relative LEA. Do not rely on the remote thread's initial RCX: a
+        // few launch/injection layers wrap native thread starts and have been
+        // observed entering the stub with a damaged argument register.
+        // Flow:
         //   1. If fnRtlAddFunctionTable != 0: call it(pdataAddr, pdataCount, imageBase)
         //   2. Call DllMain(imageBase, DLL_PROCESS_ATTACH, NULL)
         //   3. Return 0.
@@ -132,7 +136,8 @@ namespace mindless
         static constexpr uint8_t TRAMPOLINE[] = {
             0x53,                               // push  rbx
             0x48, 0x83, 0xEC, 0x20,             // sub   rsp, 0x20        ; shadow space
-            0x48, 0x89, 0xCB,                   // mov   rbx, rcx         ; rbx = ctx
+            0x48, 0x8D, 0x1D, 0x2C, 0x00, 0x00, 0x00,
+                                                // lea   rbx, [rip+0x2c]  ; ctx follows code
             // --- RtlAddFunctionTable(pdataAddr, pdataCount, imageBase) ---
             0x48, 0x8B, 0x03,                   // mov   rax, [rbx]       ; fnRtlAddFunctionTable
             0x48, 0x85, 0xC0,                   // test  rax, rax
@@ -152,7 +157,7 @@ namespace mindless
             0x5B,                               // pop   rbx
             0xC3,                               // ret
         };
-        static_assert(sizeof(TRAMPOLINE) == 52, "trampoline size mismatch");
+        static_assert(sizeof(TRAMPOLINE) == 56, "trampoline size mismatch");
         // ---------------------------------------------------------------------------
         // Import resolution from the injector process.
         //
@@ -431,7 +436,7 @@ namespace mindless
             ctx.pdataCount = dirExcept.Size / static_cast<uint32_t>(sizeof(RUNTIME_FUNCTION));
         }
 
-        SIZE_T totalSize = sizeof(TrampolineCtx) + sizeof(TRAMPOLINE);
+        SIZE_T totalSize = sizeof(TRAMPOLINE) + sizeof(TrampolineCtx);
         void* remoteTrampoline = nullptr;
         status = nt.AllocateVirtualMemory(process, &remoteTrampoline, 0,
             &totalSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
@@ -442,18 +447,9 @@ namespace mindless
             return false;
         }
 
-        auto* ctxAddr  = static_cast<BYTE*>(remoteTrampoline);
-        auto* codeAddr = ctxAddr + sizeof(TrampolineCtx);
+        auto* codeAddr = static_cast<BYTE*>(remoteTrampoline);
+        auto* ctxAddr  = codeAddr + sizeof(TRAMPOLINE);
         SIZE_T written = 0;
-
-        status = nt.WriteVirtualMemory(process, ctxAddr, &ctx, sizeof(ctx), &written);
-        if (status != 0)
-        {
-            SIZE_T freeSize = 0;
-            nt.FreeVirtualMemory(process, &remoteTrampoline, &freeSize, MEM_RELEASE);
-            nt.FreeVirtualMemory(process, &remoteBase, &freeSize, MEM_RELEASE);
-            return false;
-        }
 
         status = nt.WriteVirtualMemory(process, codeAddr,
             const_cast<uint8_t*>(TRAMPOLINE), sizeof(TRAMPOLINE), &written);
@@ -465,9 +461,18 @@ namespace mindless
             return false;
         }
 
+        status = nt.WriteVirtualMemory(process, ctxAddr, &ctx, sizeof(ctx), &written);
+        if (status != 0)
+        {
+            SIZE_T freeSize = 0;
+            nt.FreeVirtualMemory(process, &remoteTrampoline, &freeSize, MEM_RELEASE);
+            nt.FreeVirtualMemory(process, &remoteBase, &freeSize, MEM_RELEASE);
+            return false;
+        }
+
         HANDLE thread = nullptr;
         status = nt.CreateThreadEx(&thread, THREAD_ALL_ACCESS, nullptr, process,
-            codeAddr, ctxAddr, 0, 0, 0, 0, nullptr);
+            codeAddr, nullptr, 0, 0, 0, 0, nullptr);
         if (status != 0 || !thread)
         {
             SIZE_T freeSize = 0;
@@ -476,13 +481,18 @@ namespace mindless
             return false;
         }
 
-        LARGE_INTEGER timeout;
-        timeout.QuadPart = -150000000LL; // 15 seconds
-        bool success = nt.WaitForSingleObject(thread, FALSE, &timeout) == 0;
+        // Only reclaim executable startup memory after Windows confirms the
+        // remote thread has exited. A timeout/failure deliberately leaks this
+        // tiny allocation in the target rather than racing its instruction
+        // pointer and causing an access violation.
+        bool success = WaitForSingleObject(thread, 15000) == WAIT_OBJECT_0;
         CloseHandle(thread);
 
-        SIZE_T freeSize = 0;
-        nt.FreeVirtualMemory(process, &remoteTrampoline, &freeSize, MEM_RELEASE);
+        if (success)
+        {
+            SIZE_T freeSize = 0;
+            nt.FreeVirtualMemory(process, &remoteTrampoline, &freeSize, MEM_RELEASE);
+        }
         return success;
     }
 } // namespace mindless
