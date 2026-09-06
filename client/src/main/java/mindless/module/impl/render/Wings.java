@@ -15,12 +15,21 @@ import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.opengl.GL11;
 
+import java.awt.Color;
+
 public class Wings extends Module {
 
-    private static final int SHAPE_WINGS = 0;
-    private static final int SHAPE_REALISTIC = 1;
-    private static final int SHAPE_SHARDS = 2;
-    private static final String[] SHAPES = {"Wings", "Realistic", "Shards"};
+    private static final int SHAPE_REALISTIC = 0;
+    private static final int SHAPE_SIMPLE = 1;
+    private static final int SHAPE_WINGS = 2;
+    private static final int SHAPE_SHARDS = 3;
+    private static final String[] SHAPES = {"Realistic", "Simple", "Wings", "Shards"};
+
+    private static final int COLOR_STATIC = 0;
+    private static final int COLOR_GRADIENT = 1;
+    private static final int COLOR_RAINBOW = 2;
+    private static final String[] COLOR_MODES = {"Static", "Gradient", "Rainbow"};
+
     private static final int PANELS_SHARD = 6;
     private static final float ROOT_Y = 1.32f;
     private static final float ROOT_Z = 0.14f;
@@ -29,6 +38,7 @@ public class Wings extends Module {
     private static final float TIP_FADE_SOLID = 0.88f;
     private static final int SOLID_ALPHA = 242;
 
+    // Outer silhouette of the pixel/angel wing (the only outline shown when "Outline" is off).
     private static final float[] PIXEL_SHAPE = {
             0.08f,  0.02f,
             0.16f,  0.28f,
@@ -60,6 +70,7 @@ public class Wings extends Module {
             0.25f,  0.03f
     };
 
+    // Inner seams — only drawn when "Outline" is enabled.
     private static final float[] PIXEL_SEAMS = {
             0.18f, 0.27f, 0.65f, 0.53f,
             0.25f, 0.08f, 0.82f, 0.37f,
@@ -68,18 +79,19 @@ public class Wings extends Module {
             0.61f,-0.46f, 0.89f,-0.28f
     };
 
-    private static final float[] PIXEL_FEATHERS = {
-            0.18f, 0.28f, 0.31f, 0.30f, 0.55f,-0.39f, 0.48f,-0.47f,
-            0.30f, 0.48f, 0.47f, 0.48f, 0.75f,-0.57f, 0.62f,-0.67f,
-            0.47f, 0.64f, 0.65f, 0.64f, 0.91f,-0.38f, 0.76f,-0.47f,
-            0.65f, 0.54f, 0.82f, 0.54f, 1.03f,-0.17f, 0.90f,-0.28f,
-            0.82f, 0.38f, 0.99f, 0.38f, 1.12f, 0.02f, 1.02f,-0.08f
-    };
-
-    private static final float[][] REALISTIC_LAYERS = {
+    // Simple (the old "Realistic") feather layers: {tStart,tEnd,count,lengthScale,widthScale,angleBias,lift,shade}
+    private static final float[][] SIMPLE_LAYERS = {
             {0.25f, 1.00f,10.0f, 0.90f, 0.140f,  0.10f, -0.010f, 0.84f},
             {0.03f, 0.76f, 9.0f, 0.67f, 0.145f, -0.12f,  0.015f, 0.92f},
             {0.00f, 0.98f,12.0f, 0.38f, 0.135f, -0.28f,  0.060f, 1.00f}
+    };
+
+    // Realistic: four overlapping rows — primaries, secondaries, greater coverts, marginal coverts.
+    private static final float[][] REAL_LAYERS = {
+            {0.20f, 1.00f, 11.0f, 1.16f, 0.150f,  0.02f, -0.020f, 0.80f},
+            {0.08f, 0.90f, 10.0f, 0.82f, 0.150f, -0.10f,  0.020f, 0.90f},
+            {0.02f, 0.82f, 12.0f, 0.52f, 0.140f, -0.26f,  0.070f, 1.02f},
+            {0.00f, 0.70f, 14.0f, 0.30f, 0.120f, -0.42f,  0.120f, 1.12f}
     };
 
     private static final float[] FEATHER_PROFILE = {
@@ -92,14 +104,32 @@ public class Wings extends Module {
             1.00f, 0.055f
     };
 
+    // Higher-resolution asymmetric vane used by the Realistic mode (u, halfWidth).
+    private static final float[] REAL_PROFILE = {
+            0.00f, 0.05f,
+            0.09f, 0.30f,
+            0.20f, 0.50f,
+            0.34f, 0.60f,
+            0.50f, 0.61f,
+            0.64f, 0.55f,
+            0.77f, 0.44f,
+            0.87f, 0.30f,
+            0.95f, 0.15f,
+            1.00f, 0.03f
+    };
+
     private final SliderSetting shape;
+    private final SliderSetting colorMode;
+    private final ColorSetting fillColor;
+    private final ColorSetting fillColor2;
+    private final SliderSetting colorSpeed;
+    private final SliderSetting colorSpread;
     private final ButtonSetting transparent;
-    private final ButtonSetting visibleLines;
     private final SliderSetting size;
     private final SliderSetting spread;
     private final SliderSetting flapSpeed;
     private final SliderSetting flapAmount;
-    private final ColorSetting fillColor;
+    private final ButtonSetting outline;
     private final ColorSetting edgeColor;
     private final SliderSetting edgeWidth;
     private final ButtonSetting throughWalls;
@@ -108,18 +138,23 @@ public class Wings extends Module {
     private final float[] pointB = new float[3];
     private final float[] pointC = new float[3];
     private final float[] ribs = new float[FEATHER_PROFILE.length / 2 * 12];
+    private final float[] realRibs = new float[REAL_PROFILE.length / 2 * 12];
     private final float[] shardCorners = new float[PANELS_SHARD * 12];
 
     public Wings() {
         super("Wings", "Wings that sit on your back.", category.render);
-        this.registerSetting(shape = new SliderSetting("Shape", SHAPE_WINGS, SHAPES));
+        this.registerSetting(shape = new SliderSetting("Shape", SHAPE_REALISTIC, SHAPES));
+        this.registerSetting(colorMode = new SliderSetting("Color mode", COLOR_STATIC, COLOR_MODES));
+        this.registerSetting(fillColor = new ColorSetting("Color", 214, 224, 255, 178));
+        this.registerSetting(fillColor2 = new ColorSetting("Color 2", 150, 120, 255, 178));
+        this.registerSetting(colorSpeed = new SliderSetting("Color speed", 1.0, 0.0, 5.0, 0.1));
+        this.registerSetting(colorSpread = new SliderSetting("Color spread", 1.0, 0.0, 4.0, 0.1));
         this.registerSetting(transparent = new ButtonSetting("Transparent", false));
-        this.registerSetting(visibleLines = new ButtonSetting("Visible lines", false));
         this.registerSetting(size = new SliderSetting("Size", 1.0, 0.4, 2.5, 0.05));
         this.registerSetting(spread = new SliderSetting("Spread", 1.0, 0.4, 2.0, 0.05));
         this.registerSetting(flapSpeed = new SliderSetting("Flap speed", 1.0, 0.0, 4.0, 0.1));
-        this.registerSetting(flapAmount = new SliderSetting("Flap amount", "\u00B0", 12.0, 0.0, 40.0, 1.0));
-        this.registerSetting(fillColor = new ColorSetting("Fill color", 214, 224, 255, 178));
+        this.registerSetting(flapAmount = new SliderSetting("Flap amount", "°", 12.0, 0.0, 40.0, 1.0));
+        this.registerSetting(outline = new ButtonSetting("Outline", false));
         this.registerSetting(edgeColor = new ColorSetting("Edge color", 255, 255, 255, 205));
         this.registerSetting(edgeWidth = new SliderSetting("Edge width", 1.1, 0.0, 3.0, 0.1));
         this.registerSetting(throughWalls = new ButtonSetting("Through walls", false));
@@ -128,9 +163,13 @@ public class Wings extends Module {
 
     @Override
     public void guiUpdate() {
+        int mode = (int) colorMode.getInput();
+        fillColor2.setVisible(mode == COLOR_GRADIENT, this);
+        colorSpeed.setVisible(mode != COLOR_STATIC, this);
+        colorSpread.setVisible(mode != COLOR_STATIC, this);
         flapAmount.setVisible(flapSpeed.getInput() > 0.0, this);
-        edgeColor.setVisible(visibleLines.isToggled(), this);
-        edgeWidth.setVisible(visibleLines.isToggled(), this);
+        edgeColor.setVisible(outline.isToggled() && mode == COLOR_STATIC, this);
+        edgeWidth.setVisible(outline.isToggled(), this);
     }
 
     @SubscribeEvent
@@ -159,6 +198,8 @@ public class Wings extends Module {
         GlStateManager.disableCull();
         GlStateManager.depthMask(false);
         if (throughWalls.isToggled()) GlStateManager.disableDepth();
+        GL11.glEnable(GL11.GL_LINE_SMOOTH);
+        GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
         GL11.glShadeModel(GL11.GL_SMOOTH);
 
         GlStateManager.translate(x, y, z);
@@ -173,11 +214,13 @@ public class Wings extends Module {
 
         for (int side = -1; side <= 1; side += 2) {
             if (style == SHAPE_REALISTIC) drawRealisticWing(side, scale, span, phase, amplitude);
+            else if (style == SHAPE_SIMPLE) drawSimpleWing(side, scale, span, phase, amplitude);
             else if (style == SHAPE_WINGS) drawPixelWing(side, scale, span, phase, amplitude);
             else drawShardWing(side, scale, span, phase, amplitude);
         }
 
         GL11.glLineWidth(1.0f);
+        GL11.glDisable(GL11.GL_LINE_SMOOTH);
         GL11.glShadeModel(GL11.GL_FLAT);
         if (throughWalls.isToggled()) GlStateManager.enableDepth();
         GlStateManager.depthMask(true);
@@ -189,108 +232,185 @@ public class Wings extends Module {
         GlStateManager.popMatrix();
     }
 
-    private void drawPixelWing(int side, float scale, float span, float phase, float amplitude) {
-        int colour = fillColor.getColor();
-        int red = (colour >> 16) & 0xFF;
-        int green = (colour >> 8) & 0xFF;
-        int blue = colour & 0xFF;
-        int alpha = fillAlpha();
-        int points = PIXEL_SHAPE.length / 2;
-        transformPlanar(0.57f, 0.08f, 0.18f, side, scale, span, phase, amplitude, point);
+    // ---------------------------------------------------------------- colour
 
-        Tessellator tessellator = Tessellator.getInstance();
-        WorldRenderer buffer = tessellator.getWorldRenderer();
-        buffer.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_COLOR);
-        for (int i = 0; i < points; i++) {
-            int next = (i + 1) % points;
-            vertex(buffer, point, red, green, blue, alpha);
-            transformPlanar(PIXEL_SHAPE[i * 2], PIXEL_SHAPE[i * 2 + 1], pixelDepth(PIXEL_SHAPE[i * 2]), side, scale, span, phase, amplitude, pointB);
-            transformPlanar(PIXEL_SHAPE[next * 2], PIXEL_SHAPE[next * 2 + 1], pixelDepth(PIXEL_SHAPE[next * 2]), side, scale, span, phase, amplitude, pointC);
-            vertex(buffer, pointB, red, green, blue, alpha);
-            vertex(buffer, pointC, red, green, blue, alpha);
-        }
-        for (int i = 0; i < PIXEL_FEATHERS.length; i += 8) {
-            float shade = 0.78f + 0.045f * ((i / 8) & 3);
-            int fr = shade(red, shade);
-            int fg = shade(green, shade);
-            int fb = shade(blue, shade);
-            transformPlanar(PIXEL_FEATHERS[i], PIXEL_FEATHERS[i + 1], pixelDepth(PIXEL_FEATHERS[i]) - 0.012f, side, scale, span, phase, amplitude, point);
-            transformPlanar(PIXEL_FEATHERS[i + 2], PIXEL_FEATHERS[i + 3], pixelDepth(PIXEL_FEATHERS[i + 2]) - 0.012f, side, scale, span, phase, amplitude, pointB);
-            transformPlanar(PIXEL_FEATHERS[i + 4], PIXEL_FEATHERS[i + 5], pixelDepth(PIXEL_FEATHERS[i + 4]) - 0.012f, side, scale, span, phase, amplitude, pointC);
-            vertex(buffer, point, fr, fg, fb, alpha);
-            vertex(buffer, pointB, fr, fg, fb, alpha);
-            vertex(buffer, pointC, fr, fg, fb, Math.round(alpha * 0.92f));
-            transformPlanar(PIXEL_FEATHERS[i + 6], PIXEL_FEATHERS[i + 7], pixelDepth(PIXEL_FEATHERS[i + 6]) - 0.012f, side, scale, span, phase, amplitude, pointB);
-            vertex(buffer, point, fr, fg, fb, alpha);
-            vertex(buffer, pointC, fr, fg, fb, Math.round(alpha * 0.92f));
-            vertex(buffer, pointB, fr, fg, fb, Math.round(alpha * 0.92f));
-        }
-        tessellator.draw();
-
-        float width = (float) edgeWidth.getInput();
-        if (!visibleLines.isToggled() || width <= 0.01f) return;
-        int edge = edgeColor.getColor();
-        int er = (edge >> 16) & 0xFF;
-        int eg = (edge >> 8) & 0xFF;
-        int eb = edge & 0xFF;
-        int ea = (edge >>> 24) & 0xFF;
-        GL11.glLineWidth(width);
-        buffer.begin(GL11.GL_LINES, DefaultVertexFormats.POSITION_COLOR);
-        for (int i = 0; i < points; i++) {
-            int next = (i + 1) % points;
-            transformPlanar(PIXEL_SHAPE[i * 2], PIXEL_SHAPE[i * 2 + 1], pixelDepth(PIXEL_SHAPE[i * 2]), side, scale, span, phase, amplitude, pointB);
-            transformPlanar(PIXEL_SHAPE[next * 2], PIXEL_SHAPE[next * 2 + 1], pixelDepth(PIXEL_SHAPE[next * 2]), side, scale, span, phase, amplitude, pointC);
-            vertex(buffer, pointB, er, eg, eb, ea);
-            vertex(buffer, pointC, er, eg, eb, ea);
-        }
-        for (int i = 0; i < PIXEL_SEAMS.length; i += 4) {
-            transformPlanar(PIXEL_SEAMS[i], PIXEL_SEAMS[i + 1], pixelDepth(PIXEL_SEAMS[i]), side, scale, span, phase, amplitude, pointB);
-            transformPlanar(PIXEL_SEAMS[i + 2], PIXEL_SEAMS[i + 3], pixelDepth(PIXEL_SEAMS[i + 2]), side, scale, span, phase, amplitude, pointC);
-            vertex(buffer, pointB, er, eg, eb, Math.round(ea * 0.42f));
-            vertex(buffer, pointC, er, eg, eb, Math.round(ea * 0.42f));
-        }
-        tessellator.draw();
+    private float colorTime() {
+        double speed = colorSpeed.getInput();
+        if (speed <= 0.0) return 0.0f;
+        return (float) ((System.nanoTime() / 1.0E9) * speed);
     }
 
-    private float pixelDepth(float x) {
-        return 0.07f + x * 0.16f;
+    /** Packed 0xRRGGBB for a point at normalised position t (0 = root, 1 = tip) along the wing. */
+    private int baseColor(float t) {
+        switch ((int) colorMode.getInput()) {
+            case COLOR_RAINBOW: {
+                float hue = colorTime() * 0.12f + t * (float) colorSpread.getInput();
+                hue -= (float) Math.floor(hue);
+                return Color.HSBtoRGB(hue, 0.82f, 1.0f) & 0xFFFFFF;
+            }
+            case COLOR_GRADIENT: {
+                double angle = colorTime() * 0.9 + t * colorSpread.getInput() * Math.PI;
+                float mix = (float) ((Math.sin(angle) + 1.0) * 0.5);
+                return lerpRGB(fillColor.getRGB(), fillColor2.getRGB(), mix);
+            }
+            default:
+                return fillColor.getRGB();
+        }
     }
+
+    /** Colour used for outlines at position t — follows the palette unless the mode is static. */
+    private int edgeRGB(float t) {
+        return (int) colorMode.getInput() == COLOR_STATIC ? edgeColor.getRGB() : baseColor(t);
+    }
+
+    private int lerpRGB(int a, int b, float m) {
+        int ar = (a >> 16) & 0xFF, ag = (a >> 8) & 0xFF, ab = a & 0xFF;
+        int br = (b >> 16) & 0xFF, bg = (b >> 8) & 0xFF, bb = b & 0xFF;
+        int r = Math.round(ar + (br - ar) * m);
+        int g = Math.round(ag + (bg - ag) * m);
+        int bl = Math.round(ab + (bb - ab) * m);
+        return (r << 16) | (g << 8) | bl;
+    }
+
+    // ---------------------------------------------------------------- realistic (feathered)
 
     private void drawRealisticWing(int side, float scale, float span, float phase, float amplitude) {
-        int colour = fillColor.getColor();
-        int red = (colour >> 16) & 0xFF;
-        int green = (colour >> 8) & 0xFF;
-        int blue = colour & 0xFF;
         int alpha = fillAlpha();
-
         Tessellator tessellator = Tessellator.getInstance();
         WorldRenderer buffer = tessellator.getWorldRenderer();
         buffer.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_COLOR);
 
-        for (int layer = 0; layer < REALISTIC_LAYERS.length; layer++) {
-            float[] spec = REALISTIC_LAYERS[layer];
+        for (int layer = 0; layer < REAL_LAYERS.length; layer++) {
+            float[] spec = REAL_LAYERS[layer];
             int count = (int) spec[2];
-            int rowRed = shade(red, spec[7]);
-            int rowGreen = shade(green, spec[7]);
-            int rowBlue = shade(blue, spec[7]);
             for (int i = 0; i < count; i++) {
                 float along = count == 1 ? 0.5f : i / (float) (count - 1);
                 float t = spec[0] + (spec[1] - spec[0]) * along;
+                float width = spec[4] * (0.90f + 0.14f * (float) Math.sin((i + layer) * 2.13f));
+                emitRealFeather(buffer, side, t, scale, span, phase, amplitude,
+                        spec[3], width, spec[5], spec[6], layer, spec[7], alpha);
+            }
+        }
+        tessellator.draw();
+
+        if (outline.isToggled()) drawRealisticLeadingEdge(side, scale, span, phase, amplitude);
+    }
+
+    private void emitRealFeather(WorldRenderer buffer, int side, float t, float scale, float span,
+                                 float phase, float amplitude, float lengthScale, float widthScale,
+                                 float angleBias, float lift, int layer, float shade, int rootAlpha) {
+        int rgb = baseColor(t);
+        int red = (rgb >> 16) & 0xFF, green = (rgb >> 8) & 0xFF, blue = rgb & 0xFF;
+
+        float rootX = realisticSpineX(t);
+        float rootY = realisticSpineY(t) - lift;
+        float rootZ = realisticDepth(rootX) - layer * 0.016f;
+        float baseLength = 0.46f + 0.42f * (float) Math.sin(Math.PI * (0.15f + 0.72f * t)) + 0.12f * t;
+        float length = baseLength * lengthScale;
+        float angle = 0.12f + 1.28f * t + angleBias;
+        float dirX = (float) Math.sin(angle) * 0.76f;
+        float dirY = -(float) Math.cos(angle);
+        float dirZ = 0.13f + 0.18f * t;
+        float dirLength = (float) Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+        dirX /= dirLength; dirY /= dirLength; dirZ /= dirLength;
+
+        float wideX = -dirY, wideY = dirX;
+        float wideLength = (float) Math.sqrt(wideX * wideX + wideY * wideY);
+        wideX /= wideLength; wideY /= wideLength;
+
+        int steps = REAL_PROFILE.length / 2;
+        int tipAlpha = Math.round(rootAlpha * tipFade());
+        for (int i = 0; i < steps; i++) {
+            float u = REAL_PROFILE[i * 2];
+            float bend = (float) Math.sin(Math.PI * u);
+            // barb scallop on the trailing (outer) vane so the edge reads as separated feathers
+            float barb = 1.0f + 0.06f * (float) Math.sin(u * (float) Math.PI * 7.0f);
+            float leadHalf = REAL_PROFILE[i * 2 + 1] * widthScale * 0.72f;
+            float trailHalf = REAL_PROFILE[i * 2 + 1] * widthScale * barb;
+            float cx = rootX + dirX * length * u + 0.025f * bend * (1.0f - t);
+            float cy = rootY + dirY * length * u - 0.035f * bend * t;
+            float cz = rootZ + dirZ * length * u - 0.025f * bend;
+            int a = Math.round(rootAlpha + (tipAlpha - rootAlpha) * u);
+            int offset = i * 12;
+            transformRealistic(cx - wideX * leadHalf, cy - wideY * leadHalf, cz, side, scale, span, phase, amplitude, point);
+            storeReal(offset, point, a);
+            transformRealistic(cx, cy, cz - 0.010f, side, scale, span, phase, amplitude, point);
+            storeReal(offset + 4, point, a);
+            transformRealistic(cx + wideX * trailHalf, cy + wideY * trailHalf, cz, side, scale, span, phase, amplitude, point);
+            storeReal(offset + 8, point, a);
+        }
+
+        for (int i = 0; i + 1 < steps; i++) {
+            // tips fade darker for depth, base keeps a soft sheen along the shaft
+            float tipRamp = 1.0f - 0.30f * (i / (float) (steps - 1));
+            int edgeR = shade(red, 0.60f * shade * tipRamp);
+            int edgeG = shade(green, 0.60f * shade * tipRamp);
+            int edgeB = shade(blue, 0.60f * shade * tipRamp);
+            int shaftR = shade(red, 1.16f * shade * tipRamp);
+            int shaftG = shade(green, 1.16f * shade * tipRamp);
+            int shaftB = shade(blue, 1.16f * shade * tipRamp);
+            int lo = i * 12, hi = (i + 1) * 12;
+            // leading vane
+            realTri(buffer, lo, lo + 4, hi + 4, edgeR, edgeG, edgeB, shaftR, shaftG, shaftB);
+            realTri(buffer, lo, hi + 4, hi, edgeR, edgeG, edgeB, shaftR, shaftG, shaftB);
+            // trailing vane
+            realTri(buffer, lo + 4, lo + 8, hi + 8, shaftR, shaftG, shaftB, edgeR, edgeG, edgeB);
+            realTri(buffer, lo + 4, hi + 8, hi + 4, shaftR, shaftG, shaftB, edgeR, edgeG, edgeB);
+        }
+    }
+
+    private void realTri(WorldRenderer buffer, int a, int b, int c,
+                         int r1, int g1, int b1, int r2, int g2, int b2) {
+        realVertex(buffer, a, r1, g1, b1);
+        realVertex(buffer, b, r2, g2, b2);
+        realVertex(buffer, c, (c % 12 == 4) ? r2 : r1, (c % 12 == 4) ? g2 : g1, (c % 12 == 4) ? b2 : b1);
+    }
+
+    private void storeReal(int offset, float[] source, int alpha) {
+        realRibs[offset] = source[0];
+        realRibs[offset + 1] = source[1];
+        realRibs[offset + 2] = source[2];
+        realRibs[offset + 3] = alpha;
+    }
+
+    private void realVertex(WorldRenderer buffer, int offset, int red, int green, int blue) {
+        buffer.pos(realRibs[offset], realRibs[offset + 1], realRibs[offset + 2])
+                .color(red, green, blue, Math.round(realRibs[offset + 3])).endVertex();
+    }
+
+    // ---------------------------------------------------------------- simple (old realistic)
+
+    private void drawSimpleWing(int side, float scale, float span, float phase, float amplitude) {
+        int alpha = fillAlpha();
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer buffer = tessellator.getWorldRenderer();
+        buffer.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_COLOR);
+
+        for (int layer = 0; layer < SIMPLE_LAYERS.length; layer++) {
+            float[] spec = SIMPLE_LAYERS[layer];
+            int count = (int) spec[2];
+            for (int i = 0; i < count; i++) {
+                float along = count == 1 ? 0.5f : i / (float) (count - 1);
+                float t = spec[0] + (spec[1] - spec[0]) * along;
+                int rgb = baseColor(t);
+                int rowRed = shade((rgb >> 16) & 0xFF, spec[7]);
+                int rowGreen = shade((rgb >> 8) & 0xFF, spec[7]);
+                int rowBlue = shade(rgb & 0xFF, spec[7]);
                 float width = spec[4] * (0.92f + 0.12f * (float) Math.sin((i + layer) * 2.13f));
-                emitRealisticFeather(buffer, side, t, scale, span, phase, amplitude,
+                emitSimpleFeather(buffer, side, t, scale, span, phase, amplitude,
                         spec[3], width, spec[5], spec[6], layer,
                         rowRed, rowGreen, rowBlue, alpha, Math.round(alpha * tipFade()));
             }
         }
         tessellator.draw();
 
-        if (visibleLines.isToggled()) drawRealisticLeadingEdge(side, scale, span, phase, amplitude);
+        if (outline.isToggled()) drawRealisticLeadingEdge(side, scale, span, phase, amplitude);
     }
 
-    private void emitRealisticFeather(WorldRenderer buffer, int side, float t, float scale, float span,
-                                      float phase, float amplitude, float lengthScale, float widthScale,
-                                      float angleBias, float lift, int layer,
-                                      int red, int green, int blue, int rootAlpha, int tipAlpha) {
+    private void emitSimpleFeather(WorldRenderer buffer, int side, float t, float scale, float span,
+                                   float phase, float amplitude, float lengthScale, float widthScale,
+                                   float angleBias, float lift, int layer,
+                                   int red, int green, int blue, int rootAlpha, int tipAlpha) {
         float rootX = realisticSpineX(t);
         float rootY = realisticSpineY(t) - lift;
         float rootZ = realisticDepth(rootX) - layer * 0.014f;
@@ -301,15 +421,11 @@ public class Wings extends Module {
         float dirY = -(float) Math.cos(angle);
         float dirZ = 0.13f + 0.18f * t;
         float dirLength = (float) Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
-        dirX /= dirLength;
-        dirY /= dirLength;
-        dirZ /= dirLength;
+        dirX /= dirLength; dirY /= dirLength; dirZ /= dirLength;
 
-        float wideX = -dirY;
-        float wideY = dirX;
+        float wideX = -dirY, wideY = dirX;
         float wideLength = (float) Math.sqrt(wideX * wideX + wideY * wideY);
-        wideX /= wideLength;
-        wideY /= wideLength;
+        wideX /= wideLength; wideY /= wideLength;
         float width = widthScale;
         int steps = FEATHER_PROFILE.length / 2;
 
@@ -380,12 +496,8 @@ public class Wings extends Module {
 
     private void drawRealisticLeadingEdge(int side, float scale, float span, float phase, float amplitude) {
         float width = (float) edgeWidth.getInput();
-        if (!visibleLines.isToggled() || width <= 0.01f) return;
-        int colour = edgeColor.getColor();
-        int red = (colour >> 16) & 0xFF;
-        int green = (colour >> 8) & 0xFF;
-        int blue = colour & 0xFF;
-        int alpha = Math.round(((colour >>> 24) & 0xFF) * 0.72f);
+        if (width <= 0.01f) return;
+        int alpha = Math.round(edgeColor.getAlpha() * 0.72f);
         Tessellator tessellator = Tessellator.getInstance();
         WorldRenderer buffer = tessellator.getWorldRenderer();
         GL11.glLineWidth(Math.max(0.7f, width * 0.72f));
@@ -394,8 +506,9 @@ public class Wings extends Module {
             float t = i / 12.0f;
             float x = realisticSpineX(t);
             float y = realisticSpineY(t) + 0.045f;
+            int rgb = edgeRGB(t);
             transformRealistic(x, y, realisticDepth(x) - 0.035f, side, scale, span, phase, amplitude, point);
-            vertex(buffer, point, red, green, blue, alpha);
+            vertex(buffer, point, (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, alpha);
         }
         tessellator.draw();
     }
@@ -412,6 +525,82 @@ public class Wings extends Module {
         return 0.06f + 0.15f * x;
     }
 
+    // ---------------------------------------------------------------- pixel / angel wing
+
+    private void drawPixelWing(int side, float scale, float span, float phase, float amplitude) {
+        int alpha = fillAlpha();
+        int tipAlpha = Math.round(alpha * tipFade());
+        int points = PIXEL_SHAPE.length / 2;
+        // Smooth silhouette fill — no internal seams; alpha fades toward the tips for a soft glow.
+        transformPlanar(0.57f, 0.08f, 0.18f, side, scale, span, phase, amplitude, point);
+        int anchorRgb = baseColor(pixelT(0.57f));
+
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer buffer = tessellator.getWorldRenderer();
+        buffer.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_COLOR);
+        for (int i = 0; i < points; i++) {
+            int next = (i + 1) % points;
+            vertex(buffer, point, (anchorRgb >> 16) & 0xFF, (anchorRgb >> 8) & 0xFF, anchorRgb & 0xFF, alpha);
+            emitPixelEdgeVertex(buffer, i, side, scale, span, phase, amplitude, tipAlpha, pointB);
+            emitPixelEdgeVertex(buffer, next, side, scale, span, phase, amplitude, tipAlpha, pointC);
+        }
+        tessellator.draw();
+
+        // Always stroke the outer silhouette — that is the wing outline in the reference image.
+        drawPixelOutline(side, scale, span, phase, amplitude, points);
+
+        if (!outline.isToggled()) return;
+        float width = (float) edgeWidth.getInput();
+        if (width <= 0.01f) return;
+        int ea = edgeColor.getAlpha();
+        GL11.glLineWidth(width);
+        buffer.begin(GL11.GL_LINES, DefaultVertexFormats.POSITION_COLOR);
+        for (int i = 0; i < PIXEL_SEAMS.length; i += 4) {
+            int rgbA = edgeRGB(pixelT(PIXEL_SEAMS[i]));
+            int rgbB = edgeRGB(pixelT(PIXEL_SEAMS[i + 2]));
+            transformPlanar(PIXEL_SEAMS[i], PIXEL_SEAMS[i + 1], pixelDepth(PIXEL_SEAMS[i]), side, scale, span, phase, amplitude, pointB);
+            transformPlanar(PIXEL_SEAMS[i + 2], PIXEL_SEAMS[i + 3], pixelDepth(PIXEL_SEAMS[i + 2]), side, scale, span, phase, amplitude, pointC);
+            vertex(buffer, pointB, (rgbA >> 16) & 0xFF, (rgbA >> 8) & 0xFF, rgbA & 0xFF, Math.round(ea * 0.42f));
+            vertex(buffer, pointC, (rgbB >> 16) & 0xFF, (rgbB >> 8) & 0xFF, rgbB & 0xFF, Math.round(ea * 0.42f));
+        }
+        tessellator.draw();
+    }
+
+    private void emitPixelEdgeVertex(WorldRenderer buffer, int index, int side, float scale, float span,
+                                     float phase, float amplitude, int alpha, float[] scratch) {
+        float x = PIXEL_SHAPE[index * 2];
+        float y = PIXEL_SHAPE[index * 2 + 1];
+        int rgb = baseColor(pixelT(x));
+        transformPlanar(x, y, pixelDepth(x), side, scale, span, phase, amplitude, scratch);
+        vertex(buffer, scratch, (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, alpha);
+    }
+
+    private void drawPixelOutline(int side, float scale, float span, float phase, float amplitude, int points) {
+        int mode = (int) colorMode.getInput();
+        int outlineAlpha = mode == COLOR_STATIC ? edgeColor.getAlpha() : Math.max(160, fillColor.getAlpha());
+        GL11.glLineWidth(outline.isToggled() ? Math.max(1.2f, (float) edgeWidth.getInput()) : 1.6f);
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer buffer = tessellator.getWorldRenderer();
+        buffer.begin(GL11.GL_LINE_LOOP, DefaultVertexFormats.POSITION_COLOR);
+        for (int i = 0; i < points; i++) {
+            float x = PIXEL_SHAPE[i * 2];
+            int rgb = edgeRGB(pixelT(x));
+            transformPlanar(x, PIXEL_SHAPE[i * 2 + 1], pixelDepth(x), side, scale, span, phase, amplitude, point);
+            vertex(buffer, point, (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, outlineAlpha);
+        }
+        tessellator.draw();
+    }
+
+    private float pixelT(float x) {
+        return Math.max(0.0f, Math.min(1.0f, x / 1.12f));
+    }
+
+    private float pixelDepth(float x) {
+        return 0.07f + x * 0.16f;
+    }
+
+    // ---------------------------------------------------------------- shards
+
     private void drawShardWing(int side, float scale, float span, float phase, float amplitude) {
         for (int i = 0; i < PANELS_SHARD; i++) {
             float step = 1.0f / PANELS_SHARD;
@@ -424,10 +613,6 @@ public class Wings extends Module {
             shardCorner(base + 9, ta, true, side, scale, span, phase, amplitude);
         }
 
-        int colour = fillColor.getColor();
-        int red = (colour >> 16) & 0xFF;
-        int green = (colour >> 8) & 0xFF;
-        int blue = colour & 0xFF;
         int alpha = fillAlpha();
         int tipAlpha = Math.round(alpha * tipFade());
         Tessellator tessellator = Tessellator.getInstance();
@@ -435,30 +620,60 @@ public class Wings extends Module {
         buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
         for (int i = 0; i < PANELS_SHARD; i++) {
             int base = i * 12;
-            shardVertex(buffer, base, red, green, blue, alpha);
-            shardVertex(buffer, base + 3, red, green, blue, alpha);
-            shardVertex(buffer, base + 6, red, green, blue, tipAlpha);
-            shardVertex(buffer, base + 9, red, green, blue, tipAlpha);
+            float t = (i + 0.5f) / PANELS_SHARD;
+            int rgb = baseColor(t);
+            int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+            shardVertex(buffer, base, r, g, b, alpha);
+            shardVertex(buffer, base + 3, r, g, b, alpha);
+            shardVertex(buffer, base + 6, r, g, b, tipAlpha);
+            shardVertex(buffer, base + 9, r, g, b, tipAlpha);
         }
         tessellator.draw();
 
+        // Outer silhouette of the whole fan — the only outline when "Outline" is off.
+        drawShardOutline(side, tipAlpha);
+
+        if (!outline.isToggled()) return;
         float width = (float) edgeWidth.getInput();
-        if (!visibleLines.isToggled() || width <= 0.01f) return;
-        int edge = edgeColor.getColor();
-        int er = (edge >> 16) & 0xFF;
-        int eg = (edge >> 8) & 0xFF;
-        int eb = edge & 0xFF;
-        int ea = (edge >>> 24) & 0xFF;
+        if (width <= 0.01f) return;
+        int ea = edgeColor.getAlpha();
         GL11.glLineWidth(width);
         buffer.begin(GL11.GL_LINES, DefaultVertexFormats.POSITION_COLOR);
         for (int i = 0; i < PANELS_SHARD; i++) {
             int base = i * 12;
-            shardEdge(buffer, base, base + 3, er, eg, eb, ea, ea);
-            shardEdge(buffer, base + 3, base + 6, er, eg, eb, ea, Math.round(ea * 0.55f));
-            shardEdge(buffer, base + 6, base + 9, er, eg, eb, Math.round(ea * 0.55f), Math.round(ea * 0.55f));
-            shardEdge(buffer, base + 9, base, er, eg, eb, Math.round(ea * 0.55f), ea);
+            int rgb = edgeRGB((i + 0.5f) / PANELS_SHARD);
+            int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+            shardEdge(buffer, base + 3, base + 6, r, g, b, ea, Math.round(ea * 0.55f));
+            shardEdge(buffer, base + 9, base, r, g, b, Math.round(ea * 0.55f), ea);
         }
         tessellator.draw();
+    }
+
+    private void drawShardOutline(int side, int tipAlpha) {
+        int mode = (int) colorMode.getInput();
+        int outlineAlpha = mode == COLOR_STATIC ? edgeColor.getAlpha() : Math.max(150, fillColor.getAlpha());
+        GL11.glLineWidth(outline.isToggled() ? Math.max(1.2f, (float) edgeWidth.getInput()) : 1.6f);
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer buffer = tessellator.getWorldRenderer();
+        buffer.begin(GL11.GL_LINE_LOOP, DefaultVertexFormats.POSITION_COLOR);
+        // near roots left -> right
+        for (int i = 0; i < PANELS_SHARD; i++) {
+            int rgb = edgeRGB((i + 0.16f) / PANELS_SHARD);
+            shardOutlineVertex(buffer, i * 12, rgb, outlineAlpha);
+            shardOutlineVertex(buffer, i * 12 + 3, rgb, outlineAlpha);
+        }
+        // far tips right -> left
+        for (int i = PANELS_SHARD - 1; i >= 0; i--) {
+            int rgb = edgeRGB((i + 0.84f) / PANELS_SHARD);
+            shardOutlineVertex(buffer, i * 12 + 6, rgb, outlineAlpha);
+            shardOutlineVertex(buffer, i * 12 + 9, rgb, outlineAlpha);
+        }
+        tessellator.draw();
+    }
+
+    private void shardOutlineVertex(WorldRenderer buffer, int offset, int rgb, int alpha) {
+        buffer.pos(shardCorners[offset], shardCorners[offset + 1], shardCorners[offset + 2])
+                .color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, alpha).endVertex();
     }
 
     private void shardCorner(int offset, float t, boolean far, int side, float scale, float span,
@@ -489,6 +704,8 @@ public class Wings extends Module {
         shardVertex(buffer, from, red, green, blue, fromAlpha);
         shardVertex(buffer, to, red, green, blue, toAlpha);
     }
+
+    // ---------------------------------------------------------------- transforms
 
     private void transformPlanar(float x, float y, float z, int side, float scale, float span,
                                  float phase, float amplitude, float[] out) {
@@ -542,7 +759,7 @@ public class Wings extends Module {
     }
 
     private int fillAlpha() {
-        int base = (fillColor.getColor() >>> 24) & 0xFF;
+        int base = fillColor.getAlpha();
         return transparent.isToggled() ? base : Math.max(base, SOLID_ALPHA);
     }
 
