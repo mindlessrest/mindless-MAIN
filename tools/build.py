@@ -29,12 +29,23 @@ CPU_COUNT = max(1, os.cpu_count() or 4)
 # exhaust the memory available on a GitHub-hosted runner.
 VOYAGER_LOADER_FLAGS = (
     "-mllvm -voyager"
+    " -mllvm -enable-strcry"
+    " -mllvm -strcry_prob=100"
+    " -mllvm -enable-bcfobf"
+    " -mllvm -bcf_prob=35"
+    " -mllvm -bcf_loop=1"
+    " -mllvm -bcf_cond_compl=2"
+    " -mllvm -bcf_junkasm"
+    " -mllvm -bcf_junkasm_minnum=1"
+    " -mllvm -bcf_junkasm_maxnum=2"
     " -mllvm -enable-cffobf"
     " -mllvm -enable-subobf"
     " -mllvm -sub_prob=50"
     " -mllvm -sub_loop=1"
     " -mllvm -enable-splitobf"
     " -mllvm -split_num=2"
+    " -mllvm -enable-constenc"
+    " -mllvm -constenc_times=1"
 )
 
 VOYAGER_NATIVE_FLAGS = (
@@ -51,9 +62,6 @@ VOYAGER_NATIVE_FLAGS = (
     " -mllvm -split_num=3"
     " -mllvm -enable-strcry"
     " -mllvm -strcry_prob=100"
-    " -mllvm -enable-funcwra"
-    " -mllvm -fw_prob=70"
-    " -mllvm -fw_times=1"
 )
 
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
