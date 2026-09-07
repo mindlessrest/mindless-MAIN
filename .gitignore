@@ -104,3 +104,4 @@ Xtools_Package_*/
 
 # Local visual development tools (never shipped with the client)
 tools/wing-sandbox/
+wing-sandbox.bat
