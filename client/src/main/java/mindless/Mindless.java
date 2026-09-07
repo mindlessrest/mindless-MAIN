@@ -299,6 +299,7 @@ private static final java.util.List<Object[]> EVENT_HANDLERS = new java.util.Arr
 
     private static void registerHandler(Object handler, boolean alsoFmlBus) {
         MinecraftForge.EVENT_BUS.register(handler);
+        LunarEventBridge.registerSyntheticListener(handler);
         boolean fml = alsoFmlBus && !LunarEventBridge.isDirectLunar();
         if (fml) {
             net.minecraftforge.fml.common.FMLCommonHandler.instance().bus().register(handler);
@@ -359,6 +360,7 @@ public static synchronized void uninject() {
         for (Object[] entry : EVENT_HANDLERS) {
             try {
                 MinecraftForge.EVENT_BUS.unregister(entry[0]);
+                LunarEventBridge.unregisterSyntheticListener(entry[0]);
                 if (Boolean.TRUE.equals(entry[1])) {
                     net.minecraftforge.fml.common.FMLCommonHandler.instance().bus().unregister(entry[0]);
                 }
@@ -416,6 +418,7 @@ public static synchronized void reinject() {
         for (Object[] entry : EVENT_HANDLERS) {
             try {
                 MinecraftForge.EVENT_BUS.register(entry[0]);
+                LunarEventBridge.registerSyntheticListener(entry[0]);
                 if (Boolean.TRUE.equals(entry[1])) {
                     net.minecraftforge.fml.common.FMLCommonHandler.instance().bus().register(entry[0]);
                 }

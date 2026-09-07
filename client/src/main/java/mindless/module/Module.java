@@ -163,6 +163,7 @@ public class Module {
         else {
             if (!alwaysOn) {
                 MinecraftForge.EVENT_BUS.register(this);
+                LunarEventBridge.registerSyntheticListener(this);
                 if (!LunarEventBridge.isDirectLunar()) {
                     FMLCommonHandler.instance().bus().register(this);
                 }
@@ -183,6 +184,7 @@ public class Module {
         else {
             if (!alwaysOn) {
                 MinecraftForge.EVENT_BUS.unregister(this);
+                LunarEventBridge.unregisterSyntheticListener(this);
                 if (!LunarEventBridge.isDirectLunar()) {
                     FMLCommonHandler.instance().bus().unregister(this);
                 }

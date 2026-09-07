@@ -4,7 +4,6 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.HudEditor;
 import mindless.module.impl.combat.AimAssist;
-import mindless.module.impl.combat.KillAura;
 import mindless.module.impl.network.Backtrack;
 import mindless.module.impl.theme.ThemeManager;
 import mindless.module.setting.impl.ButtonSetting;
@@ -621,8 +620,10 @@ private static final float[][] HEAD_UVS = {
     }
 
     private EntityLivingBase getActiveTarget() {
-        if (KillAura.target != null) return KillAura.target;
-        if (KillAura.attackingEntity != null) return KillAura.attackingEntity;
+        if (ModuleManager.killAura != null && ModuleManager.killAura.isEnabled()) {
+            EntityLivingBase auraTarget = ModuleManager.killAura.getHudTarget();
+            if (auraTarget != null) return auraTarget;
+        }
         if (mindless.Mindless.getModuleManager() != null) {
             for (mindless.module.Module mod : mindless.Mindless.getModuleManager().getModules()) {
                 if (mod instanceof AimAssist && mod.isEnabled()) {

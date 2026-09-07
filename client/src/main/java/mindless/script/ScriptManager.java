@@ -394,6 +394,7 @@ private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<
         if (script.event == null) {
             script.event = new ScriptEvents(getModule(script));
             MinecraftForge.EVENT_BUS.register(script.event);
+            mindless.runtime.LunarEventBridge.registerSyntheticListener(script.event);
         }
         script.invoke("onEnable");
     }
@@ -662,6 +663,7 @@ private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<
         ScriptDebugLogger.event(script.name, "disabled");
         if (script.event != null) {
             MinecraftForge.EVENT_BUS.unregister(script.event);
+            mindless.runtime.LunarEventBridge.unregisterSyntheticListener(script.event);
             script.event = null;
         }
         script.invoke("onDisable");

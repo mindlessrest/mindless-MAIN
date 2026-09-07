@@ -25,6 +25,7 @@ public class Script {
     public int STARTING_LINE;
     public ScriptEvents event;
     public File file;
+    private final Map<String, Method> callbackMethods = new HashMap<>();
 
     public Script(String name) {
         this.name = name;
@@ -123,6 +124,7 @@ private static String javaIdentifier(String name) {
                 this.loader = secureClassLoader;
                 this.clazz = secureClassLoader.loadClass(this.scriptName);
                 this.instance = this.clazz.newInstance();
+                cacheCallbackMethods();
             }
             catch (Throwable e) {
                 // Only a sandbox refusal is unsafe code. Everything else is an ordinary compile or
@@ -287,16 +289,9 @@ private static String javaIdentifier(String name) {
         if (this.clazz == null || this.instance == null) {
             return -1;
         }
-        Method method = null;
-        for (final Method method2 : this.clazz.getDeclaredMethods()) {
-            if (method2.getName().equalsIgnoreCase(s) && method2.getParameterCount() == array.length && method2.getReturnType().equals(Boolean.TYPE)) {
-                method = method2;
-                break;
-            }
-        }
+        Method method = findCallback(s, array.length, Boolean.TYPE);
         if (method != null) {
             try {
-                method.setAccessible(true);
                 final Object invoke = method.invoke(this.instance, array);
                 if (invoke instanceof Boolean) {
                     return ((boolean)invoke) ? 1 : 0;
@@ -332,16 +327,9 @@ private static String javaIdentifier(String name) {
         if (this.clazz == null || this.instance == null) {
             return null;
         }
-        Method method = null;
-        for (final Method method2 : this.clazz.getDeclaredMethods()) {
-            if (method2.getName().equalsIgnoreCase(s) && method2.getParameterCount() == array.length && method2.getReturnType().equals(String.class)) {
-                method = method2;
-                break;
-            }
-        }
+        Method method = findCallback(s, array.length, String.class);
         if (method != null) {
             try {
-                method.setAccessible(true);
                 final Object invoke = method.invoke(this.instance, array);
                 if (invoke instanceof String) {
                     return (String) invoke;
@@ -377,16 +365,9 @@ private static String javaIdentifier(String name) {
         if (this.clazz == null || this.instance == null) {
             return null;
         }
-        Method method = null;
-        for (Method _method : this.clazz.getDeclaredMethods()) {
-            if (_method.getName().equals(methodName) && _method.getReturnType().equals(Float[].class) && _method.getParameterCount() == args.length) {
-                method = _method;
-                break;
-            }
-        }
+        Method method = findCallback(methodName, args.length, Float[].class);
         if (method != null) {
             try {
-                method.setAccessible(true);
                 Object result = method.invoke(this.instance, args);
                 if (result instanceof Float[]) {
                     return (Float[])result;
@@ -421,6 +402,7 @@ private static String javaIdentifier(String name) {
     public void delete() {
         this.clazz = null;
         this.instance = null;
+        callbackMethods.clear();
         if (this.loader != null) {
             try {
                 this.loader.close();
@@ -455,16 +437,9 @@ private static String javaIdentifier(String name) {
         if (this.clazz == null || this.instance == null) {
             return false;
         }
-        Method method = null;
-        for (final Method method2 : this.clazz.getDeclaredMethods()) {
-            if (method2.getName().equalsIgnoreCase(s) && method2.getParameterCount() == array.length && method2.getReturnType().equals(Void.TYPE)) {
-                method = method2;
-                break;
-            }
-        }
+        Method method = findCallback(s, array.length, Void.TYPE);
         if (method != null) {
             try {
-                method.setAccessible(true);
                 method.invoke(this.instance, array);
                 return true;
             }
@@ -492,5 +467,30 @@ private static String javaIdentifier(String name) {
             }
         }
         return false;
+    }
+
+    private void cacheCallbackMethods() {
+        callbackMethods.clear();
+        if (clazz == null) return;
+        for (Method method : clazz.getDeclaredMethods()) {
+            String key = callbackKey(method.getName(), method.getParameterCount(), method.getReturnType());
+            if (callbackMethods.containsKey(key)) continue;
+            try {
+                method.setAccessible(true);
+                callbackMethods.put(key, method);
+            }
+            catch (RuntimeException ignored) {
+                // Preserve the previous behavior: inaccessible callbacks are treated as absent.
+            }
+        }
+    }
+
+    private Method findCallback(String name, int parameterCount, Class<?> returnType) {
+        if (name == null) return null;
+        return callbackMethods.get(callbackKey(name, parameterCount, returnType));
+    }
+
+    private static String callbackKey(String name, int parameterCount, Class<?> returnType) {
+        return name.toLowerCase(Locale.ROOT) + '#' + parameterCount + ':' + returnType.getName();
     }
 }

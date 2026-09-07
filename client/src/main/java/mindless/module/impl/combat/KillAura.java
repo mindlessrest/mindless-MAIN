@@ -78,6 +78,8 @@ public class KillAura extends Module {
 
     public static EntityLivingBase target;
     public static EntityLivingBase attackingEntity;
+    private EntityLivingBase lastHudTarget;
+    private long lastHudTargetAt;
 
     public boolean isRequireMouseDown() {
         return requireMouseDown.isToggled();
@@ -153,6 +155,7 @@ public class KillAura extends Module {
     public void onDisable() {
         hitMap.clear();
         setTarget(null);
+        clearHudTarget();
         nextClickTime = 0L;
         lastAttackedEntityId = -1;
         monsterClassCache.clear();
@@ -333,6 +336,7 @@ public class KillAura extends Module {
             monsterClassCache.clear();
             nonMonsterClassCache.clear();
             lastAttackedEntityId = -1;
+            clearHudTarget();
         }
     }
 
@@ -344,7 +348,35 @@ public class KillAura extends Module {
             nextClickTime = 0L;
         } else {
             target = (EntityLivingBase) entity;
+            lastHudTarget = target;
+            lastHudTargetAt = System.currentTimeMillis();
         }
+    }
+
+    /**
+     * Render events can land just after a combat condition clears the live static
+     * target. Retain the most recently validated target for a few frames so HUDs
+     * observe the same opponent that KillAura actually acted on.
+     */
+    public EntityLivingBase getHudTarget() {
+        EntityLivingBase active = attackingEntity != null ? attackingEntity : target;
+        if (active != null) {
+            lastHudTarget = active;
+            lastHudTargetAt = System.currentTimeMillis();
+            return active;
+        }
+        if (lastHudTarget == null || System.currentTimeMillis() - lastHudTargetAt > 250L
+                || lastHudTarget.isDead || lastHudTarget.getHealth() <= 0.0F
+                || lastHudTarget.worldObj != mc.theWorld) {
+            clearHudTarget();
+            return null;
+        }
+        return lastHudTarget;
+    }
+
+    private void clearHudTarget() {
+        lastHudTarget = null;
+        lastHudTargetAt = 0L;
     }
 
     private void handleTarget() {
