@@ -488,22 +488,28 @@ private final String roundedRectGradientCorners = "#version 120\n" +
                     fragmentShaderID = createShader(new ByteArrayInputStream(roundedRectGradientCorners.getBytes()), GL_FRAGMENT_SHADER);
                     break;
                 default:
-                    fragmentShaderID = createShader(mc.getResourceManager().getResource(new ResourceLocation(fragmentShaderLoc)).getInputStream(), GL_FRAGMENT_SHADER);
+                    fragmentShaderID = createShader(openShaderSource(fragmentShaderLoc), GL_FRAGMENT_SHADER);
                     break;
             }
             glAttachShader(program, fragmentShaderID);
 
-            int vertexShaderID = createShader(mc.getResourceManager().getResource(new ResourceLocation(vertexShaderLoc)).getInputStream(), GL_VERTEX_SHADER);
+            int vertexShaderID = createShader(openShaderSource(vertexShaderLoc), GL_VERTEX_SHADER);
             glAttachShader(program, vertexShaderID);
         }
         catch (IOException e) {
-            e.printStackTrace();
+            // Never fall through to the link with nothing attached. A program with no shaders
+            // links successfully on NVIDIA, so swallowing this produced a valid-looking handle
+            // that every later draw was bound to, and the whole frame went through an empty
+            // pipeline. Callers guard construction; let them see the failure.
+            glDeleteProgram(program);
+            throw new IllegalStateException("Shader source unavailable: " + fragmentShaderLoc, e);
         }
 
         glLinkProgram(program);
         int status = glGetProgrami(program, GL_LINK_STATUS);
 
         if (status == 0) {
+            glDeleteProgram(program);
             throw new IllegalStateException("Shader failed to link!");
         }
         this.programID = program;
@@ -511,6 +517,25 @@ private final String roundedRectGradientCorners = "#version 120\n" +
 
     public ShaderUtils(String fragmentShaderLoc) {
         this(fragmentShaderLoc, "minecraft:shaders/vertex.vsh");
+    }
+
+    /**
+     * Read a shader off the classpath, falling back to the resource manager.
+     *
+     * Lunar does not mount the client's assets into the resource manager, so a plain
+     * ResourceLocation lookup throws FileNotFoundException there for every shader that is not
+     * one of the inlined ones. The file is in our jar either way, so reading it directly works
+     * on both launch paths; the resource-manager fallback keeps resource-pack overrides working
+     * under Forge.
+     */
+    private static InputStream openShaderSource(String location) throws IOException {
+        ResourceLocation id = new ResourceLocation(location);
+        String classpath = "/assets/" + id.getResourceDomain() + "/" + id.getResourcePath();
+        InputStream stream = ShaderUtils.class.getResourceAsStream(classpath);
+        if (stream != null) {
+            return stream;
+        }
+        return Minecraft.getMinecraft().getResourceManager().getResource(id).getInputStream();
     }
 
     public String getName() {
