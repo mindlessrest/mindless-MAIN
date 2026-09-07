@@ -11,20 +11,13 @@ public class ScoreboardModule extends Module {
     private static ScoreboardModule instance;
 
     private static SliderSetting font;
-    private static SliderSetting fontScale;
+    private static SliderSetting scale;
 
     public ScoreboardModule() {
         super("Scoreboard", "Restyles the scoreboard with your own font.", category.render);
         this.registerSetting(font = new SliderSetting("Font", 0, FONT_OPTIONS));
-        this.registerSetting(fontScale = new SliderSetting("Font scale", 1.0, 0.5, 2.0, 0.05));
+        this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.05));
         instance = this;
-    }
-
-    @Override
-    public void guiUpdate() {
-        if (fontScale != null) {
-            fontScale.setVisible(!isMinecraftFontSelected(), this);
-        }
     }
 
     public static boolean isCustomScoreboardEnabled() {
@@ -40,8 +33,11 @@ public static MindlessFontRenderer getCustomFont() {
             return null;
         }
 
-        float scale = fontScale == null ? 1.0f : (float) fontScale.getInput();
-        return FontManager.getHudRenderer(FONT_OPTIONS[index], scale);
+        return FontManager.getHudRenderer(FONT_OPTIONS[index], 1.0f);
+    }
+
+    public static float getScale() {
+        return scale == null ? 1.0f : (float) scale.getInput();
     }
 
     private static boolean isMinecraftFontSelected() {

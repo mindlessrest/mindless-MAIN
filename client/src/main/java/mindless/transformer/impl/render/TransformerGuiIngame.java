@@ -90,6 +90,7 @@ public abstract class TransformerGuiIngame {
         FontRenderer font = getFontRenderer();
         MindlessFontRenderer customFont = mindless.module.impl.render.ScoreboardModule.getCustomFont();
         float fontScale = customFont != null ? 1.0f : GuiIngameState.SCOREBOARD_SCALE;
+        float scoreboardScale = mindless.module.impl.render.ScoreboardModule.getScale();
         String displayTitle = objective.getDisplayName();
         int contentWidth = HudTextRenderer.width(customFont, font, displayTitle);
         for (Score score : GuiIngameState.visibleScores) {
@@ -107,11 +108,14 @@ public abstract class TransformerGuiIngame {
         int lineHeight = HudTextRenderer.lineHeight(customFont, font);
         float scaledLineHeight = lineHeight * fontScale;
         float rowsHeight = GuiIngameState.visibleScores.size() * scaledLineHeight;
-        float panelWidth = contentWidth * fontScale
+        float basePanelWidth = contentWidth * fontScale
                 + GuiIngameState.HORIZONTAL_PADDING * 2.0f;
-        float panelHeight = (GuiIngameState.visibleScores.size() + 1) * scaledLineHeight
+        float basePanelHeight = (GuiIngameState.visibleScores.size() + 1) * scaledLineHeight
                 + GuiIngameState.VERTICAL_PADDING * 2.0f + 2.0f;
-        float defaultBottom = resolution.getScaledHeight() / 2.0f + rowsHeight / 3.0f + 5.0f;
+        float panelWidth = basePanelWidth * scoreboardScale;
+        float panelHeight = basePanelHeight * scoreboardScale;
+        float defaultBottom = resolution.getScaledHeight() / 2.0f
+                + rowsHeight * scoreboardScale / 3.0f + 5.0f;
         float defaultLeft = resolution.getScaledWidth() - 3.0f - panelWidth;
         float defaultTop = defaultBottom - panelHeight;
         float left = HUD.getScoreboardX(panelWidth, resolution, defaultLeft);
@@ -127,11 +131,11 @@ public abstract class TransformerGuiIngame {
 
         BlurUtils.prepareBlur();
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
-                GuiIngameState.panelRadius(), 0xFF000000);
+                GuiIngameState.panelRadius() * scoreboardScale, 0xFF000000);
         BlurUtils.blurEndRegion(2, 2.4f, GuiIngameState.PANEL_BLUR_OPACITY,
                 left - 2, top - 2, right - left + 4, bottom - top + 4);
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
-                GuiIngameState.panelRadius(), GuiIngameState.PANEL_FILL_COLOR);
+                GuiIngameState.panelRadius() * scoreboardScale, GuiIngameState.PANEL_FILL_COLOR);
 
         GlStateManager.enableTexture2D();
         GlStateManager.enableAlpha();
@@ -143,18 +147,19 @@ public abstract class TransformerGuiIngame {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
 
         GlStateManager.pushMatrix();
-        GlStateManager.scale(fontScale, fontScale, 1.0f);
+        GlStateManager.translate(left, top, 0.0f);
+        GlStateManager.scale(scoreboardScale * fontScale, scoreboardScale * fontScale, 1.0f);
 
         float titleVisualWidth = HudTextRenderer.width(customFont, font, displayTitle) * fontScale;
-        int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / fontScale);
-        int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / fontScale);
+        int titleX = Math.round((basePanelWidth - titleVisualWidth) / (2.0f * fontScale));
+        int titleY = Math.round(GuiIngameState.VERTICAL_PADDING / fontScale);
         HudTextRenderer.draw(customFont, font, displayTitle, titleX, titleY, 0xFFFFFFFF, false);
 
         for (int i = 0; i < GuiIngameState.visibleScores.size(); i++) {
             String playerText = GuiIngameState.visibleLines.get(i);
-            int y = Math.round((bottom - GuiIngameState.VERTICAL_PADDING
+            int y = Math.round((basePanelHeight - GuiIngameState.VERTICAL_PADDING
                     - (i + 1) * scaledLineHeight) / fontScale);
-            int lineX = Math.round((left + GuiIngameState.HORIZONTAL_PADDING) / fontScale);
+            int lineX = Math.round(GuiIngameState.HORIZONTAL_PADDING / fontScale);
             HudTextRenderer.draw(customFont, font, playerText, lineX, y, 0xFFFFFFFF, false);
         }
 

@@ -110,6 +110,7 @@ public abstract class MixinGuiIngame {
         FontRenderer font = getFontRenderer();
         MindlessFontRenderer customFont = ScoreboardModule.getCustomFont();
         float fontScale = customFont != null ? 1.0f : SCOREBOARD_SCALE;
+        float scoreboardScale = ScoreboardModule.getScale();
 
         String displayTitle = objective.getDisplayName();
         int contentWidth = mindless$width(customFont, font, displayTitle);
@@ -129,10 +130,13 @@ public abstract class MixinGuiIngame {
         int lineHeight = customFont != null ? customFont.getLineHeight() : font.FONT_HEIGHT;
         float scaledLineHeight = lineHeight * fontScale;
         float rowsHeight = mindless$visibleScores.size() * scaledLineHeight;
-        float panelWidth = contentWidth * fontScale + GuiIngameState.HORIZONTAL_PADDING * 2.0f;
-        float panelHeight = (mindless$visibleScores.size() + 1) * scaledLineHeight
+        float basePanelWidth = contentWidth * fontScale + GuiIngameState.HORIZONTAL_PADDING * 2.0f;
+        float basePanelHeight = (mindless$visibleScores.size() + 1) * scaledLineHeight
                 + GuiIngameState.VERTICAL_PADDING * 2.0f + 2.0f;
-        float defaultBottom = resolution.getScaledHeight() / 2.0f + rowsHeight / 3.0f + 5.0f;
+        float panelWidth = basePanelWidth * scoreboardScale;
+        float panelHeight = basePanelHeight * scoreboardScale;
+        float defaultBottom = resolution.getScaledHeight() / 2.0f
+                + rowsHeight * scoreboardScale / 3.0f + 5.0f;
         float defaultLeft = resolution.getScaledWidth() - 3.0f - panelWidth;
         float defaultTop = defaultBottom - panelHeight;
         float left = HUD.getScoreboardX(panelWidth, resolution, defaultLeft);
@@ -147,11 +151,11 @@ public abstract class MixinGuiIngame {
         GL11.glColorMask(true, true, true, true);
         BlurUtils.prepareBlur(left, top, right - left, bottom - top);
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
-                GuiIngameState.panelRadius(), 0xFF000000);
+                GuiIngameState.panelRadius() * scoreboardScale, 0xFF000000);
         BlurUtils.blurEndRegion(2, 2.4f, GuiIngameState.PANEL_BLUR_OPACITY,
                 left - 2.0f, top - 2.0f, right - left + 4.0f, bottom - top + 4.0f);
         RoundedUtils.drawRound(left, top, right - left, bottom - top,
-                GuiIngameState.panelRadius(), GuiIngameState.PANEL_FILL_COLOR);
+                GuiIngameState.panelRadius() * scoreboardScale, GuiIngameState.PANEL_FILL_COLOR);
         GlStateManager.enableTexture2D();
         GlStateManager.enableAlpha();
         GlStateManager.enableBlend();
@@ -162,18 +166,19 @@ public abstract class MixinGuiIngame {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
 
         GlStateManager.pushMatrix();
-        GlStateManager.scale(fontScale, fontScale, 1.0f);
+        GlStateManager.translate(left, top, 0.0f);
+        GlStateManager.scale(scoreboardScale * fontScale, scoreboardScale * fontScale, 1.0f);
 
         float titleVisualWidth = mindless$width(customFont, font, displayTitle) * fontScale;
-        int titleX = Math.round((left + (right - left - titleVisualWidth) / 2.0f) / fontScale);
-        int titleY = Math.round((top + GuiIngameState.VERTICAL_PADDING) / fontScale);
+        int titleX = Math.round((basePanelWidth - titleVisualWidth) / (2.0f * fontScale));
+        int titleY = Math.round(GuiIngameState.VERTICAL_PADDING / fontScale);
         mindless$drawLine(customFont, font, displayTitle, titleX, titleY);
 
         for (int i = 0; i < mindless$visibleScores.size(); i++) {
             String playerText = mindless$visibleLines.get(i);
-            int y = Math.round((bottom - GuiIngameState.VERTICAL_PADDING
+            int y = Math.round((basePanelHeight - GuiIngameState.VERTICAL_PADDING
                     - (i + 1) * scaledLineHeight) / fontScale);
-            int lineX = Math.round((left + GuiIngameState.HORIZONTAL_PADDING) / fontScale);
+            int lineX = Math.round(GuiIngameState.HORIZONTAL_PADDING / fontScale);
             mindless$drawLine(customFont, font, playerText, lineX, y);
         }
 
