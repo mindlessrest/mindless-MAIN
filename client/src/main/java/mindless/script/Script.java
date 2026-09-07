@@ -469,7 +469,12 @@ private static String javaIdentifier(String name) {
         return false;
     }
 
-    private void cacheCallbackMethods() {
+    /**
+     * Build the callback lookup after either source compilation or a precompiled JAR load.
+     * Package-private so ScriptManager can finish binding JAR scripts through the exact same
+     * runtime path as source scripts.
+     */
+    void cacheCallbackMethods() {
         callbackMethods.clear();
         if (clazz == null) return;
         for (Method method : clazz.getDeclaredMethods()) {

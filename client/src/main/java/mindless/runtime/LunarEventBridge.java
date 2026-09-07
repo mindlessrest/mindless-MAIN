@@ -18,6 +18,7 @@ import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.eventhandler.EventBus;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import mindless.utility.RenderUtils;
 import org.lwjgl.input.Mouse;
 public final class LunarEventBridge {
     private static final boolean DIRECT_LUNAR = Boolean.parseBoolean(
@@ -50,15 +51,27 @@ public final class LunarEventBridge {
 
     public static void postRenderTick(TickEvent.Phase phase, float partialTicks) {
         if (!DIRECT_LUNAR) return;
-        SYNTHETIC_EVENT_BUS.post(new TickEvent.RenderTickEvent(phase, partialTicks));
+        try {
+            SYNTHETIC_EVENT_BUS.post(new TickEvent.RenderTickEvent(phase, partialTicks));
+        }
+        finally {
+            if (phase == TickEvent.Phase.END) {
+                RenderUtils.restoreGuiTextState();
+            }
+        }
     }
 
     public static void postRenderWorld(float partialTicks) {
         if (!DIRECT_LUNAR) return;
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft == null || minecraft.theWorld == null || minecraft.renderGlobal == null) return;
-        SYNTHETIC_EVENT_BUS.post(
-                new RenderWorldLastEvent(minecraft.renderGlobal, partialTicks));
+        try {
+            SYNTHETIC_EVENT_BUS.post(
+                    new RenderWorldLastEvent(minecraft.renderGlobal, partialTicks));
+        }
+        finally {
+            RenderUtils.restoreGuiTextState();
+        }
     }
 public static boolean nextMouseEvent() {
         if (!DIRECT_LUNAR) return Mouse.next();

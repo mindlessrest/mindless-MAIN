@@ -434,6 +434,15 @@ private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<
     }
 
     public void loadScripts() {
+        Set<String> enabledScripts = new HashSet<>();
+        for (Map.Entry<Script, Module> entry : this.scripts.entrySet()) {
+            Script script = entry.getKey();
+            Module module = entry.getValue();
+            if (script.file != null && module.isEnabled()) {
+                enabledScripts.add(script.file.getName().toLowerCase(Locale.ROOT));
+            }
+        }
+
         for (Module module : this.scripts.values()) {
             module.disable();
         }
@@ -517,6 +526,19 @@ private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<
 
         ScriptDefaults.reloadModules();
 
+        // Reloading scripts should not quietly turn off modules that were running beforehand.
+        // This also re-registers their event listeners after the old instances were detached.
+        for (Map.Entry<Script, Module> entry : this.scripts.entrySet()) {
+            Script script = entry.getKey();
+            Module module = entry.getValue();
+            if (script.file != null
+                    && enabledScripts.contains(script.file.getName().toLowerCase(Locale.ROOT))
+                    && module.canBeEnabled()
+                    && !module.isEnabled()) {
+                module.enable();
+            }
+        }
+
         File tempDirectory = new File(COMPILED_DIR);
         if (tempDirectory.exists() && tempDirectory.isDirectory()) {
             File[] tempFiles = tempDirectory.listFiles();
@@ -571,6 +593,7 @@ private static void scanConstantPoolForClasses(byte[] classBytes, java.util.Set<
             script.loader = jarLoader;
             script.clazz = scriptClass;
             script.instance = scriptClass.newInstance();
+            script.cacheCallbackMethods();
 
             Module module = new Module(script);
             attachManagerSettings(script, module);

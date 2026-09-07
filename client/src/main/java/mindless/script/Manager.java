@@ -104,7 +104,9 @@ public class Manager extends Module {
     }
 
     private boolean updateSettingFile() {
-        return set("enable-http-requests", String.valueOf(enableHttpRequests.isToggled())) & set("enable-websockets", String.valueOf(enableWebSockets.isToggled()));
+        return set("enable-http-requests", String.valueOf(enableHttpRequests.isToggled()))
+                & set("enable-websockets", String.valueOf(enableWebSockets.isToggled()))
+                & set("debug-logging", String.valueOf(debugLogging.isToggled()));
     }
 
     private void ensureConfigFileExists() throws IOException {
@@ -148,11 +150,15 @@ public class Manager extends Module {
     private void retrieveSettings() {
         String requestState = retrieveSetting("enable-http-requests");
         String webSocketsState = retrieveSetting("enable-websockets");
+        String debugLoggingState = retrieveSetting("debug-logging");
         if (requestState != null) {
             enableHttpRequests.setEnabled(parseBoolean(requestState, true));
         }
         if (webSocketsState != null) {
             enableWebSockets.setEnabled(parseBoolean(webSocketsState, true));
+        }
+        if (debugLoggingState != null) {
+            debugLogging.setEnabled(parseBoolean(debugLoggingState, false));
         }
     }
 

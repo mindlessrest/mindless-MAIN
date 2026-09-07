@@ -1862,6 +1862,23 @@ public static void syncGlStateFromDriver(int mask) {
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
+    /**
+     * Restore the small fixed-function contract Minecraft's font renderer expects between HUD
+     * passes. Mindless renderers deliberately lower/disable alpha testing for antialiased shapes;
+     * allowing that state to survive into the next frame exposes faint atlas pixels as gray edges
+     * and detached shadow dots.
+     */
+    public static void restoreGuiTextState() {
+        OpenGlHelper.glUseProgram(0);
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableAlpha();
+        GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1F);
+        GlStateManager.colorMask(true, true, true, true);
+        GlStateManager.shadeModel(GL11.GL_FLAT);
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
     public static void prepareGuiItemRenderState() {
         GlStateManager.disableLighting();
         GlStateManager.enableTexture2D();
