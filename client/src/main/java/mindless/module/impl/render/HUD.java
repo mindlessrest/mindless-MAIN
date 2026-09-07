@@ -849,6 +849,10 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
         boolean right = alignRight.isToggled();
         float radius = getBackgroundRadius(rowHeight);
         float transitionRadius = getBackgroundStepRadius(radius);
+        // The whole staircase is emitted into one batch and blended once. Drawing each row as
+        // its own translucent shape meant every shared edge was blended twice, which outlined
+        // each row and made the list read as separate chips instead of one connected panel.
+        beginRowBatch();
         for (int i = 0; i < widths.length; i++) {
             float width = widths[i] + horizontalTextPadding * 2f;
             float left = right ? posX - widths[i] - horizontalTextPadding : posX - horizontalTextPadding;
@@ -888,11 +892,11 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
             // Rows share a horizontal seam. Two antialiased edges meeting on the same line do not
             // sum back to full coverage, so a hairline shows through; overlap them slightly. Safe
             // because interior corners are square.
-            float seam = lastRow ? 0.0f : 0.5f;
             fillRow(left - grow, rowTop - growTop, left + width + grow,
-                    rowTop + rowHeight + growBottom + seam,
+                    rowTop + rowHeight + growBottom,
                     topLeft, topRight, bottomRight, bottomLeft, color);
         }
+        endRowBatch();
     }
 
     private static void paintRoundedRect(float left, float top, float width, float height,
@@ -908,23 +912,98 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
         }
     }
 
-private static void fillRow(float x1, float y1, float x2, float y2,
+private static void beginRowBatch() {
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableAlpha();
+        GlStateManager.disableLighting();
+        GlStateManager.shadeModel(GL11.GL_SMOOTH);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        Tessellator.getInstance().getWorldRenderer()
+                .begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_COLOR);
+    }
+
+    private static void endRowBatch() {
+        Tessellator.getInstance().draw();
+        GlStateManager.shadeModel(GL11.GL_FLAT);
+        GlStateManager.enableAlpha();
+        GlStateManager.enableTexture2D();
+        GlStateManager.disableBlend();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    private static void emitQuad(WorldRenderer wr, float x1, float y1, float x2, float y2,
+                                 int r, int g, int b, int a) {
+        if (x2 <= x1 || y2 <= y1) {
+            return;
+        }
+        wr.pos(x1, y1, 0.0D).color(r, g, b, a).endVertex();
+        wr.pos(x1, y2, 0.0D).color(r, g, b, a).endVertex();
+        wr.pos(x2, y2, 0.0D).color(r, g, b, a).endVertex();
+
+        wr.pos(x1, y1, 0.0D).color(r, g, b, a).endVertex();
+        wr.pos(x2, y2, 0.0D).color(r, g, b, a).endVertex();
+        wr.pos(x2, y1, 0.0D).color(r, g, b, a).endVertex();
+    }
+
+    private static void emitCorner(WorldRenderer wr, float cx, float cy, float radius,
+                                   float startDeg, int r, int g, int b, int a) {
+        if (radius <= 0.0f) {
+            return;
+        }
+        int segments = 8;
+        for (int i = 0; i < segments; i++) {
+            double t0 = Math.toRadians(startDeg + 90.0 * i / segments);
+            double t1 = Math.toRadians(startDeg + 90.0 * (i + 1) / segments);
+            wr.pos(cx, cy, 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(cx + Math.sin(t0) * radius, cy - Math.cos(t0) * radius, 0.0D)
+                    .color(r, g, b, a).endVertex();
+            wr.pos(cx + Math.sin(t1) * radius, cy - Math.cos(t1) * radius, 0.0D)
+                    .color(r, g, b, a).endVertex();
+        }
+    }
+
+    /**
+     * One row of the connected array list, emitted into the batch opened by beginRowBatch.
+     *
+     * Same decomposition as a rounded rect -- three bands plus a fan per rounded corner -- but
+     * every piece goes into a single buffer that is blended once at the end. That is the whole
+     * point: abutting and slightly overlapping geometry inside one batch costs nothing, whereas
+     * as separate draws each seam was composited twice and showed as a seam.
+     */
+    private static void fillRow(float x1, float y1, float x2, float y2,
                                 float topLeft, float topRight, float bottomRight, float bottomLeft,
                                 int color) {
         if (x2 <= x1 || y2 <= y1) {
             return;
         }
-        if (topLeft <= 0.0f && topRight <= 0.0f && bottomRight <= 0.0f && bottomLeft <= 0.0f) {
-            RenderUtils.drawRect(x1, y1, x2, y2, color);
+        int a = (color >>> 24) & 0xFF;
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+        if (a <= 0) {
             return;
         }
-        // One signed-distance rect per row instead of three rects plus four fan-drawn quarter
-        // discs. The old assembly approximated each corner with a 12-segment fan and butted it
-        // against square bands, so the joins never lined up exactly and left the notches and
-        // nibbled edges on the corners. The shader evaluates the corner per pixel, so there is
-        // nothing to line up.
-        RoundedUtils.drawRoundCorners(x1, y1, x2 - x1, y2 - y1,
-                topLeft, topRight, bottomRight, bottomLeft, color);
+
+        WorldRenderer wr = Tessellator.getInstance().getWorldRenderer();
+        float topBand = Math.max(topLeft, topRight);
+        float bottomBand = Math.max(bottomLeft, bottomRight);
+
+        if (topBand > 0.0f) {
+            emitQuad(wr, x1 + topLeft, y1, x2 - topRight, y1 + topBand, r, g, b, a);
+        }
+        emitQuad(wr, x1, y1 + topBand, x2, y2 - bottomBand, r, g, b, a);
+        if (bottomBand > 0.0f) {
+            emitQuad(wr, x1 + bottomLeft, y2 - bottomBand, x2 - bottomRight, y2, r, g, b, a);
+        }
+
+        emitCorner(wr, x1 + topLeft, y1 + topLeft, topLeft, 270.0f, r, g, b, a);
+        emitCorner(wr, x2 - topRight, y1 + topRight, topRight, 0.0f, r, g, b, a);
+        emitCorner(wr, x2 - bottomRight, y2 - bottomRight, bottomRight, 90.0f, r, g, b, a);
+        emitCorner(wr, x1 + bottomLeft, y2 - bottomLeft, bottomLeft, 180.0f, r, g, b, a);
     }
 
 private static final float CORNER_FEATHER = 0.6f;
