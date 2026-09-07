@@ -48,9 +48,10 @@ public class TargetHUD extends Module {
     private final ColorSetting[] ringColors = new ColorSetting[RING_COUNT];
 private static final int RING_COUNT = 6;
     private static final String[] RING_COLOR_MODES = new String[] { "Theme", "Array list", "Custom" };
-    private static final String[] HEAD_STYLES = new String[] { "3D", "2D" };
+    private static final String[] HEAD_STYLES = new String[] { "3D", "Flat", "2D" };
     private static final int HEAD_STYLE_3D = 0;
     private static final int HEAD_STYLE_FLAT = 1;
+    private static final int HEAD_STYLE_2D = 2;
     private static final int RING_MODE_THEME = 0;
     private static final int RING_MODE_ARRAY_LIST = 1;
     private static final int RING_MODE_CUSTOM = 2;
@@ -524,10 +525,11 @@ private int ringColor(int ringIndex) {
                 GlStateManager.disableCull();
                 mc.getTextureManager().bindTexture(skin);
                 GlStateManager.color(1.0f, 1.0f, 1.0f, (float) alpha / 255.0f);
-                if (headStyle == null || (int) headStyle.getInput() == HEAD_STYLE_3D) {
-                    drawHeadCube(x, y, width, height, alpha);
+                int style = headStyle == null ? HEAD_STYLE_3D : (int) headStyle.getInput();
+                if (style == HEAD_STYLE_2D) {
+                    drawHead2D(x, y, width, height, alpha);
                 }
-                else {
+                else if (style == HEAD_STYLE_FLAT) {
                     float cornerRadius = Math.max(2.0f, (float) Math.min(width, height) * 0.14f);
                     drawRoundedSkinLayer(x, y, width, height, cornerRadius, 8.0f, 8.0f, alpha);
                     // Hat sits slightly proud of the face so the two layers read apart instead
@@ -535,6 +537,9 @@ private int ringColor(int ringIndex) {
                     float grow = Math.min(width, height) * 0.055f;
                     drawRoundedSkinLayer(x - grow, y - grow, width + grow * 2.0f,
                             height + grow * 2.0f, cornerRadius, 40.0f, 8.0f, alpha);
+                }
+                else {
+                    drawHeadCube(x, y, width, height, alpha);
                 }
             } finally {
                 RenderUtils.restoreGuiRenderState(depthEnabled, blendEnabled, depthMask);
@@ -549,6 +554,45 @@ private int ringColor(int ringIndex) {
      * getLocationSkin returns a location for a skin that may still be downloading; the texture
      * object is only registered once it arrives.
      */
+    /**
+     * A flat avatar head: the 8x8 face with the hat layer over it, square and pixel-crisp.
+     *
+     * Distinct from Flat, which rounds its corners and grows the hat slightly. This one keeps
+     * the skin's own pixel grid: nearest sampling and whole-pixel edges, so an 8x8 face scaled
+     * to the head box stays sharp instead of being smeared by the linear filter the GUI is
+     * otherwise left in. The filter is put back afterwards because the skin texture is shared
+     * with the world renderer, which does want it smooth.
+     */
+    private void drawHead2D(int x, int y, int width, int height, int alpha) {
+        int previousMin = GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER);
+        int previousMag = GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        try {
+            GlStateManager.color(1.0f, 1.0f, 1.0f, alpha / 255.0f);
+            drawSkinQuad(x, y, width, height, 8.0f, 8.0f);
+            drawSkinQuad(x, y, width, height, 40.0f, 8.0f);
+        }
+        finally {
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, previousMin);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, previousMag);
+        }
+    }
+
+    private void drawSkinQuad(float x, float y, float width, float height,
+                              float textureU, float textureV) {
+        float u0 = textureU / SKIN_TEXTURE_SIZE;
+        float v0 = textureV / SKIN_TEXTURE_SIZE;
+        float u1 = (textureU + 8.0f) / SKIN_TEXTURE_SIZE;
+        float v1 = (textureV + 8.0f) / SKIN_TEXTURE_SIZE;
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glTexCoord2f(u0, v0); GL11.glVertex2f(x, y);
+        GL11.glTexCoord2f(u0, v1); GL11.glVertex2f(x, y + height);
+        GL11.glTexCoord2f(u1, v1); GL11.glVertex2f(x + width, y + height);
+        GL11.glTexCoord2f(u1, v0); GL11.glVertex2f(x + width, y);
+        GL11.glEnd();
+    }
+
     private boolean skinIsLoaded(ResourceLocation skin) {
         try {
             return mc.getTextureManager().getTexture(skin) != null;
