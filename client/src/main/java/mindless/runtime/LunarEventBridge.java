@@ -51,10 +51,14 @@ public final class LunarEventBridge {
 
     public static void postRenderTick(TickEvent.Phase phase, float partialTicks) {
         if (!DIRECT_LUNAR) return;
+        // Bracket the whole synthetic pass so anything a module changes and fails to restore is
+        // reported against this boundary rather than surfacing later as an unexplained symptom.
+        mindless.utility.Diagnostics.sectionBegin("render tick " + phase);
         try {
             SYNTHETIC_EVENT_BUS.post(new TickEvent.RenderTickEvent(phase, partialTicks));
         }
         finally {
+            mindless.utility.Diagnostics.sectionEnd();
             if (phase == TickEvent.Phase.END) {
                 RenderUtils.restoreGuiTextState();
             }
@@ -65,11 +69,13 @@ public final class LunarEventBridge {
         if (!DIRECT_LUNAR) return;
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft == null || minecraft.theWorld == null || minecraft.renderGlobal == null) return;
+        mindless.utility.Diagnostics.sectionBegin("render world last");
         try {
             SYNTHETIC_EVENT_BUS.post(
                     new RenderWorldLastEvent(minecraft.renderGlobal, partialTicks));
         }
         finally {
+            mindless.utility.Diagnostics.sectionEnd();
             RenderUtils.restoreGuiTextState();
         }
     }
