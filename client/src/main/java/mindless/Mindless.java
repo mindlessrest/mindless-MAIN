@@ -4,6 +4,7 @@ import mindless.accountmanager.AccountManager;
 import mindless.accountmanager.Events;
 import mindless.clickgui.ClickGui;
 import mindless.clickgui.ModernClickGui;
+import mindless.clickgui.FirstRunSetup;
 import mindless.command.CommandManager;
 import mindless.event.PostProfileLoadEvent;
 import mindless.event.PostSetSliderEvent;
@@ -112,6 +113,7 @@ public class Mindless {
     @SubscribeEvent
     public void onTick(ClientTickEvent e) {
         if (e.phase == Phase.END) {
+            FirstRunSetup.tick(mc);
             if (profileManager != null) {
                 profileManager.autoSaveTick();
             }
