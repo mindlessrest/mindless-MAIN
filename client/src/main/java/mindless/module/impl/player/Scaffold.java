@@ -5,6 +5,7 @@ import mindless.event.ClientRotationEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.event.RightClickDelayTickEvent;
 import mindless.module.Module;
+import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
@@ -86,6 +87,8 @@ private int previousSlot = -1;
     @Override
     public void onEnable() {
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
+        sprintScafActive = false;
+        sprintScafSprinting = false;
         previousSlot = Utils.nullCheck() ? mc.thePlayer.inventory.currentItem : -1;
         previewPos = null;
         previewFace = null;
@@ -377,10 +380,14 @@ private void restorePreviousSlot() {
     private boolean isSprintSafe(boolean placedThisTick) {
         EntityPlayerSP player = mc.thePlayer;
 
-        // Sprinting without forward input does nothing but desync the server's idea of it.
-        // Vanilla refuses to start a sprint below 0.8 forward input and cancels one that drops
-        // under it, so there is nothing to gain by asking for a sprint here.
-        if (player.movementInput == null || player.movementInput.moveForward < 0.8F) return false;
+        // Scaffold is normally used while walking backwards. Requiring positive forward input
+        // silently disabled the entire mode, because backwards input is negative. The dedicated
+        // player movement hook below lets a safe Scaffold-owned sprint survive vanilla's forward-
+        // only cancellation rule; still require real directional input so idle packets are never
+        // emitted.
+        if (player.movementInput == null
+                || (Math.abs(player.movementInput.moveForward) < 0.01F
+                && Math.abs(player.movementInput.moveStrafe) < 0.01F)) return false;
         if (player.isCollidedHorizontally) return false;
         if (player.getFoodStats().getFoodLevel() <= 6) return false;
         // Eagle is deliberately slowing the player at an edge; do not fight it.
@@ -408,12 +415,34 @@ private void restorePreviousSlot() {
     /** Hand the sprint key back to the player's own input. */
     private void releaseSprintScaffold() {
         if (!sprintScafActive) return;
+        boolean wasSprinting = sprintScafSprinting;
         sprintScafActive = false;
         sprintScafSprinting = false;
         if (mc.gameSettings != null) {
+            boolean physicalSprint = Keyboard.isKeyDown(mc.gameSettings.keyBindSprint.getKeyCode());
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(),
-                    Keyboard.isKeyDown(mc.gameSettings.keyBindSprint.getKeyCode()));
+                    physicalSprint);
+
+            // End the Scaffold-owned sprint when nothing else owns sprinting. setSprinting changes
+            // the local state; EntityPlayerSP's normal walking update emits the matching C0B stop
+            // packet once, while the regular Sprint module or a held sprint key can take over
+            // without an unnecessary stop/start pair.
+            boolean regularSprintOwnsState = ModuleManager.sprint != null
+                    && ModuleManager.sprint.isEnabled();
+            if (wasSprinting && !physicalSprint && !regularSprintOwnsState
+                    && mc.thePlayer != null && mc.thePlayer.isSprinting()) {
+                mc.thePlayer.setSprinting(false);
+            }
         }
+    }
+
+    /**
+     * Used by the local-player movement hook to distinguish a deliberate, placement-safe
+     * backwards Scaffold sprint from ordinary backwards movement.
+     */
+    public boolean isSprintScaffoldSprinting() {
+        return this.isEnabled() && sprintScaf.isToggled()
+                && sprintScafActive && sprintScafSprinting;
     }
 
     private void setShiftOverride(boolean shift) {

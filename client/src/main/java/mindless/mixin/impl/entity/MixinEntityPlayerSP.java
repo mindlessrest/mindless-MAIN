@@ -10,6 +10,7 @@ import mindless.module.impl.combat.WTap;
 import mindless.module.impl.movement.NoSlow;
 import mindless.module.impl.movement.Sprint;
 import mindless.module.impl.movement.Timer;
+import mindless.module.impl.player.Scaffold;
 import mindless.utility.ModuleUtils;
 import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
@@ -317,9 +318,29 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
             this.setSprinting(true);
         }
 
-        if (this.isSprinting() && (((this.movementInput.moveForward < f || !flag3)) || this.isCollidedHorizontally || ModuleUtils.setSlow || (this.movementInput.moveForward == 0 && this.movementInput.moveStrafe == 0) || this.mc.gameSettings.keyBindSneak.isKeyDown() || (ModuleManager.wTap.isEnabled() && WTap.stopSprint))) {
+        Scaffold scaffold = ModuleManager.scaffold;
+        boolean scaffoldSprint = scaffold != null && scaffold.isSprintScaffoldSprinting();
+        boolean noDirectionalInput = this.movementInput.moveForward == 0
+                && this.movementInput.moveStrafe == 0;
+        boolean invalidSprintDirection = this.movementInput.moveForward < f && !scaffoldSprint;
+
+        if (this.isSprinting() && ((invalidSprintDirection || !flag3)
+                || this.isCollidedHorizontally || ModuleUtils.setSlow || noDirectionalInput
+                || this.mc.gameSettings.keyBindSneak.isKeyDown()
+                || (ModuleManager.wTap.isEnabled() && WTap.stopSprint))) {
             this.setSprinting(false);
             WTap.stopSprint = false;
+        }
+
+        // Scaffold calculated placement/edge safety during PreUpdate. Honour that state after
+        // movement input has been refreshed, including for backwards bridging. The existing
+        // onUpdateWalkingPlayer transition check sends the real C0B sprint packet and tracks
+        // serverSprintState, so there is no separate packet loop here.
+        if (!this.isSprinting() && scaffoldSprint && !noDirectionalInput && flag3
+                && !this.isCollidedHorizontally && !ModuleUtils.setSlow
+                && !this.mc.gameSettings.keyBindSneak.isKeyDown()
+                && !this.isPotionActive(Potion.blindness)) {
+            this.setSprinting(true);
         }
 
         Sprint sprintMod = ModuleManager.sprint;
