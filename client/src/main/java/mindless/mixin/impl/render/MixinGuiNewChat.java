@@ -84,6 +84,7 @@ public abstract class MixinGuiNewChat {
 
     @Inject(method = "drawChat", at = @At("HEAD"), cancellable = true)
     private void mindless$renderChat(int updateCounter, CallbackInfo ci) {
+        mindless.utility.Diagnostics.glSnapshot("chat draw (mixin path)");
         if (mc.gameSettings.chatVisibility == EntityPlayer.EnumChatVisibility.HIDDEN) return;
         int totalLines = drawnChatLines.size();
         if (totalLines <= 0) {

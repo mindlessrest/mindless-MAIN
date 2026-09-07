@@ -72,6 +72,7 @@ public abstract class TransformerGuiNewChat {
     @CInline
     @CInject(method = "drawChat", target = @CTarget("HEAD"), cancellable = true)
     private void mindless$renderChat(int updateCounter, InjectionCallback ci) {
+        mindless.utility.Diagnostics.glSnapshot("chat draw (transformer path)");
         if (mc.gameSettings.chatVisibility == EntityPlayer.EnumChatVisibility.HIDDEN) return;
         int totalLines = drawnChatLines.size();
         if (totalLines <= 0) {

@@ -66,6 +66,50 @@ public final class Diagnostics {
         }
     }
 
+    /**
+     * Dump the fixed-function state that decides how text comes out.
+     *
+     * Washed-out or grey glyphs do not raise a GL error, so glGetError-based checkpoints cannot
+     * see them. What they do come from is a small set of state: a shader program still bound, a
+     * non-white current colour, an alpha test that is off or set to the wrong reference, the
+     * wrong blend function, or a texture environment left on something other than MODULATE.
+     * Sampling those directly at the moment text is about to be drawn names the culprit instead
+     * of guessing at it.
+     *
+     * Rate-limited by report(), so leaving it on costs one line every few seconds, not one a
+     * frame.
+     */
+    public static void glSnapshot(String stage) {
+        if (!isEnabled()) return;
+        try {
+            java.nio.FloatBuffer colour = org.lwjgl.BufferUtils.createFloatBuffer(16);
+            GL11.glGetFloat(GL11.GL_CURRENT_COLOR, colour);
+            int program = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+            boolean alphaTest = GL11.glIsEnabled(GL11.GL_ALPHA_TEST);
+            int alphaFunc = GL11.glGetInteger(GL11.GL_ALPHA_TEST_FUNC);
+            float alphaRef = GL11.glGetFloat(GL11.GL_ALPHA_TEST_REF);
+            boolean blend = GL11.glIsEnabled(GL11.GL_BLEND);
+            int srcRgb = GL11.glGetInteger(GL11.GL_BLEND_SRC);
+            int dstRgb = GL11.glGetInteger(GL11.GL_BLEND_DST);
+            boolean texture2d = GL11.glIsEnabled(GL11.GL_TEXTURE_2D);
+            boolean depthTest = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+            boolean lighting = GL11.glIsEnabled(GL11.GL_LIGHTING);
+            int fbo = GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_FRAMEBUFFER_BINDING);
+
+            String line = String.format(java.util.Locale.ROOT,
+                    "%s | colour %.2f/%.2f/%.2f/%.2f | program %d | fbo %d | alpha %s func %d ref %.2f"
+                    + " | blend %s %d/%d | tex2d %s | depth %s | light %s",
+                    stage, colour.get(0), colour.get(1), colour.get(2), colour.get(3),
+                    program, fbo, alphaTest ? "on" : "OFF", alphaFunc, alphaRef,
+                    blend ? "on" : "OFF", srcRgb, dstRgb,
+                    texture2d ? "on" : "OFF", depthTest ? "on" : "off",
+                    lighting ? "ON" : "off");
+            report("state", line);
+        }
+        catch (Throwable ignored) {
+        }
+    }
+
     public static void log(String category, String message) {
         if (!isEnabled()) return;
         report(category, message);
