@@ -1,6 +1,8 @@
 package mindless.accountmanager;
 
 import java.lang.reflect.Field;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import mindless.accountmanager.AccountManager;
 import mindless.accountmanager.auth.Account;
 import mindless.accountmanager.auth.SessionManager;
@@ -19,6 +21,21 @@ import org.apache.commons.lang3.StringUtils;
 import org.lwjgl.input.Keyboard;
 
 public class Events {
+    /**
+     * Ban notices, matched against the plain text of the disconnect screen.
+     *
+     * The previous patterns were written against strings containing section-sign colour codes,
+     * but they were compared to getUnformattedText(), which strips exactly those codes. Nothing
+     * ever matched, so no ban was ever recorded. Matching the words instead also survives
+     * Hypixel restyling the message.
+     */
+    private static final Pattern PERMANENT_BAN = Pattern.compile(
+            "permanently banned|account has been blocked", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TEMPORARY_BAN = Pattern.compile(
+            "temporarily (?:banned|blocked) for (.+?) from this server", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DURATION_PART = Pattern.compile("(\\d+)\\s*([dhms])",
+            Pattern.CASE_INSENSITIVE);
+
     private static final Minecraft mc = Minecraft.getMinecraft();
     private static final int KEY_RSHIFT = Keyboard.KEY_RSHIFT;
     private boolean prevShiftDown = false;
@@ -75,38 +92,56 @@ public class Events {
             Field f = GuiDisconnected.class.getDeclaredField("message");
             f.setAccessible(true);
             IChatComponent message = (IChatComponent) f.get(event.gui);
-            String text = message.getUnformattedText().split("\n\n")[0];
-            if (text.equals("\u00a7r\u00a7cYou are permanently banned from this server!")
-                    || text.equals("\u00a7r\u00a7cYour account has been blocked.")) {
-                AccountManager.load();
-                for (Account account : AccountManager.accounts) {
-                    if (!mc.getSession().getUsername().equals(account.getUsername())) continue;
-                    account.setUnban(-1L);
-                }
-                AccountManager.save();
+            String text = message.getUnformattedText().split("\n\n")[0].trim();
+
+            if (PERMANENT_BAN.matcher(text).find()) {
+                recordUnban(-1L);
                 return;
             }
-            String unban = StringUtils.substringBetween(text, "\u00a7r\u00a7f", "\u00a7r\u00a7c");
-            if (unban != null && (text.matches("\u00a7r\u00a7cYou are temporarily banned for \u00a7r\u00a7f.*\u00a7r\u00a7c from this server!")
-                    || text.matches("\u00a7r\u00a7cYour account is temporarily blocked for \u00a7r\u00a7f.*\u00a7r\u00a7c from this server!"))) {
-                long time = System.currentTimeMillis();
-                for (String duration : unban.split(" ")) {
-                    String type = duration.substring(duration.length() - 1);
-                    long value = Long.parseLong(duration.substring(0, duration.length() - 1));
-                    switch (type) {
-                        case "d": time += value * 86400000L; break;
-                        case "h": time += value * 3600000L;  break;
-                        case "m": time += value * 60000L;    break;
-                        case "s": time += value * 1000L;     break;
-                    }
+
+            Matcher temporary = TEMPORARY_BAN.matcher(text);
+            if (temporary.find()) {
+                long time = parseUnbanTime(temporary.group(1));
+                if (time > 0L) {
+                    recordUnban(time);
                 }
-                AccountManager.load();
-                for (Account account : AccountManager.accounts) {
-                    if (!mc.getSession().getUsername().equals(account.getUsername())) continue;
-                    account.setUnban(time);
-                }
-                AccountManager.save();
             }
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Turns "3d 4h 5m" into an absolute unban timestamp, or 0 if nothing parsed.
+     *
+     * Tolerant by design: the old loop called Long.parseLong on every whitespace-separated
+     * token and one unexpected word threw, which the outer catch swallowed along with the
+     * whole ban record.
+     */
+    private static long parseUnbanTime(String duration) {
+        Matcher part = DURATION_PART.matcher(duration);
+        long span = 0L;
+        while (part.find()) {
+            long value = Long.parseLong(part.group(1));
+            switch (Character.toLowerCase(part.group(2).charAt(0))) {
+                case 'd': span += value * 86400000L; break;
+                case 'h': span += value * 3600000L;  break;
+                case 'm': span += value * 60000L;    break;
+                case 's': span += value * 1000L;     break;
+                default: break;
+            }
+        }
+        return span == 0L ? 0L : System.currentTimeMillis() + span;
+    }
+
+    private static void recordUnban(long unban) {
+        String username = mc.getSession() == null ? null : mc.getSession().getUsername();
+        if (StringUtils.isBlank(username)) {
+            return;
+        }
+        AccountManager.load();
+        for (Account account : AccountManager.accounts) {
+            if (!username.equals(account.getUsername())) continue;
+            account.setUnban(unban);
+        }
+        AccountManager.save();
     }
 }

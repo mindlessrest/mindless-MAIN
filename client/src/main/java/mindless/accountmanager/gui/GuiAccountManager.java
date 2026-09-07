@@ -530,13 +530,17 @@ public class GuiAccountManager extends GuiScreen {
             String rawName = account.getUsername();
             ResourceLocation head = PlayerHeadCache.get(StringUtils.isBlank(rawName) ? null : rawName);
             int headX = x + 4;
+            // Centre on the row rather than sitting at a fixed inset. GuiSlot hands us
+            // h = SLOT_H - 4 = 32 against a 28px head, so the old y + 4 left 4px above and
+            // nothing below, and the head overhung the bottom of the row background.
+            int headY = y + Math.max(0, (h - HEAD_SZ) / 2);
             if (head != null) {
                 GlStateManager.color(1f, 1f, 1f, 1f);
                 GuiAccountManager.this.mc.getTextureManager().bindTexture(head);
-                Gui.drawScaledCustomSizeModalRect(headX, y + 4, 0, 0, 32, 32, HEAD_SZ, HEAD_SZ, 32f, 32f);
+                Gui.drawScaledCustomSizeModalRect(headX, headY, 0, 0, 32, 32, HEAD_SZ, HEAD_SZ, 32f, 32f);
                 GlStateManager.color(1f, 1f, 1f, 1f);
             } else {
-                RoundedUtils.drawRound(headX, y + 4, HEAD_SZ, HEAD_SZ, 3f, 0xFF1A1A22);
+                RoundedUtils.drawRound(headX, headY, HEAD_SZ, HEAD_SZ, 3f, 0xFF1A1A22);
             }
 
             int tx = headX + HEAD_SZ + 7;
