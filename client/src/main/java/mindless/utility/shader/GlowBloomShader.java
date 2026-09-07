@@ -75,6 +75,8 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
         GlStateManager.bindTexture(0);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        RenderUtils.setAlphaLimit(10.0f);
+        RenderUtils.resetColor();
         Diagnostics.gl("glow: pass complete");
     }
 

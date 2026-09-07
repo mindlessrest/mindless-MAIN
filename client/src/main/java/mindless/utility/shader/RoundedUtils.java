@@ -64,6 +64,7 @@ public static void drawGradientRoundCorners(float x, float y, float width, float
         ShaderUtils.drawQuads(x - 1, y - 1, width + 2, height + 2);
         roundedGradientCornersShader.unload();
         GlStateManager.disableBlend();
+        restoreMinecraftGuiAlpha();
     }
 private static void setupCornerRadii(ShaderUtils shader, float topLeft, float topRight,
                                          float bottomRight, float bottomLeft) {
@@ -167,6 +168,7 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
         ShaderUtils.drawQuads(x - 1, y - 1, width + 2, height + 2);
         roundedGradientShader.unload();
         GlStateManager.disableBlend();
+        restoreMinecraftGuiAlpha();
     }
 
     public static void drawGradientRound(float x, float y, float width, float height, float radius, int bottomLeft, int topLeft, int bottomRight, int topRight) {
@@ -186,6 +188,7 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
         ShaderUtils.drawQuads(x - 1, y - 1, width + 2, height + 2);
         roundedGradientShader.unload();
         GlStateManager.disableBlend();
+        restoreMinecraftGuiAlpha();
     }
 
     public static void drawRound(float x, float y, float width, float height, float radius, boolean blur, Color color) {
@@ -203,6 +206,7 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
         ShaderUtils.drawQuads(x - 1, y - 1, width + 2, height + 2);
         roundedShader.unload();
         GlStateManager.disableBlend();
+        restoreMinecraftGuiAlpha();
     }
 
 
@@ -225,6 +229,7 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
         ShaderUtils.drawQuads(x - (2 + outlineThickness), y - (2 + outlineThickness), width + (4 + outlineThickness * 2), height + (4 + outlineThickness * 2));
         roundedOutlineShader.unload();
         GlStateManager.disableBlend();
+        restoreMinecraftGuiAlpha();
     }
 
     public static void drawRoundShadow(float x, float y, float width, float height,
@@ -270,6 +275,19 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
         ShaderUtils.drawQuads(x - 1, y - 1, width + 2, height + 2);
         roundedTexturedShader.unload();
         GlStateManager.disableBlend();
+        restoreMinecraftGuiAlpha();
+    }
+
+    /**
+     * Minecraft's font renderer expects alpha testing at ten percent. Several rounded shader
+     * paths lower it to zero so antialiased edges can be drawn, but leaving that threshold behind
+     * makes normally invisible texels in the vanilla/resource-pack font atlas appear as gray
+     * fringes and detached shadow dots. Restoring the known GUI contract is cheaper than querying
+     * driver state for every rounded slot rendered by the HUD.
+     */
+    private static void restoreMinecraftGuiAlpha() {
+        RenderUtils.setAlphaLimit(10.0F);
+        RenderUtils.resetColor();
     }
 
     private static void setupRoundedRectUniforms(float x, float y, float width, float height, float radius, ShaderUtils roundedTexturedShader) {

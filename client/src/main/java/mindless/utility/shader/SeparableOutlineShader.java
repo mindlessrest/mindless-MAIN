@@ -40,6 +40,11 @@ public class SeparableOutlineShader {
         RenderUtils.drawFramebufferFullscreen(framebuffer);
         shader.stop();
         GlStateManager.bindTexture(0);
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE2);
+        GlStateManager.bindTexture(0);
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
+        RenderUtils.setAlphaLimit(10.0f);
+        RenderUtils.resetColor();
     }
 
     private static final class DirectionalShader extends OutlineESPShader {
