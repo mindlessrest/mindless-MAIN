@@ -92,22 +92,42 @@ public static String senderOf(net.minecraft.util.IChatComponent component) {
      * Only accepts a leading "name:" or "rank name:" shape, and only a token that is a legal
      * Minecraft username, so ordinary sentences containing a colon are not mistaken for a sender.
      */
+    /**
+     * Sender guessed from the rendered text, for lines carrying no click event or insertion.
+     *
+     * Servers separate the name from the body with any of ":", "\u00bb" or ">", so all three are
+     * tried and the earliest wins. Everything before it is taken, and the last token of that is
+     * the candidate, which drops rank prefixes like "[MVP+] name".
+     *
+     * The result is only a candidate. It is deliberately not trusted on its own: "lunarclient:
+     * v2.22" and "[ACTest] \u00bb ..." both produce something that looks like a username, which is
+     * how server lines ended up wearing player heads. The caller confirms it against the tab
+     * list, and that is what separates a real sender from a coincidence.
+     */
     private static String senderFromText(String formatted) {
         if (formatted == null) {
             return null;
         }
         String plain = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(formatted);
-        if (plain == null) {
+        if (plain == null || plain.isEmpty()) {
             return null;
         }
-        int colon = plain.indexOf(':');
-        if (colon <= 0 || colon > 48) {
+
+        int cut = -1;
+        char[] separators = { ':', '\u00bb', '>' };
+        for (int i = 0; i < separators.length; i++) {
+            int at = plain.indexOf(separators[i]);
+            if (at > 0 && (cut < 0 || at < cut)) {
+                cut = at;
+            }
+        }
+        if (cut <= 0 || cut > 48) {
             return null;
         }
-        String head = plain.substring(0, colon).trim();
+
+        String head = plain.substring(0, cut).trim();
         int space = head.lastIndexOf(' ');
-        String candidate = space < 0 ? head : head.substring(space + 1);
-        candidate = candidate.trim();
+        String candidate = (space < 0 ? head : head.substring(space + 1)).trim();
         if (candidate.length() < 3 || candidate.length() > 16) {
             return null;
         }
@@ -118,6 +138,26 @@ public static String senderOf(net.minecraft.util.IChatComponent component) {
             }
         }
         return candidate;
+    }
+
+    /**
+     * The player who sent a chat line, or null when it was not sent by one.
+     *
+     * Component metadata first, because it is authoritative, then the text as a guess. Either way
+     * the answer has to correspond to somebody on the tab list, which is what keeps server
+     * announcements from being attributed to a player.
+     */
+    public static String resolvedSenderOf(net.minecraft.util.IChatComponent component) {
+        if (component == null) {
+            return null;
+        }
+        String fromMetadata = senderOf(component);
+        if (fromMetadata != null && resolvePlayer(fromMetadata) != null) {
+            return fromMetadata;
+        }
+        String guessed = senderFromText(component.getFormattedText());
+        net.minecraft.client.network.NetworkPlayerInfo info = resolvePlayer(guessed);
+        return info == null ? null : info.getGameProfile().getName();
     }
 
     public static void drawPlayerHead(String name, float x, float y, float size, int alpha) {
@@ -135,23 +175,20 @@ public static String senderOf(net.minecraft.util.IChatComponent component) {
             return;
         }
 
-        String sender = name == null || name.isEmpty() ? senderFromText(formattedLine) : name;
-        net.minecraft.client.network.NetworkPlayerInfo info = resolvePlayer(sender);
-
-        // Draw something whenever the row has been indented for a head. Returning early on a
-        // miss left a hole the width of the head with nothing in it, which is indistinguishable
-        // from the feature being broken; the default skin at least shows the row is a player's.
-        net.minecraft.util.ResourceLocation skin = null;
-        if (info != null) {
-            skin = info.getLocationSkin();
+        String sender = name;
+        if (sender == null || sender.isEmpty() || resolvePlayer(sender) == null) {
+            sender = senderFromText(formattedLine);
         }
+        net.minecraft.client.network.NetworkPlayerInfo info = resolvePlayer(sender);
+        if (info == null) {
+            // Not a player line. Server announcements produce username-shaped tokens, so drawing
+            // a fallback head on a miss put heads on every one of them.
+            return;
+        }
+
+        net.minecraft.util.ResourceLocation skin = info.getLocationSkin();
         if (skin == null) {
-            if (sender == null || sender.isEmpty()) {
-                mindless.utility.Diagnostics.log("chat", "head skipped: no sender resolved");
-                return;
-            }
             skin = net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkinLegacy();
-            mindless.utility.Diagnostics.log("chat", "head fell back to the default skin for " + sender);
         }
 
         // Own state, not inherited. The chat panel behind this is drawn with texturing off, so a

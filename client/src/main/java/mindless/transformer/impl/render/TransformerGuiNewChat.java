@@ -102,7 +102,22 @@ public abstract class TransformerGuiNewChat {
         float headSize = ChatModule.playerHeads() ? ChatModule.headSize() : 0.0f;
         float textIndent = headSize > 0.0f ? headSize + 2.0f : 0.0f;
         float bgX = 3.0f;
-        float bgW = chatWidth * scale + 10.0f + textIndent * scale;
+        // Hug the messages rather than spanning the configured chat width. The panel was always
+        // drawn at full width whatever was in it, so a few short lines sat in a large empty slab
+        // of background. Clamped to the configured width so a long line still wraps as before.
+        float widestLine = 0.0f;
+        for (int i = 0; i + scrollPos < totalLines && i < lineCount; i++) {
+            ChatLine measured = drawnChatLines.get(i + scrollPos);
+            if (measured == null) continue;
+            String measuredText = measured.getChatComponent().getFormattedText();
+            float lineWidth = chatFont != null
+                    ? chatFont.getStringWidth(measuredText)
+                    : mc.fontRendererObj.getStringWidth(measuredText);
+            if (lineWidth > widestLine) widestLine = lineWidth;
+        }
+        float contentWidth = Math.min((float) chatWidth, widestLine + 6.0f);
+        if (contentWidth < 24.0f) contentWidth = 24.0f;
+        float bgW = contentWidth * scale + 10.0f + textIndent * scale;
         float bgH = (float) (animatedRows * rowHeight * scale + 10.0f);
         float bgBottom = sr.getScaledHeight() - 23.0f;
         float bgY = bgBottom - bgH;

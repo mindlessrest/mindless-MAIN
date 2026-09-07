@@ -131,7 +131,11 @@ public static float backgroundOpacity() {
         if (event.type != 0 || event.message == null) return;
         if (mc.thePlayer == null) return;
 
-        String sender = GuiNewChatState.senderOf(event.message);
+        // Same resolution the heads use: metadata when the line has it, text otherwise, and
+        // confirmed against the tab list either way. senderOf alone returns null for lines that
+        // carry no click event or insertion, which is most of them on a lot of servers, so your
+        // own messages were never matched.
+        String sender = GuiNewChatState.resolvedSenderOf(event.message);
         if (sender == null || !sender.equalsIgnoreCase(mc.thePlayer.getName())) return;
 
         event.message.appendSibling(new ChatComponentText(" \u00a77" + ownMarkerLabel()));
