@@ -163,6 +163,15 @@ public class Wings extends Module {
     private final int[] realFeatherRGB = new int[MAX_REAL_FEATHERS];
     private final float[] realFeatherShade = new float[MAX_REAL_FEATHERS];
     private int realFeatherCount;
+    /**
+     * Fade factor for the current frame.
+     *
+     * It is identical for every vertex, but it was being rebuilt inside vertexAlpha, which runs
+     * once per vertex per pass. At roughly 31k vertices a frame that meant 31k System.nanoTime
+     * calls, 31k Math.sin calls and four setting reads apiece, purely to arrive at the same
+     * number every time. Resolved once per frame instead.
+     */
+    private float frameFade;
     private final float[] shardCorners = new float[PANELS_SHARD * 12];
     private long lastAnimationNanos;
     private float smoothedFlapDrive = 0.42f;
@@ -330,6 +339,7 @@ public class Wings extends Module {
      * occlude cleanly, while the two roots remain visually separate at the centre.
      */
     private void drawFeatheredWings(float scale, float span, float phase, float amplitude) {
+        frameFade = resolveFrameFade();
         boolean glass = transparent.isToggled();
         boolean walls = throughWalls.isToggled();
 
@@ -450,15 +460,20 @@ public class Wings extends Module {
      * A second, local mask softens only the narrow centre seam where the two
      * mirrored wing roots can physically intersect.
      */
-    private int vertexAlpha(int baseAlpha, float u, float x) {
-        float tip = smoothstep(REAL_TIP_FADE_START, 1.0f, u);
+    /** The part of the tip fade that does not vary across the wing. */
+    private float resolveFrameFade() {
         float animatedFade = (float) fade.getInput();
         if ((int) colorMode.getInput() == COLOR_GRADIENT && colorSpeed.getInput() > 0.0) {
             // Let only the tips breathe. The body stays material instead of turning holographic.
             float breath = 0.5f + 0.5f * (float) Math.sin(colorTime() * 0.42f);
             animatedFade *= 0.78f + 0.22f * breath;
         }
-        float alpha = baseAlpha * (1.0f - animatedFade * tip);
+        return animatedFade;
+    }
+
+    private int vertexAlpha(int baseAlpha, float u, float x) {
+        float tip = smoothstep(REAL_TIP_FADE_START, 1.0f, u);
+        float alpha = baseAlpha * (1.0f - frameFade * tip);
 
         float centreDistance = Math.abs(x);
         float clearOfSeam = smoothstep(ROOT_COLLISION_INNER, ROOT_COLLISION_OUTER,
