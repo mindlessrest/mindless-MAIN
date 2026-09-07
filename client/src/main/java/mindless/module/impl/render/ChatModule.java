@@ -5,6 +5,10 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
+import mindless.runtime.GuiNewChatState;
+import net.minecraft.util.ChatComponentText;
+import net.minecraftforge.client.event.ClientChatReceivedEvent;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 public class ChatModule extends Module {
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
 
@@ -19,6 +23,8 @@ public class ChatModule extends Module {
     private static ButtonSetting playerHeads;
     private static SliderSetting headSize;
     private static SliderSetting lineSpacing;
+    private static ButtonSetting markOwnMessages;
+    private static SliderSetting ownMarkerText;
 
     public ChatModule() {
         super("Chat", "Restyles chat with a font, panel and heads.", category.render);
@@ -31,6 +37,9 @@ public class ChatModule extends Module {
         this.registerSetting(playerHeads = new ButtonSetting("Player heads", false));
         this.registerSetting(headSize = new SliderSetting("Head size", 8.0, 6.0, 12.0, 0.5));
         this.registerSetting(lineSpacing = new SliderSetting("Line spacing", 0.0, -2.0, 6.0, 0.5));
+        this.registerSetting(markOwnMessages = new ButtonSetting("Mark own messages", true));
+        this.registerSetting(ownMarkerText = new SliderSetting("Own marker", 0,
+                new String[]{ "(you)", "(me)", "<-- you" }));
         instance = this;
     }
 
@@ -107,6 +116,34 @@ public static float backgroundOpacity() {
 
     public static boolean textShadow() {
         return !active() || textShadow == null || textShadow.isToggled();
+    }
+
+    /**
+     * Tag messages you sent with a marker so your own lines stand out in a busy chat.
+     *
+     * The sender comes from the same senderOf() the head rendering uses, so the two always
+     * agree on who sent a line; matching on the raw text would tag anyone who merely said
+     * your name.
+     */
+    @SubscribeEvent
+    public void onChatReceived(ClientChatReceivedEvent event) {
+        if (!active() || markOwnMessages == null || !markOwnMessages.isToggled()) return;
+        if (event.type != 0 || event.message == null) return;
+        if (mc.thePlayer == null) return;
+
+        String sender = GuiNewChatState.senderOf(event.message);
+        if (sender == null || !sender.equalsIgnoreCase(mc.thePlayer.getName())) return;
+
+        event.message.appendSibling(new ChatComponentText(" \u00a77" + ownMarkerLabel()));
+    }
+
+    private static String ownMarkerLabel() {
+        int index = ownMarkerText == null ? 0 : (int) ownMarkerText.getInput();
+        switch (index) {
+            case 1:  return "(me)";
+            case 2:  return "<-- you";
+            default: return "(you)";
+        }
     }
 
     public static boolean playerHeads() {

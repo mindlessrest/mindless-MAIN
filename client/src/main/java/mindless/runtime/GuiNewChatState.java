@@ -72,13 +72,28 @@ public static void drawPlayerHead(String name, float x, float y, float size, int
             return;
         }
 
-        mc.getTextureManager().bindTexture(info.getLocationSkin());
+        // The head inherited whatever state the chat panel left behind, and the panel background is
+        // drawn with texturing off, so the bind had nothing to sample and the head never
+        // appeared. Establish the state the draw needs instead of assuming it.
+        net.minecraft.client.renderer.GlStateManager.enableTexture2D();
+        net.minecraft.client.renderer.GlStateManager.enableBlend();
+        net.minecraft.client.renderer.GlStateManager.tryBlendFuncSeparate(
+                org.lwjgl.opengl.GL11.GL_SRC_ALPHA, org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA,
+                org.lwjgl.opengl.GL11.GL_ONE, org.lwjgl.opengl.GL11.GL_ZERO);
+        net.minecraft.client.renderer.GlStateManager.enableAlpha();
+        net.minecraft.client.renderer.GlStateManager.disableLighting();
         net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f,
                 Math.max(0, Math.min(255, alpha)) / 255.0f);
+        mc.getTextureManager().bindTexture(info.getLocationSkin());
+
+        // Rounded to whole pixels so an 8x8 face scaled to the head size keeps its grid.
+        int px = Math.round(x);
+        int py = Math.round(y);
+        int drawSize = Math.max(1, Math.round(size));
         net.minecraft.client.gui.Gui.drawScaledCustomSizeModalRect(
-                (int) x, (int) y, 8.0f, 8.0f, 8, 8, (int) size, (int) size, 64.0f, 64.0f);
+                px, py, 8.0f, 8.0f, 8, 8, drawSize, drawSize, 64.0f, 64.0f);
         net.minecraft.client.gui.Gui.drawScaledCustomSizeModalRect(
-                (int) x, (int) y, 40.0f, 8.0f, 8, 8, (int) size, (int) size, 64.0f, 64.0f);
+                px, py, 40.0f, 8.0f, 8, 8, drawSize, drawSize, 64.0f, 64.0f);
         net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
     public static final int PANEL_FILL_COLOR = 0x55000000;
