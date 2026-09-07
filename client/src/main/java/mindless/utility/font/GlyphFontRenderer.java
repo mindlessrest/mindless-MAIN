@@ -5,6 +5,7 @@ import mindless.utility.ScaledResolutionCache;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.GraphicsEnvironment;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.font.FontRenderContext;
@@ -12,8 +13,10 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class GlyphFontRenderer implements MindlessFontRenderer {
@@ -29,7 +32,10 @@ private static final float MAX_RASTERISED_GLYPH_SIZE = 64.0f;
     private static final GlyphData EMPTY_GLYPH = new GlyphData(null, 0.0f, 0.0f, 0.0f, 0.0f, 0, 0);
 
     private final Font renderFont;
-    private Font fallbackFont;
+    private volatile Font[] fallbackFonts;
+    private final Map<Character, Font> resolvedFallbackFonts = new ConcurrentHashMap<Character, Font>();
+    private final Set<Character> unsupportedCharacters = Collections.newSetFromMap(
+            new ConcurrentHashMap<Character, Boolean>());
     private final boolean antiAlias;
     private final FontRenderContext fontRenderContext;
     private final GlyphAtlas atlas;
@@ -336,11 +342,10 @@ private GlyphData commit(Raster raster) {
         String glyphText = String.valueOf(character);
         Font glyphFont = renderFont;
         if (!renderFont.canDisplay(character)) {
-            // Fall back to a font that has the character; if nothing does, draw nothing. Handing an
-            // undisplayable character to Graphics2D anyway paints the missing-glyph box, which is
-            // where the black rectangles after names in Hypixel display names came from.
-            glyphFont = fallbackFont();
-            if (!glyphFont.canDisplay(character)) {
+            // Try the logical JRE fonts first, then installed fonts. The resolved choice is cached
+            // per character so a rare glyph never turns into a system-font scan on every frame.
+            glyphFont = resolveFallbackFont(character);
+            if (glyphFont == null) {
                 return null;
             }
         }
@@ -378,13 +383,70 @@ private GlyphData commit(Raster raster) {
         }
     }
 
-    private Font fallbackFont() {
-        Font cached = fallbackFont;
-        if (cached == null) {
-            cached = new Font(Font.SANS_SERIF, renderFont.getStyle(), renderFont.getSize());
-            fallbackFont = cached;
+    private Font resolveFallbackFont(char character) {
+        Font cached = resolvedFallbackFonts.get(character);
+        if (cached != null) {
+            return cached;
         }
-        return cached;
+        if (unsupportedCharacters.contains(character)) {
+            return null;
+        }
+
+        synchronized (resolvedFallbackFonts) {
+            cached = resolvedFallbackFonts.get(character);
+            if (cached != null) {
+                return cached;
+            }
+            if (unsupportedCharacters.contains(character)) {
+                return null;
+            }
+
+            for (Font candidate : getFallbackFonts()) {
+                if (candidate.canDisplay(character)) {
+                    resolvedFallbackFonts.put(character, candidate);
+                    return candidate;
+                }
+            }
+
+            unsupportedCharacters.add(character);
+            return null;
+        }
+    }
+
+    private Font[] getFallbackFonts() {
+        Font[] cached = fallbackFonts;
+        if (cached != null) {
+            return cached;
+        }
+
+        synchronized (this) {
+            cached = fallbackFonts;
+            if (cached != null) {
+                return cached;
+            }
+
+            List<Font> candidates = new ArrayList<Font>();
+            String[] logicalNames = {
+                    Font.SANS_SERIF, Font.SERIF, Font.MONOSPACED, Font.DIALOG
+            };
+            for (String logicalName : logicalNames) {
+                candidates.add(new Font(logicalName, renderFont.getStyle(), 1)
+                        .deriveFont(renderFont.getSize2D()));
+            }
+
+            try {
+                for (Font installed : GraphicsEnvironment.getLocalGraphicsEnvironment().getAllFonts()) {
+                    candidates.add(installed.deriveFont(renderFont.getStyle(), renderFont.getSize2D()));
+                }
+            }
+            catch (RuntimeException ignored) {
+                // Logical fonts remain available in restricted/headless Java environments.
+            }
+
+            cached = candidates.toArray(new Font[candidates.size()]);
+            fallbackFonts = cached;
+            return cached;
+        }
     }
 
     private float computeRawTextTop() {
