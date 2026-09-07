@@ -885,7 +885,12 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
             // border straight through the middle of the list.
             float growTop = firstRow ? grow : 0.0f;
             float growBottom = lastRow ? grow : 0.0f;
-            fillRow(left - grow, rowTop - growTop, left + width + grow, rowTop + rowHeight + growBottom,
+            // Rows share a horizontal seam. Two antialiased edges meeting on the same line do not
+            // sum back to full coverage, so a hairline shows through; overlap them slightly. Safe
+            // because interior corners are square.
+            float seam = lastRow ? 0.0f : 0.5f;
+            fillRow(left - grow, rowTop - growTop, left + width + grow,
+                    rowTop + rowHeight + growBottom + seam,
                     topLeft, topRight, bottomRight, bottomLeft, color);
         }
     }
@@ -906,21 +911,22 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
 private static void fillRow(float x1, float y1, float x2, float y2,
                                 float topLeft, float topRight, float bottomRight, float bottomLeft,
                                 int color) {
-        float topBand = Math.max(topLeft, topRight);
-        float bottomBand = Math.max(bottomLeft, bottomRight);
-
-        if (topBand > 0.0f) {
-            RenderUtils.drawRect(x1 + topLeft, y1, x2 - topRight, y1 + topBand, color);
+        if (x2 <= x1 || y2 <= y1) {
+            return;
         }
-        RenderUtils.drawRect(x1, y1 + topBand, x2, y2 - bottomBand, color);
-        if (bottomBand > 0.0f) {
-            RenderUtils.drawRect(x1 + bottomLeft, y2 - bottomBand, x2 - bottomRight, y2, color);
+        if (topLeft <= 0.0f && topRight <= 0.0f && bottomRight <= 0.0f && bottomLeft <= 0.0f) {
+            RenderUtils.drawRect(x1, y1, x2, y2, color);
+            return;
         }
-        quarterDisc(x1 + topLeft, y1 + topLeft, topLeft, 270.0f, color);
-        quarterDisc(x2 - topRight, y1 + topRight, topRight, 0.0f, color);
-        quarterDisc(x2 - bottomRight, y2 - bottomRight, bottomRight, 90.0f, color);
-        quarterDisc(x1 + bottomLeft, y2 - bottomLeft, bottomLeft, 180.0f, color);
+        // One signed-distance rect per row instead of three rects plus four fan-drawn quarter
+        // discs. The old assembly approximated each corner with a 12-segment fan and butted it
+        // against square bands, so the joins never lined up exactly and left the notches and
+        // nibbled edges on the corners. The shader evaluates the corner per pixel, so there is
+        // nothing to line up.
+        RoundedUtils.drawRoundCorners(x1, y1, x2 - x1, y2 - y1,
+                topLeft, topRight, bottomRight, bottomLeft, color);
     }
+
 private static final float CORNER_FEATHER = 0.6f;
 
     private static void quarterDisc(float cx, float cy, float radius, float startDeg, int color) {

@@ -56,8 +56,8 @@ private static final int LOGO_RASTER_W = (int) LOGO_DRAW_W * 4;
     private static final int LOGO_RASTER_H = (int) LOGO_DRAW_H * 4;
     private static final float CATEGORY_ROW_HEIGHT = 21f;
     private static final float CATEGORY_ROW_STEP = 22f;
-    private static final float MODULE_ROW_HEIGHT = 26f;
-    private static final float MODULE_ROW_STEP = 30f;
+    private static final float MODULE_ROW_HEIGHT = 32f;
+    private static final float MODULE_ROW_STEP = 38f;
     private static final float SCRIPT_MANAGER_SECTION_GAP = 14f;
     private static final float DROPDOWN_MIN_W = 78f;
     private static final float DROPDOWN_MAX_W = 156f;
@@ -776,9 +776,9 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
         float actionX = x2 - 88;
         float availableTextWidth = Math.max(42f, x2 - 70f - x1);
         drawText(trim(module.getName(), availableTextWidth, .73f, true),
-                x1 + 10, y + 4.5f, enabled ? TEXT : mixColor(MUTED, TEXT, Math.max(hp * .5f, sp)), .73f, enabled || sp > .5f);
+                x1 + 12, y + 7f, enabled ? TEXT : mixColor(MUTED, TEXT, Math.max(hp * .5f, sp)), .73f, enabled || sp > .5f);
         drawSmallText(trimSmall(moduleDescription(module), availableTextWidth),
-                x1 + 10, y + 16f, mixColor(argb(255, 132, 134, 133), MUTED,
+                x1 + 12, y + 19f, mixColor(argb(255, 132, 134, 133), MUTED,
                         Math.max(hp * .42f, sp * .62f)));
 
         if (profile) {
@@ -2504,7 +2504,14 @@ private MindlessFontRenderer uiSmallFont() {
     }
 private void drawSmallText(String text, float x, float y, int color) {
         MindlessFontRenderer renderer = uiSmallFont();
-        GL11.glPushMatrix(); GL11.glTranslatef(x, y, 0);
+        // drawText snaps to the device pixel grid; this did not, so every module description
+        // landed between pixels and rendered visibly softer than the name above it. That
+        // mismatch is what made the two lines look like different weights.
+        double rs = getActiveRenderScale();
+        if (rs <= 0) rs = 1;
+        float sx = (float) (Math.round(x * rs) / rs);
+        float sy = (float) (Math.round(y * rs) / rs);
+        GL11.glPushMatrix(); GL11.glTranslatef(sx, sy, 0);
         renderer.drawString(text == null ? "" : text, 0, 0, color, false);
         GL11.glPopMatrix();
     }

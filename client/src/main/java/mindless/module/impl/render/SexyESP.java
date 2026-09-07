@@ -64,6 +64,9 @@ public class SexyESP extends Module {
     private final SliderSetting barSide;
     private final ColorSetting barBackground;
     private final ButtonSetting barOutline;
+    private final ButtonSetting barGlow;
+    private final SliderSetting barGlowStrength;
+    private final SliderSetting barGlowSize;
     private final ButtonSetting absorption;
     private final ColorSetting absorptionColor;
     private final ButtonSetting healthNumber;
@@ -167,6 +170,9 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(barSide = new SliderSetting(healthGroup, "Bar side", 0, new String[]{"Left", "Right"}));
         registerSetting(barBackground = new ColorSetting(healthGroup, "Bar background", 0, 0, 0, 120));
         registerSetting(barOutline = new ButtonSetting(healthGroup, "Bar outline", false));
+        registerSetting(barGlow = new ButtonSetting(healthGroup, "Bar glow", true));
+        registerSetting(barGlowStrength = new SliderSetting(healthGroup, "Glow strength", 0.30, 0.0, 1.0, 0.05));
+        registerSetting(barGlowSize = new SliderSetting(healthGroup, "Glow size", "px", 2.0, 0.5, 6.0, 0.5));
         registerSetting(absorption = new ButtonSetting(healthGroup, "Absorption", true));
         registerSetting(absorptionColor = new ColorSetting(healthGroup, "Absorption color", 255, 215, 0));
         registerSetting(healthNumber = new ButtonSetting(healthGroup, "Health number", true));
@@ -240,6 +246,9 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         barSide.setVisible(bar, this);
         barBackground.setVisible(bar, this);
         barOutline.setVisible(bar, this);
+        barGlow.setVisible(bar, this);
+        barGlowStrength.setVisible(bar && barGlow.isToggled(), this);
+        barGlowSize.setVisible(bar && barGlow.isToggled(), this);
         absorption.setVisible(bar, this);
         absorptionColor.setVisible(bar && absorption.isToggled(), this);
         healthNumberMode.setVisible(healthNumber.isToggled(), this);
@@ -526,6 +535,9 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
 
         if (healthBar.isToggled()) {
             drawFlatRect(trackLeft, barTop, trackRight, barBottom, barBackground.getColor());
+            if (barGlow.isToggled()) {
+                drawBarGlow(fillLeft, healthY, fillRight, barBottom, healthBarColor(healthRatio, b));
+            }
             drawHealthFill(fillLeft, healthY, fillRight, barBottom, healthRatio, b);
             if (absorption.isToggled() && living.getAbsorptionAmount() > 0) {
                 double absorptionHeight = Math.min(barSpan, barSpan * living.getAbsorptionAmount() / maxHealth);
@@ -1107,6 +1119,39 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         }
         finally {
             GlStateManager.popMatrix();
+        }
+    }
+
+    /**
+     * A soft halo around the filled part of the health bar.
+     *
+     * Built from a handful of progressively larger, progressively fainter rects in the same
+     * batch as the bar itself, rather than through the blur or bloom shaders the rest of the
+     * client uses for glow. Those cost a framebuffer resolve and a pair of passes per frame,
+     * which is not worth paying for a two-pixel bar drawn once per player -- and at that size
+     * they read far too strong. The falloff is squared so the halo stays faint and only the
+     * innermost ring carries much colour.
+     */
+    private void drawBarGlow(double left, double top, double right, double bottom, int color) {
+        if (bottom - top <= 0.01 || right - left <= 0.01) {
+            return;
+        }
+        float strength = (float) barGlowStrength.getInput();
+        double size = barGlowSize.getInput();
+        if (strength <= 0.0f || size <= 0.0) {
+            return;
+        }
+        int rgb = color & 0xFFFFFF;
+        int layers = 4;
+        for (int i = layers; i >= 1; i--) {
+            double spread = size * i / layers;
+            float falloff = 1.0f - (float) i / (layers + 1);
+            int alpha = Math.round(strength * falloff * falloff * 255.0f);
+            if (alpha <= 0) {
+                continue;
+            }
+            drawFlatRect(left - spread, top - spread, right + spread, bottom + spread,
+                    (alpha << 24) | rgb);
         }
     }
 
