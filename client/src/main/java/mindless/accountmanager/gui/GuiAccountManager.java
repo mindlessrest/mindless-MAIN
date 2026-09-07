@@ -3,6 +3,7 @@ package mindless.accountmanager.gui;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -60,6 +61,19 @@ public class GuiAccountManager extends GuiScreen {
     private volatile boolean checkingInvalid = false;
     private GuiTextField searchField;
     private final List<Account> filteredList = new ArrayList<>();
+
+    /**
+     * View order. Manual is the stored order and the only one Ctrl+Up/Down can reorder,
+     * because a swap under any other ordering would move rows that the sort immediately
+     * puts back, which reads as the reorder silently failing.
+     */
+    private static final String[] SORT_MODES = { "Manual", "Name", "Type", "Status" };
+    private static final int SORT_MANUAL = 0;
+    private static final int SORT_NAME = 1;
+    private static final int SORT_TYPE = 2;
+    private static final int SORT_STATUS = 3;
+    private static int sortMode = SORT_MANUAL;
+    private GuiButton sortButton;
     private String lastSearch = "";
     static final int C_BG       = 0xF0080A0C;
     static final int C_PANEL    = 0xEE0D1012;
@@ -115,6 +129,12 @@ public class GuiAccountManager extends GuiScreen {
         searchField.setCanLoseFocus(true);
         searchField.setEnableBackgroundDrawing(false);
 
+        sortButton = new GuiButton(11, sfX + sfW - 84, SEARCH_TOP + 2, 80, SEARCH_H - 4,
+                "Sort: " + SORT_MODES[sortMode]);
+        buttonList.add(sortButton);
+        // leave room for the sort control so long queries do not run under it
+        searchField.width = sfW - 16 - 88;
+
         int bFooterTop = height - FOOTER_H + 6;
         int gap = 5;
         int fourW = (contentW - gap * 3) / 4;
@@ -168,17 +188,84 @@ public class GuiAccountManager extends GuiScreen {
         }
     }
 
+    private void cycleSort() {
+        sortMode = (sortMode + 1) % SORT_MODES.length;
+        if (sortButton != null) {
+            sortButton.displayString = "Sort: " + SORT_MODES[sortMode];
+        }
+        updateFilter();
+    }
+
+    private static String typeLabel(Account account) {
+        switch (account.getType()) {
+            case CRACKED: return "Cracked";
+            case COOKIE:  return "Cookie";
+            case REFRESH: return "Refresh";
+            case TOKEN:   return "Token";
+            default:      return "Premium";
+        }
+    }
+
+    /** Banned first, then temporarily banned soonest-free first, then everything clean. */
+    private static int statusRank(Account account) {
+        long unban = account.getUnban();
+        if (unban < 0L) return 0;
+        if (unban > System.currentTimeMillis()) return 1;
+        return 2;
+    }
+
+    private void sortFiltered() {
+        switch (sortMode) {
+            case SORT_NAME:
+                Collections.sort(filteredList, new Comparator<Account>() {
+                    @Override public int compare(Account a, Account b) {
+                        return String.valueOf(a.getUsername())
+                                .compareToIgnoreCase(String.valueOf(b.getUsername()));
+                    }
+                });
+                break;
+            case SORT_TYPE:
+                Collections.sort(filteredList, new Comparator<Account>() {
+                    @Override public int compare(Account a, Account b) {
+                        int byType = typeLabel(a).compareToIgnoreCase(typeLabel(b));
+                        if (byType != 0) return byType;
+                        return String.valueOf(a.getUsername())
+                                .compareToIgnoreCase(String.valueOf(b.getUsername()));
+                    }
+                });
+                break;
+            case SORT_STATUS:
+                Collections.sort(filteredList, new Comparator<Account>() {
+                    @Override public int compare(Account a, Account b) {
+                        int byRank = Integer.compare(statusRank(a), statusRank(b));
+                        if (byRank != 0) return byRank;
+                        int byUnban = Long.compare(a.getUnban(), b.getUnban());
+                        if (byUnban != 0) return byUnban;
+                        return String.valueOf(a.getUsername())
+                                .compareToIgnoreCase(String.valueOf(b.getUsername()));
+                    }
+                });
+                break;
+            default:
+                break;
+        }
+    }
+
     private void updateFilter() {
         String q = searchField != null ? searchField.getText().toLowerCase().trim() : "";
         Account wasSelected = (selectedAccount >= 0 && selectedAccount < filteredList.size())
                 ? filteredList.get(selectedAccount) : null;
         filteredList.clear();
         for (Account acc : AccountManager.accounts) {
-            if (q.isEmpty() || (!StringUtils.isBlank(acc.getUsername())
-                    && acc.getUsername().toLowerCase().contains(q))) {
+            boolean matches = q.isEmpty()
+                    || (!StringUtils.isBlank(acc.getUsername())
+                        && acc.getUsername().toLowerCase().contains(q))
+                    || typeLabel(acc).toLowerCase().contains(q);
+            if (matches) {
                 filteredList.add(acc);
             }
         }
+        sortFiltered();
         if (wasSelected != null) {
             int newIdx = filteredList.indexOf(wasSelected);
             selectedAccount = newIdx;
@@ -316,7 +403,8 @@ public class GuiAccountManager extends GuiScreen {
             case 200:
                 if (selectedAccount <= 0) break;
                 --selectedAccount;
-                if (GuiScreen.isCtrlKeyDown() && searchField.getText().isEmpty()) {
+                if (GuiScreen.isCtrlKeyDown() && searchField.getText().isEmpty()
+                        && sortMode == SORT_MANUAL) {
                     Account a = filteredList.get(selectedAccount);
                     Account b = filteredList.get(selectedAccount + 1);
                     Collections.swap(AccountManager.accounts, AccountManager.accounts.indexOf(a), AccountManager.accounts.indexOf(b));
@@ -326,7 +414,8 @@ public class GuiAccountManager extends GuiScreen {
             case 208:
                 if (selectedAccount >= filteredList.size() - 1) break;
                 ++selectedAccount;
-                if (GuiScreen.isCtrlKeyDown() && searchField.getText().isEmpty()) {
+                if (GuiScreen.isCtrlKeyDown() && searchField.getText().isEmpty()
+                        && sortMode == SORT_MANUAL) {
                     Account a = filteredList.get(selectedAccount);
                     Account b = filteredList.get(selectedAccount - 1);
                     Collections.swap(AccountManager.accounts, AccountManager.accounts.indexOf(a), AccountManager.accounts.indexOf(b));
@@ -346,6 +435,7 @@ public class GuiAccountManager extends GuiScreen {
     protected void actionPerformed(GuiButton button) {
         if (button == null || !button.enabled) return;
         switch (button.id) {
+            case 11: cycleSort(); return;
             case 0: {
                 if (task != null && !task.isDone()) break;
                 if (selectedAccount < 0 || selectedAccount >= filteredList.size()) break;
