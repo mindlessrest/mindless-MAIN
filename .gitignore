@@ -101,3 +101,6 @@ loader/CMakePresets.json
 # Unrelated tooling dropped in the repo root
 Xtools_Package_*/
 .ci/
+
+# Local visual development tools (never shipped with the client)
+tools/wing-sandbox/
