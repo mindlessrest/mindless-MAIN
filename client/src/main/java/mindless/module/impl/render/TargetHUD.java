@@ -149,10 +149,17 @@ private int ringColor(int ringIndex) {
             return;
         }
         if (ev.phase == TickEvent.Phase.END) {
-            if (mode.getInput() == -1 || mc.currentScreen != null) {
+            if (mode.getInput() == -1) {
                 reset();
                 return;
             }
+            // Any open screen used to reset(), which threw the target away rather than merely
+            // hiding the panel. Opening chat mid-fight therefore dropped the opponent and the
+            // panel had to re-acquire and pop in again afterwards, which is the intermittent
+            // disappearance. Chat now keeps it on screen; other screens only suppress drawing
+            // and leave the tracked target intact.
+            boolean chatOpen = mc.currentScreen instanceof net.minecraft.client.gui.GuiChat;
+            boolean screenHides = mc.currentScreen != null && !chatOpen;
             EntityLivingBase activeTarget = getActiveTarget();
             if (activeTarget != null) {
                 target = activeTarget;
@@ -185,7 +192,9 @@ private int ringColor(int ringIndex) {
             healthTrackedTarget = target;
             lastHealth = health;
             playerInfo += " " + Utils.getHealthStr(target, true);
-            drawTargetHUD(fadeTimer, playerInfo, health);
+            if (!screenHides) {
+                drawTargetHUD(fadeTimer, playerInfo, health);
+            }
         }
     }
 
@@ -499,7 +508,13 @@ private int ringColor(int ringIndex) {
                 if (playerInfo == null) return;
                 skin = playerInfo.getLocationSkin();
             }
-            if (skin == null) return;
+            if (skin == null || !skinIsLoaded(skin)) {
+                // No skin resolved yet. Binding a location whose texture has not been created
+                // leaves whatever was bound previously in place, so the head box showed a crop
+                // of an unrelated texture instead of a face.
+                drawHeadPlaceholder(x, y, width, height, alpha);
+                return;
+            }
             boolean depthEnabled = GL11.glIsEnabled(2929);
             boolean blendEnabled = GL11.glIsEnabled(3042);
             boolean cullEnabled = GL11.glIsEnabled(2884);
@@ -515,7 +530,11 @@ private int ringColor(int ringIndex) {
                 else {
                     float cornerRadius = Math.max(2.0f, (float) Math.min(width, height) * 0.14f);
                     drawRoundedSkinLayer(x, y, width, height, cornerRadius, 8.0f, 8.0f, alpha);
-                    drawRoundedSkinLayer(x, y, width, height, cornerRadius, 40.0f, 8.0f, alpha);
+                    // Hat sits slightly proud of the face so the two layers read apart instead
+                    // of exactly overprinting each other.
+                    float grow = Math.min(width, height) * 0.055f;
+                    drawRoundedSkinLayer(x - grow, y - grow, width + grow * 2.0f,
+                            height + grow * 2.0f, cornerRadius, 40.0f, 8.0f, alpha);
                 }
             } finally {
                 RenderUtils.restoreGuiRenderState(depthEnabled, blendEnabled, depthMask);
@@ -524,6 +543,27 @@ private int ringColor(int ringIndex) {
             }
         } catch (Exception ignored) {}
     }
+    /**
+     * Whether the skin texture actually exists yet.
+     *
+     * getLocationSkin returns a location for a skin that may still be downloading; the texture
+     * object is only registered once it arrives.
+     */
+    private boolean skinIsLoaded(ResourceLocation skin) {
+        try {
+            return mc.getTextureManager().getTexture(skin) != null;
+        }
+        catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void drawHeadPlaceholder(int x, int y, int width, int height, int alpha) {
+        float radius = Math.max(2.0f, Math.min(width, height) * 0.14f);
+        int shade = Math.max(0, Math.min(255, Math.round(alpha * 0.55f)));
+        RoundedUtils.drawRound(x, y, width, height, radius, new Color(26, 26, 34, shade));
+    }
+
 private void drawHeadCube(float x, float y, float width, float height, int alpha) {
         float centerX = x + width * 0.5f;
         float centerY = y + height * 0.5f;

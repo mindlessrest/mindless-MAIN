@@ -44,6 +44,7 @@ public class Scaffold extends Module {
     private static final ItemBlock PLACEHOLDER = new ItemBlock(Blocks.tnt);
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
+    private final ButtonSetting sprintScaf;
     private final ButtonSetting keepY;
     private final ButtonSetting eagle;
     private final SliderSetting eagleSafety;
@@ -61,6 +62,10 @@ public class Scaffold extends Module {
 
     private boolean eagleActive;
 
+    /** Whether Sprint Scaf Mode currently owns the sprint key, and what it last asked for. */
+    private boolean sprintScafActive;
+    private boolean sprintScafSprinting;
+
     private int wdBlocksPlaced;
     private float wdOverrideYaw = Float.NaN;
     private float wdOverrideSpeed = Float.NaN;
@@ -71,6 +76,7 @@ private int previousSlot = -1;
         super("Scaffold", "Bridges by placing blocks under your feet.", category.player);
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));
         this.registerSetting(sprint = new SliderSetting("Sprint", 0, new String[]{"Off", "Legit", "Watchdog"}));
+        this.registerSetting(sprintScaf = new ButtonSetting("Sprint Scaf Mode", false));
         this.registerSetting(keepY = new ButtonSetting("Keep Y", false));
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
@@ -107,6 +113,7 @@ private int previousSlot = -1;
             setShiftOverride(false);
             eagleActive = false;
         }
+        releaseSprintScaffold();
         restorePreviousSlot();
     }
 private void restorePreviousSlot() {
@@ -233,6 +240,16 @@ private void restorePreviousSlot() {
 
         updateEagle(placed);
 
+        // Sprint Scaf Mode supersedes the Sprint slider. Both drive the same key, and letting
+        // them run together would produce exactly the start/stop thrash this is meant to avoid.
+        if (sprintScaf.isToggled()) {
+            updateSprintScaffold(placed);
+            return;
+        }
+        if (sprintScafActive) {
+            releaseSprintScaffold();
+        }
+
         int sprintMode = (int) sprint.getInput();
         if (sprintMode == 0) return;
 
@@ -291,20 +308,7 @@ private void restorePreviousSlot() {
 
         boolean shouldSneak = false;
         if (mc.thePlayer.onGround) {
-            int lookahead = (int) eagleSafety.getInput();
-            boolean edgeDetected = false;
-            for (int i = 0; i <= lookahead; i++) {
-                BlockPos checkPos = new BlockPos(
-                        mc.thePlayer.posX + mc.thePlayer.motionX * i,
-                        mc.thePlayer.posY - 1 + mc.thePlayer.motionY * i,
-                        mc.thePlayer.posZ + mc.thePlayer.motionZ * i
-                );
-                if (mc.theWorld.isAirBlock(checkPos)) {
-                    edgeDetected = true;
-                    break;
-                }
-            }
-            if (edgeDetected && !placedThisTick) {
+            if (isOverEdge((int) eagleSafety.getInput()) && !placedThisTick) {
                 shouldSneak = true;
             }
         }
@@ -319,6 +323,103 @@ private void restorePreviousSlot() {
         if (shouldSneak != eagleActive) {
             setShiftOverride(shouldSneak);
             eagleActive = shouldSneak;
+        }
+    }
+
+    /**
+     * Whether the ground runs out within the next {@code lookahead} ticks of current motion.
+     *
+     * Shared by Eagle and Sprint Scaf Mode so the two agree on where the edge is; a sprint guard
+     * that disagreed with the sneak guard would sneak and sprint over the same gap.
+     */
+    private boolean isOverEdge(int lookahead) {
+        for (int i = 0; i <= lookahead; i++) {
+            BlockPos checkPos = new BlockPos(
+                    mc.thePlayer.posX + mc.thePlayer.motionX * i,
+                    mc.thePlayer.posY - 1 + mc.thePlayer.motionY * i,
+                    mc.thePlayer.posZ + mc.thePlayer.motionZ * i
+            );
+            if (mc.theWorld.isAirBlock(checkPos)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Sprint control tied to the placement state rather than to the tick clock.
+     *
+     * The Sprint slider's Legit mode pushes the sprint key down on every tick that did not
+     * place, and never lifts it; Watchdog toggles it from the yaw difference alone. Neither
+     * consults whether there is anywhere to stand, so outrunning the placement drops you.
+     *
+     * This asks one question instead: is it safe to be moving at sprint speed right now, given
+     * what Scaffold is about to do? The answer only changes on real transitions, so the key and
+     * the sprint packets change only then too.
+     */
+    private void updateSprintScaffold(boolean placedThisTick) {
+        boolean safe = isSprintSafe(placedThisTick);
+        if (sprintScafActive && safe == sprintScafSprinting) {
+            return;
+        }
+        applySprintScaffold(safe);
+    }
+
+    private boolean isSprintSafe(boolean placedThisTick) {
+        EntityPlayerSP player = mc.thePlayer;
+
+        // Sprinting without forward input does nothing but desync the server's idea of it.
+        if (player.movementInput == null || player.movementInput.moveForward <= 0.8F) return false;
+        if (player.isCollidedHorizontally) return false;
+        if (player.getFoodStats().getFoodLevel() <= 6) return false;
+        // Eagle is deliberately slowing the player at an edge; do not fight it.
+        if (eagleActive || player.isSneaking()) return false;
+
+        // Airborne, a miss cannot be corrected before landing, so require ground ahead.
+        if (!player.onGround && isOverEdge(1)) return false;
+
+        // The placement pipeline is healthy when a block went down this tick, one is armed for
+        // the next, or a target has at least been found. With none of those, sprinting into a
+        // gap is what walks the player off the bridge.
+        boolean placementReady = placedThisTick || placeQueued || previewPos != null;
+        if (!placementReady && isOverEdge(Math.max(1, (int) eagleSafety.getInput()))) {
+            return false;
+        }
+
+        // Same guard Watchdog mode uses: while the server still believes we are facing far from
+        // where we are, it will not honour the sprint anyway.
+        float serverYaw = RotationUtils.serverRotations[0];
+        float diff = Math.abs(MathHelper.wrapAngleTo180_float(player.rotationYaw)
+                - MathHelper.wrapAngleTo180_float(serverYaw));
+        return diff <= 90.0F;
+    }
+
+    /**
+     * Apply a sprint decision.
+     *
+     * setSprinting is left to drive the packets. EntityPlayerSP compares its own sprint flag
+     * against serverSprintState each tick and emits one START_SPRINTING or STOP_SPRINTING when
+     * they differ, so routing through it gives exactly one packet per real change and keeps the
+     * client and server views in step. Sending the packets by hand here would race that tracker
+     * and produce the duplicates and desync it exists to prevent.
+     */
+    private void applySprintScaffold(boolean sprinting) {
+        sprintScafActive = true;
+        sprintScafSprinting = sprinting;
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), sprinting);
+        if (mc.thePlayer.isSprinting() != sprinting) {
+            mc.thePlayer.setSprinting(sprinting);
+        }
+    }
+
+    /** Hand the sprint key back to the player's own input. */
+    private void releaseSprintScaffold() {
+        if (!sprintScafActive) return;
+        sprintScafActive = false;
+        sprintScafSprinting = false;
+        if (mc.gameSettings != null) {
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(),
+                    Keyboard.isKeyDown(mc.gameSettings.keyBindSprint.getKeyCode()));
         }
     }
 
