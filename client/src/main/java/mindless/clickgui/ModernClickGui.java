@@ -58,6 +58,7 @@ private static final int LOGO_RASTER_W = (int) LOGO_DRAW_W * 4;
     private static final float CATEGORY_ROW_STEP = 22f;
     private static final float MODULE_ROW_HEIGHT = 26f;
     private static final float MODULE_ROW_STEP = 30f;
+    private static final float SCRIPT_MANAGER_SECTION_GAP = 14f;
     private static final float DROPDOWN_MIN_W = 78f;
     private static final float DROPDOWN_MAX_W = 156f;
 private static final float DROPDOWN_LABEL_GAP = 10f;
@@ -589,8 +590,12 @@ private static boolean isPinnedCategory(Module.category category) {
         float top = baseY + 61f;
         float bottom = baseY + panelH - 12f;
         if (scriptManager != null) {
-            drawModuleRow(scriptManager, top, mx, my);
-            top += MODULE_ROW_STEP;
+            drawScriptManagerRow(scriptManager, top, mx, my);
+            float sectionY = top + MODULE_ROW_HEIGHT + 7f;
+            drawSmallText("LOADED SCRIPTS", centerX + 16, sectionY, DIM);
+            line(centerX + 88, sectionY + 3f, centerX + centerW - 16, sectionY + 3f,
+                    withAlpha(DIVIDER, 34));
+            top += MODULE_ROW_STEP + SCRIPT_MANAGER_SECTION_GAP;
         }
         scissor(centerX + 8, top, centerX + centerW - 8, bottom, true);
         float y = top + moduleScroll;
@@ -780,6 +785,34 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             }
         }
         drawTextVCentered(">", x2 - 8, y, y + MODULE_ROW_HEIGHT, selected ? GOLD : withAlpha(DIM, (int)(80 + 175 * hp)), .72f, false);
+    }
+
+    /**
+     * The script manager is a navigation action, not a toggleable script. Giving it its own quiet
+     * toolbar treatment keeps it separate from loaded scripts and prevents the normal selected or
+     * enabled animations from washing the whole row white.
+     */
+    private void drawScriptManagerRow(Module module, float y, int mx, int my) {
+        float x1 = centerX + 14f;
+        float x2 = centerX + centerW - 14f;
+        boolean hover = inside(mx, my, x1, y, x2, y + MODULE_ROW_HEIGHT);
+        float hp = animate(hoverAnimation, module, hover ? 1f : 0f, 15f);
+
+        int surface = mixColor(CONTROL, ROW_HOVER, hp * .72f);
+        rounded(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f, surface);
+        outline(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f,
+                mixColor(withAlpha(BORDER, 42), withAlpha(ACCENT, 92), hp));
+        roundedCorners(x1, y + 5f, x1 + 2f, y + MODULE_ROW_HEIGHT - 5f,
+                0f, 1f, 1f, 0f, withAlpha(ACCENT, (int) (118 + 54 * hp)));
+
+        drawText("Manager", x1 + 11f, y + 4.5f,
+                mixColor(mixColor(MUTED, TEXT, .78f), TEXT, hp * .22f), .73f, false);
+        drawSmallText("Create, reload, and organize scripts", x1 + 11f, y + 16f,
+                mixColor(DIM, MUTED, hp * .55f));
+        drawTextVCentered("Open", x2 - 48f, y, y + MODULE_ROW_HEIGHT,
+                mixColor(DIM, MUTED, hp), .6f, false);
+        drawTextVCentered(">", x2 - 9f, y, y + MODULE_ROW_HEIGHT,
+                mixColor(withAlpha(DIM, 118), ACCENT, hp * .68f), .72f, false);
     }
 
     private void drawSettingsPanel(int mx, int my) {
@@ -1388,7 +1421,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
                 openModule(scriptManager);
                 return;
             }
-            top += MODULE_ROW_STEP;
+            top += MODULE_ROW_STEP + SCRIPT_MANAGER_SECTION_GAP;
         }
         float y = top + moduleScroll;
         for (Module module : modules) {
@@ -1807,7 +1840,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     }
 
     private float moduleScrollTop() {
-        return baseY + 61f + (stickyScriptManager() ? MODULE_ROW_STEP : 0f);
+        return baseY + 61f + (stickyScriptManager() ? MODULE_ROW_STEP + SCRIPT_MANAGER_SECTION_GAP : 0f);
     }
 @Override
     public void resetPositions() {

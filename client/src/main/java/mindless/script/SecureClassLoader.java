@@ -110,6 +110,32 @@ public class SecureClassLoader extends URLClassLoader {
     ));
 
     /**
+     * Runtime-owned superclasses used by the JDK's generated reflection accessors.
+     *
+     * After a Method has been invoked repeatedly, Java replaces the slow native accessor with a
+     * generated class whose defining loader delegates these exact implementation classes through
+     * the script loader. Blocking them makes a healthy script fail after roughly fifteen event
+     * callbacks with NoClassDefFoundError. They are not scripting API and source code cannot use
+     * this non-exported package; this narrow bridge only lets the JVM finish its own linkage.
+     */
+    private static final Set<String> JVM_REFLECTION_BRIDGE_CLASSES = new HashSet<String>(Arrays.asList(
+            "jdk.internal.reflect.MagicAccessorImpl",
+            "jdk.internal.reflect.MethodAccessor",
+            "jdk.internal.reflect.MethodAccessorImpl",
+            "jdk.internal.reflect.ConstructorAccessor",
+            "jdk.internal.reflect.ConstructorAccessorImpl",
+            "jdk.internal.reflect.SerializationConstructorAccessorImpl",
+            // Java 8 names for the same VM-owned bridge classes. The Forge test/runtime toolchain
+            // still uses these even when the launcher itself runs a newer JDK.
+            "sun.reflect.MagicAccessorImpl",
+            "sun.reflect.MethodAccessor",
+            "sun.reflect.MethodAccessorImpl",
+            "sun.reflect.ConstructorAccessor",
+            "sun.reflect.ConstructorAccessorImpl",
+            "sun.reflect.SerializationConstructorAccessorImpl"
+    ));
+
+    /**
      * Kept as a second gate. The allowlist above already excludes all of these; naming them means a
      * careless addition to the allowlist cannot quietly re-open one.
      */
@@ -189,6 +215,9 @@ public class SecureClassLoader extends URLClassLoader {
         }
 
         if (PRIMITIVE_ARRAY.equals(name)) {
+            return true;
+        }
+        if (JVM_REFLECTION_BRIDGE_CLASSES.contains(name)) {
             return true;
         }
         // The script's own classes, and anything it declares as an inner class of them.

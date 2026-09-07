@@ -52,7 +52,12 @@ public class SecureClassLoaderTest {
         assertTrue(Files.deleteIfExists(jarPath));
         try (SecureClassLoader loader = new SecureClassLoader(classes, getClass().getClassLoader())) {
             Object instance = loader.loadClass("sc_MemoryScript").newInstance();
-            assertEquals("ok", instance.getClass().getMethod("value").invoke(instance));
+            // Java inflates reflection calls into a generated MethodAccessor after repeated use.
+            // That generated accessor must still be able to resolve its JDK-owned superclass
+            // through the script loader.
+            for (int i = 0; i < 40; i++) {
+                assertEquals("ok", instance.getClass().getMethod("value").invoke(instance));
+            }
         }
 
         Files.deleteIfExists(source);
