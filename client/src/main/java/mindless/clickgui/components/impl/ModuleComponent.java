@@ -2,6 +2,7 @@ package mindless.clickgui.components.impl;
 
 import mindless.Mindless;
 import mindless.clickgui.ClickGui;
+import mindless.clickgui.animation.ScrollOffsetAnimation;
 import mindless.clickgui.components.Component;
 import mindless.module.Module;
 import mindless.module.setting.Setting;
@@ -38,6 +39,8 @@ public class ModuleComponent extends Component {
     private float smoothingY = 16f;
     private float animationStartY = 16f;
     private float animationTargetY = 16f;
+    private final ScrollOffsetAnimation toggleAnimation = new ScrollOffsetAnimation(145L);
+    private boolean lastToggleState;
 
     private static final IntBuffer SCISSOR_BOX = BufferUtils.createIntBuffer(16);
 private static final float GROUP_CHILD_INDENT = 6f;
@@ -65,6 +68,8 @@ private static final float GROUP_CHILD_INDENT = 6f;
         this.settings = new ArrayList();
         this.categoryManager = mod instanceof Manager || mod instanceof mindless.script.Manager;
         this.isOpened = categoryManager;
+        this.lastToggleState = mod.isEnabled();
+        this.toggleAnimation.reset(this.lastToggleState ? 1.0f : 0.0f);
         float collapsedHeight = getCollapsedHeight();
         this.smoothingY = collapsedHeight;
         this.animationStartY = collapsedHeight;
@@ -303,15 +308,22 @@ public boolean settingsDirty;
     }
 
     public void render() {
+        boolean enabled = this.mod.isEnabled();
+        if (enabled != lastToggleState) {
+            lastToggleState = enabled;
+            toggleAnimation.setTarget(enabled ? 1.0f : 0.0f);
+        }
+        float toggleProgress = toggleAnimation.getValue();
         float rowTop = this.categoryComponent.getY() + this.yPos;
         float rowLeft = this.categoryComponent.getX() + 2;
         float rowRight = this.categoryComponent.getX() + this.categoryComponent.getWidth() - 2;
 
         if (hasModuleHeader()) {
             RenderUtils.drawRoundedRectangle(rowLeft, rowTop + 1, rowRight, rowTop + 15, 4.0f, ROW_COLOR);
-            if (this.mod.isEnabled()) {
+            if (toggleProgress > 0.001f) {
                 RenderUtils.drawRoundedRectangle(rowLeft, rowTop + 1, rowRight, rowTop + 15,
-                        4.0f, ENABLED_ROW_COLOR);
+                        4.0f, Utils.mergeAlpha(ENABLED_ROW_COLOR,
+                                Math.round(25.0f * toggleProgress)));
             }
         }
 
@@ -329,7 +341,7 @@ public boolean settingsDirty;
             RenderUtils.drawRoundedRectangle(rowLeft, rowTop + 1, rowRight, rowTop + 15, 4.0f,
                     Utils.mergeAlpha(HOVER_COLOR, (int) hoverAlpha));
         }
-        int button_rgb = this.mod.isEnabled() ? ENABLED_COLOR : DISABLED_COLOR;
+        int button_rgb = interpolateColor(DISABLED_COLOR, ENABLED_COLOR, toggleProgress);
         if (this.mod.script != null && this.mod.script.error) {
             button_rgb = INVALID_COLOR;
         }
@@ -343,9 +355,11 @@ public boolean settingsDirty;
         if (hasModuleHeader()) {
             float statusLeft = this.categoryComponent.getX() + 5.0f;
             float statusTop = rowTop + 5.0f;
-            int statusColor = this.mod.isEnabled() ? STATUS_ENABLED : STATUS_DISABLED;
-            RenderUtils.drawRoundedRectangle(statusLeft, statusTop, statusLeft + 7.0f,
-                    statusTop + 7.0f, 2.5f, statusColor);
+            int statusColor = interpolateColor(STATUS_DISABLED, STATUS_ENABLED, toggleProgress);
+            float indicatorInset = (1.0f - toggleProgress) * 0.6f;
+            RenderUtils.drawRoundedRectangle(statusLeft + indicatorInset, statusTop + indicatorInset,
+                    statusLeft + 7.0f - indicatorInset, statusTop + 7.0f - indicatorInset,
+                    2.5f, statusColor);
             float textX = this.categoryComponent.getX() + 15;
             float textY = this.categoryComponent.getY() + this.yPos + 4;
             float reservedRight = this.settings.isEmpty() ? 4.0f : 13.0f;
@@ -419,6 +433,15 @@ public boolean settingsDirty;
         GL11.glScalef(scale, scale, 1.0f);
         renderer.drawString(name, 0.0f, 0.0f, color, false);
         GL11.glPopMatrix();
+    }
+
+    private static int interpolateColor(int from, int to, float progress) {
+        float t = Math.max(0.0f, Math.min(1.0f, progress));
+        int a = Math.round(((from >>> 24) & 0xFF) + (((to >>> 24) & 0xFF) - ((from >>> 24) & 0xFF)) * t);
+        int r = Math.round(((from >>> 16) & 0xFF) + (((to >>> 16) & 0xFF) - ((from >>> 16) & 0xFF)) * t);
+        int g = Math.round(((from >>> 8) & 0xFF) + (((to >>> 8) & 0xFF) - ((from >>> 8) & 0xFF)) * t);
+        int b = Math.round((from & 0xFF) + ((to & 0xFF) - (from & 0xFF)) * t);
+        return a << 24 | r << 16 | g << 8 | b;
     }
 public float getScrollExtentHeightF() {
         if (isOpened || (smoothTimer != null && animationTargetY > 16f)) {
