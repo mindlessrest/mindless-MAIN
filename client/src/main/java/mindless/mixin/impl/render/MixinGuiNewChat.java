@@ -153,7 +153,8 @@ public abstract class MixinGuiNewChat {
 
             if (headSize > 0.0f) {
                 String sender = GuiNewChatState.senderOf(chatLine.getChatComponent());
-                GuiNewChatState.drawPlayerHead(sender, x, y - 1.0f, headSize, alpha);
+                GuiNewChatState.drawPlayerHead(sender, chatLine.getChatComponent().getFormattedText(),
+                        x, y - 1.0f, headSize, alpha);
                 GlStateManager.enableBlend();
                 GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                         GL11.GL_ONE, GL11.GL_ZERO);

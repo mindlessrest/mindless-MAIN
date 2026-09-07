@@ -57,8 +57,76 @@ public static String senderOf(net.minecraft.util.IChatComponent component) {
 
         return null;
     }
-public static void drawPlayerHead(String name, float x, float y, float size, int alpha) {
-        if (name == null || name.isEmpty() || size <= 0.0f) {
+/**
+     * Resolve the tab-list entry for a chat sender.
+     *
+     * getPlayerInfo(String) matches the game profile name exactly and case-sensitively. A sender
+     * pulled out of a Hypixel line can differ from that by case, so an exact miss is retried
+     * against the player list before giving up.
+     */
+    private static net.minecraft.client.network.NetworkPlayerInfo resolvePlayer(String name) {
+        net.minecraft.client.network.NetHandlerPlayClient handler =
+                net.minecraft.client.Minecraft.getMinecraft().getNetHandler();
+        if (handler == null || name == null || name.isEmpty()) {
+            return null;
+        }
+        net.minecraft.client.network.NetworkPlayerInfo direct = handler.getPlayerInfo(name);
+        if (direct != null) {
+            return direct;
+        }
+        for (net.minecraft.client.network.NetworkPlayerInfo info : handler.getPlayerInfoMap()) {
+            if (info == null || info.getGameProfile() == null) {
+                continue;
+            }
+            String profileName = info.getGameProfile().getName();
+            if (profileName != null && profileName.equalsIgnoreCase(name)) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Last resort sender extraction, for lines whose components carry no click event or insertion.
+     *
+     * Only accepts a leading "name:" or "rank name:" shape, and only a token that is a legal
+     * Minecraft username, so ordinary sentences containing a colon are not mistaken for a sender.
+     */
+    private static String senderFromText(String formatted) {
+        if (formatted == null) {
+            return null;
+        }
+        String plain = net.minecraft.util.EnumChatFormatting.getTextWithoutFormattingCodes(formatted);
+        if (plain == null) {
+            return null;
+        }
+        int colon = plain.indexOf(':');
+        if (colon <= 0 || colon > 48) {
+            return null;
+        }
+        String head = plain.substring(0, colon).trim();
+        int space = head.lastIndexOf(' ');
+        String candidate = space < 0 ? head : head.substring(space + 1);
+        candidate = candidate.trim();
+        if (candidate.length() < 3 || candidate.length() > 16) {
+            return null;
+        }
+        for (int i = 0; i < candidate.length(); i++) {
+            char c = candidate.charAt(i);
+            if (c != '_' && !Character.isLetterOrDigit(c)) {
+                return null;
+            }
+        }
+        return candidate;
+    }
+
+    public static void drawPlayerHead(String name, float x, float y, float size, int alpha) {
+        drawPlayerHead(name, null, x, y, size, alpha);
+    }
+
+    public static void drawPlayerHead(String name, String formattedLine,
+                                      float x, float y, float size, int alpha) {
+        if (size <= 0.0f) {
             return;
         }
 
@@ -67,14 +135,27 @@ public static void drawPlayerHead(String name, float x, float y, float size, int
             return;
         }
 
-        net.minecraft.client.network.NetworkPlayerInfo info = mc.getNetHandler().getPlayerInfo(name);
-        if (info == null || info.getLocationSkin() == null) {
-            return;
+        String sender = name == null || name.isEmpty() ? senderFromText(formattedLine) : name;
+        net.minecraft.client.network.NetworkPlayerInfo info = resolvePlayer(sender);
+
+        // Draw something whenever the row has been indented for a head. Returning early on a
+        // miss left a hole the width of the head with nothing in it, which is indistinguishable
+        // from the feature being broken; the default skin at least shows the row is a player's.
+        net.minecraft.util.ResourceLocation skin = null;
+        if (info != null) {
+            skin = info.getLocationSkin();
+        }
+        if (skin == null) {
+            if (sender == null || sender.isEmpty()) {
+                mindless.utility.Diagnostics.log("chat", "head skipped: no sender resolved");
+                return;
+            }
+            skin = net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkinLegacy();
+            mindless.utility.Diagnostics.log("chat", "head fell back to the default skin for " + sender);
         }
 
-        // The head inherited whatever state the chat panel left behind, and the panel background is
-        // drawn with texturing off, so the bind had nothing to sample and the head never
-        // appeared. Establish the state the draw needs instead of assuming it.
+        // Own state, not inherited. The chat panel behind this is drawn with texturing off, so a
+        // bind alone had nothing to sample and the head never appeared.
         net.minecraft.client.renderer.GlStateManager.enableTexture2D();
         net.minecraft.client.renderer.GlStateManager.enableBlend();
         net.minecraft.client.renderer.GlStateManager.tryBlendFuncSeparate(
@@ -82,11 +163,11 @@ public static void drawPlayerHead(String name, float x, float y, float size, int
                 org.lwjgl.opengl.GL11.GL_ONE, org.lwjgl.opengl.GL11.GL_ZERO);
         net.minecraft.client.renderer.GlStateManager.enableAlpha();
         net.minecraft.client.renderer.GlStateManager.disableLighting();
+        net.minecraft.client.renderer.GlStateManager.disableDepth();
         net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f,
                 Math.max(0, Math.min(255, alpha)) / 255.0f);
-        mc.getTextureManager().bindTexture(info.getLocationSkin());
+        mc.getTextureManager().bindTexture(skin);
 
-        // Rounded to whole pixels so an 8x8 face scaled to the head size keeps its grid.
         int px = Math.round(x);
         int py = Math.round(y);
         int drawSize = Math.max(1, Math.round(size));
@@ -96,6 +177,7 @@ public static void drawPlayerHead(String name, float x, float y, float size, int
                 px, py, 40.0f, 8.0f, 8, 8, drawSize, drawSize, 64.0f, 64.0f);
         net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
+
     public static final int PANEL_FILL_COLOR = 0x55000000;
     public static final float PANEL_BLUR_OPACITY = 0.85f;
 
