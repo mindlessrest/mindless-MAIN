@@ -338,6 +338,7 @@ public class Wings extends Module {
             // clusters to resolve as one dense shape at the middle of the player's back.
             realFeatherCount = 0;
             appendFeatheredWing(side, scale, span, phase, amplitude);
+            WingRenderPipeline.mirrorWinding(side < 0);
 
             if (glass || walls) {
                 WingRenderPipeline.beginGlass(walls);

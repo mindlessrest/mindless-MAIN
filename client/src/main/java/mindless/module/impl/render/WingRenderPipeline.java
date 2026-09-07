@@ -227,12 +227,25 @@ final class WingRenderPipeline {
         else GlStateManager.enableDepth();
     }
 
+    /**
+     * Winding for a mirrored wing.
+     *
+     * flap() mirrors the left wing with out[0] = px * side, and negating one axis reverses
+     * triangle winding. The triangles are emitted in a fixed index order, so with culling on
+     * that whole wing is back-facing and disappears. Flip the front face for it instead of
+     * giving up culling, which is what stops back faces doubling every surface.
+     */
+    static void mirrorWinding(boolean mirrored) {
+        GL11.glFrontFace(mirrored ? GL11.GL_CW : GL11.GL_CCW);
+    }
+
     static void bind(int part) {
         ResourceLocation location = texture(part);
         if (location != null) Minecraft.getMinecraft().getTextureManager().bindTexture(location);
     }
 
     static void end() {
+        GL11.glFrontFace(GL11.GL_CCW);
         GlStateManager.colorMask(true, true, true, true);
         GlStateManager.depthMask(true);
         GlStateManager.enableDepth();

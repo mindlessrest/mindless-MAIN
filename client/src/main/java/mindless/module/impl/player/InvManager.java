@@ -432,6 +432,8 @@ public class InvManager extends Module {
             return true;
         }
 
+        int bestBlockIndex = largestBlockStackIndex(data, configuredHotbarSlot(blocksSlot));
+
         for (int inventoryIndex = 0; inventoryIndex < data.size; ++inventoryIndex) {
             ItemStack itemStack = data.inventory.getStackInSlot(inventoryIndex);
             if (itemStack == null || isSword(itemStack) || isArmor(itemStack)) {
@@ -442,6 +444,16 @@ public class InvManager extends Module {
             if (item instanceof ItemBlock) {
                 int targetSlot = configuredHotbarSlot(blocksSlot);
                 if (targetSlot < 0 || inventoryIndex == targetSlot) {
+                    continue;
+                }
+
+                // Only ever promote the biggest block stack. The loop walks the inventory in
+                // slot order and acts on the first stack that beats what is in the block slot,
+                // so with 12 wool in an early slot and 64 in a later one the 12 went in first
+                // and the 64 only arrived on a subsequent pass, after another click. Worse, a
+                // stack that beat the current occupant but was not the best kept winning the
+                // race every pass, so the slot could sit on a middling stack indefinitely.
+                if (bestBlockIndex >= 0 && inventoryIndex != bestBlockIndex) {
                     continue;
                 }
 
@@ -2355,6 +2367,34 @@ public class InvManager extends Module {
         ItemStack slotStack = view.getSlot(inventoryIndex);
         ItemStack carried = view.getCarried();
         return canStacksMerge(slotStack, carried) && isPartialStack(slotStack);
+    }
+
+    /**
+     * Index of the fullest block stack outside the block slot, or -1 if there is none.
+     *
+     * Ties go to the lowest index so the choice is stable from tick to tick; an unstable
+     * pick would have the sorter swapping two equal stacks back and forth forever.
+     */
+    private int largestBlockStackIndex(InventoryData data, int targetSlot) {
+        int best = -1;
+        int bestSize = 0;
+        for (int index = 0; index < data.size; ++index) {
+            if (index == targetSlot) {
+                continue;
+            }
+            ItemStack stack = data.inventory.getStackInSlot(index);
+            if (stack == null || !(stack.getItem() instanceof ItemBlock)) {
+                continue;
+            }
+            if (isSword(stack) || isArmor(stack)) {
+                continue;
+            }
+            if (stack.stackSize > bestSize) {
+                bestSize = stack.stackSize;
+                best = index;
+            }
+        }
+        return best;
     }
 
     private static boolean canStacksMerge(ItemStack first, ItemStack second) {
