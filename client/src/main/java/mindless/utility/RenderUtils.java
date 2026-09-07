@@ -1868,6 +1868,34 @@ public static void syncGlStateFromDriver(int mask) {
      * allowing that state to survive into the next frame exposes faint atlas pixels as gray edges
      * and detached shadow dots.
      */
+    /**
+     * Establish the state a 2D text draw needs, rather than inheriting it.
+     *
+     * Diagnostics caught lighting enabled and the alpha test disabled at the moment chat was
+     * being drawn, which is what greyed the glyphs: lighting darkens them and a disabled alpha
+     * test lets the atlas's transparent texels through as solid. Three separate fixes tried to
+     * stop the upstream leak instead, which cannot work in general -- any module rendering
+     * before chat can leave any of this in the wrong position, and one that has not been written
+     * yet will do it again.
+     *
+     * A text pass owns its own state. This sets the whole contract so it does not matter what
+     * ran first.
+     */
+    public static void beginTextPass() {
+        GlStateManager.disableLighting();
+        GlStateManager.disableFog();
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableAlpha();
+        GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1F);
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
+        GlStateManager.colorMask(true, true, true, true);
+        GL11.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
     public static void restoreGuiTextState() {
         OpenGlHelper.glUseProgram(0);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);

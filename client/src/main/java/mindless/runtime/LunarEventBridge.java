@@ -53,12 +53,18 @@ public final class LunarEventBridge {
         if (!DIRECT_LUNAR) return;
         // Bracket the whole synthetic pass so anything a module changes and fails to restore is
         // reported against this boundary rather than surfacing later as an unexplained symptom.
+        // Diagnostics measured this pass leaving blend enabled and the depth test disabled, so
+        // both are captured and put back rather than left for whatever draws next.
+        boolean blendWas = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_BLEND);
+        boolean depthWas = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_DEPTH_TEST);
         mindless.utility.Diagnostics.sectionBegin("render tick " + phase);
         try {
             SYNTHETIC_EVENT_BUS.post(new TickEvent.RenderTickEvent(phase, partialTicks));
         }
         finally {
             mindless.utility.Diagnostics.sectionEnd();
+            restoreToggle(org.lwjgl.opengl.GL11.GL_BLEND, blendWas);
+            restoreToggle(org.lwjgl.opengl.GL11.GL_DEPTH_TEST, depthWas);
             if (phase == TickEvent.Phase.END) {
                 RenderUtils.restoreGuiTextState();
             }
@@ -69,6 +75,8 @@ public final class LunarEventBridge {
         if (!DIRECT_LUNAR) return;
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft == null || minecraft.theWorld == null || minecraft.renderGlobal == null) return;
+        boolean worldBlendWas = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_BLEND);
+        boolean worldDepthWas = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_DEPTH_TEST);
         mindless.utility.Diagnostics.sectionBegin("render world last");
         try {
             SYNTHETIC_EVENT_BUS.post(
@@ -76,10 +84,18 @@ public final class LunarEventBridge {
         }
         finally {
             mindless.utility.Diagnostics.sectionEnd();
+            restoreToggle(org.lwjgl.opengl.GL11.GL_BLEND, worldBlendWas);
+            restoreToggle(org.lwjgl.opengl.GL11.GL_DEPTH_TEST, worldDepthWas);
             RenderUtils.restoreGuiTextState();
         }
     }
-public static boolean nextMouseEvent() {
+private static void restoreToggle(int capability, boolean wasEnabled) {
+        if (org.lwjgl.opengl.GL11.glIsEnabled(capability) == wasEnabled) return;
+        if (wasEnabled) org.lwjgl.opengl.GL11.glEnable(capability);
+        else org.lwjgl.opengl.GL11.glDisable(capability);
+    }
+
+    public static boolean nextMouseEvent() {
         if (!DIRECT_LUNAR) return Mouse.next();
         while (Mouse.next()) {
             if (!SYNTHETIC_EVENT_BUS.post(new CancelableMouseEvent())) return true;
