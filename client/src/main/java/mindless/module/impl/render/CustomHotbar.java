@@ -23,6 +23,9 @@ import java.awt.Color;
 public class CustomHotbar extends Module {
 
     private static final float BASE_BAR_HEIGHT = 22.0f;
+    private final ItemStack[] overlayStacks = new ItemStack[9];
+    private final int[] overlayX = new int[9];
+    private final int[] overlayY = new int[9];
     private static final float BASE_SLOT_WIDTH = 20.0f;
 
     private final ColorSetting background;
@@ -134,6 +137,7 @@ public class CustomHotbar extends Module {
     private void render(ScaledResolution res, EntityPlayer player, float partialTicks) {
         int sw = res.getScaledWidth();
         int sh = res.getScaledHeight();
+        int scaleFactor = Math.max(1, res.getScaleFactor());
         float uiScale = (float) scale.getInput();
         float slotWidth = (BASE_SLOT_WIDTH + (float) slotSpacing.getInput()) * uiScale;
         float barWidth = 2.0f * uiScale + slotWidth * 9.0f;
@@ -187,15 +191,21 @@ public class CustomHotbar extends Module {
         }
 
         float inset = uiScale;
-        float targetSelX = barLeft + inset + slot * slotWidth;
+        float slotBoxWidth = Math.max(1.0f, slotWidth - inset * 2.0f);
+        // the selection sits inside the per-slot stroke rather than under it: the outline
+        // shader centres its stroke on the rect edge, so a fill on the same rect shows
+        // through the inner half of the border and its rounded corners poke past it.
+        float selectionInset = individualOutlines ? borderThickness : 0.0f;
+        float targetSelX = barLeft + inset + slot * slotWidth + inset;
         if (animated.isToggled()) {
             selectionX = Float.isNaN(selectionX) ? targetSelX : lerp(selectionX, targetSelX, smoothing(dtMs));
         } else {
             selectionX = targetSelX;
         }
-        RenderUtils.drawRoundedRectangle(selectionX, barTop + inset,
-                selectionX + Math.max(1.0f, slotWidth - inset * 2.0f),
-                barTop + barHeight - inset, Math.min(radius, 6.0f * uiScale),
+        RenderUtils.drawRoundedRectangle(selectionX + selectionInset, barTop + inset + selectionInset,
+                selectionX + slotBoxWidth - selectionInset,
+                barTop + barHeight - inset - selectionInset,
+                Math.max(0.0f, Math.min(radius, 6.0f * uiScale) - selectionInset),
                 selectionColor.getColor());
 
         if (individualOutlines) {
@@ -204,9 +214,9 @@ public class CustomHotbar extends Module {
             Color transparent = new Color(0, 0, 0, 0);
             Color border = new Color(outlineColor.getColor(), true);
             for (int i = 0; i < 9; i++) {
-                float slotLeft = barLeft + inset + i * slotWidth;
+                float slotLeft = barLeft + inset + i * slotWidth + inset;
                 RoundedUtils.drawRoundOutline(slotLeft, barTop + inset,
-                        Math.max(1.0f, slotWidth - inset * 2.0f), slotHeight,
+                        slotBoxWidth, slotHeight,
                         slotRadius, borderThickness, transparent, border);
             }
         }
@@ -224,6 +234,11 @@ public class CustomHotbar extends Module {
                 if (stack == null) continue;
                 float centerX = barLeft + inset + i * slotWidth + slotWidth * 0.5f;
                 float centerY = barTop + barHeight * 0.5f;
+                // Land the sprite on the physical pixel grid. At a fractional origin a
+                // 16px item resampled by an arbitrary scale picks up a half-texel skew and
+                // the edges crawl as the bar animates.
+                centerX = Math.round(centerX * scaleFactor) / (float) scaleFactor;
+                centerY = Math.round(centerY * scaleFactor) / (float) scaleFactor;
                 float bob = itemBob.isToggled() ? Math.max(0.0f, stack.animationsToGo - partialTicks) : 0.0f;
                 float renderScale = uiScale * (float) itemScale.getInput();
                 float bobX = bob > 0.0f ? 1.0f / (1.0f + bob / 5.0f) : 1.0f;
@@ -233,11 +248,18 @@ public class CustomHotbar extends Module {
                 GlStateManager.scale(renderScale * bobX, renderScale * bobY, renderScale);
                 try {
                     renderItem.renderItemAndEffectIntoGUI(stack, -8, -8);
-                    renderItem.renderItemOverlays(mc.fontRendererObj, stack, -8, -8);
                 }
                 finally {
                     GlStateManager.popMatrix();
                 }
+
+                // Overlays are drawn outside the item matrix. Inside it the stack count was
+                // multiplied by the item scale and by the bob's non-uniform squash, so the
+                // glyphs landed between pixels and smeared; the count is a fixed-size label,
+                // not part of the sprite. Snapped to whole GUI pixels for the same reason.
+                overlayStacks[i] = stack;
+                overlayX[i] = Math.round(centerX - 8.0f);
+                overlayY[i] = Math.round(centerY - 8.0f);
             }
         }
         finally {
@@ -245,6 +267,14 @@ public class CustomHotbar extends Module {
             GlStateManager.disableRescaleNormal();
             GlStateManager.disableBlend();
             GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+
+        RenderItem overlayRenderer = mc.getRenderItem();
+        for (int i = 0; i < overlayStacks.length; i++) {
+            ItemStack stack = overlayStacks[i];
+            if (stack == null) continue;
+            overlayStacks[i] = null;
+            overlayRenderer.renderItemOverlays(mc.fontRendererObj, stack, overlayX[i], overlayY[i]);
         }
     }
 
