@@ -43,11 +43,15 @@ public class TargetHUD extends Module {
     private ButtonSetting healthColor;
     private SliderSetting ringColorMode;
     private SliderSetting headStyle;
+    private ButtonSetting hitEffects;
+    private ColorSetting hitColor;
+    private SliderSetting hitStrengthScale;
     private final ColorSetting[] ringColors = new ColorSetting[RING_COUNT];
 private static final int RING_COUNT = 6;
     private static final String[] RING_COLOR_MODES = new String[] { "Theme", "Array list", "Custom" };
     private static final String[] HEAD_STYLES = new String[] { "3D", "Flat" };
     private static final int HEAD_STYLE_3D = 0;
+    private static final int HEAD_STYLE_FLAT = 1;
     private static final int RING_MODE_THEME = 0;
     private static final int RING_MODE_ARRAY_LIST = 1;
     private static final int RING_MODE_CUSTOM = 2;
@@ -56,6 +60,7 @@ private static final int[] DEFAULT_RING_COLORS = {
         0xFFFFFF, 0xC8E4FF, 0x9CC9FF, 0x74A8FF, 0x5A86F0, 0x4666D8
     };
 
+    private static final long HIT_FLASH_MS = 260L;
     private static final long POP_IN_MS = 250L;
     private static final long POP_OUT_MS = 200L;
     private static final String[] POSITION_MODES = new String[] {
@@ -69,6 +74,9 @@ private static final int[] DEFAULT_RING_COLORS = {
     private double lastHealth;
     private float lastHealthBar;
     private long popInStart = -1;
+    private long hitFlashStart = -1L;
+    private float hitStrength;
+    private EntityLivingBase healthTrackedTarget;
     public int posX = 70;
     public int posY = 30;
     private float tweenedX = Float.NaN;
@@ -88,7 +96,10 @@ private static final int[] DEFAULT_RING_COLORS = {
         this.registerSetting(showDifference = new ButtonSetting("Show difference", true));
         this.registerSetting(showStatus = new ButtonSetting("Show win or loss", true));
         this.registerSetting(healthColor = new ButtonSetting("Traditional health color", false));
-        this.registerSetting(headStyle = new SliderSetting("Head style", HEAD_STYLE_3D, HEAD_STYLES));
+        this.registerSetting(headStyle = new SliderSetting("Head style", HEAD_STYLE_FLAT, HEAD_STYLES));
+        this.registerSetting(hitEffects = new ButtonSetting("Hit effects", true));
+        this.registerSetting(hitColor = new ColorSetting("Hit color", 255, 92, 92, 190));
+        this.registerSetting(hitStrengthScale = new SliderSetting("Hit strength", 1.0, 0.2, 2.0, 0.05));
         this.registerSetting(ringColorMode = new SliderSetting("Ring colors", RING_MODE_THEME, RING_COLOR_MODES));
         for (int i = 0; i < RING_COUNT; i++) {
             int rgb = DEFAULT_RING_COLORS[i];
@@ -165,6 +176,14 @@ private int ringColor(int ringIndex) {
             if (health != lastHealth) {
                 (healthBarTimer = new Timer(mode.getInput() == 0 ? 500 : 350)).start();
             }
+            // Only a drop counts, and only against the same target we measured last frame.
+            // Comparing across a target switch would fire the effect off whatever the previous
+            // player's health happened to be.
+            if (healthTrackedTarget == target && health < lastHealth - 1.0E-4) {
+                hitStrength = (float) Math.max(0.25, Math.min(1.0, (lastHealth - health) * 5.0));
+                hitFlashStart = System.currentTimeMillis();
+            }
+            healthTrackedTarget = target;
             lastHealth = health;
             playerInfo += " " + Utils.getHealthStr(target, true);
             drawTargetHUD(fadeTimer, playerInfo, health);
@@ -375,7 +394,25 @@ private int ringColor(int ringIndex) {
         if (target instanceof EntityPlayer) {
             int headX = n6 + 5;
             int headY = n7 + 5;
-            drawPlayerHead((EntityPlayer) target, headX, headY, headSize, headSize, alpha);
+            float hit = hitEnvelope();
+            if (hit <= 0.0f) {
+                drawPlayerHead((EntityPlayer) target, headX, headY, headSize, headSize, alpha);
+            }
+            else {
+                // Punch out from the head's own centre and settle back. Scaling about the
+                // panel origin instead would slide the head across the card on every hit.
+                float centreX = headX + headSize * 0.5f;
+                float centreY = headY + headSize * 0.5f;
+                float punch = 1.0f + 0.20f * hit;
+                float shake = (float) Math.sin(hit * 34.0f) * 1.7f * hit;
+                GlStateManager.pushMatrix();
+                GlStateManager.translate(centreX + shake, centreY, 0.0f);
+                GlStateManager.scale(punch, punch, 1.0f);
+                GlStateManager.translate(-centreX, -centreY, 0.0f);
+                drawPlayerHead((EntityPlayer) target, headX, headY, headSize, headSize, alpha);
+                drawHitFlash(headX, headY, headSize, hit, alpha);
+                GlStateManager.popMatrix();
+            }
         }
 
         RenderUtils.drawRoundedRectangle((float) n13, (float) n15, (float) n14, (float) (n15 + 5), 4.0f, Utils.mergeAlpha(Color.black.getRGB(), maxAlphaOutline));
@@ -422,6 +459,35 @@ private int ringColor(int ringIndex) {
         GlStateManager.disableBlend();
 
         GlStateManager.popMatrix();
+    }
+
+    /**
+     * 0 when no hit is playing, otherwise a decaying 0..1 envelope for the current one.
+     *
+     * Scaled by how much health the target actually lost, so chip damage gives a nudge and a
+     * crit gives a real punch, rather than every hit looking identical.
+     */
+    private float hitEnvelope() {
+        if (hitEffects == null || !hitEffects.isToggled() || hitFlashStart < 0L) {
+            return 0.0f;
+        }
+        long elapsed = System.currentTimeMillis() - hitFlashStart;
+        if (elapsed < 0L || elapsed >= HIT_FLASH_MS) {
+            return 0.0f;
+        }
+        float linear = 1.0f - (float) elapsed / (float) HIT_FLASH_MS;
+        float eased = linear * linear;
+        float amount = (float) (hitStrengthScale == null ? 1.0 : hitStrengthScale.getInput());
+        return Math.max(0.0f, Math.min(1.0f, eased * hitStrength * amount));
+    }
+
+    private void drawHitFlash(int x, int y, int size, float hit, int alpha) {
+        int base = hitColor == null ? new Color(255, 92, 92, 190).getRGB() : hitColor.getColor();
+        int flashAlpha = Utils.clamp(Math.round(((base >>> 24) & 0xFF) * hit * (alpha / 255.0f)));
+        if (flashAlpha <= 0) return;
+        float radius = Math.max(2.0f, size * 0.14f);
+        RoundedUtils.drawRound(x, y, size, size, radius,
+                new Color((base & 0xFFFFFF) | (flashAlpha << 24), true));
     }
 
     private void drawPlayerHead(EntityPlayer player, int x, int y, int width, int height, int alpha) {
@@ -574,6 +640,9 @@ private static final float[][] HEAD_UVS = {
         target = null;
         healthBarTimer = null;
         popInStart = -1;
+        hitFlashStart = -1L;
+        hitStrength = 0.0f;
+        healthTrackedTarget = null;
         tweenedX = Float.NaN;
         tweenedY = Float.NaN;
     }
