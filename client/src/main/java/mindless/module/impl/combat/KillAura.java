@@ -365,7 +365,7 @@ public class KillAura extends Module {
             lastHudTargetAt = System.currentTimeMillis();
             return active;
         }
-        if (lastHudTarget == null || System.currentTimeMillis() - lastHudTargetAt > 250L
+        if (lastHudTarget == null || System.currentTimeMillis() - lastHudTargetAt > 900L
                 || lastHudTarget.isDead || lastHudTarget.getHealth() <= 0.0F
                 || lastHudTarget.worldObj != mc.theWorld) {
             clearHudTarget();

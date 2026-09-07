@@ -45,7 +45,6 @@ public class Scaffold extends Module {
     private static final ItemBlock PLACEHOLDER = new ItemBlock(Blocks.tnt);
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
-    private final ButtonSetting sprintScaf;
     private final ButtonSetting keepY;
     private final ButtonSetting eagle;
     private final SliderSetting eagleSafety;
@@ -77,7 +76,6 @@ private int previousSlot = -1;
         super("Scaffold", "Bridges by placing blocks under your feet.", category.player);
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));
         this.registerSetting(sprint = new SliderSetting("Sprint", 0, new String[]{"Off", "Legit", "Watchdog"}));
-        this.registerSetting(sprintScaf = new ButtonSetting("Sprint Scaf Mode", false));
         this.registerSetting(keepY = new ButtonSetting("Keep Y", false));
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
@@ -243,40 +241,13 @@ private void restorePreviousSlot() {
 
         updateEagle(placed);
 
-        // Sprint Scaf Mode supersedes the Sprint slider. Both drive the same key, and letting
-        // them run together would produce exactly the start/stop thrash this is meant to avoid.
-        if (sprintScaf.isToggled()) {
+        int sprintMode = (int) sprint.getInput();
+        if (sprintMode != 0) {
             updateSprintScaffold(placed);
             return;
         }
         if (sprintScafActive) {
             releaseSprintScaffold();
-        }
-
-        int sprintMode = (int) sprint.getInput();
-        if (sprintMode == 0) return;
-
-        if (placed && sprintMode == 2) {
-            wdBlocksPlaced++;
-            if (wdBlocksPlaced >= 3) {
-                wdOverrideYaw = mc.thePlayer.rotationYaw;
-                wdOverrideSpeed = 2.2f * 18f;
-                wdBlocksPlaced = 0;
-            }
-        }
-
-        if (sprintMode == 2) {
-            float serverYaw = RotationUtils.serverRotations[0];
-            float diff = Math.abs(MathHelper.wrapAngleTo180_float(mc.thePlayer.rotationYaw)
-                    - MathHelper.wrapAngleTo180_float(serverYaw));
-            if (diff > 90f) {
-                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
-                mc.thePlayer.setSprinting(false);
-            } else {
-                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), true);
-            }
-        } else if (!placed) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), true);
         }
     }
 
@@ -441,7 +412,7 @@ private void restorePreviousSlot() {
      * backwards Scaffold sprint from ordinary backwards movement.
      */
     public boolean isSprintScaffoldSprinting() {
-        return this.isEnabled() && sprintScaf.isToggled()
+        return this.isEnabled() && (int) sprint.getInput() != 0
                 && sprintScafActive && sprintScafSprinting;
     }
 

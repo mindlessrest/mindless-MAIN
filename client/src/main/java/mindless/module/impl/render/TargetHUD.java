@@ -61,8 +61,8 @@ private static final int[] DEFAULT_RING_COLORS = {
     };
 
     private static final long HIT_FLASH_MS = 260L;
-    private static final long POP_IN_MS = 250L;
-    private static final long POP_OUT_MS = 200L;
+    private static final long POP_IN_MS = 140L;
+    private static final long POP_OUT_MS = 160L;
     private static final String[] POSITION_MODES = new String[] {
         "Screen", "Target Left", "Target Right", "Target Top", "Target Bottom", "Target Center"
     };
@@ -168,7 +168,7 @@ private int ringColor(int ringIndex) {
                 fadeTimer = null;
                 if (popInStart < 0) popInStart = System.currentTimeMillis();
             } else if (target != null) {
-                if (System.currentTimeMillis() - lastAliveMS >= 400 && fadeTimer == null) {
+                if (System.currentTimeMillis() - lastAliveMS >= 100 && fadeTimer == null) {
                     (fadeTimer = new Timer((int) POP_OUT_MS)).start();
                 }
             }
@@ -530,11 +530,7 @@ private int ringColor(int ringIndex) {
                 skin = playerInfo.getLocationSkin();
             }
             if (skin == null || !skinIsLoaded(skin)) {
-                // No skin resolved yet. Binding a location whose texture has not been created
-                // leaves whatever was bound previously in place, so the head box showed a crop
-                // of an unrelated texture instead of a face.
-                drawHeadPlaceholder(x, y, width, height, alpha);
-                return;
+                skin = net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkin(player.getUniqueID());
             }
             boolean depthEnabled = GL11.glIsEnabled(2929);
             boolean blendEnabled = GL11.glIsEnabled(3042);

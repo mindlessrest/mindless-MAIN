@@ -893,7 +893,7 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
             // sum back to full coverage, so a hairline shows through; overlap them slightly. Safe
             // because interior corners are square.
             fillRow(left - grow, rowTop - growTop, left + width + grow,
-                    rowTop + rowHeight + growBottom,
+                    rowTop + rowHeight + growBottom + (lastRow ? 0.0f : 0.5f),
                     topLeft, topRight, bottomRight, bottomLeft, color);
         }
         endRowBatch();

@@ -1385,7 +1385,6 @@ static DWORD WINAPI bootstrap_thread(LPVOID parameter) {
     vape_log(L"bootstrap entered image=%p thread=%lu", parameter, GetCurrentThreadId());
 
     open_progress_channel();
-    Sleep(150);
     send_progress(0.21f, "Waiting for Java runtime");
     for (attempt = 0; attempt < 600; ++attempt) {
         jvm_module = GetModuleHandleW(L"jvm.dll");
