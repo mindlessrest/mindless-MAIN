@@ -844,15 +844,37 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
             float rowTop = top + i * rowHeight;
             boolean firstRow = i == 0;
             boolean lastRow = i == widths.length - 1;
-            float top4 = firstRow ? radius : 0.0f;
-            float bottom4 = lastRow ? radius : 0.0f;
+            boolean changesFromPrevious = !firstRow && Math.abs(widths[i] - widths[i - 1]) > 1;
+            boolean changesIntoNext = !lastRow && Math.abs(widths[i] - widths[i + 1]) > 1;
+            float roundedRadius = radius <= 0.0f ? 0.0f : radius + grow;
+
+            // Connected rows share their aligned edge. The changing edge is a staircase, so both
+            // sides of each width transition receive a small curve. This keeps the silhouette
+            // connected while producing the soft stepped stack people expect from an array list,
+            // instead of a sharp saw-tooth or a pile of separate pills.
+            float topLeft;
+            float topRight;
+            float bottomRight;
+            float bottomLeft;
+            if (right) {
+                topLeft = firstRow || changesFromPrevious ? roundedRadius : 0.0f;
+                bottomLeft = lastRow || changesIntoNext ? roundedRadius : 0.0f;
+                topRight = firstRow ? roundedRadius : 0.0f;
+                bottomRight = lastRow ? roundedRadius : 0.0f;
+            }
+            else {
+                topLeft = firstRow ? roundedRadius : 0.0f;
+                bottomLeft = lastRow ? roundedRadius : 0.0f;
+                topRight = firstRow || changesFromPrevious ? roundedRadius : 0.0f;
+                bottomRight = lastRow || changesIntoNext ? roundedRadius : 0.0f;
+            }
 
             // Only the outer edges grow; growing the shared horizontal seams would draw the
             // border straight through the middle of the list.
             float growTop = firstRow ? grow : 0.0f;
             float growBottom = lastRow ? grow : 0.0f;
             fillRow(left - grow, rowTop - growTop, left + width + grow, rowTop + rowHeight + growBottom,
-                    top4, top4, bottom4, bottom4, color);
+                    topLeft, topRight, bottomRight, bottomLeft, color);
         }
     }
 

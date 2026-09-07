@@ -37,6 +37,7 @@ private static final float NAMETAG_ATLAS_BOOST = 2.5f;
             new BundledFont("Varela Round", "VarelaRound-Regular.ttf"),
             new BundledFont("Titillium Web", "TitilliumWeb-Regular.ttf"),
             new BundledFont("JetBrains Mono", "JetBrainsMono-Regular.ttf"),
+            new BundledFont("Comfortaa", "Comfortaa-Light.ttf"),
             new BundledFont("Google Sans", "GoogleSans-Regular.ttf"),
             new BundledFont("Google Sans Medium", "GoogleSans-Medium.ttf")
     };
