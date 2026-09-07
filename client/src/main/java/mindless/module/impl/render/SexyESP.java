@@ -151,7 +151,8 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         GroupSetting boxGroup = new GroupSetting("Box");
         registerSetting(boxGroup);
         registerSetting(outline = new ButtonSetting(boxGroup, "Outline", true));
-        registerSetting(boxMode = new SliderSetting(boxGroup, "Mode", 0, new String[]{"Box", "Corners"}));
+        registerSetting(boxMode = new SliderSetting(boxGroup, "Mode", 0,
+                new String[]{"2D Box", "Corners", "Side bars"}));
 
         GroupSetting healthGroup = new GroupSetting("Health");
         registerSetting(healthGroup);
@@ -451,8 +452,20 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
     }
 
     private void drawBox(Bounds b, int renderColor) {
-        if ((int) boxMode.getInput() == 0) {
+        int mode = (int) boxMode.getInput();
+        if (mode == 0) {
             drawOutlinedRect(b.left, b.top, b.right, b.bottom, renderColor);
+            return;
+        }
+
+        if (mode == 2) {
+            double tick = Math.max(2.0, b.width() / 5.0);
+            drawSegment(b.left, b.top, b.left, b.bottom, renderColor);
+            drawSegment(b.right, b.top, b.right, b.bottom, renderColor);
+            drawSegment(b.left, b.top, b.left + tick, b.top, renderColor);
+            drawSegment(b.left, b.bottom, b.left + tick, b.bottom, renderColor);
+            drawSegment(b.right - tick, b.top, b.right, b.top, renderColor);
+            drawSegment(b.right - tick, b.bottom, b.right, b.bottom, renderColor);
             return;
         }
 

@@ -82,7 +82,7 @@ private static final int[] DEFAULT_RING_COLORS = {
     private float tweenedX = Float.NaN;
     private float tweenedY = Float.NaN;
 
-    private String[] modes = new String[]{ "Modern", "Legacy" };
+    private String[] modes = new String[]{ "Modern", "Legacy", "Compact" };
 
     public TargetHUD() {
         super("Target HUD", "A panel for whoever you are fighting.", category.render);
@@ -298,8 +298,12 @@ private int ringColor(int ringIndex) {
             string = string + " " + ((health <= Utils.getTotalHealth(mc.thePlayer) / mc.thePlayer.getMaxHealth()) ? "§aW" : "§cL");
         }
         final ScaledResolution scaledResolution = new ScaledResolution(mc);
-        final int padding = 8;
-        final int headSize = mc.fontRendererObj.FONT_HEIGHT + 18;
+        final int panelMode = (int) mode.getInput();
+        final boolean compact = panelMode == 2;
+        final int padding = compact ? 6 : 8;
+        final int headSize = mc.fontRendererObj.FONT_HEIGHT + (compact ? 12 : 18);
+        final int footerHeight = compact ? 9 : 13;
+        final int barHeight = compact ? 3 : 5;
         final int targetStrWithPadding = mc.fontRendererObj.getStringWidth(string) + padding + headSize + 10;
 
         float desiredX = (scaledResolution.getScaledWidth() / 2 - targetStrWithPadding / 2) + posX;
@@ -320,7 +324,7 @@ private int ringColor(int ringIndex) {
             float sw = scaledResolution.getScaledWidth();
             float sh = scaledResolution.getScaledHeight();
             float hudW = targetStrWithPadding + padding * 2;
-            float hudH = (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding * 2 + 13;
+            float hudH = (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding * 2 + footerHeight;
 
             if (SexyESP.projectionContext != null &&
                     mindless.utility.RenderUtils.projectTo2D(SexyESP.projectionContext, tx - camX, ty - camY + entityH / 2, tz - camZ, projected)) {
@@ -370,7 +374,7 @@ private int ringColor(int ringIndex) {
         int alpha = (int) (255 * popProgress);
         float scale = popProgress;
         float centerX = (n6 + n8) * 0.5f;
-        float centerY = (n7 + n9 + 13) * 0.5f;
+        float centerY = (n7 + n9 + footerHeight) * 0.5f;
 
         GlStateManager.pushMatrix();
         GlStateManager.translate(centerX, centerY, 0.0f);
@@ -380,7 +384,7 @@ private int ringColor(int ringIndex) {
         final int maxAlphaOutline = Math.min(alpha, 110);
         final int maxAlphaBackground = Math.min(alpha, 210);
         final int[] gradientColors = Theme.getGradients((int) theme.getInput());
-        switch ((int) mode.getInput()) {
+        switch (panelMode) {
             case 0: {
                 float w = Math.abs((float) n6 - n8);
                 float h = Math.abs((float) n7 - (n9 + 13));
@@ -393,8 +397,21 @@ private int ringColor(int ringIndex) {
                 break;
             }
             case 1:
-                RenderUtils.drawRoundedGradientOutlinedRectangle((float) n6, (float) n7, (float) n8, (float) (n9 + 13), 10.0f, Utils.mergeAlpha(Color.black.getRGB(), maxAlphaOutline), Utils.mergeAlpha(gradientColors[0], alpha), Utils.mergeAlpha(gradientColors[1], alpha));
+                RenderUtils.drawRoundedGradientOutlinedRectangle((float) n6, (float) n7, (float) n8, (float) (n9 + footerHeight), 10.0f, Utils.mergeAlpha(Color.black.getRGB(), maxAlphaOutline), Utils.mergeAlpha(gradientColors[0], alpha), Utils.mergeAlpha(gradientColors[1], alpha));
                 break;
+            case 2: {
+                float w = Math.abs((float) n6 - n8);
+                float h = Math.abs((float) n7 - (n9 + footerHeight));
+                float radius = 4.0f * ThemeManager.roundingScale();
+                RoundedUtils.drawRound(n6, n7, w, h, radius,
+                        new Color(7, 9, 12, Math.min(alpha, 220)));
+                RenderUtils.drawRoundedGradientRect(n6, n7, n6 + 2.0f, n9 + footerHeight,
+                        radius, Utils.mergeAlpha(gradientColors[0], alpha),
+                        Utils.mergeAlpha(gradientColors[0], alpha),
+                        Utils.mergeAlpha(gradientColors[1], alpha),
+                        Utils.mergeAlpha(gradientColors[1], alpha));
+                break;
+            }
         }
         final int n13 = n6 + 5 + headSize + 7;
         final int n14 = n8 - 6;
@@ -424,7 +441,9 @@ private int ringColor(int ringIndex) {
             }
         }
 
-        RenderUtils.drawRoundedRectangle((float) n13, (float) n15, (float) n14, (float) (n15 + 5), 4.0f, Utils.mergeAlpha(Color.black.getRGB(), maxAlphaOutline));
+        RenderUtils.drawRoundedRectangle((float) n13, (float) n15, (float) n14,
+                (float) (n15 + barHeight), 4.0f,
+                Utils.mergeAlpha(Color.black.getRGB(), maxAlphaOutline));
         int mergedGradientLeft = Utils.mergeAlpha(gradientColors[0], maxAlphaBackground);
         int mergedGradientRight = Utils.mergeAlpha(gradientColors[1], maxAlphaBackground);
         float healthBar = (float) (int) (n14 + (n13 - n14) * (1 - health));
@@ -450,13 +469,14 @@ private int ringColor(int ringIndex) {
             lastHealthBar = n14;
         }
 
-        switch ((int) mode.getInput()) {
+        switch (panelMode) {
             case 0:
-                RenderUtils.drawRoundedRectangle((float) n13, (float) n15, lastHealthBar, (float) (n15 + 5), 4.0f, Utils.darkenColor(mergedGradientRight, 25));
-                RenderUtils.drawRoundedGradientRect((float) n13, (float) n15, smoothBack ? lastHealthBar : healthBar, (float) (n15 + 5), 4.0f, mergedGradientLeft, mergedGradientLeft, mergedGradientRight, mergedGradientRight);
+                RenderUtils.drawRoundedRectangle((float) n13, (float) n15, lastHealthBar, (float) (n15 + barHeight), 4.0f, Utils.darkenColor(mergedGradientRight, 25));
+                RenderUtils.drawRoundedGradientRect((float) n13, (float) n15, smoothBack ? lastHealthBar : healthBar, (float) (n15 + barHeight), 4.0f, mergedGradientLeft, mergedGradientLeft, mergedGradientRight, mergedGradientRight);
                 break;
             case 1:
-                RenderUtils.drawRoundedGradientRect((float) n13, (float) n15, lastHealthBar, (float) (n15 + 5), 4.0f, mergedGradientLeft, mergedGradientLeft, mergedGradientRight, mergedGradientRight);
+            case 2:
+                RenderUtils.drawRoundedGradientRect((float) n13, (float) n15, lastHealthBar, (float) (n15 + barHeight), 4.0f, mergedGradientLeft, mergedGradientLeft, mergedGradientRight, mergedGradientRight);
                 break;
         }
         GlStateManager.enableBlend();
