@@ -124,6 +124,9 @@ private static final long BUILD_INTERVAL_MS = 150L;
         HypixelPresence.reset();
         startTimestamp = System.currentTimeMillis() / 1000L;
         lastBuildAt = 0L;
+        if (rpc != null) {
+            rpc.requestReconnect();
+        }
     }
 
     @SubscribeEvent

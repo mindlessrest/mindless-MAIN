@@ -26,6 +26,8 @@ private static final int MAX_PIPES = 10;
     private static final int SOCKET_CONNECT_TIMEOUT_MS = 200;
     private static final int SOCKET_READ_TIMEOUT_MS = 1500;
 private static final long RECONNECT_INTERVAL_MS = 5000L;
+private static final long MAX_RECONNECT_INTERVAL_MS = 60000L;
+private static final int MAX_CONSECUTIVE_RECONNECT_FAILURES = 10;
 private static final long POLL_INTERVAL_MS = 100L;
 private static final long STALL_TIMEOUT_MS = 10000L;
 private static final int RATE_LIMIT_BURST = 5;
@@ -46,6 +48,8 @@ private static final int MAX_REPLY_SCAN = 8;
     private volatile boolean running;
     private volatile long lastCycleAt;
 private volatile RpcLink connectingPipe;
+    private volatile int lastWorkingPipeIndex = -1;
+    private volatile long reconnectSignal;
     private Thread worker;
 
     public DiscordRPC(String clientId) {
@@ -87,6 +91,11 @@ public void update(RichPresence presence) {
         }
     }
 
+    /** Resume discovery after an external state change, such as joining a world. */
+    public void requestReconnect() {
+        reconnectSignal++;
+    }
+
     public boolean isConnected() {
         return !connections.isEmpty();
     }
@@ -116,12 +125,22 @@ private void pump() {
         int tokens = RATE_LIMIT_BURST;
         long lastRefillAt = System.currentTimeMillis();
         long nextConnectAt = 0L;
+        long observedReconnectSignal = reconnectSignal;
+        int consecutiveReconnectFailures = 0;
+        boolean reconnectSuspended = false;
         String sentSignature = null;
 
         try {
             while (running) {
                 long now = System.currentTimeMillis();
                 lastCycleAt = now;
+
+                if (observedReconnectSignal != reconnectSignal) {
+                    observedReconnectSignal = reconnectSignal;
+                    consecutiveReconnectFailures = 0;
+                    reconnectSuspended = false;
+                    nextConnectAt = 0L;
+                }
 
                 long elapsedRefills = (now - lastRefillAt) / RATE_LIMIT_REFILL_MS;
                 if (elapsedRefills > 0) {
@@ -130,12 +149,27 @@ private void pump() {
                 }
 
                 dropDeadConnections();
-                if (now >= nextConnectAt) {
-                    nextConnectAt = now + RECONNECT_INTERVAL_MS;
+                if (!reconnectSuspended && now >= nextConnectAt) {
                     int before = connections.size();
                     findPipes();
-                    if (connections.size() != before) {
+                    int after = connections.size();
+                    if (after != before) {
                         sentSignature = null;
+                    }
+
+                    if (after > 0) {
+                        consecutiveReconnectFailures = 0;
+                        nextConnectAt = now + RECONNECT_INTERVAL_MS;
+                    }
+                    else {
+                        consecutiveReconnectFailures++;
+                        if (consecutiveReconnectFailures >= MAX_CONSECUTIVE_RECONNECT_FAILURES) {
+                            reconnectSuspended = true;
+                            System.out.println("[discord rpc] Discord unavailable; discovery paused");
+                        }
+                        else {
+                            nextConnectAt = now + reconnectDelay(consecutiveReconnectFailures);
+                        }
                     }
                 }
 
@@ -168,6 +202,11 @@ private void pump() {
             }
         }
     }
+
+    private static long reconnectDelay(int failures) {
+        int shift = Math.max(0, Math.min(4, failures - 1));
+        return Math.min(MAX_RECONNECT_INTERVAL_MS, RECONNECT_INTERVAL_MS << shift);
+    }
 private boolean send(RichPresence presence) {
         String json = buildActivityJson(presence);
         boolean delivered = false;
@@ -194,8 +233,14 @@ private void findPipes() {
         for (RpcLink c : connections) {
             already.add(c.key());
         }
+        int preferredPipe = lastWorkingPipeIndex;
+        if (preferredPipe >= 0 && preferredPipe < MAX_PIPES) {
+            tryLink(already, new PipeConnection(clientId, preferredPipe));
+        }
         for (int i = 0; i < MAX_PIPES; i++) {
-            tryLink(already, new PipeConnection(clientId, i));
+            if (i != preferredPipe) {
+                tryLink(already, new PipeConnection(clientId, i));
+            }
         }
         // Every client that answers gets its own link, so official, Canary, Vesktop, Dorion and
         // anything else running at the same time all show the presence.
@@ -212,6 +257,9 @@ private void findPipes() {
         try {
             if (link.connect()) {
                 connections.add(link);
+                if (link instanceof PipeConnection) {
+                    lastWorkingPipeIndex = ((PipeConnection) link).pipeIndex;
+                }
             }
         }
         finally {
