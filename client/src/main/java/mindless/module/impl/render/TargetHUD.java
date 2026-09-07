@@ -48,7 +48,7 @@ public class TargetHUD extends Module {
     private final ColorSetting[] ringColors = new ColorSetting[RING_COUNT];
 private static final int RING_COUNT = 6;
     private static final String[] RING_COLOR_MODES = new String[] { "Theme", "Array list", "Custom" };
-    private static final String[] HEAD_STYLES = new String[] { "3D", "Flat" };
+    private static final String[] HEAD_STYLES = new String[] { "3D", "2D" };
     private static final int HEAD_STYLE_3D = 0;
     private static final int HEAD_STYLE_FLAT = 1;
     private static final int RING_MODE_THEME = 0;

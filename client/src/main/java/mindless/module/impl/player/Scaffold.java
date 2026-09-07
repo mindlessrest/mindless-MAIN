@@ -359,17 +359,28 @@ private void restorePreviousSlot() {
      */
     private void updateSprintScaffold(boolean placedThisTick) {
         boolean safe = isSprintSafe(placedThisTick);
-        if (sprintScafActive && safe == sprintScafSprinting) {
-            return;
+
+        // The key has to be re-asserted every tick. Minecraft rebuilds KeyBinding state from
+        // physical input each frame, so a single setKeyBindState is erased before it can do
+        // anything -- which is why the Sprint module sets it unconditionally on every onUpdate.
+        // Change-gating this call was what made the mode appear to do nothing at all.
+        sprintScafActive = true;
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), safe);
+
+        // The sprint flag itself is what generates packets, so only that is change-gated.
+        if (mc.thePlayer.isSprinting() != safe) {
+            mc.thePlayer.setSprinting(safe);
         }
-        applySprintScaffold(safe);
+        sprintScafSprinting = safe;
     }
 
     private boolean isSprintSafe(boolean placedThisTick) {
         EntityPlayerSP player = mc.thePlayer;
 
         // Sprinting without forward input does nothing but desync the server's idea of it.
-        if (player.movementInput == null || player.movementInput.moveForward <= 0.8F) return false;
+        // Vanilla refuses to start a sprint below 0.8 forward input and cancels one that drops
+        // under it, so there is nothing to gain by asking for a sprint here.
+        if (player.movementInput == null || player.movementInput.moveForward < 0.8F) return false;
         if (player.isCollidedHorizontally) return false;
         if (player.getFoodStats().getFoodLevel() <= 6) return false;
         // Eagle is deliberately slowing the player at an edge; do not fight it.
@@ -392,24 +403,6 @@ private void restorePreviousSlot() {
         float diff = Math.abs(MathHelper.wrapAngleTo180_float(player.rotationYaw)
                 - MathHelper.wrapAngleTo180_float(serverYaw));
         return diff <= 90.0F;
-    }
-
-    /**
-     * Apply a sprint decision.
-     *
-     * setSprinting is left to drive the packets. EntityPlayerSP compares its own sprint flag
-     * against serverSprintState each tick and emits one START_SPRINTING or STOP_SPRINTING when
-     * they differ, so routing through it gives exactly one packet per real change and keeps the
-     * client and server views in step. Sending the packets by hand here would race that tracker
-     * and produce the duplicates and desync it exists to prevent.
-     */
-    private void applySprintScaffold(boolean sprinting) {
-        sprintScafActive = true;
-        sprintScafSprinting = sprinting;
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), sprinting);
-        if (mc.thePlayer.isSprinting() != sprinting) {
-            mc.thePlayer.setSprinting(sprinting);
-        }
     }
 
     /** Hand the sprint key back to the player's own input. */
