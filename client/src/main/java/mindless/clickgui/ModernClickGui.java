@@ -332,10 +332,32 @@ private static float guiDragOffsetX = 0f;
         syncSelectedModule();
         updateSmoothScroll();
         drawMascot();
+
+        float transition = guiOpenProgress * guiOpenProgress * (3f - 2f * guiOpenProgress);
+        float transitionScale = .97f + .03f * transition;
+        float dashboardRight = detailW > 2f ? detailX + detailW : centerX + centerW;
+        float dashboardCenterX = (baseX + dashboardRight) * .5f;
+        float dashboardCenterY = baseY + panelH * .5f;
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(dashboardCenterX, dashboardCenterY, 0f);
+        GlStateManager.scale(transitionScale, transitionScale, 1f);
+        GlStateManager.translate(-dashboardCenterX, -dashboardCenterY, 0f);
         drawPanels();
         drawSidebar(mx, my);
         drawModulePanel(mx, my);
         drawSettingsPanel(mx, my);
+        int transitionCover = Math.round(210f * (1f - transition));
+        if (transitionCover > 0) {
+            rounded(baseX, baseY, baseX + sideW, baseY + panelH, 7f,
+                    argb(transitionCover, 2, 4, 5));
+            rounded(centerX, baseY, centerX + centerW, baseY + panelH, 7f,
+                    argb(transitionCover, 2, 4, 5));
+            if (detailW > 2f) {
+                rounded(detailX, baseY, detailX + detailW, baseY + panelH, 7f,
+                        argb(transitionCover, 2, 4, 5));
+            }
+        }
+        GlStateManager.popMatrix();
         updateDragging(mx, my);
         clampScrolls();
 
@@ -344,6 +366,7 @@ private static float guiDragOffsetX = 0f;
 
     @Override
     public void onGuiClosed() {
+        super.onGuiClosed();
         guiClosing = false;
         if (!viewPinned) {
             pinView();
@@ -1716,7 +1739,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     }
 
     private void closeDashboard() {
-        guiClosing = true;
+        guiClosing = !guiClosing;
     }
 
     private void updateDragging(int mx, int my) {

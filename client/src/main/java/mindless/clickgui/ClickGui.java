@@ -7,6 +7,7 @@ import mindless.clickgui.components.impl.BindComponent;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.clickgui.components.impl.ModuleComponent;
 import mindless.clickgui.components.impl.SliderComponent;
+import mindless.clickgui.animation.ScrollOffsetAnimation;
 import mindless.module.Module;
 import mindless.module.impl.client.Gui;
 import mindless.module.setting.impl.SliderSetting;
@@ -57,6 +58,9 @@ public class ClickGui extends GuiScreen {
     private int heldArrowDirection;
     private long arrowHoldStartedAt;
     private long lastArrowAdjustmentAt;
+    private final ScrollOffsetAnimation screenAnimation = new ScrollOffsetAnimation(150L);
+    private boolean screenAnimationInitialized;
+    private boolean screenClosing;
 
     private static final long ARROW_HOLD_DELAY_MS = 300L;
     private static final double ARROW_INITIAL_REPEAT_MS = 180.0D;
@@ -127,6 +131,12 @@ public class ClickGui extends GuiScreen {
     @Override
     public void initGui() {
         super.initGui();
+        if (!screenAnimationInitialized) {
+            screenAnimationInitialized = true;
+            screenClosing = false;
+            screenAnimation.reset(0.0f);
+            screenAnimation.setTarget(1.0f);
+        }
         // Without this a held key fires once. Every text field in here wants the same auto-repeat
         // a text editor has -- backspace, the arrows, delete -- and LWJGL only sends it on ask.
         Keyboard.enableRepeatEvents(true);
@@ -186,6 +196,11 @@ public class ClickGui extends GuiScreen {
     }
 
     public void drawScreen(int x, int y, float p) {
+        float screenProgress = screenAnimation.getValue();
+        if (screenClosing && !screenAnimation.isAnimating() && screenProgress <= 0.001f) {
+            this.mc.displayGuiScreen(null);
+            return;
+        }
         // Legacy GUI has no palette-refresh pass of its own, so drive theme application here too.
         mindless.module.impl.theme.ThemeManager.poll();
         if (pendingScaleRefresh) {
@@ -210,6 +225,12 @@ public class ClickGui extends GuiScreen {
 
         GlStateManager.pushMatrix();
         GlStateManager.scale(getRenderScale(), getRenderScale(), 1.0D);
+        float transitionScale = 0.97f + 0.03f * screenProgress;
+        float logicalWidth = this.width;
+        float logicalHeight = this.height;
+        GlStateManager.translate(logicalWidth * 0.5f, logicalHeight * 0.5f, 0.0f);
+        GlStateManager.scale(transitionScale, transitionScale, 1.0f);
+        GlStateManager.translate(-logicalWidth * 0.5f, -logicalHeight * 0.5f, 0.0f);
 
         int r;
 
@@ -252,6 +273,11 @@ public class ClickGui extends GuiScreen {
                 GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
                 GlStateManager.disableBlend();
             }
+        }
+
+        int transitionCover = Math.round(190.0f * (1.0f - screenProgress));
+        if (transitionCover > 0) {
+            drawRect(0, 0, this.width, this.height, transitionCover << 24);
         }
 
 
@@ -384,7 +410,7 @@ public class ClickGui extends GuiScreen {
                 return;
             }
             if (!binding()) {
-                this.mc.displayGuiScreen(null);
+                beginCloseAnimation();
                 return;
             }
         }
@@ -517,6 +543,19 @@ public class ClickGui extends GuiScreen {
             }
         }
         clearHeldSliderAdjustment();
+        screenAnimationInitialized = false;
+        screenClosing = false;
+        screenAnimation.reset(0.0f);
+    }
+
+    protected void beginCloseAnimation() {
+        if (screenClosing) {
+            screenClosing = false;
+            screenAnimation.setTarget(1.0f);
+            return;
+        }
+        screenClosing = true;
+        screenAnimation.setTarget(0.0f);
     }
 
     @Override
