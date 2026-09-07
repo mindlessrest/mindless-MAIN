@@ -133,6 +133,10 @@ public class SexyESP extends Module {
     private static final int STATS_FULL = 3;
 
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
+    private static final float[][] TAG_OUTLINE_OFFSETS = {
+            {-0.7f, 0.0f}, {0.7f, 0.0f}, {0.0f, -0.7f}, {0.0f, 0.7f},
+            {-0.5f, -0.5f}, {0.5f, -0.5f}, {-0.5f, 0.5f}, {0.5f, 0.5f}
+    };
     private final SliderSetting font;
 private MindlessFontRenderer espFont() {
         if (font == null) return FontManager.getNametagRenderer(FONT_OPTIONS[0]);
@@ -205,8 +209,8 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(itemTags = new ButtonSetting(tagGroup, "Held item", true));
         registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.7, 0.4, 1.0, 0.05));
         registerSetting(distanceTextScale = new ButtonSetting(tagGroup, "Distance scaling", true));
-        registerSetting(textBorder = new ButtonSetting(tagGroup, "Text shadow", true,
-                "Tags.Black text outline", "Black text outline"));
+        registerSetting(textBorder = new ButtonSetting(tagGroup, "Text outline", true,
+                "Tags.Text shadow", "Text shadow", "Tags.Black text outline", "Black text outline"));
 
         GroupSetting statsGroup = new GroupSetting("Stats");
         registerSetting(statsGroup);
@@ -824,23 +828,25 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         GlStateManager.scale(scale, scale, 1);
 
         if (textBorder.isToggled()) {
-            float shadowX = 0.75f;
-            for (int i = 0; i < nameSegmentCount; i++) {
-                NameSegment segment = nameSegments.get(i);
-                tagFont.drawString(segment.text, shadowX, 0.75F, 0xA0000000, false);
-                shadowX += tagFont.getStringWidth(segment.text);
+            for (float[] offset : TAG_OUTLINE_OFFSETS) {
+                drawNameSegments(tagFont, offset[0], offset[1], 0xD8000000);
             }
         }
 
-        float penX = 0f;
-        for (int i = 0; i < nameSegmentCount; i++) {
-            NameSegment segment = nameSegments.get(i);
-            tagFont.drawString(segment.text, penX, 0, 0xFF000000 | (segment.color & 0xFFFFFF), false);
-            penX += tagFont.getStringWidth(segment.text);
-        }
+        drawNameSegments(tagFont, 0.0f, 0.0f, -1);
 
         GlStateManager.popMatrix();
         GlStateManager.disableTexture2D();
+    }
+
+    private void drawNameSegments(MindlessFontRenderer tagFont, float x, float y, int overrideColor) {
+        float penX = x;
+        for (int i = 0; i < nameSegmentCount; i++) {
+            NameSegment segment = nameSegments.get(i);
+            int color = overrideColor == -1 ? 0xFF000000 | (segment.color & 0xFFFFFF) : overrideColor;
+            tagFont.drawString(segment.text, penX, y, color, false);
+            penX += tagFont.getStringWidth(segment.text);
+        }
     }
 
     /** The name plus whichever extras are switched on, as one line. */

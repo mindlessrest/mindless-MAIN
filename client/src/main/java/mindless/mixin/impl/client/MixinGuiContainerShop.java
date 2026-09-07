@@ -56,7 +56,7 @@ public abstract class MixinGuiContainerShop {
         // server only treats that as a buy on the category pages, and the stack visibly travels
         // to the cursor first. A clone click reads as a plain click on every shop page and moves
         // nothing client side, so there is no animation to hide.
-        mc.playerController.windowClick(self.inventorySlots.windowId, slot.slotNumber,
+        mc.playerController.windowClick(self.inventorySlots.windowId, slotId,
                 2, 3, mc.thePlayer);
     }
 }

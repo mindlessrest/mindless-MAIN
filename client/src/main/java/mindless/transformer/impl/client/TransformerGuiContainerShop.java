@@ -52,7 +52,7 @@ public abstract class TransformerGuiContainerShop {
 
         Minecraft mc = Minecraft.getMinecraft();
         // Clone click, matching MixinGuiContainerShop: see the note there for why not a quick move.
-        mc.playerController.windowClick(self.inventorySlots.windowId, slot.slotNumber,
+        mc.playerController.windowClick(self.inventorySlots.windowId, slotId,
                 2, 3, mc.thePlayer);
     }
 }

@@ -54,7 +54,6 @@ public class ShopHelper extends Module {
         registerTiers(Gear.SHEARS, Items.shears);
     }
 
-    public ButtonSetting instantBuy;
     public ButtonSetting highlightAffordable;
     public ButtonSetting replaceClicks;
     public ButtonSetting preventDuplicate;
@@ -67,7 +66,6 @@ public class ShopHelper extends Module {
 
     public ShopHelper() {
         super("Shop Helper", "Tints what you can afford and blocks bad clicks.", category.bedwars);
-        this.registerSetting(instantBuy = new ButtonSetting("Instant buy", true));
         this.registerSetting(highlightAffordable = new ButtonSetting("Highlight affordable", true));
         this.registerSetting(replaceClicks = new ButtonSetting("Replace clicks", true));
         this.registerSetting(preventDuplicate = new ButtonSetting("Prevent duplicate", true));
@@ -173,11 +171,7 @@ public class ShopHelper extends Module {
         // click carries no shift, so the server sees a plain click on the item on every page --
         // and because the stack never lands on the cursor, the pickup animation never plays.
         //
-        // Both toggles were OR'd, so switching either one off changed nothing -- the only way to
-        // stop the conversion was to find and clear both. They gate the same behaviour, so either
-        // one being off now turns it off, which is what the settings read as.
-        if (clickedButton == 0 && clickType == 0
-                && replaceClicks.isToggled() && instantBuy.isToggled()) {
+        if (clickType == 0 && replaceClicks.isToggled()) {
             return CLICK_QUICK_MOVE;
         }
         return CLICK_ALLOW;
