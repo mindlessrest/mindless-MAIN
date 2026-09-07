@@ -23,6 +23,7 @@ import java.awt.Color;
 public class CustomHotbar extends Module {
 
     private static final float BASE_BAR_HEIGHT = 22.0f;
+    private static final float MIN_OUTLINE_THICKNESS = 0.1f;
     private final ItemStack[] overlayStacks = new ItemStack[9];
     private final int[] overlayX = new int[9];
     private final int[] overlayY = new int[9];
@@ -63,7 +64,8 @@ public class CustomHotbar extends Module {
         this.registerSetting(itemScale = new SliderSetting("Item scale", 1.0, 0.65, 1.3, 0.05));
         this.registerSetting(outline = new ButtonSetting("Outline", false));
         this.registerSetting(outlineColor = new ColorSetting("Outline color", 255, 255, 255, 70));
-        this.registerSetting(outlineThickness = new SliderSetting("Outline thickness", "px", 1.0, 0.5, 4.0, 0.1));
+        this.registerSetting(outlineThickness = new SliderSetting("Outline thickness", "px", 1.0,
+                MIN_OUTLINE_THICKNESS, 4.0, 0.05));
         this.registerSetting(outlineMode = new SliderSetting("Outline mode", 0, new String[]{"Whole bar", "Each slot"}));
         this.registerSetting(animated = new ButtonSetting("Animated selection", true));
         this.registerSetting(selectionSpeed = new SliderSetting("Selection speed", 0.35, 0.05, 1.0, 0.05));
@@ -156,8 +158,17 @@ public class CustomHotbar extends Module {
         float dtMs = lastNanos == 0L ? 16.6f : Math.min(120.0f, (now - lastNanos) / 1.0E6f);
         lastNanos = now;
 
+        float inset = uiScale;
+        float slotBoxWidth = Math.max(1.0f, slotWidth - inset * 2.0f);
         boolean individualOutlines = outline.isToggled() && (int) outlineMode.getInput() == 1;
-        float borderThickness = Math.max(0.5f, (float) outlineThickness.getInput() * uiScale);
+        float slotHeight = Math.max(1.0f, barHeight - inset * 2.0f);
+        float outlineGeometry = individualOutlines ? Math.min(slotBoxWidth, slotHeight) : barHeight;
+        // Profiles are intentionally forward-compatible and may contain values outside the
+        // current slider range. Clamp at render time as well, so a manually edited/legacy value
+        // cannot invert the selector geometry or ask the outline shader for a nonsensical stroke.
+        float borderThickness = clamp((float) outlineThickness.getInput() * uiScale,
+                MIN_OUTLINE_THICKNESS * uiScale,
+                Math.max(MIN_OUTLINE_THICKNESS * uiScale, outlineGeometry * 0.45f));
         if (outline.isToggled() && !individualOutlines) {
             RoundedUtils.drawRoundOutline(barLeft, barTop, barWidth, barHeight, radius,
                     borderThickness, new Color(background.getColor(), true),
@@ -190,8 +201,6 @@ public class CustomHotbar extends Module {
             }
         }
 
-        float inset = uiScale;
-        float slotBoxWidth = Math.max(1.0f, slotWidth - inset * 2.0f);
         // the selection sits inside the per-slot stroke rather than under it: the outline
         // shader centres its stroke on the rect edge, so a fill on the same rect shows
         // through the inner half of the border and its rounded corners poke past it.
@@ -209,7 +218,6 @@ public class CustomHotbar extends Module {
                 selectionColor.getColor());
 
         if (individualOutlines) {
-            float slotHeight = barHeight - inset * 2.0f;
             float slotRadius = Math.min(radius, 6.0f * uiScale);
             Color transparent = new Color(0, 0, 0, 0);
             Color border = new Color(outlineColor.getColor(), true);
@@ -284,5 +292,9 @@ public class CustomHotbar extends Module {
 
     private float lerp(float from, float to, float t) {
         return from + (to - from) * t;
+    }
+
+    private static float clamp(float value, float minimum, float maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
     }
 }
