@@ -19,6 +19,7 @@ private static BlockPos ownBedFoot;
     private static long scanAt;
     private static int attempts;
     private static boolean announced;
+    private static int previousBedwarsStatus = -1;
 
     private OwnBedTracker() {
     }
@@ -27,23 +28,23 @@ public static void handleChat(String strippedMessage) {
             return;
         }
 
-        if (strippedMessage.startsWith(" ")
-                && strippedMessage.contains("Protect your bed and destroy the enemy beds.")) {
+        if (HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.BED_INTRO)) {
             ownBedFoot = null;
             destroyed = false;
             scheduleScan();
         }
-        else if (strippedMessage.equals("You have respawned!")) {
+        else if (HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.RESPAWNED)) {
             if (!destroyed && ownBedFoot == null) {
                 scheduleScan();
             }
         }
-        else if (strippedMessage.contains("BED DESTRUCTION > Your Bed")) {
+        else if (HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.BED_DESTRUCTION)
+                && HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.YOUR_BED)) {
             ownBedFoot = null;
             destroyed = true;
             scanAt = 0L;
         }
-        else if (strippedMessage.contains("Your team swapped and you are now:")) {
+        else if (HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.TEAM_SWAP)) {
             ownBedFoot = null;
             destroyed = false;
             scheduleScan();
@@ -54,11 +55,21 @@ public static void tick() {
             return;
         }
 
+        int status = Utils.getBedwarsStatus();
+        if (status == 2 && previousBedwarsStatus != 2) {
+            ownBedFoot = null;
+            destroyed = false;
+            scheduleScan();
+        }
+        previousBedwarsStatus = status;
+
         if (scanAt != 0L && System.currentTimeMillis() >= scanAt) {
             runScan();
         }
         if (ownBedFoot != null && footHeadPair(ownBedFoot) == null) {
             ownBedFoot = null;
+            destroyed = true;
+            scanAt = 0L;
         }
     }
 public static void reset() {
@@ -67,6 +78,7 @@ public static void reset() {
         scanAt = 0L;
         attempts = 0;
         announced = false;
+        previousBedwarsStatus = -1;
     }
 
     private static void scheduleScan() {

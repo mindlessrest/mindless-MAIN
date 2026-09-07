@@ -2,6 +2,7 @@ package mindless.module.impl.bedwars;
 
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.utility.Utils;
+import mindless.utility.HypixelLanguage;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
@@ -11,7 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 public class EventTimers extends BedwarsHud {
 private static final Pattern EVENT_LINE =
-            Pattern.compile("^(.+?)\\s+in\\s+(\\d{1,2}:\\d{2})$");
+            Pattern.compile("^(.+?)\\s+(\\d{1,2}:\\d{2})$");
 private static final int URGENT_SECONDS = 30;
 
     private final ButtonSetting dynamicColour;
@@ -44,12 +45,20 @@ private static final int URGENT_SECONDS = 30;
         for (String raw : Utils.getSidebarLines()) {
             Matcher matcher = EVENT_LINE.matcher(Utils.stripColor(raw).trim());
             if (!matcher.matches()) continue;
-            this.event = matcher.group(1).trim();
+            this.event = trimConnector(matcher.group(1).trim());
             this.remaining = matcher.group(2);
             return;
         }
         this.event = "";
         this.remaining = "";
+    }
+
+    private String trimConnector(String value) {
+        String connector = HypixelLanguage.first(HypixelLanguage.Key.TIMER_IN);
+        if (!connector.isEmpty() && value.toLowerCase().endsWith(" " + connector)) {
+            return value.substring(0, value.length() - connector.length()).trim();
+        }
+        return value;
     }
 private int secondsLeft() {
         int colon = remaining.indexOf(':');
@@ -63,12 +72,11 @@ private int secondsLeft() {
     }
 
     private String eventColour() {
-        String lower = event.toLowerCase();
-        if (lower.startsWith("diamond")) return "§b";
-        if (lower.startsWith("emerald")) return "§2";
-        if (lower.contains("sudden death")) return "§5";
-        if (lower.contains("game end")) return "§c";
-        if (lower.contains("bed")) return "§6";
+        if (HypixelLanguage.contains(event, HypixelLanguage.Key.DIAMOND)) return "§b";
+        if (HypixelLanguage.contains(event, HypixelLanguage.Key.EMERALD)) return "§2";
+        if (HypixelLanguage.contains(event, HypixelLanguage.Key.SUDDEN_DEATH)) return "§5";
+        if (HypixelLanguage.contains(event, HypixelLanguage.Key.GAME_END)) return "§c";
+        if (HypixelLanguage.contains(event, HypixelLanguage.Key.BED)) return "§6";
         return "§f";
     }
 

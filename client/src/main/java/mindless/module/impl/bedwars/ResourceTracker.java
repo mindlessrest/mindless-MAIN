@@ -2,6 +2,7 @@ package mindless.module.impl.bedwars;
 
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.utility.Utils;
+import mindless.utility.HypixelLanguage;
 import net.minecraft.client.gui.inventory.GuiChest;
 import net.minecraft.init.Items;
 import net.minecraft.inventory.ContainerChest;
@@ -74,7 +75,7 @@ private void countOpenEnderChest() {
         ContainerChest container = (ContainerChest) ((GuiChest) mc.currentScreen).inventorySlots;
         String title = Utils.stripColor(container.getLowerChestInventory().getDisplayName()
                 .getUnformattedText());
-        if (!title.toLowerCase().contains("ender chest")) return;
+        if (!HypixelLanguage.contains(title, HypixelLanguage.Key.ENDER_CHEST)) return;
 
         chest.clear();
         int size = container.getLowerChestInventory().getSizeInventory();

@@ -5,6 +5,7 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
 import mindless.utility.BedwarsTeam;
+import mindless.utility.HypixelLanguage;
 import net.minecraft.block.BlockBed;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.BlockPos;
@@ -33,6 +34,7 @@ private static final long SETTLE_MS = 6000L;
     private long scanAt;
     private long settledAt;
     private boolean warnedOutOfRange;
+    private int previousBedwarsStatus = -1;
 
     public BedTracker() {
         super("Bed Tracker", "Tracks which beds are still standing.", 0.02f, 0.34f);
@@ -54,24 +56,24 @@ private static final long SETTLE_MS = 6000L;
         warnedOutOfRange = false;
         lastAlert.clear();
         urchinChecked.clear();
+        previousBedwarsStatus = -1;
     }
 
     @SubscribeEvent
     public void onChat(ClientChatReceivedEvent event) {
         if (!this.isEnabled() || event.message == null) return;
         String message = Utils.stripColor(event.message.getUnformattedText());
-        if (message.contains(":")) return;
-
-        if (message.contains("The game starts in 1 second")) {
+        if (HypixelLanguage.contains(message, HypixelLanguage.Key.GAME_START_ONE)) {
             schedule(SCAN_DELAY_MS);
         }
-        else if (message.startsWith("You will respawn in")) {
+        else if (HypixelLanguage.contains(message, HypixelLanguage.Key.RESPAWN_IN)) {
             schedule(SCAN_DELAY_MS + 3000L);
         }
-        else if (message.contains("Your team swapped and you are now")) {
+        else if (HypixelLanguage.contains(message, HypixelLanguage.Key.TEAM_SWAP)) {
             schedule(1000L);
         }
-        else if (message.contains("BED DESTRUCTION") && message.contains("Your Bed")) {
+        else if (HypixelLanguage.contains(message, HypixelLanguage.Key.BED_DESTRUCTION)
+                && HypixelLanguage.contains(message, HypixelLanguage.Key.YOUR_BED)) {
             bed = null;
             Utils.sendMessage("&4&l⚠ &cYour bed was destroyed.");
         }
@@ -109,10 +111,14 @@ private static final long SETTLE_MS = 6000L;
         if (event.phase != TickEvent.Phase.END) return;
         if (!this.isEnabled() || !Utils.nullCheck()) return;
 
-        if (Utils.getBedwarsStatus() != 2) {
+        int status = Utils.getBedwarsStatus();
+        if (status != 2) {
             if (bed != null || !lastAlert.isEmpty()) reset();
+            previousBedwarsStatus = status;
             return;
         }
+        if (previousBedwarsStatus != 2) schedule(SCAN_DELAY_MS);
+        previousBedwarsStatus = status;
 
         long now = System.currentTimeMillis();
         if (bed == null && scanAt > 0L && now >= scanAt) {
@@ -127,6 +133,13 @@ private static final long SETTLE_MS = 6000L;
         }
 
         if (bed == null) return;
+
+        if (mc.theWorld.getChunkProvider().chunkExists(bed.getX() >> 4, bed.getZ() >> 4)
+                && !(mc.theWorld.getBlockState(bed).getBlock() instanceof BlockBed)) {
+            bed = null;
+            Utils.sendMessage("&4&l⚠ &cYour bed was destroyed.");
+            return;
+        }
 
         boolean outOfRange = isOutOfRange();
         if (outOfRange && !warnedOutOfRange) {

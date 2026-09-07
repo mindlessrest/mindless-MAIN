@@ -4,6 +4,7 @@ import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
+import mindless.utility.HypixelLanguage;
 import net.minecraft.client.gui.inventory.GuiChest;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.init.Items;
@@ -35,19 +36,6 @@ public class ShopHelper extends Module {
     public static final int CLICK_CANCEL = 1;
     /** Send it as a clone click instead, which buys without the pickup animation. */
     public static final int CLICK_QUICK_MOVE = 2;
-
-    /**
-     * The chest titles Hypixel gives the shop pages.
-     *
-     * The click hooks used to look for a title containing "Shop", which none of these do -- the
-     * word only appears on the villager's name tag, never on the GUI. That single mismatch is why
-     * nothing but the upgrades page ever reacted.
-     */
-    private static final String[] SHOP_PAGES = {
-            "Quick Buy", "Blocks", "Melee", "Armor", "Tools",
-            "Ranged", "Potions", "Utility", "Rotating Items"
-    };
-    private static final String UPGRADES_PAGE = "Upgrades & Traps";
 
     private static final int IRON_TINT = 0xE8E8E8;
     private static final int GOLD_TINT = 0xFFAA00;
@@ -161,8 +149,8 @@ public class ShopHelper extends Module {
         String title = titleOf(gui);
         if (title == null) return CLICK_ALLOW;
 
-        boolean upgrades = title.equals(UPGRADES_PAGE);
-        if (!upgrades && !isShopPage(title)) return CLICK_ALLOW;
+        boolean upgrades = HypixelLanguage.equals(title, HypixelLanguage.Key.UPGRADES_TRAPS);
+        if (!upgrades && !isShopPage(title) && !isLargeBedwarsMenu(gui)) return CLICK_ALLOW;
 
         ItemStack stack = slot.getStack();
 
@@ -197,7 +185,9 @@ public class ShopHelper extends Module {
 
     public boolean isShopOpen(Object screen) {
         String title = titleOf(screen);
-        return title != null && (isShopPage(title) || title.equals(UPGRADES_PAGE));
+        return title != null && (isShopPage(title)
+                || HypixelLanguage.equals(title, HypixelLanguage.Key.UPGRADES_TRAPS)
+                || isLargeBedwarsMenu(screen));
     }
 
     private boolean inGame() {
@@ -215,10 +205,22 @@ public class ShopHelper extends Module {
     }
 
     private static boolean isShopPage(String title) {
-        for (int i = 0; i < SHOP_PAGES.length; i++) {
-            if (SHOP_PAGES[i].equals(title)) return true;
-        }
-        return false;
+        return HypixelLanguage.equals(title, HypixelLanguage.Key.QUICK_BUY)
+                || HypixelLanguage.equals(title, HypixelLanguage.Key.BLOCKS)
+                || HypixelLanguage.equals(title, HypixelLanguage.Key.MELEE)
+                || HypixelLanguage.equals(title, HypixelLanguage.Key.ARMOR)
+                || HypixelLanguage.equals(title, HypixelLanguage.Key.TOOLS)
+                || HypixelLanguage.equals(title, HypixelLanguage.Key.RANGED)
+                || HypixelLanguage.equals(title, HypixelLanguage.Key.POTIONS)
+                || HypixelLanguage.equals(title, HypixelLanguage.Key.UTILITY)
+                || HypixelLanguage.equals(title, HypixelLanguage.Key.ROTATING_ITEMS);
+    }
+
+    private static boolean isLargeBedwarsMenu(Object screen) {
+        if (Utils.getBedwarsStatus() != 2 || !(screen instanceof GuiChest)) return false;
+        ContainerChest container = (ContainerChest) ((GuiChest) screen).inventorySlots;
+        return container.getLowerChestInventory() != null
+                && container.getLowerChestInventory().getSizeInventory() >= 54;
     }
 
     private boolean canAfford(Cost cost) {
@@ -261,7 +263,8 @@ public class ShopHelper extends Module {
             if (line == null) continue;
             String lower = line.toLowerCase();
 
-            if (lower.contains("unlocked") || lower.contains("maxed")) {
+            if (HypixelLanguage.contains(line, HypixelLanguage.Key.UNLOCKED)
+                    || HypixelLanguage.contains(line, HypixelLanguage.Key.MAXED)) {
                 return null;
             }
 
@@ -272,11 +275,11 @@ public class ShopHelper extends Module {
     }
 
     private static Cost parseCost(String line, String lower) {
-        int marker = lower.indexOf("cost:");
         String tail;
-        if (marker >= 0) {
-            tail = line.substring(marker + 5).trim();
-        } else if (lower.startsWith("tier")) {
+        int colon = line.indexOf(':');
+        if (colon >= 0 && HypixelLanguage.contains(line.substring(0, colon), HypixelLanguage.Key.COST)) {
+            tail = line.substring(colon + 1).trim();
+        } else if (HypixelLanguage.contains(line, HypixelLanguage.Key.TIER)) {
             int comma = line.lastIndexOf(',');
             if (comma < 0 || comma + 1 >= line.length()) return null;
             tail = line.substring(comma + 1).trim();
@@ -306,10 +309,10 @@ public class ShopHelper extends Module {
     }
 
     private static Item resourceNamed(String name) {
-        if (name.startsWith("iron")) return Items.iron_ingot;
-        if (name.startsWith("gold")) return Items.gold_ingot;
-        if (name.startsWith("diamond")) return Items.diamond;
-        if (name.startsWith("emerald")) return Items.emerald;
+        if (HypixelLanguage.contains(name, HypixelLanguage.Key.IRON)) return Items.iron_ingot;
+        if (HypixelLanguage.contains(name, HypixelLanguage.Key.GOLD)) return Items.gold_ingot;
+        if (HypixelLanguage.contains(name, HypixelLanguage.Key.DIAMOND)) return Items.diamond;
+        if (HypixelLanguage.contains(name, HypixelLanguage.Key.EMERALD)) return Items.emerald;
         return null;
     }
 

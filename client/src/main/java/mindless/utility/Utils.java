@@ -1014,8 +1014,14 @@ public static boolean isTeammate(Entity entity) {
         if (objective == null || !stripString(objective.getDisplayName()).contains("BED WARS")) {
             return -1;
         }
-        for (String line : getSidebarLines()) {
-            line = stripString(line);
+        for (String rawLine : getSidebarLines()) {
+            String stableLine = stripColor(rawLine).trim();
+            String line = stripString(rawLine);
+            // Team rows retain a stable one-character marker and a bed/alive state even when
+            // Hypixel translates the team name. This is the authoritative in-game signal.
+            if (stableLine.matches("^\\S\\s+.+:\\s*(?:[\\u2713\\u2714\\u2717\\u2718]|\\d+).*$")) {
+                return 2;
+            }
             String[] parts = line.split("  ");
             if (parts.length > 1) {
                 if (parts[1].startsWith("L")) {
@@ -1024,9 +1030,6 @@ public static boolean isTeammate(Entity entity) {
             }
             else if (line.equals("Waiting...") || line.startsWith("Starting in")) {
                 return 1;
-            }
-            else if (line.startsWith("R Red:") || line.startsWith("B Blue:")) {
-                return 2;
             }
         }
         return -1;

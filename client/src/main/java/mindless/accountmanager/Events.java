@@ -8,6 +8,7 @@ import mindless.accountmanager.auth.Account;
 import mindless.accountmanager.auth.SessionManager;
 import mindless.accountmanager.gui.GuiAccountManager;
 import mindless.accountmanager.utils.TextFormatting;
+import mindless.utility.HypixelLanguage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiDisconnected;
 import net.minecraft.client.gui.GuiScreen;
@@ -33,7 +34,7 @@ public class Events {
             "permanently banned|account has been blocked", Pattern.CASE_INSENSITIVE);
     private static final Pattern TEMPORARY_BAN = Pattern.compile(
             "temporarily (?:banned|blocked) for (.+?) from this server", Pattern.CASE_INSENSITIVE);
-    private static final Pattern DURATION_PART = Pattern.compile("(\\d+)\\s*([dhms])",
+    private static final Pattern DURATION_PART = Pattern.compile("(\\d+)\\s*([dhmsjt])",
             Pattern.CASE_INSENSITIVE);
 
     private static final Minecraft mc = Minecraft.getMinecraft();
@@ -94,7 +95,9 @@ public class Events {
             IChatComponent message = (IChatComponent) f.get(event.gui);
             String text = message.getUnformattedText().split("\n\n")[0].trim();
 
-            if (PERMANENT_BAN.matcher(text).find()) {
+            if (PERMANENT_BAN.matcher(text).find()
+                    || HypixelLanguage.contains(text, HypixelLanguage.Key.PERMANENT_BAN)
+                    || HypixelLanguage.contains(text, HypixelLanguage.Key.ACCOUNT_BLOCKED)) {
                 recordUnban(-1L);
                 return;
             }
@@ -105,6 +108,10 @@ public class Events {
                 if (time > 0L) {
                     recordUnban(time);
                 }
+            } else if (HypixelLanguage.contains(text, HypixelLanguage.Key.TEMPORARY_BAN)
+                    || HypixelLanguage.contains(text, HypixelLanguage.Key.TEMPORARY_BLOCKED)) {
+                long time = parseUnbanTime(text);
+                if (time > 0L) recordUnban(time);
             }
         } catch (Exception ignored) {}
     }
@@ -122,7 +129,7 @@ public class Events {
         while (part.find()) {
             long value = Long.parseLong(part.group(1));
             switch (Character.toLowerCase(part.group(2).charAt(0))) {
-                case 'd': span += value * 86400000L; break;
+                case 'd': case 'j': case 't': span += value * 86400000L; break;
                 case 'h': span += value * 3600000L;  break;
                 case 'm': span += value * 60000L;    break;
                 case 's': span += value * 1000L;     break;

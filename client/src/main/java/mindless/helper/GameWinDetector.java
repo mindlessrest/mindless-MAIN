@@ -8,6 +8,7 @@ import net.minecraft.util.EnumChatFormatting;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import mindless.utility.HypixelLanguage;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,7 +34,8 @@ public class GameWinDetector {
             if (isMe(duel.group(1))) fireWin();
             return;
         }
-        if (line.contains("VICTORY!") || line.contains("You won")) {
+        if (HypixelLanguage.contains(line, HypixelLanguage.Key.VICTORY)
+                || HypixelLanguage.contains(line, HypixelLanguage.Key.WIN)) {
             fireWin();
         }
     }
@@ -46,8 +48,8 @@ public class GameWinDetector {
         if (packet.getMessage() == null) return;
         String text = EnumChatFormatting.getTextWithoutFormattingCodes(packet.getMessage().getUnformattedText());
         if (text == null) return;
-        String upper = text.toUpperCase().trim();
-        if (upper.contains("WIN") || upper.contains("VICTORY")) {
+        if (HypixelLanguage.contains(text, HypixelLanguage.Key.WIN)
+                || HypixelLanguage.contains(text, HypixelLanguage.Key.VICTORY)) {
             fireWin();
         }
     }

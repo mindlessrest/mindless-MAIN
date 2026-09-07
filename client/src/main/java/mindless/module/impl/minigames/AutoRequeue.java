@@ -6,6 +6,7 @@ import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
 import net.minecraft.util.IChatComponent;
+import net.minecraft.event.ClickEvent;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -41,20 +42,27 @@ public class AutoRequeue extends Module {
         if (e.type == 2 || !Utils.nullCheck()) {
             return;
         }
-        String stripped = Utils.stripColor(e.message.getUnformattedText());
-        if (stripped.isEmpty() || !stripped.contains("play again")) {
-            return;
+        String command = findPlayCommand(e.message);
+        if (command != null) {
+            this.receivedMessage = command;
+            this.receiveTime = System.currentTimeMillis();
         }
-        if (e.message != null) {
-            for (IChatComponent component : e.message.getSiblings()) {
-                if (component != null && component.getFormattedText().contains("Click here")) {
-                    if (component.getChatStyle() != null && component.getChatStyle().getChatClickEvent() != null && component.getChatStyle().getChatClickEvent().getValue().startsWith("/")) {
-                        this.receivedMessage = component.getChatStyle().getChatClickEvent().getValue();
-                        this.receiveTime = System.currentTimeMillis();
-                    }
-                }
+    }
+
+    private String findPlayCommand(IChatComponent component) {
+        if (component == null) return null;
+        if (component.getChatStyle() != null) {
+            ClickEvent click = component.getChatStyle().getChatClickEvent();
+            if (click != null && click.getAction() == ClickEvent.Action.RUN_COMMAND) {
+                String value = click.getValue();
+                if (value != null && value.toLowerCase().startsWith("/play")) return value;
             }
         }
+        for (IChatComponent child : component.getSiblings()) {
+            String command = findPlayCommand(child);
+            if (command != null) return command;
+        }
+        return null;
     }
 
     @SubscribeEvent

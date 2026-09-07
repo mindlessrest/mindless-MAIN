@@ -11,6 +11,7 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.BlockUtils;
 import mindless.utility.RenderUtils;
 import mindless.utility.OwnBedTracker;
+import mindless.utility.HypixelLanguage;
 import mindless.utility.Utils;
 import net.minecraft.block.BlockBed;
 import net.minecraft.block.BlockObsidian;
@@ -558,7 +559,7 @@ public class BedWars extends Module {
         String strippedMessage = Utils.stripColor(event.message.getUnformattedText());
         OwnBedTracker.handleChat(strippedMessage);
 
-        if (strippedMessage.startsWith(" ") && strippedMessage.contains("Protect your bed and destroy the enemy beds.")) {
+        if (HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.BED_INTRO)) {
             magicMilkExpiresAt = 0L;
         }
     }

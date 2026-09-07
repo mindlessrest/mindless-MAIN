@@ -209,20 +209,22 @@ public static void tick(boolean useLocraw) {
         List<String> sidebar = Utils.getSidebarLines();
         for (String raw : sidebar) {
             String line = cleanLine(raw);
-            if (line.contains("Mode: ")) {
-                mode = line.replace("Mode: ", "");
+            String labelled;
+            if ((labelled = HypixelLanguage.valueAfterLabel(line, HypixelLanguage.Key.MODE)) != null) {
+                mode = labelled;
             }
             else if (line.indexOf(SKYBLOCK_AREA_MARKER) >= 0) {
                 map = line.replace(" " + SKYBLOCK_AREA_MARKER + " ", "").trim();
             }
-            else if (line.contains("Map: ")) {
-                map = line.replace("Map: ", "");
+            else if ((labelled = HypixelLanguage.valueAfterLabel(line, HypixelLanguage.Key.MAP)) != null) {
+                map = labelled;
             }
-            else if (line.contains("Purse: ") || line.contains("Piggy: ")) {
-                coins = line.replaceAll("Purse: |Piggy: ", "");
+            else if ((labelled = HypixelLanguage.valueAfterLabel(line, HypixelLanguage.Key.PURSE)) != null
+                    || (labelled = HypixelLanguage.valueAfterLabel(line, HypixelLanguage.Key.PIGGY)) != null) {
+                coins = labelled;
             }
-            else if (line.contains("Bits: ")) {
-                bits = line.replace("Bits: ", "");
+            else if ((labelled = HypixelLanguage.valueAfterLabel(line, HypixelLanguage.Key.BITS)) != null) {
+                bits = labelled;
             }
             else {
                 Matcher date = SB_DATE.matcher(line);
