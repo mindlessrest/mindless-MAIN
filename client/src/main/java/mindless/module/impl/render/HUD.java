@@ -57,6 +57,7 @@ private static final double HUD_WAVE_HORIZONTAL_X_SCALE = 0.35;
     private static SliderSetting backgroundMode;
     private static ButtonSetting roundedBackground;
     private static SliderSetting cornerRadius;
+    private static SliderSetting stepRounding;
     private static SliderSetting backgroundOpacity;
     private static ButtonSetting backgroundBlur;
     private static SliderSetting blurStrength;
@@ -127,6 +128,7 @@ private static final int[][] OUTLINE_OFFSETS = {
         this.registerSetting(backgroundMode = new SliderSetting("Background mode", 0, BACKGROUND_MODES));
         this.registerSetting(roundedBackground = new ButtonSetting("Rounded background", false));
         this.registerSetting(cornerRadius = new SliderSetting("Corner radius", 4.0, 0.0, 12.0, 0.5));
+        this.registerSetting(stepRounding = new SliderSetting("Step rounding", "%", 55.0, 0.0, 100.0, 5.0));
         this.registerSetting(backgroundOpacity = new SliderSetting("Background opacity", 43.0, 0.0, 100.0, 1.0));
         this.registerSetting(backgroundBlur = new ButtonSetting("Background blur", false));
         this.registerSetting(blurStrength = new SliderSetting("Blur strength", 4.0, 0.5, 16.0, 0.5));
@@ -193,6 +195,11 @@ private static final int[][] OUTLINE_OFFSETS = {
         }
         if (cornerRadius != null) {
             cornerRadius.setVisible(background && roundedBackground != null && roundedBackground.isToggled(), this);
+        }
+        if (stepRounding != null) {
+            stepRounding.setVisible(background
+                    && roundedBackground != null && roundedBackground.isToggled()
+                    && backgroundMode != null && (int) backgroundMode.getInput() == 0, this);
         }
         if (backgroundOpacity != null) {
             backgroundOpacity.setVisible(background && !(backgroundBlur != null && backgroundBlur.isToggled()), this);
@@ -838,35 +845,37 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
 
         boolean right = alignRight.isToggled();
         float radius = getBackgroundRadius(rowHeight);
+        float transitionRadius = getBackgroundStepRadius(radius);
         for (int i = 0; i < widths.length; i++) {
             float width = widths[i] + horizontalTextPadding * 2f;
             float left = right ? posX - widths[i] - horizontalTextPadding : posX - horizontalTextPadding;
             float rowTop = top + i * rowHeight;
             boolean firstRow = i == 0;
             boolean lastRow = i == widths.length - 1;
-            boolean changesFromPrevious = !firstRow && Math.abs(widths[i] - widths[i - 1]) > 1;
-            boolean changesIntoNext = !lastRow && Math.abs(widths[i] - widths[i + 1]) > 1;
+            boolean widerThanPrevious = !firstRow && widths[i] > widths[i - 1] + 1;
+            boolean widerThanNext = !lastRow && widths[i] > widths[i + 1] + 1;
             float roundedRadius = radius <= 0.0f ? 0.0f : radius + grow;
+            float roundedTransition = transitionRadius <= 0.0f ? 0.0f : transitionRadius + grow;
 
             // Connected rows share their aligned edge. The changing edge is a staircase, so both
-            // sides of each width transition receive a small curve. This keeps the silhouette
-            // connected while producing the soft stepped stack people expect from an array list,
-            // instead of a sharp saw-tooth or a pile of separate pills.
+            // corners must not be cut at one transition: that creates the scalloped gaps visible
+            // between every line. Only the wider, protruding row owns the convex rounded corner;
+            // the narrower row remains square and fills the concave side of the join.
             float topLeft;
             float topRight;
             float bottomRight;
             float bottomLeft;
             if (right) {
-                topLeft = firstRow || changesFromPrevious ? roundedRadius : 0.0f;
-                bottomLeft = lastRow || changesIntoNext ? roundedRadius : 0.0f;
+                topLeft = firstRow ? roundedRadius : widerThanPrevious ? roundedTransition : 0.0f;
+                bottomLeft = lastRow ? roundedRadius : widerThanNext ? roundedTransition : 0.0f;
                 topRight = firstRow ? roundedRadius : 0.0f;
                 bottomRight = lastRow ? roundedRadius : 0.0f;
             }
             else {
                 topLeft = firstRow ? roundedRadius : 0.0f;
                 bottomLeft = lastRow ? roundedRadius : 0.0f;
-                topRight = firstRow || changesFromPrevious ? roundedRadius : 0.0f;
-                bottomRight = lastRow || changesIntoNext ? roundedRadius : 0.0f;
+                topRight = firstRow ? roundedRadius : widerThanPrevious ? roundedTransition : 0.0f;
+                bottomRight = lastRow ? roundedRadius : widerThanNext ? roundedTransition : 0.0f;
             }
 
             // Only the outer edges grow; growing the shared horizontal seams would draw the
@@ -965,6 +974,14 @@ private static void radialBand(float cx, float cy, float r0, float a0, float r1,
         float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
                 * mindless.module.impl.theme.ThemeManager.roundingScale();
         return Math.max(0.0f, Math.min(radius, height * 0.34f));
+    }
+
+    private static float getBackgroundStepRadius(float outerRadius) {
+        if (outerRadius <= 0.0f) {
+            return 0.0f;
+        }
+        float amount = stepRounding == null ? 0.55f : (float) (stepRounding.getInput() / 100.0);
+        return outerRadius * Math.max(0.0f, Math.min(1.0f, amount));
     }
 
     private static float getHudTextY(float rowTop, int textTopOffset, int textTopPadding) {
