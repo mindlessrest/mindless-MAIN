@@ -57,6 +57,10 @@ private static final int LOGO_RASTER_W = (int) LOGO_DRAW_W * 4;
     private static final float CATEGORY_ROW_HEIGHT = 21f;
     private static final float CATEGORY_ROW_STEP = 22f;
     private static final float MODULE_ROW_HEIGHT = 32f;
+    // Sized against the row height. The keybind sits alone in a 38px column, so at the old .61 it
+    // read as a stray label floating in the row rather than a value belonging to it.
+    private static final float BIND_TEXT_SCALE = .68f;
+    private static final float BIND_TEXT_SCALE_NARROW = .58f;
     private static final float MODULE_ROW_STEP = 38f;
     private static final float SCRIPT_MANAGER_SECTION_GAP = 14f;
     private static final float DROPDOWN_MIN_W = 78f;
@@ -786,28 +790,30 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             boolean unsaved = active && !((ProfileModule) module).saved;
             drawCenteredV(active ? (unsaved ? "Unsaved" : "Active") : "Load",
                     actionX - 4, actionX + 34, y, y + MODULE_ROW_HEIGHT,
-                    active ? GOLD : MUTED, unsaved ? .55f : .62f, active);
+                    active ? GOLD : MUTED, unsaved ? .60f : .66f, active);
         } else if (manager) {
             String action = module instanceof mindless.script.Manager ? "Manage" : "Create";
-            drawCenteredV(action, actionX - 8, actionX + 38, y, y + MODULE_ROW_HEIGHT, MUTED, .6f, false);
+            drawCenteredV(action, actionX - 8, actionX + 38, y, y + MODULE_ROW_HEIGHT, MUTED, .64f, false);
         }
         if (!manager) {
             boolean editingBind = binding == module;
             if (!profile) {
                 String bindText = editingBind ? "..." : module.getKeycode() == 0 ? "None" : keyName(module.getKeycode());
                 float bindX = x2 - 52;
-                float bindScale = textWidth(bindText, .61f, false) > 34f ? .52f : .61f;
+                float bindScale = textWidth(bindText, BIND_TEXT_SCALE, false) > 34f
+                        ? BIND_TEXT_SCALE_NARROW : BIND_TEXT_SCALE;
                 drawCenteredV(bindText, bindX, x2 - 14, y, y + MODULE_ROW_HEIGHT,
                         editingBind ? GOLD : DIM, bindScale, false);
             } else if (editingBind || module.getKeycode() != 0) {
                 String bindText = editingBind ? "..." : keyName(module.getKeycode());
                 float bindX = x2 - 52;
-                float bindScale = textWidth(bindText, .61f, false) > 34f ? .52f : .61f;
+                float bindScale = textWidth(bindText, BIND_TEXT_SCALE, false) > 34f
+                        ? BIND_TEXT_SCALE_NARROW : BIND_TEXT_SCALE;
                 drawCenteredV(bindText, bindX, x2 - 14, y, y + MODULE_ROW_HEIGHT,
                         editingBind ? GOLD : DIM, bindScale, false);
             }
         }
-        drawTextVCentered(">", x2 - 8, y, y + MODULE_ROW_HEIGHT, selected ? GOLD : withAlpha(DIM, (int)(80 + 175 * hp)), .72f, false);
+        drawTextVCentered(">", x2 - 8, y, y + MODULE_ROW_HEIGHT, selected ? GOLD : withAlpha(DIM, (int)(80 + 175 * hp)), .78f, false);
     }
 
     /**
