@@ -140,6 +140,7 @@ private void saveProfileInBackground(Profile profile) {
                 }
             }
             jsonObject.add("modules", jsonArray);
+            ProfileMigrations.stamp(jsonObject);
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
             return gson.toJson(jsonObject);
         }
@@ -386,6 +387,13 @@ public void loadProfile(String name) {
         }
 
         JsonObject profileJson = readProfileJson(file, profileName);
+        // Repair anything written by an older build before it is applied to live settings. The
+        // original file is copied aside first and the stamp only advances when every step
+        // succeeded, so a failed migration costs nothing and is retried next load.
+        if (ProfileMigrations.migrate(profileJson, file, profileName)) {
+            System.out.println("[Mindless] migrated profile " + profileName
+                    + " to config version " + ProfileMigrations.CURRENT_VERSION);
+        }
         JsonArray modules = profileJson == null ? null : profileJson.getAsJsonArray("modules");
         if (modules == null) {
             failedMessage("load", profileName);

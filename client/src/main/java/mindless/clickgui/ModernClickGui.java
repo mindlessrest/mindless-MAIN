@@ -1437,6 +1437,10 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
 
 
         float top = baseY + 61f;
+        // The rows are drawn inside a scissor from top to this bottom. Hit testing ignored it,
+        // so a row scrolled out of view still answered clicks at its off-screen position and a
+        // click well outside the panel toggled whatever module happened to line up there.
+        float listBottom = baseY + panelH - 12f;
         List<Module> modules = filteredModules();
         Module scriptManager = stickyScriptManager() ? detachScriptManager(modules) : null;
         if (scriptManager != null) {
@@ -1446,8 +1450,13 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
             }
             top += MODULE_ROW_STEP + SCRIPT_MANAGER_SECTION_GAP;
         }
+        boolean insideList = my >= top && my <= listBottom;
         float y = top + moduleScroll;
         for (Module module : modules) {
+            if (!insideList || y + MODULE_ROW_HEIGHT < top || y > listBottom) {
+                y += MODULE_ROW_STEP;
+                continue;
+            }
             if (inside(mx, my, centerX + 14, y, centerX + centerW - 14, y + MODULE_ROW_HEIGHT)) {
                 float x2 = centerX + centerW - 14;
                 if (module instanceof ProfileModule) {

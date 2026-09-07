@@ -546,10 +546,14 @@ private int ringColor(int ringIndex) {
                 mc.getTextureManager().bindTexture(skin);
                 GlStateManager.color(1.0f, 1.0f, 1.0f, (float) alpha / 255.0f);
                 int style = headStyle == null ? HEAD_STYLE_3D : (int) headStyle.getInput();
-                if (style == HEAD_STYLE_2D) {
+                // 2D is the rounded avatar, Flat is the square pixel-crisp one. Naming them the
+                // other way round was mine and it did not match what anyone expects the words to
+                // mean, so the renderers are swapped rather than the labels: a saved selection
+                // now produces the look its name promises.
+                if (style == HEAD_STYLE_FLAT) {
                     drawHead2D(x, y, width, height, alpha);
                 }
-                else if (style == HEAD_STYLE_FLAT) {
+                else if (style == HEAD_STYLE_2D) {
                     float cornerRadius = Math.max(2.0f, (float) Math.min(width, height) * 0.14f);
                     drawRoundedSkinLayer(x, y, width, height, cornerRadius, 8.0f, 8.0f, alpha);
                     // Hat sits slightly proud of the face so the two layers read apart instead
