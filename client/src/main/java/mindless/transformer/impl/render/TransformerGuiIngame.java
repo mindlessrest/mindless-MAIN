@@ -64,6 +64,7 @@ public abstract class TransformerGuiIngame {
     @CInject(method = "renderScoreboard", target = @CTarget("HEAD"), cancellable = true)
     private void mindless$renderUnifiedScoreboard(ScoreObjective objective, ScaledResolution resolution,
                                                InjectionCallback callbackInfo) {
+        mindless.utility.RenderUtils.beginTextPass();
         if (!mindless.module.impl.render.ScoreboardModule.isCustomScoreboardEnabled()) {
             return;
         }

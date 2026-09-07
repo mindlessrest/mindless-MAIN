@@ -82,6 +82,7 @@ public abstract class MixinGuiIngame {
     @Inject(method = "renderScoreboard", at = @At("HEAD"), cancellable = true)
     private void mindless$renderUnifiedScoreboard(ScoreObjective objective, ScaledResolution resolution,
                                                CallbackInfo callbackInfo) {
+        mindless.utility.RenderUtils.beginTextPass();
         if (!mindless.module.impl.render.ScoreboardModule.isCustomScoreboardEnabled()) {
             return;
         }

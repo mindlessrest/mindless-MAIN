@@ -287,6 +287,9 @@ private static final int[][] OUTLINE_OFFSETS = {
 
     @SubscribeEvent
     public void onRenderTick(RenderTickEvent event) {
+        // Every HUD element under this draws text. Establish the contract once here rather than
+        // trusting whatever the frame left behind; that inheritance is what rendered them grey.
+        mindless.utility.RenderUtils.beginTextPass();
         if (event.phase != TickEvent.Phase.END || !Utils.nullCheck()) {
             return;
         }

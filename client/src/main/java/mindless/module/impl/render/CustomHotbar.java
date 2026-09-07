@@ -17,6 +17,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
 
@@ -277,6 +278,14 @@ public class CustomHotbar extends Module {
             GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         }
 
+        // renderItemOverlayIntoGUI ends every branch with enableLighting and enableDepth.
+        // Vanilla gets away with that because it calls it inside the item-lighting block and
+        // disables lighting straight after. Drawing the overlays outside that block, which is
+        // what keeps the stack counts unscaled, leaves nothing to turn lighting back off, and it
+        // leaks into every text draw that follows -- chat, scoreboard, the whole HUD -- which is
+        // what rendered them grey.
+        boolean lightingWas = GL11.glIsEnabled(GL11.GL_LIGHTING);
+        boolean depthWas = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
         RenderItem overlayRenderer = mc.getRenderItem();
         for (int i = 0; i < overlayStacks.length; i++) {
             ItemStack stack = overlayStacks[i];
@@ -284,6 +293,8 @@ public class CustomHotbar extends Module {
             overlayStacks[i] = null;
             overlayRenderer.renderItemOverlays(mc.fontRendererObj, stack, overlayX[i], overlayY[i]);
         }
+        if (!lightingWas) GlStateManager.disableLighting();
+        if (!depthWas) GlStateManager.disableDepth();
     }
 
     private float smoothing(float dtMs) {
