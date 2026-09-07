@@ -21,6 +21,8 @@ import java.awt.Color;
 
 public class SpotifyMiniPlayer extends Module {
     private static final double UNSET_CUSTOM_POSITION = -1.0D;
+    /** Normalised drop below the player used before the bubble has been placed by hand. */
+    private static final float DETACHED_LYRICS_DROP = 0.12F;
     private final Module settingOwner;
 
     public static SliderSetting widgetStyle;
@@ -34,6 +36,7 @@ public class SpotifyMiniPlayer extends Module {
     public static ButtonSetting showSourceApp;
     public static ButtonSetting showStatusBadge;
     public static ButtonSetting showLyrics;
+    public static ButtonSetting separateLyrics;
     public static ButtonSetting fullLyricsView;
     public static ButtonSetting karaokeLyrics;
     public static ButtonSetting animateLyrics;
@@ -70,6 +73,7 @@ public static SliderSetting lyricsPosX;
         settingOwner.registerSetting(showStatusBadge = new ButtonSetting("Show status badge", true));
         settingOwner.registerSetting(new DescriptionSetting("Lyrics"));
         settingOwner.registerSetting(showLyrics = new ButtonSetting("Show synced lyrics", true));
+        settingOwner.registerSetting(separateLyrics = new ButtonSetting("Separate lyrics widget", false));
         settingOwner.registerSetting(fullLyricsView = new ButtonSetting("Full lyrics view", false));
         settingOwner.registerSetting(karaokeLyrics = new ButtonSetting("Karaoke highlight", false));
         settingOwner.registerSetting(animateLyrics = new ButtonSetting("Animate lyrics", true));
@@ -154,8 +158,12 @@ public static SliderSetting lyricsPosX;
         if (lyricTextScale != null) {
             lyricTextScale.setVisible(lyricsVisible, settingOwner);
         }
+        boolean detached = lyricsVisible && separateLyrics != null && separateLyrics.isToggled();
+        if (separateLyrics != null) {
+            separateLyrics.setVisible(lyricsVisible, settingOwner);
+        }
         if (lyricsScale != null) {
-            lyricsScale.setVisible(lyricsVisible && widget, settingOwner);
+            lyricsScale.setVisible(lyricsVisible && (widget || detached), settingOwner);
         }
         if (lyricSyncOffset != null) {
             lyricSyncOffset.setVisible(lyricsVisible, settingOwner);
@@ -187,16 +195,41 @@ private static final String[] FONT_OPTIONS = ModuleFont.options();
         return customPosY == null ? 0.0F : (float) Math.max(0.0D, Math.min(1.0D, customPosY.getInput()));
     }
 
+    /**
+     * Whether the lyric bubble is its own widget rather than a strip under the player.
+     *
+     * This used to be implied purely by a custom position existing, but the position sliders
+     * are hidden, so the only way to detach was to drag the bubble in the HUD editor -- and
+     * there was nothing to drag until it had already detached. The toggle is now the switch
+     * and the position is just where it sits.
+     */
     public static boolean hasLyricsPosition() {
+        if (separateLyrics != null && separateLyrics.isToggled()) {
+            return true;
+        }
+        return lyricsPosX != null && lyricsPosY != null
+                && lyricsPosX.getInput() >= 0.0D && lyricsPosY.getInput() >= 0.0D;
+    }
+
+    /** True once the bubble has an explicit place, as opposed to falling back to a default. */
+    public static boolean hasExplicitLyricsPosition() {
         return lyricsPosX != null && lyricsPosY != null
                 && lyricsPosX.getInput() >= 0.0D && lyricsPosY.getInput() >= 0.0D;
     }
 
     public static float getLyricsNormalizedX() {
+        if (!hasExplicitLyricsPosition()) {
+            // Detached but never placed: sit under the player rather than snapping to the
+            // top-left corner, which is where clamping an unset -1 would put it.
+            return getCustomNormalizedX();
+        }
         return lyricsPosX == null ? 0.0F : (float) Math.max(0.0D, Math.min(1.0D, lyricsPosX.getInput()));
     }
 
     public static float getLyricsNormalizedY() {
+        if (!hasExplicitLyricsPosition()) {
+            return Math.min(1.0F, getCustomNormalizedY() + DETACHED_LYRICS_DROP);
+        }
         return lyricsPosY == null ? 0.0F : (float) Math.max(0.0D, Math.min(1.0D, lyricsPosY.getInput()));
     }
 
