@@ -190,7 +190,7 @@ private int ringColor(int ringIndex) {
             EntityLivingBase activeTarget = getActiveTarget();
             if (activeTarget != null) {
                 traceStage(activeTarget, "hud sees aura target", "");
-                if (screenHides) {
+                if (screenHides && mindless.utility.Diagnostics.isEnabled()) {
                     traceStage(activeTarget, "panel suppressed: screen open",
                             mc.currentScreen.getClass().getSimpleName());
                 }
@@ -432,9 +432,14 @@ private int ringColor(int ringIndex) {
         }
 
         int alpha = (int) (255 * popProgress);
-        traceStage(target, "panel drawn", "alpha=" + alpha + " x=" + x + " y=" + y
-                + " w=" + targetStrWithPadding + " posMode=" + posMode
-                + " desired=" + Math.round(desiredX) + "," + Math.round(desiredY));
+        // Built only when diagnostics is on: this runs on every frame the panel is up, and
+        // concatenating it unconditionally would allocate a string per frame for a line
+        // nobody is reading.
+        if (mindless.utility.Diagnostics.isEnabled()) {
+            traceStage(target, "panel drawn", "alpha=" + alpha + " x=" + x + " y=" + y
+                    + " w=" + targetStrWithPadding + " posMode=" + posMode
+                    + " desired=" + Math.round(desiredX) + "," + Math.round(desiredY));
+        }
         float scale = popProgress;
         float centerX = (n6 + n8) * 0.5f;
         float centerY = (n7 + n9 + footerHeight) * 0.5f;
