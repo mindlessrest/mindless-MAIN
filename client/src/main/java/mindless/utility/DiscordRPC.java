@@ -23,11 +23,6 @@ private static final int MAX_PIPES = 10;
     // setups) listen here instead, and official Discord answers on it too.
     private static final int SOCKET_PORT_FIRST = 6463;
     private static final int SOCKET_PORT_LAST = 6472;
-    // Dorion runs its RPC server on its own configured port -- 1337 by default -- which is
-    // nowhere near the range every other client uses. Probing it costs a connect that fails
-    // immediately when nothing is listening, and a link is only claimed after a real websocket
-    // upgrade and a READY, so a stranger answering here cannot be mistaken for Discord.
-    private static final int[] EXTRA_SOCKET_PORTS = { 1337 };
     private static final int SOCKET_CONNECT_TIMEOUT_MS = 200;
     private static final int SOCKET_READ_TIMEOUT_MS = 1500;
 private static final long RECONNECT_INTERVAL_MS = 5000L;
@@ -262,9 +257,6 @@ private void findPipes() {
         // Every client that answers gets its own link, so official, Canary, Vesktop, Dorion and
         // anything else running at the same time all show the presence.
         for (int port = SOCKET_PORT_FIRST; port <= SOCKET_PORT_LAST; port++) {
-            tryLink(already, new SocketConnection(clientId, port));
-        }
-        for (int port : EXTRA_SOCKET_PORTS) {
             tryLink(already, new SocketConnection(clientId, port));
         }
     }
