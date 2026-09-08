@@ -23,10 +23,21 @@ public class NoSlow extends Module {
     public static SliderSetting slowed;
     public static ButtonSetting disableBow;
     public static ButtonSetting disablePotions;
-    public static ButtonSetting swordOnly;
-    public static ButtonSetting vanillaSword;
+    public static SliderSetting swordMode;
+    public static SliderSetting otherMode;
+    public static ButtonSetting onlyWhenBlocking;
 
     private final String[] NOSLOW_MODES = new String[] { "Vanilla", "Watchdog", "Blatant" };
+    /**
+     * Whether an item class gets the reduction lifted at all.
+     *
+     * Split by item because they are not equally safe. Moving at full speed while blocking a
+     * sword is ordinary; moving at full speed while drinking or drawing a bow is not something a
+     * legitimate client ever does, so that half defaults to leaving vanilla alone.
+     */
+    private final String[] ITEM_MODES = new String[] { "None", "Modified" };
+    private static final int ITEM_MODE_NONE = 0;
+    private static final int ITEM_MODE_MODIFIED = 1;
 
     public boolean noSlowing;
     private boolean setJump;
@@ -38,8 +49,9 @@ public class NoSlow extends Module {
         this.registerSetting(slowed = new SliderSetting("Slow %", 80.0D, 0.0D, 80.0D, 1.0D));
         this.registerSetting(disableBow = new ButtonSetting("Disable bow", false));
         this.registerSetting(disablePotions = new ButtonSetting("Disable potions", false));
-        this.registerSetting(swordOnly = new ButtonSetting("Sword only", false));
-        this.registerSetting(vanillaSword = new ButtonSetting("Vanilla sword", false));
+        this.registerSetting(swordMode = new SliderSetting("Sword", ITEM_MODE_MODIFIED, ITEM_MODES));
+        this.registerSetting(otherMode = new SliderSetting("Other items", ITEM_MODE_NONE, ITEM_MODES));
+        this.registerSetting(onlyWhenBlocking = new ButtonSetting("Only while blocking", true));
     }
 
     @Override
@@ -47,9 +59,22 @@ public class NoSlow extends Module {
         noSlowing = false;
     }
 
+    @Override
+    public void guiUpdate() {
+        boolean blatant = (int) mode.getInput() == 2;
+        boolean sword = !blatant && (int) swordMode.getInput() == ITEM_MODE_MODIFIED;
+        boolean other = !blatant && (int) otherMode.getInput() == ITEM_MODE_MODIFIED;
+        if (swordMode != null) swordMode.setVisible(!blatant, this);
+        if (otherMode != null) otherMode.setVisible(!blatant, this);
+        if (onlyWhenBlocking != null) onlyWhenBlocking.setVisible(sword, this);
+        if (disableBow != null) disableBow.setVisible(other, this);
+        if (disablePotions != null) disablePotions.setVisible(other, this);
+        if (slowed != null) slowed.setVisible(!blatant, this);
+    }
+
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent e) {
-        if (vanillaSword.isToggled() && Utils.holdingSword()) {
+        if ((int) swordMode.getInput() == ITEM_MODE_NONE && Utils.holdingSword()) {
             return;
         }
         boolean apply = getSlowed() != 0.2f;
@@ -73,23 +98,55 @@ public class NoSlow extends Module {
         }
     }
 
+    /**
+     * The movement multiplier while an item is in use. 0.2 is vanilla.
+     *
+     * Read from the player tick on both launch paths, so it must stay cheap and must always
+     * return something sane rather than throwing.
+     */
     public static float getSlowed() {
-        if (mc.thePlayer.getHeldItem() == null || ModuleManager.noSlow == null || !ModuleManager.noSlow.isEnabled()) {
+        net.minecraft.item.ItemStack held = mc.thePlayer == null ? null : mc.thePlayer.getHeldItem();
+        if (held == null || ModuleManager.noSlow == null || !ModuleManager.noSlow.isEnabled()) {
             return 0.2f;
         }
-        if ((int) mode.getInput() == 2) return 1.0f; // Blatant: no slowdown
-        else {
-            if (swordOnly.isToggled() && !(mc.thePlayer.getHeldItem().getItem() instanceof ItemSword)) {
-                return 0.2f;
-            }
-            if (mc.thePlayer.getHeldItem().getItem() instanceof ItemBow && disableBow.isToggled()) {
-                return 0.2f;
-            }
-            else if (mc.thePlayer.getHeldItem().getItem() instanceof ItemPotion && !ItemPotion.isSplash(mc.thePlayer.getHeldItem().getItemDamage()) && disablePotions.isToggled()) {
-                return 0.2f;
-            }
+        if ((int) mode.getInput() == 2) {
+            return 1.0f; // Blatant: no reduction at all, whatever is held.
         }
-        return (100.0F - (float) slowed.getInput()) / 100.0F;
+
+        float modified = (100.0F - (float) slowed.getInput()) / 100.0F;
+
+        if (held.getItem() instanceof ItemSword) {
+            if ((int) swordMode.getInput() == ITEM_MODE_NONE) {
+                return 0.2f;
+            }
+            // Tied to the block rather than to holding a sword. Full speed for as long as a
+            // sword is in hand is visible from a mile away; full speed only across the moments
+            // Autoblock is actually blocking is the same benefit over a far smaller window.
+            if (onlyWhenBlocking.isToggled() && !isBlockingNow()) {
+                return 0.2f;
+            }
+            return modified;
+        }
+
+        if ((int) otherMode.getInput() == ITEM_MODE_NONE) {
+            return 0.2f;
+        }
+        if (held.getItem() instanceof ItemBow && disableBow.isToggled()) {
+            return 0.2f;
+        }
+        if (held.getItem() instanceof ItemPotion
+                && !ItemPotion.isSplash(held.getItemDamage())
+                && disablePotions.isToggled()) {
+            return 0.2f;
+        }
+        return modified;
+    }
+
+    /** Whether Autoblock currently has a block standing. */
+    private static boolean isBlockingNow() {
+        return ModuleManager.autoBlock != null
+                && ModuleManager.autoBlock.isEnabled()
+                && ModuleManager.autoBlock.isActive();
     }
 
     @Override
