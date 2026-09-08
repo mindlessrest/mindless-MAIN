@@ -52,6 +52,18 @@ private volatile RpcLink connectingPipe;
     private volatile long reconnectSignal;
     private Thread worker;
 
+    /**
+     * Report a connection event to both the console and the diagnostics log.
+     *
+     * Standard output does not reach a readable file under Lunar, so everything this class
+     * had to say about which endpoint answered and what it replied was going nowhere. The
+     * diagnostics log is the one place a connection problem here can actually be read back.
+     */
+    private static void note(String message) {
+        System.out.println("[discord rpc] " + message);
+        mindless.utility.Diagnostics.log("rpc", message);
+    }
+
     public DiscordRPC(String clientId) {
         this.clientId = clientId;
     }
@@ -80,7 +92,7 @@ public void update(RichPresence presence) {
             return;
         }
         if (System.currentTimeMillis() - lastCycleAt > STALL_TIMEOUT_MS) {
-            System.out.println("[discord rpc] worker stalled, dropping connections to free it");
+            note("worker stalled, dropping connections to free it");
             for (RpcLink c : connections) {
                 c.forceClose();
             }
@@ -165,7 +177,7 @@ private void pump() {
                         consecutiveReconnectFailures++;
                         if (consecutiveReconnectFailures >= MAX_CONSECUTIVE_RECONNECT_FAILURES) {
                             reconnectSuspended = true;
-                            System.out.println("[discord rpc] Discord unavailable; discovery paused");
+                            note("Discord unavailable; discovery paused");
                         }
                         else {
                             nextConnectAt = now + reconnectDelay(consecutiveReconnectFailures);
@@ -180,7 +192,7 @@ private void pump() {
                         tokens--;
                         if (send(target)) {
                             sentSignature = signature;
-                            System.out.println("[discord rpc] set: " + target.details
+                            note("set: " + target.details
                                     + " / " + target.state);
                         }
                     }
@@ -224,7 +236,7 @@ private boolean send(RichPresence presence) {
             if (!c.isAlive()) {
                 c.forceClose();
                 connections.remove(c);
-                System.out.println("[discord rpc] lost " + c.label() + ", will look again");
+                note("lost " + c.label() + ", will look again");
             }
         }
     }
@@ -426,7 +438,7 @@ private static final class PipeConnection implements RpcLink {
                     Frame response = readFrame();
                     if (response == null || response.payload.contains("\"evt\":\"ERROR\"")) {
                         if (response != null) {
-                            System.out.println("[discord rpc] " + label + " refused: " + response.payload);
+                            note("" + label + " refused: " + response.payload);
                         }
                         closeQuietly();
                         continue;
@@ -442,7 +454,7 @@ private static final class PipeConnection implements RpcLink {
                         label += " (" + username + ")";
                     }
 
-                    System.out.println("[discord rpc] connected: " + label);
+                    note("connected: " + label);
                     alive = true;
                     return true;
                 }
@@ -466,7 +478,7 @@ private static final class PipeConnection implements RpcLink {
                         return false;
                     }
                     if (frame.op == OP_CLOSE) {
-                        System.out.println("[discord rpc] " + label + " closed by Discord: " + frame.payload);
+                        note("" + label + " closed by Discord: " + frame.payload);
                         alive = false;
                         return false;
                     }
@@ -479,18 +491,18 @@ private static final class PipeConnection implements RpcLink {
                     }
                     if (frame.payload.contains("\"cmd\":\"SET_ACTIVITY\"")) {
                         if (frame.payload.contains("\"evt\":\"ERROR\"")) {
-                            System.out.println("[discord rpc] " + label + " rejected update: " + frame.payload);
+                            note("" + label + " rejected update: " + frame.payload);
                             return false;
                         }
                         return true;
                     }
                 }
-                System.out.println("[discord rpc] " + label + " lost sync, reconnecting");
+                note("" + label + " lost sync, reconnecting");
                 alive = false;
                 return false;
             }
             catch (Exception e) {
-                System.out.println("[discord rpc] " + label + " failed: " + e);
+                note("" + label + " failed: " + e);
                 alive = false;
                 return false;
             }
@@ -653,7 +665,7 @@ private static final class PipeConnection implements RpcLink {
                         return false;
                     }
                     if (payload.contains("\"evt\":\"ERROR\"")) {
-                        System.out.println("[discord rpc] " + label + " refused: " + payload);
+                        note("" + label + " refused: " + payload);
                         closeQuietly();
                         return false;
                     }
@@ -662,7 +674,7 @@ private static final class PipeConnection implements RpcLink {
                         if (username != null) {
                             label = "socket " + port + " (" + username + ")";
                         }
-                        System.out.println("[discord rpc] connected: " + label);
+                        note("connected: " + label);
                         alive = true;
                         return true;
                     }
@@ -731,7 +743,7 @@ private static final class PipeConnection implements RpcLink {
                     }
                     if (payload.contains("\"cmd\":\"SET_ACTIVITY\"")) {
                         if (payload.contains("\"evt\":\"ERROR\"")) {
-                            System.out.println("[discord rpc] " + label + " rejected update: " + payload);
+                            note("" + label + " rejected update: " + payload);
                             return false;
                         }
                         return true;
@@ -741,7 +753,7 @@ private static final class PipeConnection implements RpcLink {
                 return false;
             }
             catch (Exception e) {
-                System.out.println("[discord rpc] " + label + " failed: " + e);
+                note("" + label + " failed: " + e);
                 alive = false;
                 return false;
             }
