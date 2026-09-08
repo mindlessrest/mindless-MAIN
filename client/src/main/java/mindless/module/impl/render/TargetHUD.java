@@ -82,6 +82,32 @@ private static final int[] DEFAULT_RING_COLORS = {
     private float tweenedX = Float.NaN;
     private float tweenedY = Float.NaN;
 
+    // Acquisition trace. Nothing already in the client records when the panel first drew
+    // relative to when KillAura picked the opponent up: the profiler measures time spent in
+    // code, and the GL audit only reports state. Each stage is reported once per target, with
+    // the delay since that target was first seen, which is what separates "the aura took a
+    // while to lock on" from "the panel was drawn all along and could not be seen".
+    private int traceTargetId = -1;
+    private long traceStartAt;
+    private final java.util.Set<String> tracedStages = new java.util.HashSet<String>();
+
+    private void traceStage(EntityLivingBase who, String stage, String detail) {
+        if (who == null || !mindless.utility.Diagnostics.isEnabled()) {
+            return;
+        }
+        if (who.getEntityId() != traceTargetId) {
+            traceTargetId = who.getEntityId();
+            traceStartAt = System.currentTimeMillis();
+            tracedStages.clear();
+        }
+        if (!tracedStages.add(stage)) {
+            return;
+        }
+        mindless.utility.Diagnostics.log("targethud", "+"
+                + (System.currentTimeMillis() - traceStartAt) + "ms " + stage
+                + " [" + who.getName() + "]" + (detail.isEmpty() ? "" : " " + detail));
+    }
+
     private String[] modes = new String[]{ "Modern", "Legacy", "Compact" };
 
     public TargetHUD() {
@@ -163,6 +189,11 @@ private int ringColor(int ringIndex) {
             boolean screenHides = mc.currentScreen != null && !chatOpen;
             EntityLivingBase activeTarget = getActiveTarget();
             if (activeTarget != null) {
+                traceStage(activeTarget, "hud sees aura target", "");
+                if (screenHides) {
+                    traceStage(activeTarget, "panel suppressed: screen open",
+                            mc.currentScreen.getClass().getSimpleName());
+                }
                 target = activeTarget;
                 lastAliveMS = System.currentTimeMillis();
                 fadeTimer = null;
@@ -214,6 +245,7 @@ private int ringColor(int ringIndex) {
             return;
         }
 
+        traceStage(auraTarget, "esp ring drawn", "");
         drawPillEsp(auraTarget);
     }
 
@@ -365,6 +397,7 @@ private int ringColor(int ringIndex) {
         }
 
         if (popProgress <= 0.001f) {
+            traceStage(target, "panel skipped: faded out", "");
             target = null;
             healthBarTimer = null;
             popInStart = -1;
@@ -372,6 +405,9 @@ private int ringColor(int ringIndex) {
         }
 
         int alpha = (int) (255 * popProgress);
+        traceStage(target, "panel drawn", "alpha=" + alpha + " x=" + x + " y=" + y
+                + " w=" + targetStrWithPadding + " posMode=" + posMode
+                + " desired=" + Math.round(desiredX) + "," + Math.round(desiredY));
         float scale = popProgress;
         float centerX = (n6 + n8) * 0.5f;
         float centerY = (n7 + n9 + footerHeight) * 0.5f;
