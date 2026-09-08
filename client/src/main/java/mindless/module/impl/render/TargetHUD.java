@@ -72,6 +72,7 @@ public class TargetHUD extends Module {
     private SliderSetting hitStyle;
     private SliderSetting hitParticleColor;
     private SliderSetting hitParticleAmount;
+    private SliderSetting hitParticleSize;
     private ColorSetting hitColor;
     private SliderSetting hitStrengthScale;
     private final ColorSetting[] ringColors = new ColorSetting[RING_COUNT];
@@ -193,6 +194,7 @@ private static final int[] DEFAULT_RING_COLORS = {
         this.registerSetting(hitStyle = new SliderSetting("Hit effect", HIT_STYLE_FLASH, HIT_STYLES));
         this.registerSetting(hitParticleColor = new SliderSetting("Effect colors", HIT_COLORS_HIT, HIT_PARTICLE_COLORS));
         this.registerSetting(hitParticleAmount = new SliderSetting("Effect amount", 1.0, 0.25, 2.0, 0.05));
+        this.registerSetting(hitParticleSize = new SliderSetting("Effect size", 1.0, 0.25, 3.0, 0.05));
         this.registerSetting(hitColor = new ColorSetting("Hit color", 255, 92, 92, 190));
         this.registerSetting(hitStrengthScale = new SliderSetting("Hit strength", 1.0, 0.2, 2.0, 0.05));
 
@@ -248,6 +250,7 @@ private static final int[] DEFAULT_RING_COLORS = {
         boolean particles = hits && hitMode != HIT_STYLE_FLASH;
         if (hitParticleColor != null) hitParticleColor.setVisible(particles, this);
         if (hitParticleAmount != null) hitParticleAmount.setVisible(particles, this);
+        if (hitParticleSize != null) hitParticleSize.setVisible(particles, this);
         if (hitColor != null) {
             int colorMode = hitParticleColor == null ? HIT_COLORS_HIT : (int) hitParticleColor.getInput();
             hitColor.setVisible(hits && (!particles || colorMode == HIT_COLORS_HIT), this);
@@ -1262,6 +1265,11 @@ private int ringColor(int ringIndex) {
     private void spawnHitParticles(int style, float centerX, float centerY, float headSize) {
         float strength = Math.max(0.25f, Math.min(1.0f, hitStrength));
         float amount = (float) (hitParticleAmount == null ? 1.0 : hitParticleAmount.getInput());
+        float scale = (float) (hitParticleSize == null ? 1.0 : hitParticleSize.getInput());
+        // The head's own edge. Everything is born here and travels away from it, rather than
+        // starting somewhere in the middle of the face and crossing it on the way out -- which is
+        // what made the effects look like they were happening inside the head instead of off it.
+        float edge = headSize * 0.5f;
         int count;
         switch (style) {
             case HIT_STYLE_SPARKS:  count = Math.round((9 + 11 * strength) * amount); break;
@@ -1287,42 +1295,45 @@ private int ringColor(int ringIndex) {
 
             switch (style) {
                 case HIT_STYLE_SPARKS:
-                    // Thrown out from just inside the head, fast, and pulled down.
+                    // Off the edge, fast, and pulled down.
                     speed = headSize * (1.6f + hitRandom.nextFloat() * 2.4f) * strength;
-                    particle.x = centerX + (float) Math.cos(angle) * headSize * 0.18f;
-                    particle.y = centerY + (float) Math.sin(angle) * headSize * 0.18f;
+                    particle.x = centerX + (float) Math.cos(angle) * edge;
+                    particle.y = centerY + (float) Math.sin(angle) * edge;
                     particle.velocityX = (float) Math.cos(angle) * speed;
                     particle.velocityY = (float) Math.sin(angle) * speed;
-                    particle.size = headSize * (0.05f + hitRandom.nextFloat() * 0.04f);
+                    particle.size = headSize * (0.05f + hitRandom.nextFloat() * 0.04f) * scale;
                     particle.maxLife = 0.28f + hitRandom.nextFloat() * 0.22f;
                     break;
                 case HIT_STYLE_ORBS:
-                    // Slower and heavier than sparks so they read as objects, not streaks.
+                    // Slower and heavier than sparks so they read as objects, not streaks. Pushed
+                    // out past the edge by their own radius so the ball clears the head cleanly
+                    // rather than being half buried in it on the first frame.
                     speed = headSize * (0.8f + hitRandom.nextFloat() * 1.3f) * strength;
-                    particle.x = centerX + (float) Math.cos(angle) * headSize * 0.12f;
-                    particle.y = centerY + (float) Math.sin(angle) * headSize * 0.12f;
+                    particle.size = headSize * (0.12f + hitRandom.nextFloat() * 0.09f) * scale;
+                    particle.x = centerX + (float) Math.cos(angle) * (edge + particle.size);
+                    particle.y = centerY + (float) Math.sin(angle) * (edge + particle.size);
                     particle.velocityX = (float) Math.cos(angle) * speed;
                     particle.velocityY = (float) Math.sin(angle) * speed - headSize * 0.4f;
-                    particle.size = headSize * (0.12f + hitRandom.nextFloat() * 0.09f);
                     particle.maxLife = 0.45f + hitRandom.nextFloat() * 0.35f;
                     break;
                 case HIT_STYLE_SHATTER:
                     speed = headSize * (1.2f + hitRandom.nextFloat() * 1.8f) * strength;
-                    particle.x = centerX + (float) Math.cos(angle) * headSize * 0.22f;
-                    particle.y = centerY + (float) Math.sin(angle) * headSize * 0.22f;
+                    particle.size = headSize * (0.09f + hitRandom.nextFloat() * 0.07f) * scale;
+                    particle.x = centerX + (float) Math.cos(angle) * (edge + particle.size);
+                    particle.y = centerY + (float) Math.sin(angle) * (edge + particle.size);
                     particle.velocityX = (float) Math.cos(angle) * speed;
                     particle.velocityY = (float) Math.sin(angle) * speed;
-                    particle.size = headSize * (0.09f + hitRandom.nextFloat() * 0.07f);
                     particle.spin = (hitRandom.nextFloat() - 0.5f) * 16.0f;
                     particle.maxLife = 0.35f + hitRandom.nextFloat() * 0.25f;
                     break;
                 case HIT_STYLE_EMBERS:
-                    // Drift up and out, slowly, with no gravity pulling them back.
-                    particle.x = centerX + (hitRandom.nextFloat() - 0.5f) * headSize * 0.8f;
-                    particle.y = centerY + (hitRandom.nextFloat() - 0.5f) * headSize * 0.5f;
-                    particle.velocityX = (hitRandom.nextFloat() - 0.5f) * headSize * 0.7f;
+                    // Drift up and out, slowly, with no gravity pulling them back. Born around the
+                    // edge like the rest instead of scattered across the face.
+                    particle.x = centerX + (float) Math.cos(angle) * edge;
+                    particle.y = centerY + (float) Math.sin(angle) * edge;
+                    particle.velocityX = (float) Math.cos(angle) * headSize * 0.5f;
                     particle.velocityY = -headSize * (0.6f + hitRandom.nextFloat() * 0.8f);
-                    particle.size = headSize * (0.06f + hitRandom.nextFloat() * 0.06f);
+                    particle.size = headSize * (0.06f + hitRandom.nextFloat() * 0.06f) * scale;
                     particle.maxLife = 0.6f + hitRandom.nextFloat() * 0.5f;
                     break;
                 case HIT_STYLE_RIPPLE:
@@ -1331,7 +1342,7 @@ private int ringColor(int ringIndex) {
                     particle.y = centerY;
                     particle.velocityX = 0.0f;
                     particle.velocityY = 0.0f;
-                    particle.size = headSize * 0.5f;
+                    particle.size = edge * scale;
                     particle.maxLife = 0.42f;
                     break;
             }
@@ -1526,7 +1537,8 @@ private int ringColor(int ringIndex) {
     /** An expanding ring with a soft edge on both sides. */
     private void emitRipple(WorldRenderer worldRenderer, HitParticle particle, float remaining, float panelFade) {
         float grown = 1.0f - remaining;
-        float radius = particle.size * (0.35f + 1.25f * grown);
+        // Starts on the head's edge, not inside it, and expands away.
+        float radius = particle.size * (1.0f + 1.15f * grown);
         float thickness = particle.size * 0.16f * (0.4f + 0.6f * remaining);
         int a = Math.round(Math.max(0.0f, Math.min(1.0f, remaining * remaining * panelFade)) * 255.0f);
         if (a <= 1) return;
