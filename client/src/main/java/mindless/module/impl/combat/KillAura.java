@@ -350,9 +350,7 @@ public class KillAura extends Module {
             // Reported on change only, so a flip-flopping selection is visible as a run of
             // lines rather than being hidden behind the repeat filter.
             if (target != entity && mindless.utility.Diagnostics.isEnabled()) {
-                mindless.utility.Diagnostics.log("targethud", "aura target -> "
-                        + entity.getName() + " dist=" + String.format("%.2f", targetDistance)
-                        + " attacking=" + (attackingEntity != null));
+                mindless.utility.Diagnostics.log("targethud", "aura target -> " + entity.getName());
             }
             target = (EntityLivingBase) entity;
             lastHudTarget = target;

@@ -396,7 +396,15 @@ private int ringColor(int ringIndex) {
             popProgress = Math.max(0.0f, popProgress * popProgress);
         }
 
-        if (popProgress <= 0.001f) {
+        // Only a completed fade-OUT ends the panel. The pop-in starts at exactly zero --
+        // easeOutBack(0) is 0, and popInStart is set in the same call that draws, so the first
+        // frame of a new target usually measures no elapsed time at all. Sharing this bail with
+        // the fade-out therefore read the start of the animation as the end of one: the target
+        // was discarded and popInStart reset, the next frame re-acquired it and started over,
+        // and the panel stayed invisible until the millisecond clock happened to tick between
+        // the two. That is the second or so before the panel appears while the ESP rings are
+        // already up.
+        if (fadeTimer != null && popProgress <= 0.001f) {
             traceStage(target, "panel skipped: faded out", "");
             target = null;
             healthBarTimer = null;
