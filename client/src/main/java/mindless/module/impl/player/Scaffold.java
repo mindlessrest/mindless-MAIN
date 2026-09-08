@@ -7,8 +7,6 @@ import mindless.event.RightClickDelayTickEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
-import mindless.module.setting.impl.ColorSetting;
-import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.RotationUtils;
@@ -44,47 +42,6 @@ import org.lwjgl.opengl.GL11;
 import java.io.IOException;
 
 public class Scaffold extends Module {
-    /**
-     * Where to look while bridging.
-     *
-     * All four are expressed against the movement yaw -- the direction you are actually
-     * travelling -- rather than where the camera points, because that is what stays stable while
-     * strafing. Back looks straight back along it, Diagonal picks whichever of the two rear
-     * quarters faces the block being bridged from, Normal tries those three in order and takes
-     * the first that can actually reach, and Offset aims at a point pushed into the face instead
-     * of at its centre.
-     */
-    private static final String[] ROTATION_MODES = new String[]{"Back", "Normal", "Offset", "Diagonal"};
-
-    /**
-     * How the bridge is built, which is a different question from where to look.
-     *
-     * Normal places behind you as fast as the aim allows. Keep Y refuses to descend, so a
-     * bridge stays level instead of stepping down where the ground falls away. Legit sneaks at
-     * the edge and releases after a delay, which is what a person does and what makes it hold
-     * up on a server watching for the things people cannot do.
-     */
-    private static final String[] SCAFFOLD_MODES = new String[]{"Normal", "Legit", "Keep Y"};
-    private static final int SCAFFOLD_NORMAL = 0;
-    private static final int SCAFFOLD_LEGIT = 1;
-    private static final int SCAFFOLD_KEEP_Y = 2;
-
-    private static final String[] MOVE_FIX_MODES = new String[]{"None", "Silent", "Strict"};
-    private static final int MOVE_FIX_NONE = 0;
-    private static final int MOVE_FIX_SILENT = 1;
-    private static final int MOVE_FIX_STRICT = 2;
-
-    private static final String[] ESP_COLOR_MODES = new String[]{"Theme", "Theme custom", "Custom"};
-    private static final int ESP_THEME = 0;
-    private static final int ESP_THEME_CUSTOM = 1;
-    private static final int ESP_CUSTOM = 2;
-    /** How long the outline takes to fall away once the target moves on. */
-    private static final long TARGET_FADE_MS = 220L;
-    private static final int ROT_BACK = 0;
-    private static final int ROT_NORMAL = 1;
-    private static final int ROT_OFFSET = 2;
-    private static final int ROT_DIAGONAL = 3;
-
     private static final ItemBlock PLACEHOLDER = new ItemBlock(Blocks.tnt);
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
@@ -99,57 +56,10 @@ public class Scaffold extends Module {
     private EnumFacing queuedFace;
     private Vec3 queuedVec;
     private boolean placeQueued;
-    /** The block the last placement went against, reused while it stays usable. */
-    private BlockPos lastPlacedAgainst;
-    /** Ticks spent off the ground, and how many blocks the current jump still owes. */
-    private int airTicks;
-    private int blocksSinceJump;
-    private int jumpBlockTarget;
-    /** When the last target stopped being the target, for the outline to fade from. */
-    private BlockPos fadingPos;
-    private long fadingSince;
 
     private float lastYaw, lastPitch;
     private boolean lastRotsValid;
 
-    private ButtonSetting downPlace;
-    private SliderSetting rotationMode;
-    private ButtonSetting aimCheck;
-    private ButtonSetting strictAimCheck;
-    private SliderSetting offsetAmount;
-    private ButtonSetting swing;
-    private SliderSetting straightAirDelay;
-    private SliderSetting diagonalAirDelay;
-    private SliderSetting straightJumpBlocks;
-    private SliderSetting diagonalJumpBlocks;
-    private ButtonSetting showTarget;
-    private ButtonSetting targetFadeOut;
-    private ButtonSetting targetShade;
-    private SliderSetting scaffoldMode;
-    private SliderSetting normalRotation;
-    private SliderSetting legitRotation;
-    private SliderSetting keepYRotation;
-    private SliderSetting moveFix;
-    private SliderSetting rotationSmoothing;
-    private SliderSetting angleStep;
-    private ButtonSetting dontRenderRotation;
-    private ButtonSetting autoItem;
-    private ButtonSetting itemCounter;
-    private ButtonSetting fakeItem;
-    private SliderSetting legitEdgeOffset;
-    private SliderSetting legitUnsneakDelay;
-    private ButtonSetting keepYOnRightClick;
-    private ButtonSetting keepYBlinkRotation;
-    private SliderSetting keepYJumpForwardChance;
-    private SliderSetting espColorMode;
-    private ColorSetting espCustomColor;
-    private GroupSetting rotationGroup;
-    private GroupSetting modeGroup;
-    private GroupSetting visualGroup;
-
-    /** Ticks the legit-mode sneak has been held, for the unsneak delay. */
-    private int legitSneakTicks = -1;
-    private final java.util.Random scaffoldRandom = new java.util.Random();
     private boolean eagleActive;
 
     /** Whether Sprint Scaf Mode currently owns the sprint key, and what it last asked for. */
@@ -170,46 +80,6 @@ private int previousSlot = -1;
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
         this.registerSetting(switchBack = new ButtonSetting("Switch back", true));
-        this.registerSetting(scaffoldMode = new SliderSetting("Mode", SCAFFOLD_NORMAL, SCAFFOLD_MODES));
-        this.registerSetting(downPlace = new ButtonSetting("Down place", true));
-        this.registerSetting(swing = new ButtonSetting("Swing", true));
-
-        // Each mode keeps its own rotation. What reads well while sprinting a flat bridge is
-        // not what reads well while sneaking along an edge, and having one shared setting
-        // meant changing mode silently changed how the aim behaved.
-        this.registerSetting(rotationGroup = new GroupSetting("Rotation"));
-        this.registerSetting(rotationMode = new SliderSetting(rotationGroup, "Rotation", ROT_DIAGONAL, ROTATION_MODES));
-        this.registerSetting(normalRotation = new SliderSetting(rotationGroup, "Normal rotation", ROT_DIAGONAL, ROTATION_MODES));
-        this.registerSetting(legitRotation = new SliderSetting(rotationGroup, "Legit rotation", ROT_BACK, ROTATION_MODES));
-        this.registerSetting(keepYRotation = new SliderSetting(rotationGroup, "Keep Y rotation", ROT_DIAGONAL, ROTATION_MODES));
-        this.registerSetting(offsetAmount = new SliderSetting(rotationGroup, "Offset", 0.15, 0.0, 1.0, 0.01));
-        this.registerSetting(rotationSmoothing = new SliderSetting(rotationGroup, "Smoothing", "%", 0.0, 0.0, 100.0, 1.0));
-        this.registerSetting(angleStep = new SliderSetting(rotationGroup, "Angle step", "\u00b0", 90.0, 1.0, 180.0, 1.0));
-        this.registerSetting(aimCheck = new ButtonSetting(rotationGroup, "Aim check", true));
-        this.registerSetting(strictAimCheck = new ButtonSetting(rotationGroup, "Strict aim check", true));
-        this.registerSetting(moveFix = new SliderSetting(rotationGroup, "Move fix", MOVE_FIX_SILENT, MOVE_FIX_MODES));
-        this.registerSetting(dontRenderRotation = new ButtonSetting(rotationGroup, "Dont render rotation", false));
-
-        this.registerSetting(modeGroup = new GroupSetting("Mode options"));
-        this.registerSetting(legitEdgeOffset = new SliderSetting(modeGroup, "Legit edge offset", 0.0, 0.0, 0.3, 0.01));
-        this.registerSetting(legitUnsneakDelay = new SliderSetting(modeGroup, "Legit unsneak delay", "ms", 50.0, 50.0, 300.0, 5.0));
-        this.registerSetting(keepYOnRightClick = new ButtonSetting(modeGroup, "Keep Y on right click", false));
-        this.registerSetting(keepYBlinkRotation = new ButtonSetting(modeGroup, "Keep Y blink rotation", false));
-        this.registerSetting(keepYJumpForwardChance = new SliderSetting(modeGroup, "Keep Y jump forward", "%", 100.0, 0.0, 100.0, 1.0));
-        this.registerSetting(straightAirDelay = new SliderSetting(modeGroup, "Straight air delay", " tick", 1, 0, 4, 1));
-        this.registerSetting(diagonalAirDelay = new SliderSetting(modeGroup, "Diagonal air delay", " tick", 1, 0, 4, 1));
-        this.registerSetting(straightJumpBlocks = new SliderSetting(modeGroup, "Straight jump blocks", 0, 0, 3, 1));
-        this.registerSetting(diagonalJumpBlocks = new SliderSetting(modeGroup, "Diagonal jump blocks", 0, 0, 3, 1));
-
-        this.registerSetting(visualGroup = new GroupSetting("Visual"));
-        this.registerSetting(autoItem = new ButtonSetting(visualGroup, "Auto item", true));
-        this.registerSetting(itemCounter = new ButtonSetting(visualGroup, "Item counter", true));
-        this.registerSetting(fakeItem = new ButtonSetting(visualGroup, "Fake item", true));
-        this.registerSetting(showTarget = new ButtonSetting(visualGroup, "Show target", true));
-        this.registerSetting(targetFadeOut = new ButtonSetting(visualGroup, "Target fade out", true));
-        this.registerSetting(targetShade = new ButtonSetting(visualGroup, "Target shade", false));
-        this.registerSetting(espColorMode = new SliderSetting(visualGroup, "Target color", ESP_THEME, ESP_COLOR_MODES));
-        this.registerSetting(espCustomColor = new ColorSetting(visualGroup, "Custom color", 0, 170, 255, 64));
     }
 
     @Override
@@ -302,20 +172,30 @@ private void restorePreviousSlot() {
         Item item = getBlockItem();
         if (item == null) return;
 
-        // The chosen mode decides where to look; the speed cap then walks the head there so it
-        // does not snap. Falling still forces the aim down at the face, since a bridge that
-        // misses while you are already off the edge is the one that actually costs you.
-        float[] target = placementRotations(best.pos, best.face);
-        target[0] = quantiseYaw(target[0]);
-        target = applySmoothing(target);
-        float[] rots = applySpeedCap(lastRotsValid ? lastYaw : baseYaw,
-                lastRotsValid ? lastPitch : mc.thePlayer.rotationPitch,
-                target[0], willFall ? target[1] : Math.max(target[1], 82f));
+        float[] rots;
+        if (willFall) {
+            float[] solved = getRotationsForFace(best.pos, best.face, baseYaw);
+            if (solved != null) {
+                rots = applySpeedCap(lastRotsValid ? lastYaw : baseYaw,
+                        lastRotsValid ? lastPitch : mc.thePlayer.rotationPitch,
+                        baseYaw, solved[1]);
+                rots[0] = baseYaw;
+            } else {
+                rots = getFreeRotationsForFace(best.pos, best.face);
+                rots = applySpeedCap(lastRotsValid ? lastYaw : baseYaw,
+                        lastRotsValid ? lastPitch : mc.thePlayer.rotationPitch,
+                        rots[0], rots[1]);
+            }
+        } else {
+            rots = applySpeedCap(lastRotsValid ? lastYaw : baseYaw,
+                    lastRotsValid ? lastPitch : mc.thePlayer.rotationPitch,
+                    baseYaw, 82f);
+        }
 
         float[] fixed = RotationUtils.fixRotation(rots[0], rots[1],
                 RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
 
-        e.setYaw(fixed[0]);
+        e.setYaw(willFall ? (getRotationsForFace(best.pos, best.face, baseYaw) != null ? baseYaw : fixed[0]) : fixed[0]);
         e.setPitch(fixed[1]);
 
         lastYaw = e.yaw != null ? e.yaw : fixed[0];
@@ -345,37 +225,14 @@ private void restorePreviousSlot() {
     public void onPreUpdate(PreUpdateEvent e) {
         if (!Utils.nullCheck()) return;
 
-        // Jump bridging. While off the ground a placement waits out the air delay, unless the
-        // jump still owes blocks, in which case it goes immediately -- that pair is what lets a
-        // jump place its blocks up front and then hold off, instead of spraying every tick.
-        boolean diagonal = isMovingDiagonally();
-        if (mc.thePlayer.onGround) {
-            airTicks = 0;
-            blocksSinceJump = 0;
-            jumpBlockTarget = (int) (diagonal ? diagonalJumpBlocks.getInput() : straightJumpBlocks.getInput());
-        }
-        else {
-            airTicks++;
-        }
-        int airDelay = (int) (diagonal ? diagonalAirDelay.getInput() : straightAirDelay.getInput());
-        boolean airAllows = mc.thePlayer.onGround
-                || airTicks >= airDelay
-                || blocksSinceJump < jumpBlockTarget;
-
         boolean placed = false;
-        if (airAllows && placeQueued && queuedPos != null && queuedFace != null && queuedVec != null) {
+        if (placeQueued && queuedPos != null && queuedFace != null && queuedVec != null) {
             ItemStack held = mc.thePlayer.getHeldItem();
             if (held != null && held.getItem() instanceof ItemBlock) {
-                if (!keepingY() || queuedFace != EnumFacing.UP) {
+                if (!keepY.isToggled() || queuedFace != EnumFacing.UP) {
                     mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held,
                             queuedPos, queuedFace, queuedVec);
-                    if (swing.isToggled()) {
-                        mc.thePlayer.swingItem();
-                    }
-                    lastPlacedAgainst = queuedPos;
-                    if (!mc.thePlayer.onGround) {
-                        blocksSinceJump++;
-                    }
+                    mc.thePlayer.swingItem();
                     placed = true;
                 }
             }
@@ -383,7 +240,6 @@ private void restorePreviousSlot() {
         placeQueued = false;
 
         updateEagle(placed);
-        updateLegitSneak();
 
         int sprintMode = (int) sprint.getInput();
         if (sprintMode != 0) {
@@ -410,132 +266,9 @@ private void restorePreviousSlot() {
 
     @SubscribeEvent
     public void onRenderWorld(RenderWorldLastEvent e) {
-        if (!showTarget.isToggled()) {
-            fadingPos = null;
-            return;
-        }
-
-        // Remember the block the moment it stops being the target, so the outline can fall away
-        // from where it was rather than blinking off as the search moves on.
-        if (previewPos != null) {
-            if (!previewPos.equals(fadingPos)) {
-                fadingPos = previewPos;
-            }
-            fadingSince = System.currentTimeMillis();
-        }
-
-        BlockPos drawAt = previewPos != null ? previewPos : fadingPos;
-        if (drawAt == null) {
-            return;
-        }
-
-        float strength = 1.0f;
-        if (previewPos == null) {
-            if (!targetFadeOut.isToggled()) {
-                fadingPos = null;
-                return;
-            }
-            long elapsed = System.currentTimeMillis() - fadingSince;
-            strength = 1.0f - elapsed / (float) TARGET_FADE_MS;
-            if (strength <= 0.0f) {
-                fadingPos = null;
-                return;
-            }
-        }
-
-        int base = targetOutlineColor();
-        int alpha = Math.max(0, Math.min(255, Math.round(((base >>> 24) & 0xFF) * strength)));
-        int color = (alpha << 24) | (base & 0xFFFFFF);
-        RenderUtils.renderBlock(drawAt, color, true, targetShade.isToggled());
-    }
-
-    /** The outline colour, by mode. Theme custom takes the theme hue at the custom opacity. */
-    private int targetOutlineColor() {
-        int mode = espColorMode == null ? ESP_THEME : (int) espColorMode.getInput();
-        int customAlpha = espCustomColor == null ? 0x40 : espCustomColor.getAlpha();
-        switch (mode) {
-            case ESP_CUSTOM:
-                return (customAlpha << 24) | (espCustomColor.getRGB() & 0xFFFFFF);
-            case ESP_THEME_CUSTOM:
-                return (customAlpha << 24)
-                        | (mindless.module.impl.render.HUD.getHudColor(0.0) & 0xFFFFFF);
-            case ESP_THEME:
-            default:
-                return 0x40000000 | (mindless.module.impl.render.HUD.getHudColor(0.0) & 0xFFFFFF);
-        }
-    }
-
-    /**
-     * Legit mode: crouch at the edge, and let go a moment later.
-     *
-     * Sneaking is what stops a player walking off the block they are building from, so a mode
-     * claiming to be legitimate has to actually do it. The release is delayed because letting
-     * go on the exact tick the edge clears is a tell in itself -- a hand is late.
-     */
-    private void updateLegitSneak() {
-        if (scaffoldMode == null || (int) scaffoldMode.getInput() != SCAFFOLD_LEGIT) {
-            if (legitSneakTicks >= 0) {
-                setShiftOverride(false);
-                legitSneakTicks = -1;
-            }
-            return;
-        }
-
-        double offset = legitEdgeOffset == null ? 0.0 : legitEdgeOffset.getInput();
-        boolean atEdge = isOverEdge(offset > 0.0 ? 1 : 0);
-        if (atEdge) {
-            setShiftOverride(true);
-            legitSneakTicks = 0;
-            return;
-        }
-        if (legitSneakTicks < 0) {
-            return;
-        }
-        int holdTicks = (int) Math.max(1.0,
-                (legitUnsneakDelay == null ? 50.0 : legitUnsneakDelay.getInput()) / 50.0);
-        if (++legitSneakTicks >= holdTicks) {
-            setShiftOverride(false);
-            legitSneakTicks = -1;
-        }
-    }
-
-    @Override
-    public void guiUpdate() {
-        int mode = scaffoldMode == null ? SCAFFOLD_NORMAL : (int) scaffoldMode.getInput();
-        // Only the rotation belonging to the active mode is worth showing; the shared one is
-        // left for profiles written before the modes existed.
-        if (rotationMode != null) rotationMode.setVisible(false, this);
-        if (normalRotation != null) normalRotation.setVisible(mode == SCAFFOLD_NORMAL, this);
-        if (legitRotation != null) legitRotation.setVisible(mode == SCAFFOLD_LEGIT, this);
-        if (keepYRotation != null) keepYRotation.setVisible(mode == SCAFFOLD_KEEP_Y, this);
-        if (offsetAmount != null) offsetAmount.setVisible(activeRotationMode() == ROT_OFFSET, this);
-        if (strictAimCheck != null) {
-            strictAimCheck.setVisible(aimCheck == null || aimCheck.isToggled(), this);
-        }
-
-        boolean legit = mode == SCAFFOLD_LEGIT;
-        if (legitEdgeOffset != null) legitEdgeOffset.setVisible(legit, this);
-        if (legitUnsneakDelay != null) legitUnsneakDelay.setVisible(legit, this);
-
-        boolean keeping = mode == SCAFFOLD_KEEP_Y;
-        if (keepYOnRightClick != null) keepYOnRightClick.setVisible(keeping, this);
-        if (keepYBlinkRotation != null) keepYBlinkRotation.setVisible(keeping, this);
-        if (keepYJumpForwardChance != null) keepYJumpForwardChance.setVisible(keeping, this);
-        if (keepY != null) keepY.setVisible(!keeping, this);
-
-        if (espCustomColor != null) {
-            int esp = espColorMode == null ? ESP_THEME : (int) espColorMode.getInput();
-            espCustomColor.setVisible(esp != ESP_THEME, this);
-        }
-        if (targetFadeOut != null) {
-            targetFadeOut.setVisible(showTarget == null || showTarget.isToggled(), this);
-        }
-        if (targetShade != null) {
-            targetShade.setVisible(showTarget == null || showTarget.isToggled(), this);
-        }
-        if (eagleSafety != null) {
-            eagleSafety.setVisible(eagle == null || eagle.isToggled(), this);
-        }
+        if (previewPos == null) return;
+        int color = 0x4000AAFF;
+        RenderUtils.renderBlock(previewPos, color, true, false);
     }
 
     private void updateEagle(boolean placedThisTick) {
@@ -688,389 +421,85 @@ private void restorePreviousSlot() {
                 shift || Keyboard.isKeyDown(mc.gameSettings.keyBindSneak.getKeyCode()));
     }
 
-    /**
-     * Find the block to place against.
-     *
-     * Three things this does that the previous search did not.
-     *
-     * It keeps the last block. A search that re-picks from scratch every rotation event will
-     * swap between two equally good candidates on consecutive ticks, and the rotation chases
-     * the swap; reusing the previous target while it is still adjacent and still placeable is
-     * what stops that.
-     *
-     * It scans four layers down rather than one, so stepping out over a gap still finds
-     * something to build from instead of failing until the ground comes back.
-     *
-     * And it only raytraces the handful of candidates worth checking. The old search raytraced
-     * inside the candidate loop -- nine by nine positions across two layers, five faces each,
-     * up to eight hundred raytraces per rotation event. Candidates are cheap to reject on
-     * geometry alone, so they are filtered and sorted first and only the closest few are traced.
-     */
     private BlockData findBestPlacement() {
         EntityPlayerSP player = mc.thePlayer;
         float baseYaw = getBaseYaw();
-        BlockPos below = new BlockPos(player.posX, player.posY - 1.0, player.posZ);
+        BlockPos playerPos = new BlockPos(player);
+        BlockPos scanY = playerPos.down();
 
-        // Already standing on something: nothing to do.
-        if (!isReplaceable(below)) {
-            return null;
-        }
+        double targetX = player.posX + player.motionX;
+        double targetZ = player.posZ + player.motionZ;
+        double targetY = scanY.getY() + 0.5;
 
-        boolean tower = downPlace.isToggled() && !keepingY();
+        double existingScore = Double.MAX_VALUE;
+        BlockData best = null;
+        double bestScore = Double.MAX_VALUE;
 
-        java.util.List<BlockPos> candidates = new java.util.ArrayList<BlockPos>();
-        collectCandidates(candidates, below, -4, 0, false);
+        boolean tower = !player.onGround && !keepY.isToggled();
+        int lowestLayer = tower ? -1 : 0;
 
-        boolean upward = false;
-        if (candidates.isEmpty()) {
-            if (!tower) {
-                return null;
-            }
-            // Nothing underneath. Look upward for something to build off, refusing any face
-            // whose block would be placed inside the player.
-            collectCandidates(candidates, below, 1, 6, true);
-            if (candidates.isEmpty()) {
-                return null;
-            }
-            upward = true;
-        }
-
-        // Keep the previous block while it is still next to us and still has a free face.
-        if (!upward && lastPlacedAgainst != null) {
-            double distance = below.distanceSq(lastPlacedAgainst.getX() + 0.5,
-                    lastPlacedAgainst.getY() + 0.5, lastPlacedAgainst.getZ() + 0.5);
-            if (distance < 2.0) {
-                EnumFacing face = chooseFace(lastPlacedAgainst, below, false);
-                if (face != null && canAim(lastPlacedAgainst, face, baseYaw)) {
-                    return new BlockData(lastPlacedAgainst, face);
-                }
-            }
-        }
-
-        final double centerX = below.getX() + 0.5;
-        final double centerY = below.getY() + 0.5;
-        final double centerZ = below.getZ() + 0.5;
-        java.util.Collections.sort(candidates, new java.util.Comparator<BlockPos>() {
-            @Override
-            public int compare(BlockPos a, BlockPos b) {
-                return Double.compare(a.distanceSq(centerX, centerY, centerZ),
-                        b.distanceSq(centerX, centerY, centerZ));
-            }
-        });
-
-        // Only the nearest few are worth a raytrace; past that the angle is hopeless anyway.
-        int examined = Math.min(candidates.size(), 6);
-        for (int i = 0; i < examined; i++) {
-            BlockPos pos = candidates.get(i);
-            EnumFacing face = chooseFace(pos, below, upward);
-            if (face == null) {
-                continue;
-            }
-            if (canAim(pos, face, baseYaw)) {
-                return new BlockData(pos, face);
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Solid blocks in the box that have at least one face open to air.
-     *
-     * @param skipIntersecting refuse a face whose air side overlaps the player, which is what
-     *                         keeps the upward pass from trying to place a block inside us.
-     */
-    private void collectCandidates(java.util.List<BlockPos> into, BlockPos origin,
-                                   int fromY, int toY, boolean skipIntersecting) {
-        for (int x = -4; x <= 4; x++) {
-            for (int y = fromY; y <= toY; y++) {
+        for (int layer = 0; layer >= lowestLayer; layer--) {
+            BlockPos layerPos = scanY.add(0, layer, 0);
+            for (int x = -4; x <= 4; x++) {
                 for (int z = -4; z <= 4; z++) {
-                    BlockPos pos = origin.add(x, y, z);
-                    if (isReplaceable(pos)) {
-                        continue;
-                    }
+                    BlockPos pos = layerPos.add(x, 0, z);
                     IBlockState state = mc.theWorld.getBlockState(pos);
-                    if (!state.getBlock().isFullCube()) {
-                        continue;
-                    }
-                    for (EnumFacing facing : EnumFacing.VALUES) {
-                        BlockPos neighbour = pos.offset(facing);
-                        if (!isReplaceable(neighbour)) {
+
+                    if (state.getBlock() == Blocks.air) continue;
+                    if (!state.getBlock().isFullCube()) continue;
+
+                    double exDx = (pos.getX() + 0.5) - targetX;
+                    double exDz = (pos.getZ() + 0.5) - targetZ;
+                    double exDy = (pos.getY() + 0.5) - targetY;
+                    double exScore = exDx * exDx + exDz * exDz + exDy * exDy * 0.25;
+                    if (exScore < existingScore) existingScore = exScore;
+
+                    java.util.List<EnumFacing> facings = new java.util.ArrayList<>();
+                    facings.add(EnumFacing.NORTH);
+                    facings.add(EnumFacing.SOUTH);
+                    facings.add(EnumFacing.EAST);
+                    facings.add(EnumFacing.WEST);
+                    if (tower) facings.add(EnumFacing.UP);
+
+                    for (EnumFacing facing : facings) {
+                        if (!PLACEHOLDER.canPlaceBlockOnSide(mc.theWorld, pos, facing, mc.thePlayer, mc.thePlayer.getHeldItem()))
                             continue;
-                        }
-                        if (skipIntersecting && intersectsPlayer(neighbour)) {
-                            continue;
-                        }
-                        into.add(pos);
-                        break;
+
+                        BlockPos neighbor = pos.offset(facing);
+                        IBlockState neighborState = mc.theWorld.getBlockState(neighbor);
+                        if (neighborState.getBlock() != Blocks.air) continue;
+
+                        double nbX = neighbor.getX() + 0.5;
+                        double nbY = neighbor.getY() + 0.5;
+                        double nbZ = neighbor.getZ() + 0.5;
+                        double dx = nbX - targetX;
+                        double dz = nbZ - targetZ;
+                        double dy = nbY - targetY;
+                        double score = dx * dx + dz * dz + dy * dy * 0.25;
+
+                        if (score >= bestScore) continue;
+
+                        float[] rots = getRotationsForFace(pos, facing, baseYaw);
+                        if (rots == null) rots = getFreeRotationsForFace(pos, facing);
+
+                        Vec3 eye = player.getPositionEyes(1f);
+                        Vec3 look = Utils.getLookVec(rots[0], rots[1]);
+                        Vec3 end = eye.addVector(look.xCoord * 4.5, look.yCoord * 4.5, look.zCoord * 4.5);
+                        MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(eye, end, false, false, true);
+
+                        if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) continue;
+                        if (!hit.getBlockPos().equals(pos)) continue;
+                        if (hit.sideHit != facing) continue;
+
+                        bestScore = score;
+                        best = new BlockData(pos, facing);
                     }
                 }
             }
         }
-    }
 
-    /** The open face of a block that sits closest to where we want to stand. */
-    private EnumFacing chooseFace(BlockPos pos, BlockPos target, boolean upward) {
-        EnumFacing best = null;
-        double bestDistance = Double.MAX_VALUE;
-        for (EnumFacing facing : EnumFacing.VALUES) {
-            if (!upward && facing == EnumFacing.DOWN) {
-                continue;
-            }
-            BlockPos neighbour = pos.offset(facing);
-            if (!isReplaceable(neighbour)) {
-                continue;
-            }
-            if (upward && intersectsPlayer(neighbour)) {
-                continue;
-            }
-            if (!PLACEHOLDER.canPlaceBlockOnSide(mc.theWorld, pos, facing,
-                    mc.thePlayer, mc.thePlayer.getHeldItem())) {
-                continue;
-            }
-            double distance = neighbour.distanceSq(target.getX() + 0.5,
-                    target.getY() + 0.5, target.getZ() + 0.5);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = facing;
-            }
-        }
+        if (best != null && existingScore <= bestScore) return null;
         return best;
-    }
-
-    /** Whether the face can actually be hit from where we are looking. */
-    private boolean canAim(BlockPos pos, EnumFacing face, float baseYaw) {
-        float[] rots = getRotationsForFace(pos, face, baseYaw);
-        if (rots == null) {
-            rots = getFreeRotationsForFace(pos, face);
-        }
-        if (rots == null) {
-            return false;
-        }
-        Vec3 eye = mc.thePlayer.getPositionEyes(1f);
-        Vec3 look = Utils.getLookVec(rots[0], rots[1]);
-        Vec3 end = eye.addVector(look.xCoord * 4.5, look.yCoord * 4.5, look.zCoord * 4.5);
-        MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(eye, end, false, false, true);
-        return hit != null
-                && hit.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
-                && hit.getBlockPos().equals(pos)
-                && hit.sideHit == face;
-    }
-
-    private boolean isReplaceable(BlockPos pos) {
-        net.minecraft.block.Block block = mc.theWorld.getBlockState(pos).getBlock();
-        return block == Blocks.air || block.getMaterial().isReplaceable();
-    }
-
-    private boolean intersectsPlayer(BlockPos pos) {
-        return new net.minecraft.util.AxisAlignedBB(pos.getX(), pos.getY(), pos.getZ(),
-                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0)
-                .intersectsWith(mc.thePlayer.getEntityBoundingBox());
-    }
-
-    /**
-     * The direction of travel.
-     *
-     * getBaseYaw is that direction turned around -- the yaw you look back along while bridging --
-     * so the movement yaw is simply the opposite of it, and every rotation mode is written
-     * against this rather than against the camera.
-     */
-    /**
-     * Snap the yaw to a fixed step around the movement direction.
-     *
-     * At ninety degrees this gives the four square angles behind you and nothing between, so
-     * the head sits on one of a handful of headings instead of tracking every block exactly --
-     * a much shorter list of distinct rotations than a continuous aim produces. Set it to one
-     * to leave the aim alone.
-     */
-    private float quantiseYaw(float yaw) {
-        double step = angleStep == null ? 90.0 : angleStep.getInput();
-        if (step <= 1.0) {
-            return yaw;
-        }
-        float base = movementYaw();
-        float relative = MathHelper.wrapAngleTo180_float(yaw - base);
-        float snapped = (float) (Math.round(relative / step) * step);
-        return base + snapped;
-    }
-
-    /**
-     * Ease the aim toward its target instead of arriving in one step.
-     *
-     * Separate from Rotation speed, which caps how far the head may travel in a tick. This
-     * blends toward the target so the approach decelerates, which is what a hand does; at zero
-     * it is off entirely.
-     */
-    private float[] applySmoothing(float[] target) {
-        double amount = rotationSmoothing == null ? 0.0 : rotationSmoothing.getInput();
-        if (amount <= 0.0 || !lastRotsValid) {
-            return target;
-        }
-        float blend = (float) (1.0 - Math.min(0.95, amount / 100.0 * 0.95));
-        float yaw = lastYaw + MathHelper.wrapAngleTo180_float(target[0] - lastYaw) * blend;
-        float pitch = lastPitch + (target[1] - lastPitch) * blend;
-        return new float[]{yaw, pitch};
-    }
-
-    /** Both an axis and a strafe held, which is what makes a bridge diagonal. */
-    private boolean isMovingDiagonally() {
-        boolean axis = mc.gameSettings.keyBindForward.isKeyDown() || mc.gameSettings.keyBindBack.isKeyDown();
-        boolean strafe = mc.gameSettings.keyBindLeft.isKeyDown() || mc.gameSettings.keyBindRight.isKeyDown();
-        return axis && strafe;
-    }
-
-    /**
-     * Whether the bridge is being held level.
-     *
-     * The old Keep Y toggle is kept because profiles store it and people have it set; the
-     * mode does the same job, and either one turning it on is enough.
-     */
-    private boolean keepingY() {
-        if (keepY != null && keepY.isToggled()) {
-            return true;
-        }
-        if (scaffoldMode == null) {
-            return false;
-        }
-        if ((int) scaffoldMode.getInput() != SCAFFOLD_KEEP_Y) {
-            return false;
-        }
-        // Keep Y on right click narrows it to while the button is actually held, so a bridge
-        // can be dropped down deliberately without leaving the mode.
-        return keepYOnRightClick == null || !keepYOnRightClick.isToggled()
-                || org.lwjgl.input.Mouse.isButtonDown(1);
-    }
-
-    /** The rotation the current mode asks for. */
-    private int activeRotationMode() {
-        if (scaffoldMode == null) {
-            return rotationMode == null ? ROT_DIAGONAL : (int) rotationMode.getInput();
-        }
-        switch ((int) scaffoldMode.getInput()) {
-            case SCAFFOLD_LEGIT:
-                return legitRotation == null ? ROT_BACK : (int) legitRotation.getInput();
-            case SCAFFOLD_KEEP_Y:
-                return keepYRotation == null ? ROT_DIAGONAL : (int) keepYRotation.getInput();
-            case SCAFFOLD_NORMAL:
-            default:
-                return normalRotation == null ? ROT_DIAGONAL : (int) normalRotation.getInput();
-        }
-    }
-
-    private float movementYaw() {
-        return getBaseYaw() - 180.0f;
-    }
-
-    /** Whether looking this way actually reaches the face we mean to place against. */
-    private boolean aimHits(BlockPos pos, EnumFacing face, float yaw, float pitch) {
-        Vec3 eye = mc.thePlayer.getPositionEyes(1f);
-        Vec3 look = Utils.getLookVec(yaw, pitch);
-        Vec3 end = eye.addVector(look.xCoord * 4.5, look.yCoord * 4.5, look.zCoord * 4.5);
-        MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(eye, end, false, false, true);
-        if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
-            return false;
-        }
-        if (!hit.getBlockPos().equals(pos)) {
-            return false;
-        }
-        // Without strict checking any face of the right block will do, which keeps the looser
-        // rotations usable on blocks the exact face cannot be reached on.
-        return !strictAimCheck.isToggled() || hit.sideHit == face;
-    }
-
-    /** Yaw and pitch to a point pushed into the face rather than to its centre. */
-    private float[] offsetRotations(BlockPos pos, EnumFacing face, double offset) {
-        double x = pos.getX() + 0.5 + face.getFrontOffsetX() * (0.5 - offset);
-        double y = pos.getY() + 0.5 + face.getFrontOffsetY() * (0.5 - offset);
-        double z = pos.getZ() + 0.5 + face.getFrontOffsetZ() * (0.5 - offset);
-
-        double dx = x - mc.thePlayer.posX;
-        double dy = y - (mc.thePlayer.posY + mc.thePlayer.getEyeHeight());
-        double dz = z - mc.thePlayer.posZ;
-
-        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-        float pitch = (float) -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
-        return new float[]{yaw, MathHelper.clamp_float(pitch, -90f, 90f)};
-    }
-
-    /**
-     * The rotation for a placement, by mode.
-     *
-     * Each mode falls back to looking straight at the face when its preferred angle cannot reach,
-     * so a mode never costs a placement -- it only changes where the head points when there is a
-     * choice.
-     */
-    private float[] placementRotations(BlockPos pos, EnumFacing face) {
-        float[] direct = getFreeRotationsForFace(pos, face);
-        if (!aimCheck.isToggled()) {
-            return direct;
-        }
-
-        float moveYaw = movementYaw();
-        float pitch = direct[1];
-        float back = moveYaw - 180.0f;
-        float left = moveYaw - 135.0f;
-        float right = moveYaw + 135.0f;
-        float yaw;
-
-        switch (activeRotationMode()) {
-            case ROT_NORMAL: {
-                yaw = direct[0];
-                if (aimHits(pos, face, back, pitch)) {
-                    yaw = back;
-                }
-                else if (aimHits(pos, face, left, pitch)) {
-                    yaw = left;
-                }
-                else if (aimHits(pos, face, right, pitch)) {
-                    yaw = right;
-                }
-                break;
-            }
-            case ROT_OFFSET: {
-                float[] offset = offsetRotations(pos, face, offsetAmount.getInput());
-                yaw = offset[0];
-                pitch = offset[1];
-                if (strictAimCheck.isToggled() && !aimHits(pos, face, yaw, pitch)) {
-                    yaw = direct[0];
-                    pitch = direct[1];
-                }
-                break;
-            }
-            case ROT_DIAGONAL: {
-                boolean diagonal = aimHits(pos, face, left, pitch) || aimHits(pos, face, right, pitch);
-                boolean straight = aimHits(pos, face, back, pitch);
-                if (!diagonal && !straight) {
-                    yaw = direct[0];
-                }
-                else if (!diagonal) {
-                    yaw = back;
-                }
-                else {
-                    // Take the rear quarter that faces the block being bridged from, so the head
-                    // turns into the bridge rather than away from it.
-                    BlockPos below = new BlockPos(Math.floor(mc.thePlayer.posX),
-                            Math.floor(mc.thePlayer.posY) - 1.0, Math.floor(mc.thePlayer.posZ));
-                    double dx = below.getX() + 0.5 - mc.thePlayer.posX;
-                    double dz = below.getZ() + 0.5 - mc.thePlayer.posZ;
-                    float toBelow = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
-                    float delta = MathHelper.wrapAngleTo180_float(toBelow - moveYaw);
-                    float picked = delta > 0.0f ? right : left;
-                    if (strictAimCheck.isToggled() && !aimHits(pos, face, picked, pitch)) {
-                        picked = delta > 0.0f ? left : right;
-                    }
-                    yaw = picked;
-                }
-                break;
-            }
-            case ROT_BACK:
-            default: {
-                boolean diagonal = aimHits(pos, face, left, pitch) || aimHits(pos, face, right, pitch);
-                boolean straight = aimHits(pos, face, back, pitch);
-                yaw = (!straight && (strictAimCheck.isToggled() || !diagonal)) ? direct[0] : back;
-                break;
-            }
-        }
-        return new float[]{yaw, pitch};
     }
 
     private float getBaseYaw() {
@@ -1296,8 +725,7 @@ private void restorePreviousSlot() {
 
     private Item getBlockItem() {
         ItemStack held = mc.thePlayer.inventory.getCurrentItem();
-        boolean maySwitch = autoItem == null || autoItem.isToggled();
-        if (maySwitch && (held == null || !(held.getItem() instanceof ItemBlock) || held.stackSize <= 1)) {
+        if (held == null || !(held.getItem() instanceof ItemBlock) || held.stackSize <= 1) {
             int slot = getBestBlockSlot();
             if (slot != -1) mc.thePlayer.inventory.currentItem = slot;
         }
