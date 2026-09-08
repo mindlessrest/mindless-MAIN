@@ -51,6 +51,7 @@ public class BedAura extends Module {
     private final ButtonSetting whitelistOwnBed;
     private final ButtonSetting prioritizeKillAura;
     private final GroupSetting swapGroup;
+    private final ButtonSetting autoTool;
     private final ButtonSetting switchBackWhenDone;
     private final ButtonSetting overrideSwapBack;
     private final ButtonSetting renderOutline;
@@ -94,6 +95,7 @@ private static final double AIM_FACE_INSET = 0.12;
         this.registerSetting(whitelistOwnBed = new ButtonSetting("Whitelist own bed", true));
         this.registerSetting(prioritizeKillAura = new ButtonSetting("Prioritize KillAura", false));
         this.registerSetting(swapGroup = new GroupSetting("Swap"));
+        this.registerSetting(autoTool = new ButtonSetting(swapGroup, "Auto tool", true));
         this.registerSetting(switchBackWhenDone = new ButtonSetting(swapGroup, "Switch back when done", true, "Swap to previous slot"));
         this.registerSetting(overrideSwapBack = new ButtonSetting(swapGroup, "Override swap back", true));
         this.registerSetting(renderOutline = new ButtonSetting("Render block outline", true));
@@ -103,6 +105,8 @@ private static final double AIM_FACE_INSET = 0.12;
     @Override
     public void guiUpdate() {
         breakFromOutside.setVisible(!isLegitMode(), this);
+        switchBackWhenDone.setVisible(autoTool.isToggled(), this);
+        overrideSwapBack.setVisible(autoTool.isToggled(), this);
         outlineColor.setVisible(renderOutline.isToggled(), this);
     }
 
@@ -354,7 +358,7 @@ public boolean shouldOverrideMouseOver() {
             rotationAlignedTicks = 0;
         }
 
-        equipBestHotbarTool(BlockUtils.getBlock(targetPos));
+        updateAutoTool(BlockUtils.getBlock(targetPos));
 
         float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
         float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
@@ -789,6 +793,21 @@ private BlockPos[] footHeadPair(BlockPos at) {
         if (slot != mc.thePlayer.inventory.currentItem) {
             setSlot(slot);
         }
+    }
+
+    private void updateAutoTool(Block block) {
+        if (autoTool.isToggled()) {
+            equipBestHotbarTool(block);
+            return;
+        }
+        if (!hasSwapped) {
+            return;
+        }
+        if (switchBackWhenDone.isToggled() && previousSlot != -1) {
+            setSlot(previousSlot);
+        }
+        hasSwapped = false;
+        previousSlot = -1;
     }
 
     private void setSlot(int slot) {
