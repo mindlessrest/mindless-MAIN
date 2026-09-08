@@ -847,7 +847,14 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
         }
 
         boolean right = alignRight.isToggled();
-        float radius = getBackgroundRadius(rowHeight);
+        float narrowest = rowHeight;
+        for (int i = 0; i < widths.length; i++) {
+            float rowWidth = widths[i] + horizontalTextPadding * 2f;
+            if (rowWidth < narrowest) narrowest = rowWidth;
+        }
+        // Clamped against the narrowest row as well as the height: a radius wider than the
+        // row leaves the corner discs with nothing joining them.
+        float radius = getBackgroundRadius(Math.min(rowHeight, narrowest));
         float transitionRadius = getBackgroundStepRadius(radius);
         // The whole staircase is emitted into one batch and blended once. Drawing each row as
         // its own translucent shape meant every shared edge was blended twice, which outlined
@@ -889,11 +896,13 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean remo
             // border straight through the middle of the list.
             float growTop = firstRow ? grow : 0.0f;
             float growBottom = lastRow ? grow : 0.0f;
-            // Rows share a horizontal seam. Two antialiased edges meeting on the same line do not
-            // sum back to full coverage, so a hairline shows through; overlap them slightly. Safe
-            // because interior corners are square.
+            // Rows abut exactly. They must not overlap: batching removes the draw call, not the
+            // blending, so a translucent row lapping half a pixel over the next one is still
+            // composited twice there and draws a darker line across every seam -- which is the
+            // banding this was meant to avoid. Two abutting triangles cannot leave a gap either;
+            // the rasteriser fill rule gives each pixel to exactly one of them.
             fillRow(left - grow, rowTop - growTop, left + width + grow,
-                    rowTop + rowHeight + growBottom + (lastRow ? 0.0f : 0.5f),
+                    rowTop + rowHeight + growBottom,
                     topLeft, topRight, bottomRight, bottomLeft, color);
         }
         endRowBatch();
