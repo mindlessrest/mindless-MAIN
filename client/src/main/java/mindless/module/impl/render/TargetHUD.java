@@ -1035,7 +1035,14 @@ private int ringColor(int ringIndex) {
 
         // Size from how tall the target appears, so it shrinks with distance like everything
         // else on screen instead of staying a fixed lump of pixels.
-        float halfHeight = (float) Math.abs(middle[1] - top[1]);
+        //
+        // The length of the projected segment, not its vertical extent. A world-vertical segment
+        // does not project onto the screen's Y axis alone: pitch the camera up or down, or look
+        // at a target off to one side, and it lands increasingly slanted, so measuring only the
+        // Y gap made the marker shrink as the camera turned even though the target had not moved.
+        double spanX = middle[0] - top[0];
+        double spanY = middle[1] - top[1];
+        float halfHeight = (float) Math.sqrt(spanX * spanX + spanY * spanY);
         float size = halfHeight * 1.25f * (float) (markerSize == null ? 1.0 : markerSize.getInput());
         if (size < 0.75f) {
             return;
