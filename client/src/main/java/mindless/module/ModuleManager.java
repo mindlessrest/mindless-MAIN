@@ -88,6 +88,8 @@ public class ModuleManager {
     public static mindless.module.impl.combat.AutoWeapon autoWeapon;
     public static mindless.module.impl.client.Macros macros;
     public static mindless.module.impl.render.KillEffect killEffect;
+    public static mindless.module.impl.render.TabGUI tabGui;
+    public static mindless.module.impl.render.BindGUI bindGui;
     public static NoCameraClip noCameraClip;
     public static BedWars bedwars;
     public static Overlay overlay;
@@ -221,6 +223,8 @@ public class ModuleManager {
         this.addModule(autoWeapon = new mindless.module.impl.combat.AutoWeapon());
         this.addModule(macros = new mindless.module.impl.client.Macros());
         this.addModule(killEffect = new mindless.module.impl.render.KillEffect());
+        this.addModule(tabGui = new mindless.module.impl.render.TabGUI());
+        this.addModule(bindGui = new mindless.module.impl.render.BindGUI());
         this.addModule(noFall = new NoFall());
         this.addModule(noRotate = new NoRotate());
         this.addModule(safeWalk = new SafeWalk());
