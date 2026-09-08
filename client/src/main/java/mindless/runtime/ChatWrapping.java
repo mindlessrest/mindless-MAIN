@@ -33,6 +33,10 @@ public final class ChatWrapping {
     public static List<IChatComponent> split(IChatComponent component, int wrapWidth,
                                              FontRenderer vanillaFont, boolean spaceAtEnd,
                                              boolean keepFormatting) {
+        // Applied here rather than only at draw time: this is where a line is measured and
+        // broken, so widening chat without it would draw a wider panel around text that had
+        // already been wrapped to the old width.
+        wrapWidth = ChatModule.width(wrapWidth);
         MindlessFontRenderer font = ChatModule.getCustomFont();
         if (font == null) {
             return GuiUtilRenderComponents.splitText(component, wrapWidth, vanillaFont, spaceAtEnd, keepFormatting);

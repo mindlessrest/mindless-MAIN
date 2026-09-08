@@ -82,9 +82,9 @@ public abstract class TransformerGuiNewChat {
         }
 
         boolean chatOpen = getChatOpen();
-        int lineCount = getLineCount();
+        int lineCount = ChatModule.lines(getLineCount());
         float scale = Math.max(0.1f, getChatScale());
-        int chatWidth = MathHelper.ceiling_float_int(getChatWidth() / scale);
+        int chatWidth = MathHelper.ceiling_float_int(ChatModule.width(getChatWidth()) / scale);
         int visibleLines = Math.min(lineCount, Math.max(0, totalLines - scrollPos));
         ScaledResolution sr = ScaledResolutionCache.get();
         long now = System.currentTimeMillis();

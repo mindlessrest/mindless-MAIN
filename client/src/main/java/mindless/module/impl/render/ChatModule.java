@@ -23,6 +23,8 @@ public class ChatModule extends Module {
     private static ButtonSetting playerHeads;
     private static SliderSetting headSize;
     private static SliderSetting lineSpacing;
+    private static SliderSetting chatWidth;
+    private static SliderSetting chatLines;
     private static ButtonSetting markOwnMessages;
     private static SliderSetting ownMarkerText;
 
@@ -37,6 +39,11 @@ public class ChatModule extends Module {
         this.registerSetting(playerHeads = new ButtonSetting("Player heads", false));
         this.registerSetting(headSize = new SliderSetting("Head size", 8.0, 6.0, 12.0, 0.5));
         this.registerSetting(lineSpacing = new SliderSetting("Line spacing", 0.0, -2.0, 6.0, 0.5));
+        // Disabled means vanilla, which caps at what the video options allow. Set either one
+        // and it governs wrapping as well as the panel, so a wider chat actually fits more on
+        // a line rather than drawing a wider box around the same wrapping.
+        this.registerSetting(chatWidth = new SliderSetting("Chat width", "px", true, 320.0, 80.0, 640.0, 5.0));
+        this.registerSetting(chatLines = new SliderSetting("Chat lines", true, 10.0, 1.0, 30.0, 1.0));
         this.registerSetting(markOwnMessages = new ButtonSetting("Mark own messages", true));
         this.registerSetting(ownMarkerText = new SliderSetting("Own marker", 0,
                 new String[]{ "(you)", "(me)", "<-- you" }));
@@ -157,6 +164,27 @@ public static float backgroundOpacity() {
     public static float headSize() {
         return !active() || headSize == null ? 8.0f : (float) headSize.getInput();
     }
+    /**
+     * The chat width to use, or the vanilla one when the override is off.
+     *
+     * Read by the wrapper and by both render paths, so the stored lines and the panel drawn
+     * around them always agree on how wide chat is.
+     */
+    public static int width(int vanillaWidth) {
+        if (!active() || chatWidth == null || chatWidth.getInput() < 0) {
+            return vanillaWidth;
+        }
+        return (int) chatWidth.getInput();
+    }
+
+    /** Visible lines, or the vanilla count when the override is off. */
+    public static int lines(int vanillaLines) {
+        if (!active() || chatLines == null || chatLines.getInput() < 0) {
+            return vanillaLines;
+        }
+        return Math.max(1, (int) chatLines.getInput());
+    }
+
 public static float lineSpacing() {
         return !active() || lineSpacing == null ? 0.0f : (float) lineSpacing.getInput();
     }
