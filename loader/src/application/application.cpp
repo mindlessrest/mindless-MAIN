@@ -404,6 +404,16 @@ int Application::run()
                             save_credentials(state_.username.text, state_.password.text, state_.rememberMe);
                             mindless::save_session_username(state_.username.text);
                             state_.statusText = "Authenticated";
+                            // Fetch the payload now rather than on the loading screen. It is over
+                            // 50MB and the transfer used to be entirely serial in front of the
+                            // user: pick a process, press load, then wait out the whole download.
+                            // Starting it here overlaps it with choosing a process, which is dead
+                            // time otherwise. Nothing else changes -- same token, same request,
+                            // still only ever held in memory.
+                            if (!downloadStarted_ && state_.dllBytes.empty())
+                            {
+                                start_download();
+                            }
                             state_.transition_to(Screen::ProcessSelect, 1.0f);
                         }
                     }
