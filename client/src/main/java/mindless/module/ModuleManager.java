@@ -83,8 +83,6 @@ public class ModuleManager {
     public static ExtendCamera extendCamera;
     public static Freelook freelook;
     public static InvManager invManager;
-    public static mindless.module.impl.world.Nuker nuker;
-    public static mindless.module.impl.player.InvClicker invClicker;
     public static NoCameraClip noCameraClip;
     public static BedWars bedwars;
     public static Overlay overlay;
@@ -213,8 +211,6 @@ public class ModuleManager {
         this.addModule(new Freecam());
         this.addModule(hideWindow = new HideWindow());
         this.addModule(invManager = new InvManager());
-        this.addModule(nuker = new mindless.module.impl.world.Nuker());
-        this.addModule(invClicker = new mindless.module.impl.player.InvClicker());
         this.addModule(noFall = new NoFall());
         this.addModule(noRotate = new NoRotate());
         this.addModule(safeWalk = new SafeWalk());
