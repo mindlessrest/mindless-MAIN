@@ -53,6 +53,20 @@ public class TargetHUD extends Module {
     private SliderSetting ringThickness;
     private SliderSetting ringQuality;
     private ButtonSetting ringSoftEdges;
+    private SliderSetting ringOffsetX;
+    private SliderSetting ringOffsetY;
+    private SliderSetting ringOffsetZ;
+    private GroupSetting markerGroup;
+    private ButtonSetting markerEnabled;
+    private SliderSetting markerStyle;
+    private SliderSetting markerSize;
+    private SliderSetting markerThickness;
+    private SliderSetting markerSquareness;
+    private SliderSetting markerGap;
+    private SliderSetting markerSpeed;
+    private SliderSetting markerColorMode;
+    private ColorSetting markerColor1;
+    private ColorSetting markerColor2;
     private SliderSetting headStyle;
     private ButtonSetting hitEffects;
     private SliderSetting hitStyle;
@@ -63,12 +77,32 @@ public class TargetHUD extends Module {
     private final ColorSetting[] ringColors = new ColorSetting[RING_COUNT];
 private static final int RING_COUNT = 6;
     private static final String[] RING_COLOR_MODES = new String[] { "Theme", "Array list", "Custom" };
-    private static final String[] RING_STYLES = new String[] { "Trail", "Orbit", "Pulse", "Halo", "Simple" };
-    private static final int RING_STYLE_TRAIL = 0;
+    // Renamed in place, never reordered: a profile stores the slider index, so the meaning of
+    // every saved selection is preserved and only the label changes. New styles are appended.
+    private static final String[] RING_STYLES = new String[] {
+        "Bounce", "Orbit", "Sonar", "Ground", "Ring", "Radar", "Helix", "Beacon"
+    };
+    private static final int RING_STYLE_BOUNCE = 0;
     private static final int RING_STYLE_ORBIT = 1;
-    private static final int RING_STYLE_PULSE = 2;
-    private static final int RING_STYLE_HALO = 3;
-    private static final int RING_STYLE_SIMPLE = 4;
+    private static final int RING_STYLE_SONAR = 2;
+    private static final int RING_STYLE_GROUND = 3;
+    private static final int RING_STYLE_RING = 4;
+    private static final int RING_STYLE_RADAR = 5;
+    private static final int RING_STYLE_HELIX = 6;
+    private static final int RING_STYLE_BEACON = 7;
+
+    private static final String[] MARKER_STYLES = new String[] { "Brackets", "Frame", "Blades" };
+    private static final int MARKER_STYLE_BRACKETS = 0;
+    private static final int MARKER_STYLE_FRAME = 1;
+    private static final int MARKER_STYLE_BLADES = 2;
+    private static final String[] MARKER_COLOR_MODES =
+            new String[] { "Theme", "Array list", "Custom", "Gradient" };
+    private static final int MARKER_COLORS_THEME = 0;
+    private static final int MARKER_COLORS_ARRAY_LIST = 1;
+    private static final int MARKER_COLORS_CUSTOM = 2;
+    private static final int MARKER_COLORS_GRADIENT = 3;
+    /** Points around the marker outline. 64 is smooth at any size anyone will use. */
+    private static final int MARKER_SEGMENTS = 64;
     private static final String[] HEAD_STYLES = new String[] { "3D", "Flat", "2D" };
     private static final int HEAD_STYLE_3D = 0;
     private static final int HEAD_STYLE_FLAT = 1;
@@ -168,13 +202,30 @@ private static final int[] DEFAULT_RING_COLORS = {
         // their values -- only where they appear in the menu has moved.
         this.registerSetting(ringGroup = new GroupSetting("Target rings"));
         this.registerSetting(renderEsp = new ButtonSetting(ringGroup, "Render ESP", true));
-        this.registerSetting(ringStyle = new SliderSetting(ringGroup, "Ring style", RING_STYLE_TRAIL, RING_STYLES));
+        this.registerSetting(ringStyle = new SliderSetting(ringGroup, "Ring style", RING_STYLE_BOUNCE, RING_STYLES));
         this.registerSetting(ringCount = new SliderSetting(ringGroup, "Ring count", RING_COUNT, 1, RING_COUNT, 1));
         this.registerSetting(ringSize = new SliderSetting(ringGroup, "Ring size", 1.0, 0.4, 2.5, 0.05));
         this.registerSetting(ringSpeed = new SliderSetting(ringGroup, "Ring speed", 1.0, 0.1, 3.0, 0.05));
         this.registerSetting(ringThickness = new SliderSetting(ringGroup, "Ring thickness", 2.5, 0.5, 8.0, 0.25));
         this.registerSetting(ringQuality = new SliderSetting(ringGroup, "Ring quality", 40, 10, 64, 2));
         this.registerSetting(ringSoftEdges = new ButtonSetting(ringGroup, "Soft edges", true));
+        this.registerSetting(ringOffsetX = new SliderSetting(ringGroup, "Offset X", 0.0, -2.0, 2.0, 0.05));
+        this.registerSetting(ringOffsetY = new SliderSetting(ringGroup, "Offset Y", 0.0, -2.0, 2.0, 0.05));
+        this.registerSetting(ringOffsetZ = new SliderSetting(ringGroup, "Offset Z", 0.0, -2.0, 2.0, 0.05));
+
+        // Separate from the rings on purpose: this is a flat marker drawn over the target in
+        // screen space, not geometry standing in the world with them.
+        this.registerSetting(markerGroup = new GroupSetting("Target marker"));
+        this.registerSetting(markerEnabled = new ButtonSetting(markerGroup, "Marker", false));
+        this.registerSetting(markerStyle = new SliderSetting(markerGroup, "Marker style", MARKER_STYLE_BRACKETS, MARKER_STYLES));
+        this.registerSetting(markerSize = new SliderSetting(markerGroup, "Marker size", 1.0, 0.3, 2.5, 0.05));
+        this.registerSetting(markerThickness = new SliderSetting(markerGroup, "Marker thickness", 2.0, 0.5, 8.0, 0.25));
+        this.registerSetting(markerSquareness = new SliderSetting(markerGroup, "Roundness", 0.55, 0.0, 1.0, 0.05));
+        this.registerSetting(markerGap = new SliderSetting(markerGroup, "Gap", 0.35, 0.0, 0.8, 0.05));
+        this.registerSetting(markerSpeed = new SliderSetting(markerGroup, "Marker speed", 0.35, -2.0, 2.0, 0.05));
+        this.registerSetting(markerColorMode = new SliderSetting(markerGroup, "Marker colors", MARKER_COLORS_THEME, MARKER_COLOR_MODES));
+        this.registerSetting(markerColor1 = new ColorSetting(markerGroup, "Marker color", 90, 170, 255, 255));
+        this.registerSetting(markerColor2 = new ColorSetting(markerGroup, "Marker color 2", 160, 90, 255, 255));
         this.registerSetting(ringColorMode = new SliderSetting(ringGroup, "Ring colors", RING_MODE_THEME, RING_COLOR_MODES));
         for (int i = 0; i < RING_COUNT; i++) {
             int rgb = DEFAULT_RING_COLORS[i];
@@ -204,22 +255,45 @@ private static final int[] DEFAULT_RING_COLORS = {
         }
 
         boolean esp = renderEsp != null && renderEsp.isToggled();
-        int style = ringStyle == null ? RING_STYLE_TRAIL : (int) ringStyle.getInput();
+        int style = ringStyle == null ? RING_STYLE_BOUNCE : (int) ringStyle.getInput();
         if (ringStyle != null) ringStyle.setVisible(esp, this);
         // Simple is the one style that draws a single ring, so a count would mean nothing.
-        if (ringCount != null) ringCount.setVisible(esp && style != RING_STYLE_SIMPLE, this);
+        boolean countMatters = style != RING_STYLE_RING && style != RING_STYLE_RADAR;
+        if (ringCount != null) ringCount.setVisible(esp && countMatters, this);
         if (ringSize != null) ringSize.setVisible(esp, this);
         if (ringSpeed != null) {
-            ringSpeed.setVisible(esp && style != RING_STYLE_HALO && style != RING_STYLE_SIMPLE, this);
+            ringSpeed.setVisible(esp && style != RING_STYLE_GROUND && style != RING_STYLE_RING, this);
         }
         if (ringThickness != null) ringThickness.setVisible(esp, this);
         if (ringQuality != null) ringQuality.setVisible(esp, this);
         if (ringSoftEdges != null) ringSoftEdges.setVisible(esp, this);
+        if (ringOffsetX != null) ringOffsetX.setVisible(esp, this);
+        if (ringOffsetY != null) ringOffsetY.setVisible(esp, this);
+        if (ringOffsetZ != null) ringOffsetZ.setVisible(esp, this);
+
+        boolean marker = markerEnabled != null && markerEnabled.isToggled();
+        int markerColors = markerColorMode == null ? MARKER_COLORS_THEME : (int) markerColorMode.getInput();
+        int markerShape = markerStyle == null ? MARKER_STYLE_BRACKETS : (int) markerStyle.getInput();
+        if (markerStyle != null) markerStyle.setVisible(marker, this);
+        if (markerSize != null) markerSize.setVisible(marker, this);
+        if (markerThickness != null) markerThickness.setVisible(marker, this);
+        if (markerSquareness != null) markerSquareness.setVisible(marker, this);
+        // A closed frame has no gaps to size.
+        if (markerGap != null) markerGap.setVisible(marker && markerShape != MARKER_STYLE_FRAME, this);
+        if (markerSpeed != null) markerSpeed.setVisible(marker, this);
+        if (markerColorMode != null) markerColorMode.setVisible(marker, this);
+        if (markerColor1 != null) {
+            markerColor1.setVisible(marker && (markerColors == MARKER_COLORS_CUSTOM
+                    || markerColors == MARKER_COLORS_GRADIENT), this);
+        }
+        if (markerColor2 != null) {
+            markerColor2.setVisible(marker && markerColors == MARKER_COLORS_GRADIENT, this);
+        }
         if (ringColorMode != null) {
             ringColorMode.setVisible(esp, this);
         }
         boolean custom = esp && ringColorMode != null && (int) ringColorMode.getInput() == RING_MODE_CUSTOM;
-        int shown = style == RING_STYLE_SIMPLE ? 1
+        int shown = !countMatters ? 1
                 : (ringCount == null ? RING_COUNT : Math.max(1, (int) ringCount.getInput()));
         for (int i = 0; i < ringColors.length; i++) {
             if (ringColors[i] != null) {
@@ -316,6 +390,7 @@ private int ringColor(int ringIndex) {
             lastHealth = health;
             playerInfo += " " + Utils.getHealthStr(target, true);
             if (!screenHides) {
+                drawTargetMarker(target);
                 drawTargetHUD(fadeTimer, playerInfo, health);
             }
         }
@@ -371,8 +446,8 @@ private int ringColor(int ringIndex) {
         double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - mc.getRenderManager().viewerPosY;
         double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - mc.getRenderManager().viewerPosZ;
 
-        int style = ringStyle == null ? RING_STYLE_TRAIL : (int) ringStyle.getInput();
-        int count = style == RING_STYLE_SIMPLE
+        int style = ringStyle == null ? RING_STYLE_BOUNCE : (int) ringStyle.getInput();
+        int count = style == RING_STYLE_RING || style == RING_STYLE_RADAR
                 ? 1
                 : Math.max(1, Math.min(RING_COUNT, ringCount == null ? RING_COUNT : (int) ringCount.getInput()));
         int segments = Math.max(8, ringQuality == null ? 40 : (int) ringQuality.getInput());
@@ -393,7 +468,10 @@ private int ringColor(int ringIndex) {
         ensureCircle(segments);
 
         GlStateManager.pushMatrix();
-        GlStateManager.translate((float) x, (float) y, (float) z);
+        GlStateManager.translate(
+                (float) (x + (ringOffsetX == null ? 0.0 : ringOffsetX.getInput())),
+                (float) (y + (ringOffsetY == null ? 0.0 : ringOffsetY.getInput())),
+                (float) (z + (ringOffsetZ == null ? 0.0 : ringOffsetZ.getInput())));
         GlStateManager.disableTexture2D();
         GlStateManager.disableDepth();
         GlStateManager.enableBlend();
@@ -413,6 +491,11 @@ private int ringColor(int ringIndex) {
             float strength;
             float tilt = 0.0f;
             float spin = 0.0f;
+            float centerX = 0.0f;
+            float centerZ = 0.0f;
+            // Radar is the only style that is not a closed ring, so it carries its own arc.
+            float arcStart = 0.0f;
+            float arcSweep = 0.0f;
 
             switch (style) {
                 case RING_STYLE_ORBIT: {
@@ -425,31 +508,64 @@ private int ringColor(int ringIndex) {
                     strength = 0.9f - 0.09f * i;
                     break;
                 }
-                case RING_STYLE_PULSE: {
-                    // Sonar: each ring is born at the feet, grows outward and upward, and fades
-                    // as it goes, with the ring births evenly spread through the cycle.
+                case RING_STYLE_SONAR: {
+                    // Each ring is born at the feet, grows outward and upward, and fades as it
+                    // goes, with the births spread evenly through the cycle.
                     double phase = ((time * 0.6) + (double) i / count) % 1.0;
                     radius = baseRadius * (float) (0.3 + 1.25 * phase);
                     ringY = (float) (phase * entityHeight * 0.55);
                     strength = (float) ((1.0 - phase) * (1.0 - phase));
                     break;
                 }
-                case RING_STYLE_HALO: {
+                case RING_STYLE_GROUND: {
                     // Still, on the ground, fading outward. Nothing animates, which makes this
-                    // and Simple the two that cost the same every frame.
+                    // and Ring the two that cost the same every frame.
                     ringY = 0.02f + i * 0.003f;
                     radius = baseRadius * (1.0f + 0.16f * i);
                     strength = 1.0f - (float) i / (count + 1);
                     strength *= strength;
                     break;
                 }
-                case RING_STYLE_SIMPLE: {
+                case RING_STYLE_RING: {
                     ringY = 0.02f;
                     radius = baseRadius;
                     strength = 1.0f;
                     break;
                 }
-                case RING_STYLE_TRAIL:
+                case RING_STYLE_RADAR: {
+                    // A broken ring at chest height, a little over half drawn, turning. The tail
+                    // fades out and the head carries an arrowhead, so the direction of travel is
+                    // obvious rather than being a ring with a gap in it.
+                    ringY = entityHeight * 0.55f;
+                    radius = baseRadius * 1.2f;
+                    strength = 1.0f;
+                    arcSweep = (float) (Math.PI * 1.15);
+                    arcStart = (float) (time * 1.6 * Math.PI * 2.0 % (Math.PI * 2.0));
+                    break;
+                }
+                case RING_STYLE_HELIX: {
+                    // Small rings climbing the target on a spiral, each one carried around the
+                    // axis rather than tilted, so it reads as a path instead of a stack.
+                    float step = (i + 0.5f) / count;
+                    double angle = time * 1.4 * Math.PI * 2.0 + i * Math.PI * 2.0 / count;
+                    ringY = step * entityHeight;
+                    radius = baseRadius * 0.5f;
+                    centerX = (float) Math.cos(angle) * baseRadius * 0.55f;
+                    centerZ = (float) Math.sin(angle) * baseRadius * 0.55f;
+                    strength = 0.55f + 0.45f * (float) Math.sin(step * Math.PI);
+                    break;
+                }
+                case RING_STYLE_BEACON: {
+                    // A column: every ring the same size, evenly spaced up the target, the whole
+                    // stack sliding upward and recycling. Cheap, very readable at distance.
+                    double phase = ((time * 0.45) + (double) i / count) % 1.0;
+                    ringY = (float) (phase * entityHeight * 1.15f);
+                    radius = baseRadius * 0.95f;
+                    // Fade in at the feet and out at the top so rings do not pop into existence.
+                    strength = (float) Math.sin(phase * Math.PI);
+                    break;
+                }
+                case RING_STYLE_BOUNCE:
                 default: {
                     // The original look: one ring bouncing up the target with the rest trailing
                     // behind it in phase.
@@ -472,8 +588,14 @@ private int ringColor(int ringIndex) {
             if (alpha <= 1 || radius <= 0.0f) {
                 continue;
             }
-            emitRing(worldRenderer, ringY, radius, thickness, segments, tilt, spin, argb,
-                    Math.min(255, alpha), soft);
+            if (arcSweep > 0.0f) {
+                emitArc(worldRenderer, centerX, ringY, centerZ, radius, thickness, segments,
+                        arcStart, arcSweep, argb, Math.min(255, alpha));
+            }
+            else {
+                emitRing(worldRenderer, centerX, ringY, centerZ, radius, thickness, segments,
+                        tilt, spin, argb, Math.min(255, alpha), soft);
+            }
         }
 
         tessellator.draw();
@@ -514,8 +636,9 @@ private int ringColor(int ringIndex) {
      * ring has a falloff instead of a hard border. Off draws a single flat band, which is half
      * the geometry and the cheap option.
      */
-    private void emitRing(WorldRenderer worldRenderer, float ringY, float radius, float thickness,
-                          int segments, float tilt, float spin, int argb, int alpha, boolean soft) {
+    private void emitRing(WorldRenderer worldRenderer, float centerX, float ringY, float centerZ,
+                          float radius, float thickness, int segments, float tilt, float spin,
+                          int argb, int alpha, boolean soft) {
         float cosTilt = (float) Math.cos(tilt);
         float sinTilt = (float) Math.sin(tilt);
         float cosSpin = (float) Math.cos(spin);
@@ -531,29 +654,85 @@ private int ringColor(int ringIndex) {
         for (int segment = 0; segment < segments; segment++) {
             int next = segment + 1 == segments ? 0 : segment + 1;
             if (soft) {
-                band(worldRenderer, segment, next, inner, radius, ringY,
+                band(worldRenderer, segment, next, inner, radius, centerX, ringY, centerZ,
                         cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, 0, alpha);
-                band(worldRenderer, segment, next, radius, outer, ringY,
+                band(worldRenderer, segment, next, radius, outer, centerX, ringY, centerZ,
                         cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, alpha, 0);
             }
             else {
-                band(worldRenderer, segment, next, inner, outer, ringY,
+                band(worldRenderer, segment, next, inner, outer, centerX, ringY, centerZ,
                         cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, alpha, alpha);
             }
         }
     }
 
     private void band(WorldRenderer worldRenderer, int segment, int next, float innerRadius,
-                      float outerRadius, float ringY, float cosTilt, float sinTilt,
-                      float cosSpin, float sinSpin, int red, int green, int blue,
-                      int innerAlpha, int outerAlpha) {
-        ringVertex(worldRenderer, segment, innerRadius, ringY, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, innerAlpha);
-        ringVertex(worldRenderer, next, innerRadius, ringY, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, innerAlpha);
-        ringVertex(worldRenderer, next, outerRadius, ringY, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, outerAlpha);
-        ringVertex(worldRenderer, segment, outerRadius, ringY, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, outerAlpha);
+                      float outerRadius, float centerX, float ringY, float centerZ,
+                      float cosTilt, float sinTilt, float cosSpin, float sinSpin,
+                      int red, int green, int blue, int innerAlpha, int outerAlpha) {
+        ringVertex(worldRenderer, segment, innerRadius, centerX, ringY, centerZ, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, innerAlpha);
+        ringVertex(worldRenderer, next, innerRadius, centerX, ringY, centerZ, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, innerAlpha);
+        ringVertex(worldRenderer, next, outerRadius, centerX, ringY, centerZ, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, outerAlpha);
+        ringVertex(worldRenderer, segment, outerRadius, centerX, ringY, centerZ, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, outerAlpha);
     }
 
-    private void ringVertex(WorldRenderer worldRenderer, int segment, float radius, float ringY,
+    /**
+     * A partial ring with a tapering tail and an arrowhead at the leading end.
+     *
+     * Angles are free rather than snapped to the cached circle, because the sweep turns
+     * continuously and quantising its ends to segment boundaries makes the head stutter.
+     */
+    private void emitArc(WorldRenderer worldRenderer, float centerX, float ringY, float centerZ,
+                         float radius, float thickness, int segments, float startAngle,
+                         float sweep, int argb, int alpha) {
+        int red = (argb >> 16) & 0xFF;
+        int green = (argb >> 8) & 0xFF;
+        int blue = argb & 0xFF;
+        int steps = Math.max(6, Math.round(segments * (sweep / (float) (Math.PI * 2.0))));
+
+        float inner = Math.max(0.0f, radius - thickness);
+        float outer = radius + thickness;
+        for (int i = 0; i < steps; i++) {
+            float t0 = (float) i / steps;
+            float t1 = (float) (i + 1) / steps;
+            float a0 = startAngle + sweep * t0;
+            float a1 = startAngle + sweep * t1;
+            // Ramp along the sweep so the tail dissolves and the head is solid.
+            int alpha0 = Math.round(alpha * t0 * t0);
+            int alpha1 = Math.round(alpha * t1 * t1);
+            arcQuad(worldRenderer, a0, a1, inner, outer, centerX, ringY, centerZ,
+                    red, green, blue, alpha0, alpha1);
+        }
+
+        // The arrowhead: a triangle past the leading edge, pointing the way it turns.
+        float head = startAngle + sweep;
+        float tipAngle = head + sweep * (1.2f / steps);
+        float wide = thickness * 2.6f;
+        arcVertex(worldRenderer, head, radius - wide, centerX, ringY, centerZ, red, green, blue, alpha);
+        arcVertex(worldRenderer, head, radius + wide, centerX, ringY, centerZ, red, green, blue, alpha);
+        arcVertex(worldRenderer, tipAngle, radius, centerX, ringY, centerZ, red, green, blue, alpha);
+        // Quads batch, so the triangle is padded to four corners with a repeated tip.
+        arcVertex(worldRenderer, tipAngle, radius, centerX, ringY, centerZ, red, green, blue, alpha);
+    }
+
+    private void arcQuad(WorldRenderer worldRenderer, float angle0, float angle1,
+                         float inner, float outer, float centerX, float ringY, float centerZ,
+                         int red, int green, int blue, int alpha0, int alpha1) {
+        arcVertex(worldRenderer, angle0, inner, centerX, ringY, centerZ, red, green, blue, alpha0);
+        arcVertex(worldRenderer, angle1, inner, centerX, ringY, centerZ, red, green, blue, alpha1);
+        arcVertex(worldRenderer, angle1, outer, centerX, ringY, centerZ, red, green, blue, alpha1);
+        arcVertex(worldRenderer, angle0, outer, centerX, ringY, centerZ, red, green, blue, alpha0);
+    }
+
+    private void arcVertex(WorldRenderer worldRenderer, float angle, float radius,
+                           float centerX, float ringY, float centerZ,
+                           int red, int green, int blue, int alpha) {
+        worldRenderer.pos(centerX + Math.cos(angle) * radius, ringY, centerZ + Math.sin(angle) * radius)
+                .color(red, green, blue, alpha).endVertex();
+    }
+
+    private void ringVertex(WorldRenderer worldRenderer, int segment, float radius,
+                            float centerX, float ringY, float centerZ,
                             float cosTilt, float sinTilt, float cosSpin, float sinSpin,
                             int red, int green, int blue, int alpha) {
         double px = circleCos[segment] * radius;
@@ -564,7 +743,8 @@ private int ringColor(int ringIndex) {
         double tiltedZ = pz * cosTilt;
         double finalX = px * cosSpin + tiltedZ * sinSpin;
         double finalZ = -px * sinSpin + tiltedZ * cosSpin;
-        worldRenderer.pos(finalX, ringY + tiltedY, finalZ).color(red, green, blue, alpha).endVertex();
+        worldRenderer.pos(centerX + finalX, ringY + tiltedY, centerZ + finalZ)
+                .color(red, green, blue, alpha).endVertex();
     }
 
     private void drawTargetHUD(Timer fadeTimer, String string, double health) {
@@ -811,6 +991,189 @@ private int ringColor(int ringIndex) {
      * Scaled by how much health the target actually lost, so chip damage gives a nudge and a
      * crit gives a real punch, rather than every hit looking identical.
      */
+    // ---------------------------------------------------------------- target marker
+
+    /**
+     * A flat marker drawn over the target in screen space.
+     *
+     * Deliberately not one of the ring styles. The rings are geometry standing in the world with
+     * the player and they foreshorten and tilt with the camera; this sits square to the screen at
+     * a size taken from how tall the target actually appears, which is what makes it read as a
+     * sight rather than as scenery.
+     *
+     * The outline is a superellipse, so one parameter takes it from a circle to a hard square and
+     * every point on it has its outward normal pointing straight away from the centre. That makes
+     * the band, the gaps and the rotation all fall out of a single angle sweep, with no separate
+     * cases for the straight edges and the corners.
+     */
+    private void drawTargetMarker(EntityLivingBase entity) {
+        if (markerEnabled == null || !markerEnabled.isToggled() || entity == null) {
+            return;
+        }
+        if (SexyESP.projectionContext == null) {
+            return;
+        }
+
+        float partialTicks = mindless.runtime.AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks;
+        double tx = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks;
+        double ty = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks;
+        double tz = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks;
+        double camX = mc.getRenderManager().viewerPosX;
+        double camY = mc.getRenderManager().viewerPosY;
+        double camZ = mc.getRenderManager().viewerPosZ;
+
+        double[] middle = new double[3];
+        double[] top = new double[3];
+        if (!RenderUtils.projectTo2D(SexyESP.projectionContext,
+                tx - camX, ty - camY + entity.height * 0.5, tz - camZ, middle)) {
+            return;
+        }
+        if (!RenderUtils.projectTo2D(SexyESP.projectionContext,
+                tx - camX, ty - camY + entity.height, tz - camZ, top)) {
+            return;
+        }
+
+        // Size from how tall the target appears, so it shrinks with distance like everything
+        // else on screen instead of staying a fixed lump of pixels.
+        float halfHeight = (float) Math.abs(middle[1] - top[1]);
+        float size = halfHeight * 1.25f * (float) (markerSize == null ? 1.0 : markerSize.getInput());
+        if (size < 3.0f) {
+            return;
+        }
+        float centerX = (float) middle[0];
+        float centerY = (float) middle[1];
+
+        int style = markerStyle == null ? MARKER_STYLE_BRACKETS : (int) markerStyle.getInput();
+        float thickness = (float) (markerThickness == null ? 2.0 : markerThickness.getInput());
+        float gap = style == MARKER_STYLE_FRAME
+                ? 0.0f
+                : (float) (markerGap == null ? 0.35 : markerGap.getInput());
+        double speed = markerSpeed == null ? 0.35 : markerSpeed.getInput();
+        double spin = (System.currentTimeMillis() % 86400000L) / 1000.0 * speed;
+        // Blades keep one long arc and one short one rather than four even brackets.
+        int pieces = style == MARKER_STYLE_BLADES ? 2 : 4;
+
+        // Roundness 0 is a circle, 1 is very nearly a square. The exponent is what bends the
+        // superellipse between the two.
+        float roundness = (float) (markerSquareness == null ? 0.55 : markerSquareness.getInput());
+        double exponent = 2.0 / (2.0 + roundness * 8.0);
+
+        GlStateManager.disableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableAlpha();
+        GlStateManager.shadeModel(GL11.GL_SMOOTH);
+        GlStateManager.depthMask(false);
+
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer worldRenderer = tessellator.getWorldRenderer();
+        worldRenderer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
+
+        double previousX = 0.0;
+        double previousY = 0.0;
+        int previousColor = 0;
+        boolean previousDrawn = false;
+
+        for (int i = 0; i <= MARKER_SEGMENTS; i++) {
+            double t = (double) i / MARKER_SEGMENTS;
+            double angle = t * Math.PI * 2.0 + spin;
+
+            // Gaps sit at the middle of each side, which is what leaves the corners standing.
+            boolean visible = true;
+            if (gap > 0.0f) {
+                double slice = (t * pieces) % 1.0;
+                visible = slice > gap * 0.5 && slice < 1.0 - gap * 0.5;
+            }
+
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            double px = Math.signum(cos) * Math.pow(Math.abs(cos), exponent) * size;
+            double py = Math.signum(sin) * Math.pow(Math.abs(sin), exponent) * size;
+            int color = markerColor(t);
+
+            if (visible && previousDrawn) {
+                markerBand(worldRenderer, centerX, centerY, previousX, previousY, px, py,
+                        thickness, previousColor, color);
+            }
+            previousX = px;
+            previousY = py;
+            previousColor = color;
+            previousDrawn = visible;
+        }
+
+        tessellator.draw();
+
+        GlStateManager.depthMask(true);
+        GlStateManager.shadeModel(GL11.GL_FLAT);
+        GlStateManager.enableAlpha();
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    /** The marker colour at a position along the outline, 0 to 1. */
+    private int markerColor(double position) {
+        int mode = markerColorMode == null ? MARKER_COLORS_THEME : (int) markerColorMode.getInput();
+        switch (mode) {
+            case MARKER_COLORS_ARRAY_LIST:
+                return HUD.getHudColor(position * 360.0) | 0xFF000000;
+            case MARKER_COLORS_CUSTOM:
+                return markerColor1 == null ? 0xFF5AAAFF
+                        : ((markerColor1.getRGB() & 0x00FFFFFF) | (markerColor1.getAlpha() << 24));
+            case MARKER_COLORS_GRADIENT: {
+                if (markerColor1 == null || markerColor2 == null) {
+                    return 0xFF5AAAFF;
+                }
+                // Out and back, so the two ends of the loop meet on the same colour instead of
+                // snapping from the second back to the first.
+                float mix = (float) (1.0 - Math.abs(position * 2.0 - 1.0));
+                return blend(markerColor1, markerColor2, mix);
+            }
+            case MARKER_COLORS_THEME:
+            default:
+                return Theme.getGradient((int) theme.getInput(), position * 360.0) | 0xFF000000;
+        }
+    }
+
+    private static int blend(ColorSetting from, ColorSetting to, float mix) {
+        int red = Math.round(from.getRed() + (to.getRed() - from.getRed()) * mix);
+        int green = Math.round(from.getGreen() + (to.getGreen() - from.getGreen()) * mix);
+        int blue = Math.round(from.getBlue() + (to.getBlue() - from.getBlue()) * mix);
+        int alpha = Math.round(from.getAlpha() + (to.getAlpha() - from.getAlpha()) * mix);
+        return (alpha << 24) | (red << 16) | (green << 8) | blue;
+    }
+
+    /**
+     * One segment of the outline, as a quad straddling the path.
+     *
+     * The outward direction is the direction from the centre, which is exactly the surface
+     * normal of a superellipse, so the band keeps an even width all the way round including
+     * through the corners.
+     */
+    private void markerBand(WorldRenderer worldRenderer, float centerX, float centerY,
+                            double fromX, double fromY, double toX, double toY,
+                            float thickness, int fromColor, int toColor) {
+        double fromLength = Math.sqrt(fromX * fromX + fromY * fromY);
+        double toLength = Math.sqrt(toX * toX + toY * toY);
+        if (fromLength < 0.0001 || toLength < 0.0001) {
+            return;
+        }
+        double fromNormalX = fromX / fromLength * thickness;
+        double fromNormalY = fromY / fromLength * thickness;
+        double toNormalX = toX / toLength * thickness;
+        double toNormalY = toY / toLength * thickness;
+
+        markerVertex(worldRenderer, centerX + fromX - fromNormalX, centerY + fromY - fromNormalY, fromColor);
+        markerVertex(worldRenderer, centerX + toX - toNormalX, centerY + toY - toNormalY, toColor);
+        markerVertex(worldRenderer, centerX + toX + toNormalX, centerY + toY + toNormalY, toColor);
+        markerVertex(worldRenderer, centerX + fromX + fromNormalX, centerY + fromY + fromNormalY, fromColor);
+    }
+
+    private void markerVertex(WorldRenderer worldRenderer, double x, double y, int argb) {
+        worldRenderer.pos(x, y, 0.0)
+                .color((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, (argb >>> 24) & 0xFF)
+                .endVertex();
+    }
+
     // ---------------------------------------------------------------- hit particles
 
     /**
