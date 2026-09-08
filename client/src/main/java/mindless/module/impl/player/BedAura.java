@@ -83,7 +83,9 @@ private static final double AIM_FACE_INSET = 0.12;
         this.registerSetting(rate = new SliderSetting("Rate", "ms", 250.0, 50.0, 2000.0, 50.0));
         this.registerSetting(aimSpeed = new SliderSetting("Aim speed", 14, 1, 30, 1));
         this.registerSetting(breakNearBlock = new ButtonSetting("Break near block", true));
-        this.registerSetting(breakFromOutside = new ButtonSetting("Break from outside", false));
+        // Defaulted on so behaviour is unchanged for anyone already using it: the old default
+        // of off produced this same path, it was only named backwards.
+        this.registerSetting(breakFromOutside = new ButtonSetting("Break from outside", true));
         this.registerSetting(whitelistOwnBed = new ButtonSetting("Whitelist own bed", true));
         this.registerSetting(prioritizeKillAura = new ButtonSetting("Prioritize KillAura", false));
         this.registerSetting(swapGroup = new GroupSetting("Swap"));
@@ -333,16 +335,25 @@ public boolean shouldOverrideMouseOver() {
                 baseYaw, basePitch, targetRotations[0], targetRotations[1],
                 (int) aimSpeed.getInput(), 15.0F
         );
-        float yawError = Math.abs(MathHelper.wrapAngleTo180_float(targetRotations[0] - r[0]));
-        float pitchError = Math.abs(targetRotations[1] - r[1]);
+        // Snap the step to the mouse-sensitivity grid, the way Scaffold does. A real mouse can
+        // only produce rotation deltas that are whole multiples of that step, so a smooth
+        // arbitrary value is the one part of this no physical input could have made. It was
+        // missing here and nowhere else.
+        float[] fixed = RotationUtils.fixRotation(r[0], r[1],
+                RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
+
+        // Measured against what is actually sent rather than the value before snapping,
+        // otherwise mining is gated on a rotation the server never sees.
+        float yawError = Math.abs(MathHelper.wrapAngleTo180_float(targetRotations[0] - fixed[0]));
+        float pitchError = Math.abs(targetRotations[1] - fixed[1]);
         if (yawError <= 4.0F && pitchError <= 4.0F) {
             rotationAlignedTicks++;
         } else {
             rotationAlignedTicks = 0;
         }
         miningActive = rotationAlignedTicks >= 2;
-        e.setYaw(r[0]);
-        e.setPitch(r[1]);
+        e.setYaw(fixed[0]);
+        e.setPitch(fixed[1]);
     }
 
 
@@ -545,7 +556,11 @@ private BlockPos[] footHeadPair(BlockPos at) {
         List<Choice> out = new ArrayList<>();
         boolean exposed = isBedExposed(pair);
 
-        if (exposed || breakFromOutside.isToggled()) {
+        // On means break it the way a player would: if the bed is buried, take the covering
+        // blocks off first rather than reaching a pickaxe through them. It used to mean the
+        // reverse -- switching it on made the aura hit the bed straight through whatever was
+        // stacked on it, which is the opposite of breaking from outside.
+        if (exposed || !breakFromOutside.isToggled()) {
             for (BlockPos bp : pair) {
                 addBlockCandidate(bp, reachSq, out);
             }
