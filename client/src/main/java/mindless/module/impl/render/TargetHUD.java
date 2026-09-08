@@ -473,10 +473,18 @@ private int ringColor(int ringIndex) {
                 (float) (x + (ringOffsetX == null ? 0.0 : ringOffsetX.getInput())),
                 (float) (y + (ringOffsetY == null ? 0.0 : ringOffsetY.getInput())),
                 (float) (z + (ringOffsetZ == null ? 0.0 : ringOffsetZ.getInput())));
+        // Whatever drew last in the world pass may have left a shader program bound, and a
+        // fixed-function batch drawn through someone else's program renders nothing or garbage.
+        // The array list batch already had to do this; the rings never did.
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.disableTexture2D();
         GlStateManager.disableDepth();
         GlStateManager.enableBlend();
         GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        // The world pass leaves the alpha test on. Soft edges fade a band to zero alpha at both
+        // sides, and every one of those fragments would be discarded by the test rather than
+        // blended, so the falloff this whole approach depends on would not survive it.
+        GlStateManager.disableAlpha();
         // Quads have a facing and these are seen from both sides.
         GlStateManager.disableCull();
         GlStateManager.depthMask(false);
@@ -486,6 +494,7 @@ private int ringColor(int ringIndex) {
         WorldRenderer worldRenderer = tessellator.getWorldRenderer();
         worldRenderer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
 
+        int drawn = 0;
         for (int i = 0; i < count; i++) {
             float ringY;
             float radius;
@@ -589,6 +598,7 @@ private int ringColor(int ringIndex) {
             if (alpha <= 1 || radius <= 0.0f) {
                 continue;
             }
+            drawn++;
             if (arcSweep > 0.0f) {
                 emitArc(worldRenderer, centerX, ringY, centerZ, radius, thickness, segments,
                         arcStart, arcSweep, argb, Math.min(255, alpha));
@@ -601,7 +611,14 @@ private int ringColor(int ringIndex) {
 
         tessellator.draw();
 
+        if (mindless.utility.Diagnostics.isEnabled()) {
+            mindless.utility.Diagnostics.log("rings", RING_STYLES[Math.max(0, Math.min(RING_STYLES.length - 1, style))]
+                    + ": " + drawn + "/" + count + " rings, radius " + String.format("%.2f", (double) baseRadius)
+                    + ", fade " + String.format("%.2f", (double) fade));
+        }
+
         GlStateManager.shadeModel(GL11.GL_FLAT);
+        GlStateManager.enableAlpha();
         GlStateManager.enableCull();
         GlStateManager.depthMask(true);
         GlStateManager.enableDepth();
