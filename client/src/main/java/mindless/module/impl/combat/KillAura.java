@@ -166,7 +166,14 @@ public class KillAura extends Module {
     @SubscribeEvent(priority = EventPriority.LOW)
     public void onClientRotation(ClientRotationEvent e) {
         if (!basicCondition() || !settingCondition()) {
+            // A deliberate stop: the button was released, the weapon was put away, a screen was
+            // opened. The retention window exists for the race between a tick clearing the target
+            // and a render reading it a moment later -- not to keep a HUD up after the aura has
+            // been told to stop. Clearing it here is what lets the HUD leave immediately on
+            // release while a target that merely blinks out of range for a frame still gets the
+            // window.
             setTarget(null);
+            clearHudTarget();
             return;
         }
 
@@ -175,6 +182,7 @@ public class KillAura extends Module {
                 && !ModuleManager.bedAura.isPrioritizingKillAura();
         if (bedAuraHasPriority) {
             setTarget(null);
+            clearHudTarget();
             return;
         }
 

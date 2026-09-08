@@ -138,7 +138,6 @@ private static final int[] DEFAULT_RING_COLORS = {
     private Timer fadeTimer;
     private Timer healthBarTimer = null;
     private EntityLivingBase target;
-    private long lastAliveMS;
     private double lastHealth;
     private float lastHealthBar;
     private long popInStart = -1;
@@ -350,17 +349,18 @@ private int ringColor(int ringIndex) {
                             mc.currentScreen.getClass().getSimpleName());
                 }
                 target = activeTarget;
-                lastAliveMS = System.currentTimeMillis();
                 fadeTimer = null;
                 if (popInStart < 0) popInStart = System.currentTimeMillis();
             } else if (target != null) {
-                // KillAura counts the chat box as a screen under "Disable in inventory", which
-                // is on by default, so typing clears its target. Hold the panel while chat is
-                // open instead of dropping the opponent and popping back in on send.
-                if (chatOpen) {
-                    lastAliveMS = System.currentTimeMillis();
-                }
-                if (System.currentTimeMillis() - lastAliveMS >= 100 && fadeTimer == null) {
+                // KillAura counts the chat box as a screen under "Disable in inventory", which is
+                // on by default, so typing clears its target. Hold the panel while chat is open
+                // rather than dropping the opponent and popping back in on send.
+                //
+                // Otherwise the fade begins on the very next frame. There used to be a hundred
+                // millisecond hold here as well, on top of KillAura's own retention window, and
+                // the two stacked: releasing the button left everything on screen for a quarter
+                // of a second before the fade had even started.
+                if (!chatOpen && fadeTimer == null) {
                     (fadeTimer = new Timer((int) POP_OUT_MS)).start();
                     traceStage(target, "target released, fading out", "");
                 }
@@ -390,7 +390,7 @@ private int ringColor(int ringIndex) {
             lastHealth = health;
             playerInfo += " " + Utils.getHealthStr(target, true);
             if (!screenHides) {
-                drawTargetMarker(target);
+                drawTargetMarker(target, presentationProgress());
                 drawTargetHUD(fadeTimer, playerInfo, health);
             }
         }
@@ -406,17 +406,15 @@ private int ringColor(int ringIndex) {
         // The rings used to cut out the instant KillAura let go, while the panel held for a
         // moment and faded, so the two disagreed on their way off screen. They now share the
         // panel's fade and leave together.
-        float espFade = 1.0f;
         if (auraTarget == null) {
             if (target == null || fadeTimer == null) {
                 return;
             }
-            espFade = Math.max(0.0f, 1.0f - fadeTimer.getValueFloat(0.0f, 1.0f, 1));
-            espFade *= espFade;
-            if (espFade <= 0.001f) {
-                return;
-            }
             auraTarget = target;
+        }
+        float espFade = Math.min(1.0f, presentationProgress());
+        if (espFade <= 0.001f) {
+            return;
         }
 
         if (ModuleManager.backtrack.isRenderingServerPositionFor(auraTarget)) {
@@ -825,16 +823,7 @@ private int ringColor(int ringIndex) {
         final int n8 = x + targetStrWithPadding;
         final int n9 = y + (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding;
 
-        float popProgress;
-        if (fadeTimer == null) {
-            long elapsed = System.currentTimeMillis() - popInStart;
-            popProgress = Math.min(1.0f, (float) elapsed / POP_IN_MS);
-            popProgress = easeOutBack(popProgress);
-        } else {
-            float raw = fadeTimer.getValueFloat(0.0f, 1.0f, 1);
-            popProgress = 1.0f - raw;
-            popProgress = Math.max(0.0f, popProgress * popProgress);
-        }
+        float popProgress = presentationProgress();
 
         // Only a completed fade-OUT ends the panel. The pop-in starts at exactly zero --
         // easeOutBack(0) is 0, and popInStart is set in the same call that draws, so the first
@@ -1006,8 +995,11 @@ private int ringColor(int ringIndex) {
      * the band, the gaps and the rotation all fall out of a single angle sweep, with no separate
      * cases for the straight edges and the corners.
      */
-    private void drawTargetMarker(EntityLivingBase entity) {
+    private void drawTargetMarker(EntityLivingBase entity, float fade) {
         if (markerEnabled == null || !markerEnabled.isToggled() || entity == null) {
+            return;
+        }
+        if (fade <= 0.001f) {
             return;
         }
         if (SexyESP.projectionContext == null) {
@@ -1105,6 +1097,8 @@ private int ringColor(int ringIndex) {
             double px = localX * cosSpin - localY * sinSpin;
             double py = localX * sinSpin + localY * cosSpin;
             int color = markerColor(t);
+            int colorAlpha = Math.round(((color >>> 24) & 0xFF) * Math.min(1.0f, fade));
+            color = (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, colorAlpha)) << 24);
 
             if (visible && previousDrawn) {
                 markerBand(worldRenderer, centerX, centerY, previousX, previousY, px, py,
@@ -1832,6 +1826,24 @@ private static final float[][] HEAD_UVS = {
         healthTrackedTarget = null;
         tweenedX = Float.NaN;
         tweenedY = Float.NaN;
+    }
+
+    /**
+     * How far in or out the target display currently is, 0 to 1.
+     *
+     * The panel, the rings and the marker all read this one value, so they arrive and leave
+     * together. They used to each have their own idea: the panel scaled and faded, the rings had
+     * a fade of their own, and the marker had none at all and simply vanished when the target was
+     * finally dropped, which is why stopping never looked synchronised.
+     */
+    private float presentationProgress() {
+        if (fadeTimer == null) {
+            long elapsed = System.currentTimeMillis() - popInStart;
+            return easeOutBack(Math.min(1.0f, (float) elapsed / POP_IN_MS));
+        }
+        float raw = fadeTimer.getValueFloat(0.0f, 1.0f, 1);
+        float out = 1.0f - raw;
+        return Math.max(0.0f, out * out);
     }
 
     private static float easeOutBack(float t) {
