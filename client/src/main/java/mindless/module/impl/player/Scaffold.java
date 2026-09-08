@@ -42,6 +42,24 @@ import org.lwjgl.opengl.GL11;
 import java.io.IOException;
 
 public class Scaffold extends Module {
+    /**
+     * Where to look while bridging.
+     *
+     * All four are expressed against the movement yaw -- the direction you are actually
+     * travelling -- rather than where the camera points, because that is what stays stable while
+     * strafing. Back looks straight back along it, Diagonal picks whichever of the two rear
+     * quarters faces the block being bridged from, Normal tries those three in order and takes
+     * the first that can actually reach, and Offset aims at a point pushed into the face instead
+     * of at its centre.
+     */
+    private static final String[] ROTATION_MODES = new String[]{"Back", "Normal", "Offset", "Diagonal"};
+    /** How long the outline takes to fall away once the target moves on. */
+    private static final long TARGET_FADE_MS = 220L;
+    private static final int ROT_BACK = 0;
+    private static final int ROT_NORMAL = 1;
+    private static final int ROT_OFFSET = 2;
+    private static final int ROT_DIAGONAL = 3;
+
     private static final ItemBlock PLACEHOLDER = new ItemBlock(Blocks.tnt);
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
@@ -58,11 +76,30 @@ public class Scaffold extends Module {
     private boolean placeQueued;
     /** The block the last placement went against, reused while it stays usable. */
     private BlockPos lastPlacedAgainst;
+    /** Ticks spent off the ground, and how many blocks the current jump still owes. */
+    private int airTicks;
+    private int blocksSinceJump;
+    private int jumpBlockTarget;
+    /** When the last target stopped being the target, for the outline to fade from. */
+    private BlockPos fadingPos;
+    private long fadingSince;
 
     private float lastYaw, lastPitch;
     private boolean lastRotsValid;
 
     private ButtonSetting downPlace;
+    private SliderSetting rotationMode;
+    private ButtonSetting aimCheck;
+    private ButtonSetting strictAimCheck;
+    private SliderSetting offsetAmount;
+    private ButtonSetting swing;
+    private SliderSetting straightAirDelay;
+    private SliderSetting diagonalAirDelay;
+    private SliderSetting straightJumpBlocks;
+    private SliderSetting diagonalJumpBlocks;
+    private ButtonSetting showTarget;
+    private ButtonSetting targetFadeOut;
+    private ButtonSetting targetShade;
     private boolean eagleActive;
 
     /** Whether Sprint Scaf Mode currently owns the sprint key, and what it last asked for. */
@@ -84,6 +121,18 @@ private int previousSlot = -1;
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
         this.registerSetting(switchBack = new ButtonSetting("Switch back", true));
         this.registerSetting(downPlace = new ButtonSetting("Down place", true));
+        this.registerSetting(rotationMode = new SliderSetting("Rotation", ROT_DIAGONAL, ROTATION_MODES));
+        this.registerSetting(offsetAmount = new SliderSetting("Offset", 0.15, 0.0, 1.0, 0.01));
+        this.registerSetting(aimCheck = new ButtonSetting("Aim check", true));
+        this.registerSetting(strictAimCheck = new ButtonSetting("Strict aim check", true));
+        this.registerSetting(swing = new ButtonSetting("Swing", true));
+        this.registerSetting(straightAirDelay = new SliderSetting("Straight air delay", " tick", 1, 0, 4, 1));
+        this.registerSetting(diagonalAirDelay = new SliderSetting("Diagonal air delay", " tick", 1, 0, 4, 1));
+        this.registerSetting(straightJumpBlocks = new SliderSetting("Straight jump blocks", 0, 0, 3, 1));
+        this.registerSetting(diagonalJumpBlocks = new SliderSetting("Diagonal jump blocks", 0, 0, 3, 1));
+        this.registerSetting(showTarget = new ButtonSetting("Show target", true));
+        this.registerSetting(targetFadeOut = new ButtonSetting("Target fade out", true));
+        this.registerSetting(targetShade = new ButtonSetting("Target shade", false));
     }
 
     @Override
@@ -176,30 +225,18 @@ private void restorePreviousSlot() {
         Item item = getBlockItem();
         if (item == null) return;
 
-        float[] rots;
-        if (willFall) {
-            float[] solved = getRotationsForFace(best.pos, best.face, baseYaw);
-            if (solved != null) {
-                rots = applySpeedCap(lastRotsValid ? lastYaw : baseYaw,
-                        lastRotsValid ? lastPitch : mc.thePlayer.rotationPitch,
-                        baseYaw, solved[1]);
-                rots[0] = baseYaw;
-            } else {
-                rots = getFreeRotationsForFace(best.pos, best.face);
-                rots = applySpeedCap(lastRotsValid ? lastYaw : baseYaw,
-                        lastRotsValid ? lastPitch : mc.thePlayer.rotationPitch,
-                        rots[0], rots[1]);
-            }
-        } else {
-            rots = applySpeedCap(lastRotsValid ? lastYaw : baseYaw,
-                    lastRotsValid ? lastPitch : mc.thePlayer.rotationPitch,
-                    baseYaw, 82f);
-        }
+        // The chosen mode decides where to look; the speed cap then walks the head there so it
+        // does not snap. Falling still forces the aim down at the face, since a bridge that
+        // misses while you are already off the edge is the one that actually costs you.
+        float[] target = placementRotations(best.pos, best.face);
+        float[] rots = applySpeedCap(lastRotsValid ? lastYaw : baseYaw,
+                lastRotsValid ? lastPitch : mc.thePlayer.rotationPitch,
+                target[0], willFall ? target[1] : Math.max(target[1], 82f));
 
         float[] fixed = RotationUtils.fixRotation(rots[0], rots[1],
                 RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
 
-        e.setYaw(willFall ? (getRotationsForFace(best.pos, best.face, baseYaw) != null ? baseYaw : fixed[0]) : fixed[0]);
+        e.setYaw(fixed[0]);
         e.setPitch(fixed[1]);
 
         lastYaw = e.yaw != null ? e.yaw : fixed[0];
@@ -229,15 +266,37 @@ private void restorePreviousSlot() {
     public void onPreUpdate(PreUpdateEvent e) {
         if (!Utils.nullCheck()) return;
 
+        // Jump bridging. While off the ground a placement waits out the air delay, unless the
+        // jump still owes blocks, in which case it goes immediately -- that pair is what lets a
+        // jump place its blocks up front and then hold off, instead of spraying every tick.
+        boolean diagonal = isMovingDiagonally();
+        if (mc.thePlayer.onGround) {
+            airTicks = 0;
+            blocksSinceJump = 0;
+            jumpBlockTarget = (int) (diagonal ? diagonalJumpBlocks.getInput() : straightJumpBlocks.getInput());
+        }
+        else {
+            airTicks++;
+        }
+        int airDelay = (int) (diagonal ? diagonalAirDelay.getInput() : straightAirDelay.getInput());
+        boolean airAllows = mc.thePlayer.onGround
+                || airTicks >= airDelay
+                || blocksSinceJump < jumpBlockTarget;
+
         boolean placed = false;
-        if (placeQueued && queuedPos != null && queuedFace != null && queuedVec != null) {
+        if (airAllows && placeQueued && queuedPos != null && queuedFace != null && queuedVec != null) {
             ItemStack held = mc.thePlayer.getHeldItem();
             if (held != null && held.getItem() instanceof ItemBlock) {
                 if (!keepY.isToggled() || queuedFace != EnumFacing.UP) {
                     mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held,
                             queuedPos, queuedFace, queuedVec);
-                    mc.thePlayer.swingItem();
+                    if (swing.isToggled()) {
+                        mc.thePlayer.swingItem();
+                    }
                     lastPlacedAgainst = queuedPos;
+                    if (!mc.thePlayer.onGround) {
+                        blocksSinceJump++;
+                    }
                     placed = true;
                 }
             }
@@ -271,9 +330,42 @@ private void restorePreviousSlot() {
 
     @SubscribeEvent
     public void onRenderWorld(RenderWorldLastEvent e) {
-        if (previewPos == null) return;
-        int color = 0x4000AAFF;
-        RenderUtils.renderBlock(previewPos, color, true, false);
+        if (!showTarget.isToggled()) {
+            fadingPos = null;
+            return;
+        }
+
+        // Remember the block the moment it stops being the target, so the outline can fall away
+        // from where it was rather than blinking off as the search moves on.
+        if (previewPos != null) {
+            if (!previewPos.equals(fadingPos)) {
+                fadingPos = previewPos;
+            }
+            fadingSince = System.currentTimeMillis();
+        }
+
+        BlockPos drawAt = previewPos != null ? previewPos : fadingPos;
+        if (drawAt == null) {
+            return;
+        }
+
+        float strength = 1.0f;
+        if (previewPos == null) {
+            if (!targetFadeOut.isToggled()) {
+                fadingPos = null;
+                return;
+            }
+            long elapsed = System.currentTimeMillis() - fadingSince;
+            strength = 1.0f - elapsed / (float) TARGET_FADE_MS;
+            if (strength <= 0.0f) {
+                fadingPos = null;
+                return;
+            }
+        }
+
+        int alpha = Math.max(0, Math.min(255, Math.round(0x40 * strength)));
+        int color = (alpha << 24) | 0x00AAFF;
+        RenderUtils.renderBlock(drawAt, color, true, targetShade.isToggled());
     }
 
     private void updateEagle(boolean placedThisTick) {
@@ -603,6 +695,137 @@ private void restorePreviousSlot() {
         return new net.minecraft.util.AxisAlignedBB(pos.getX(), pos.getY(), pos.getZ(),
                 pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0)
                 .intersectsWith(mc.thePlayer.getEntityBoundingBox());
+    }
+
+    /**
+     * The direction of travel.
+     *
+     * getBaseYaw is that direction turned around -- the yaw you look back along while bridging --
+     * so the movement yaw is simply the opposite of it, and every rotation mode is written
+     * against this rather than against the camera.
+     */
+    /** Both an axis and a strafe held, which is what makes a bridge diagonal. */
+    private boolean isMovingDiagonally() {
+        boolean axis = mc.gameSettings.keyBindForward.isKeyDown() || mc.gameSettings.keyBindBack.isKeyDown();
+        boolean strafe = mc.gameSettings.keyBindLeft.isKeyDown() || mc.gameSettings.keyBindRight.isKeyDown();
+        return axis && strafe;
+    }
+
+    private float movementYaw() {
+        return getBaseYaw() - 180.0f;
+    }
+
+    /** Whether looking this way actually reaches the face we mean to place against. */
+    private boolean aimHits(BlockPos pos, EnumFacing face, float yaw, float pitch) {
+        Vec3 eye = mc.thePlayer.getPositionEyes(1f);
+        Vec3 look = Utils.getLookVec(yaw, pitch);
+        Vec3 end = eye.addVector(look.xCoord * 4.5, look.yCoord * 4.5, look.zCoord * 4.5);
+        MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(eye, end, false, false, true);
+        if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
+            return false;
+        }
+        if (!hit.getBlockPos().equals(pos)) {
+            return false;
+        }
+        // Without strict checking any face of the right block will do, which keeps the looser
+        // rotations usable on blocks the exact face cannot be reached on.
+        return !strictAimCheck.isToggled() || hit.sideHit == face;
+    }
+
+    /** Yaw and pitch to a point pushed into the face rather than to its centre. */
+    private float[] offsetRotations(BlockPos pos, EnumFacing face, double offset) {
+        double x = pos.getX() + 0.5 + face.getFrontOffsetX() * (0.5 - offset);
+        double y = pos.getY() + 0.5 + face.getFrontOffsetY() * (0.5 - offset);
+        double z = pos.getZ() + 0.5 + face.getFrontOffsetZ() * (0.5 - offset);
+
+        double dx = x - mc.thePlayer.posX;
+        double dy = y - (mc.thePlayer.posY + mc.thePlayer.getEyeHeight());
+        double dz = z - mc.thePlayer.posZ;
+
+        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float pitch = (float) -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
+        return new float[]{yaw, MathHelper.clamp_float(pitch, -90f, 90f)};
+    }
+
+    /**
+     * The rotation for a placement, by mode.
+     *
+     * Each mode falls back to looking straight at the face when its preferred angle cannot reach,
+     * so a mode never costs a placement -- it only changes where the head points when there is a
+     * choice.
+     */
+    private float[] placementRotations(BlockPos pos, EnumFacing face) {
+        float[] direct = getFreeRotationsForFace(pos, face);
+        if (!aimCheck.isToggled()) {
+            return direct;
+        }
+
+        float moveYaw = movementYaw();
+        float pitch = direct[1];
+        float back = moveYaw - 180.0f;
+        float left = moveYaw - 135.0f;
+        float right = moveYaw + 135.0f;
+        float yaw;
+
+        switch ((int) rotationMode.getInput()) {
+            case ROT_NORMAL: {
+                yaw = direct[0];
+                if (aimHits(pos, face, back, pitch)) {
+                    yaw = back;
+                }
+                else if (aimHits(pos, face, left, pitch)) {
+                    yaw = left;
+                }
+                else if (aimHits(pos, face, right, pitch)) {
+                    yaw = right;
+                }
+                break;
+            }
+            case ROT_OFFSET: {
+                float[] offset = offsetRotations(pos, face, offsetAmount.getInput());
+                yaw = offset[0];
+                pitch = offset[1];
+                if (strictAimCheck.isToggled() && !aimHits(pos, face, yaw, pitch)) {
+                    yaw = direct[0];
+                    pitch = direct[1];
+                }
+                break;
+            }
+            case ROT_DIAGONAL: {
+                boolean diagonal = aimHits(pos, face, left, pitch) || aimHits(pos, face, right, pitch);
+                boolean straight = aimHits(pos, face, back, pitch);
+                if (!diagonal && !straight) {
+                    yaw = direct[0];
+                }
+                else if (!diagonal) {
+                    yaw = back;
+                }
+                else {
+                    // Take the rear quarter that faces the block being bridged from, so the head
+                    // turns into the bridge rather than away from it.
+                    BlockPos below = new BlockPos(Math.floor(mc.thePlayer.posX),
+                            Math.floor(mc.thePlayer.posY) - 1.0, Math.floor(mc.thePlayer.posZ));
+                    double dx = below.getX() + 0.5 - mc.thePlayer.posX;
+                    double dz = below.getZ() + 0.5 - mc.thePlayer.posZ;
+                    float toBelow = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
+                    float delta = MathHelper.wrapAngleTo180_float(toBelow - moveYaw);
+                    float picked = delta > 0.0f ? right : left;
+                    if (strictAimCheck.isToggled() && !aimHits(pos, face, picked, pitch)) {
+                        picked = delta > 0.0f ? left : right;
+                    }
+                    yaw = picked;
+                }
+                break;
+            }
+            case ROT_BACK:
+            default: {
+                boolean diagonal = aimHits(pos, face, left, pitch) || aimHits(pos, face, right, pitch);
+                boolean straight = aimHits(pos, face, back, pitch);
+                yaw = (!straight && (strictAimCheck.isToggled() || !diagonal)) ? direct[0] : back;
+                break;
+            }
+        }
+        return new float[]{yaw, pitch};
     }
 
     private float getBaseYaw() {
