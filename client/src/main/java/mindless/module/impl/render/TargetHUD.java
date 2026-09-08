@@ -19,7 +19,11 @@ import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.network.NetworkPlayerInfo;
+import mindless.module.setting.impl.GroupSetting;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.WorldRenderer;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ResourceLocation;
@@ -41,6 +45,14 @@ public class TargetHUD extends Module {
     private ButtonSetting showStatus;
     private ButtonSetting healthColor;
     private SliderSetting ringColorMode;
+    private GroupSetting ringGroup;
+    private SliderSetting ringStyle;
+    private SliderSetting ringCount;
+    private SliderSetting ringSize;
+    private SliderSetting ringSpeed;
+    private SliderSetting ringThickness;
+    private SliderSetting ringQuality;
+    private ButtonSetting ringSoftEdges;
     private SliderSetting headStyle;
     private ButtonSetting hitEffects;
     private ColorSetting hitColor;
@@ -48,6 +60,12 @@ public class TargetHUD extends Module {
     private final ColorSetting[] ringColors = new ColorSetting[RING_COUNT];
 private static final int RING_COUNT = 6;
     private static final String[] RING_COLOR_MODES = new String[] { "Theme", "Array list", "Custom" };
+    private static final String[] RING_STYLES = new String[] { "Trail", "Orbit", "Pulse", "Halo", "Simple" };
+    private static final int RING_STYLE_TRAIL = 0;
+    private static final int RING_STYLE_ORBIT = 1;
+    private static final int RING_STYLE_PULSE = 2;
+    private static final int RING_STYLE_HALO = 3;
+    private static final int RING_STYLE_SIMPLE = 4;
     private static final String[] HEAD_STYLES = new String[] { "3D", "Flat", "2D" };
     private static final int HEAD_STYLE_3D = 0;
     private static final int HEAD_STYLE_FLAT = 1;
@@ -118,7 +136,6 @@ private static final int[] DEFAULT_RING_COLORS = {
         this.registerSetting(theme = new SliderSetting("Theme", 0, Theme.THEMES_SETTING));
         this.registerSetting(glowSize = new SliderSetting("Glow size", 9.0, 2.0, 20.0, 0.5));
         this.registerSetting(positionMode = new SliderSetting("Position", 0, POSITION_MODES));
-        this.registerSetting(renderEsp = new ButtonSetting("Render ESP", true));
         this.registerSetting(showDifference = new ButtonSetting("Show difference", true));
         this.registerSetting(showStatus = new ButtonSetting("Show win or loss", true));
         this.registerSetting(healthColor = new ButtonSetting("Traditional health color", false));
@@ -126,11 +143,26 @@ private static final int[] DEFAULT_RING_COLORS = {
         this.registerSetting(hitEffects = new ButtonSetting("Hit effects", true));
         this.registerSetting(hitColor = new ColorSetting("Hit color", 255, 92, 92, 190));
         this.registerSetting(hitStrengthScale = new SliderSetting("Hit strength", 1.0, 0.2, 2.0, 0.05));
-        this.registerSetting(ringColorMode = new SliderSetting("Ring colors", RING_MODE_THEME, RING_COLOR_MODES));
+
+        // The rings are their own thing and were scattered through the panel settings. Names
+        // are unchanged, and profiles key settings by name alone, so existing configs keep
+        // their values -- only where they appear in the menu has moved.
+        this.registerSetting(ringGroup = new GroupSetting("Target rings"));
+        this.registerSetting(renderEsp = new ButtonSetting(ringGroup, "Render ESP", true));
+        this.registerSetting(ringStyle = new SliderSetting(ringGroup, "Ring style", RING_STYLE_TRAIL, RING_STYLES));
+        this.registerSetting(ringCount = new SliderSetting(ringGroup, "Ring count", RING_COUNT, 1, RING_COUNT, 1));
+        this.registerSetting(ringSize = new SliderSetting(ringGroup, "Ring size", 1.0, 0.4, 2.5, 0.05));
+        this.registerSetting(ringSpeed = new SliderSetting(ringGroup, "Ring speed", 1.0, 0.1, 3.0, 0.05));
+        this.registerSetting(ringThickness = new SliderSetting(ringGroup, "Ring thickness", 2.5, 0.5, 8.0, 0.25));
+        this.registerSetting(ringQuality = new SliderSetting(ringGroup, "Ring quality", 40, 10, 64, 2));
+        this.registerSetting(ringSoftEdges = new ButtonSetting(ringGroup, "Soft edges", true));
+        this.registerSetting(ringColorMode = new SliderSetting(ringGroup, "Ring colors", RING_MODE_THEME, RING_COLOR_MODES));
         for (int i = 0; i < RING_COUNT; i++) {
             int rgb = DEFAULT_RING_COLORS[i];
-            ringColors[i] = new ColorSetting("Ring " + (i + 1) + " color",
-                    (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+            // Alpha is per ring now. Saved colours are "r,g,b" and load unchanged; the
+            // missing fourth field simply leaves the default in place.
+            ringColors[i] = new ColorSetting(ringGroup, "Ring " + (i + 1) + " color",
+                    (rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 255);
             this.registerSetting(ringColors[i]);
         }
     }
@@ -140,13 +172,27 @@ private static final int[] DEFAULT_RING_COLORS = {
         glowSize.setVisible(mode.getInput() == 0, this);
 
         boolean esp = renderEsp != null && renderEsp.isToggled();
+        int style = ringStyle == null ? RING_STYLE_TRAIL : (int) ringStyle.getInput();
+        if (ringStyle != null) ringStyle.setVisible(esp, this);
+        // Simple is the one style that draws a single ring, so a count would mean nothing.
+        if (ringCount != null) ringCount.setVisible(esp && style != RING_STYLE_SIMPLE, this);
+        if (ringSize != null) ringSize.setVisible(esp, this);
+        if (ringSpeed != null) {
+            ringSpeed.setVisible(esp && style != RING_STYLE_HALO && style != RING_STYLE_SIMPLE, this);
+        }
+        if (ringThickness != null) ringThickness.setVisible(esp, this);
+        if (ringQuality != null) ringQuality.setVisible(esp, this);
+        if (ringSoftEdges != null) ringSoftEdges.setVisible(esp, this);
         if (ringColorMode != null) {
             ringColorMode.setVisible(esp, this);
         }
         boolean custom = esp && ringColorMode != null && (int) ringColorMode.getInput() == RING_MODE_CUSTOM;
-        for (ColorSetting ringColor : ringColors) {
-            if (ringColor != null) {
-                ringColor.setVisible(custom, this);
+        int shown = style == RING_STYLE_SIMPLE ? 1
+                : (ringCount == null ? RING_COUNT : Math.max(1, (int) ringCount.getInput()));
+        for (int i = 0; i < ringColors.length; i++) {
+            if (ringColors[i] != null) {
+                // Only the rings that actually draw are worth a colour picker.
+                ringColors[i].setVisible(custom && i < shown, this);
             }
         }
     }
@@ -159,7 +205,10 @@ private int ringColor(int ringIndex) {
 
         if (colorMode == RING_MODE_CUSTOM) {
             ColorSetting setting = ringIndex >= 0 && ringIndex < ringColors.length ? ringColors[ringIndex] : null;
-            return setting == null ? 0xFFFFFFFF : (setting.getRGB() | 0xFF000000);
+            // Keep the picker alpha rather than forcing it opaque, so one ring can be dimmed
+            // on its own instead of only by the style falloff.
+            return setting == null ? 0xFFFFFFFF
+                    : ((setting.getRGB() & 0x00FFFFFF) | (setting.getAlpha() << 24));
         }
 
         return Theme.getGradient((int) theme.getInput(), 0);
@@ -268,18 +317,45 @@ private int ringColor(int ringIndex) {
         drawPillEsp(auraTarget, espFade);
     }
 
+    /**
+     * The rings around the target.
+     *
+     * Every ring in every style is the same primitive: a flat band of quads swept around a
+     * circle, optionally tilted and spun, with the alpha falling to zero at both edges so it
+     * reads as a soft line rather than a hard strip. That replaced GL_LINE_LOOP with
+     * glLineWidth, which gave no control over softness, is capped at wildly different widths
+     * from driver to driver, and cost a separate draw call per ring. Everything now lands in
+     * one Tessellator batch and one draw.
+     *
+     * "Ring quality" is the segment count and "Soft edges" halves the geometry when off, so a
+     * cheap configuration is a real option rather than a euphemism.
+     */
     private void drawPillEsp(EntityLivingBase entity, float fade) {
         float partialTicks = mindless.runtime.AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks;
         double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks - mc.getRenderManager().viewerPosX;
         double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - mc.getRenderManager().viewerPosY;
         double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - mc.getRenderManager().viewerPosZ;
 
-        float entityHeight = entity.height;
-        double time = (System.currentTimeMillis() % 2000L) / 2000.0;
-        float bounce = (float) (Math.sin(time * Math.PI * 2.0) * 0.5 + 0.5);
-        float ringY = bounce * entityHeight;
+        int style = ringStyle == null ? RING_STYLE_TRAIL : (int) ringStyle.getInput();
+        int count = style == RING_STYLE_SIMPLE
+                ? 1
+                : Math.max(1, Math.min(RING_COUNT, ringCount == null ? RING_COUNT : (int) ringCount.getInput()));
+        int segments = Math.max(8, ringQuality == null ? 40 : (int) ringQuality.getInput());
+        boolean soft = ringSoftEdges == null || ringSoftEdges.isToggled();
 
-        float radius = entity.width * 0.7f;
+        float entityHeight = entity.height;
+        float baseRadius = entity.width * 0.7f * (float) (ringSize == null ? 1.0 : ringSize.getInput());
+        double speed = ringSpeed == null ? 1.0 : ringSpeed.getInput();
+        double time = (System.currentTimeMillis() % 86400000L) / 2000.0 * speed;
+
+        // A band is world space, so a ring far away thins out to nothing where a screen-space
+        // line would not. Widen it with distance, but only up to a point, or a target across
+        // the map ends up wearing a dinner plate.
+        double distance = Math.sqrt(x * x + y * y + z * z);
+        float thickness = (float) ((ringThickness == null ? 2.5 : ringThickness.getInput()) * 0.012);
+        thickness *= (float) Math.min(3.5, Math.max(1.0, distance / 12.0));
+
+        ensureCircle(segments);
 
         GlStateManager.pushMatrix();
         GlStateManager.translate((float) x, (float) y, (float) z);
@@ -287,43 +363,173 @@ private int ringColor(int ringIndex) {
         GlStateManager.disableDepth();
         GlStateManager.enableBlend();
         GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glEnable(GL11.GL_LINE_SMOOTH);
-        GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
+        // Quads have a facing and these are seen from both sides.
+        GlStateManager.disableCull();
         GlStateManager.depthMask(false);
+        GlStateManager.shadeModel(GL11.GL_SMOOTH);
 
-        int trailCount = RING_COUNT - 1;
-        for (int trail = trailCount; trail >= 0; trail--) {
-            float trailOffset = trail * 0.06f;
-            float trailBounce = (float) (Math.sin((time - trailOffset) * Math.PI * 2.0) * 0.5 + 0.5);
-            float trailY = trailBounce * entityHeight;
-            float alpha = (trail == 0 ? 1.0f : (1.0f - (float) trail / trailCount) * 0.35f) * fade;
-            float lineWidth = trail == 0 ? 5.0f : 3.0f;
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer worldRenderer = tessellator.getWorldRenderer();
+        worldRenderer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
 
-            int color = ringColor(trail);
-            float r = ((color >> 16) & 0xFF) / 255.0f;
-            float g = ((color >> 8) & 0xFF) / 255.0f;
-            float b = (color & 0xFF) / 255.0f;
+        for (int i = 0; i < count; i++) {
+            float ringY;
+            float radius;
+            float strength;
+            float tilt = 0.0f;
+            float spin = 0.0f;
 
-            GL11.glLineWidth(lineWidth);
-            GL11.glBegin(GL11.GL_LINE_LOOP);
-            GlStateManager.color(r, g, b, alpha);
-            int segments = 40;
-            for (int i = 0; i < segments; i++) {
-                double angle = Math.PI * 2.0 * i / segments;
-                float px = (float) (Math.cos(angle) * radius);
-                float pz = (float) (Math.sin(angle) * radius);
-                GL11.glVertex3f(px, trailY, pz);
+            switch (style) {
+                case RING_STYLE_ORBIT: {
+                    // Rings of one size through the middle of the target, each on its own axis
+                    // and all turning together.
+                    ringY = entityHeight * 0.5f;
+                    radius = baseRadius * 1.15f;
+                    tilt = (float) (Math.PI * (0.18 + 0.5 * i / (double) Math.max(1, count)));
+                    spin = (float) (time * 2.0 * Math.PI + i * Math.PI * 2.0 / count);
+                    strength = 0.9f - 0.09f * i;
+                    break;
+                }
+                case RING_STYLE_PULSE: {
+                    // Sonar: each ring is born at the feet, grows outward and upward, and fades
+                    // as it goes, with the ring births evenly spread through the cycle.
+                    double phase = ((time * 0.6) + (double) i / count) % 1.0;
+                    radius = baseRadius * (float) (0.3 + 1.25 * phase);
+                    ringY = (float) (phase * entityHeight * 0.55);
+                    strength = (float) ((1.0 - phase) * (1.0 - phase));
+                    break;
+                }
+                case RING_STYLE_HALO: {
+                    // Still, on the ground, fading outward. Nothing animates, which makes this
+                    // and Simple the two that cost the same every frame.
+                    ringY = 0.02f + i * 0.003f;
+                    radius = baseRadius * (1.0f + 0.16f * i);
+                    strength = 1.0f - (float) i / (count + 1);
+                    strength *= strength;
+                    break;
+                }
+                case RING_STYLE_SIMPLE: {
+                    ringY = 0.02f;
+                    radius = baseRadius;
+                    strength = 1.0f;
+                    break;
+                }
+                case RING_STYLE_TRAIL:
+                default: {
+                    // The original look: one ring bouncing up the target with the rest trailing
+                    // behind it in phase.
+                    int trailCount = Math.max(1, count - 1);
+                    float bounce = (float) (Math.sin((time - i * 0.06) * Math.PI * 2.0) * 0.5 + 0.5);
+                    ringY = bounce * entityHeight;
+                    radius = baseRadius;
+                    strength = i == 0 ? 1.0f : (1.0f - (float) i / trailCount) * 0.35f;
+                    break;
+                }
             }
-            GL11.glEnd();
+
+            int argb = ringColor(i);
+            int ringAlpha = (argb >>> 24) & 0xFF;
+            if (ringAlpha == 0) {
+                // Theme and array-list colours arrive without an alpha channel.
+                ringAlpha = 255;
+            }
+            int alpha = Math.round(ringAlpha * strength * fade);
+            if (alpha <= 1 || radius <= 0.0f) {
+                continue;
+            }
+            emitRing(worldRenderer, ringY, radius, thickness, segments, tilt, spin, argb,
+                    Math.min(255, alpha), soft);
         }
 
+        tessellator.draw();
+
+        GlStateManager.shadeModel(GL11.GL_FLAT);
+        GlStateManager.enableCull();
         GlStateManager.depthMask(true);
-        GL11.glDisable(GL11.GL_LINE_SMOOTH);
         GlStateManager.enableDepth();
         GlStateManager.enableTexture2D();
         GlStateManager.disableBlend();
         GlStateManager.popMatrix();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    private double[] circleCos;
+    private double[] circleSin;
+    private int circleSegments = -1;
+
+    /** The unit circle for the current segment count, rebuilt only when that count changes. */
+    private void ensureCircle(int segments) {
+        if (circleSegments == segments && circleCos != null) {
+            return;
+        }
+        circleCos = new double[segments];
+        circleSin = new double[segments];
+        for (int i = 0; i < segments; i++) {
+            double angle = Math.PI * 2.0 * i / segments;
+            circleCos[i] = Math.cos(angle);
+            circleSin[i] = Math.sin(angle);
+        }
+        circleSegments = segments;
+    }
+
+    /**
+     * One ring, as a band of quads.
+     *
+     * Soft draws two bands, transparent at the outside edges and full in the middle, so the
+     * ring has a falloff instead of a hard border. Off draws a single flat band, which is half
+     * the geometry and the cheap option.
+     */
+    private void emitRing(WorldRenderer worldRenderer, float ringY, float radius, float thickness,
+                          int segments, float tilt, float spin, int argb, int alpha, boolean soft) {
+        float cosTilt = (float) Math.cos(tilt);
+        float sinTilt = (float) Math.sin(tilt);
+        float cosSpin = (float) Math.cos(spin);
+        float sinSpin = (float) Math.sin(spin);
+
+        int red = (argb >> 16) & 0xFF;
+        int green = (argb >> 8) & 0xFF;
+        int blue = argb & 0xFF;
+
+        float inner = Math.max(0.0f, radius - (soft ? thickness : thickness * 0.5f));
+        float outer = radius + (soft ? thickness : thickness * 0.5f);
+
+        for (int segment = 0; segment < segments; segment++) {
+            int next = segment + 1 == segments ? 0 : segment + 1;
+            if (soft) {
+                band(worldRenderer, segment, next, inner, radius, ringY,
+                        cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, 0, alpha);
+                band(worldRenderer, segment, next, radius, outer, ringY,
+                        cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, alpha, 0);
+            }
+            else {
+                band(worldRenderer, segment, next, inner, outer, ringY,
+                        cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, alpha, alpha);
+            }
+        }
+    }
+
+    private void band(WorldRenderer worldRenderer, int segment, int next, float innerRadius,
+                      float outerRadius, float ringY, float cosTilt, float sinTilt,
+                      float cosSpin, float sinSpin, int red, int green, int blue,
+                      int innerAlpha, int outerAlpha) {
+        ringVertex(worldRenderer, segment, innerRadius, ringY, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, innerAlpha);
+        ringVertex(worldRenderer, next, innerRadius, ringY, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, innerAlpha);
+        ringVertex(worldRenderer, next, outerRadius, ringY, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, outerAlpha);
+        ringVertex(worldRenderer, segment, outerRadius, ringY, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, outerAlpha);
+    }
+
+    private void ringVertex(WorldRenderer worldRenderer, int segment, float radius, float ringY,
+                            float cosTilt, float sinTilt, float cosSpin, float sinSpin,
+                            int red, int green, int blue, int alpha) {
+        double px = circleCos[segment] * radius;
+        double pz = circleSin[segment] * radius;
+        // Tilt about X, then spin about Y. The ring is flat in its own plane, so the tilt only
+        // has to move the Z component into Y.
+        double tiltedY = -pz * sinTilt;
+        double tiltedZ = pz * cosTilt;
+        double finalX = px * cosSpin + tiltedZ * sinSpin;
+        double finalZ = -px * sinSpin + tiltedZ * cosSpin;
+        worldRenderer.pos(finalX, ringY + tiltedY, finalZ).color(red, green, blue, alpha).endVertex();
     }
 
     private void drawTargetHUD(Timer fadeTimer, String string, double health) {
