@@ -218,7 +218,7 @@ private static final int[] DEFAULT_RING_COLORS = {
         this.registerSetting(markerGroup = new GroupSetting("Target marker"));
         this.registerSetting(markerEnabled = new ButtonSetting(markerGroup, "Marker", false));
         this.registerSetting(markerStyle = new SliderSetting(markerGroup, "Marker style", MARKER_STYLE_BRACKETS, MARKER_STYLES));
-        this.registerSetting(markerSize = new SliderSetting(markerGroup, "Marker size", 1.0, 0.3, 2.5, 0.05));
+        this.registerSetting(markerSize = new SliderSetting(markerGroup, "Marker size", 1.0, 0.05, 2.5, 0.05));
         this.registerSetting(markerThickness = new SliderSetting(markerGroup, "Marker thickness", 2.0, 0.5, 8.0, 0.25));
         this.registerSetting(markerSquareness = new SliderSetting(markerGroup, "Roundness", 0.55, 0.0, 1.0, 0.05));
         this.registerSetting(markerGap = new SliderSetting(markerGroup, "Gap", 0.35, 0.0, 0.8, 0.05));
@@ -1037,7 +1037,7 @@ private int ringColor(int ringIndex) {
         // else on screen instead of staying a fixed lump of pixels.
         float halfHeight = (float) Math.abs(middle[1] - top[1]);
         float size = halfHeight * 1.25f * (float) (markerSize == null ? 1.0 : markerSize.getInput());
-        if (size < 3.0f) {
+        if (size < 0.75f) {
             return;
         }
         float centerX = (float) middle[0];
@@ -1049,7 +1049,13 @@ private int ringColor(int ringIndex) {
                 ? 0.0f
                 : (float) (markerGap == null ? 0.35 : markerGap.getInput());
         double speed = markerSpeed == null ? 0.35 : markerSpeed.getInput();
+        // Rotate the finished outline, not the angle it is generated from. A superellipse is
+        // built on the axes, so advancing its parameter walks points along a shape that stays
+        // put: the brackets slide around a stationary square instead of the square turning.
+        // Taking the point first and rotating it afterwards turns the whole thing rigidly.
         double spin = (System.currentTimeMillis() % 86400000L) / 1000.0 * speed;
+        double cosSpin = Math.cos(spin);
+        double sinSpin = Math.sin(spin);
         // Blades keep one long arc and one short one rather than four even brackets.
         int pieces = style == MARKER_STYLE_BLADES ? 2 : 4;
 
@@ -1076,7 +1082,7 @@ private int ringColor(int ringIndex) {
 
         for (int i = 0; i <= MARKER_SEGMENTS; i++) {
             double t = (double) i / MARKER_SEGMENTS;
-            double angle = t * Math.PI * 2.0 + spin;
+            double angle = t * Math.PI * 2.0;
 
             // Gaps sit at the middle of each side, which is what leaves the corners standing.
             boolean visible = true;
@@ -1087,8 +1093,10 @@ private int ringColor(int ringIndex) {
 
             double cos = Math.cos(angle);
             double sin = Math.sin(angle);
-            double px = Math.signum(cos) * Math.pow(Math.abs(cos), exponent) * size;
-            double py = Math.signum(sin) * Math.pow(Math.abs(sin), exponent) * size;
+            double localX = Math.signum(cos) * Math.pow(Math.abs(cos), exponent) * size;
+            double localY = Math.signum(sin) * Math.pow(Math.abs(sin), exponent) * size;
+            double px = localX * cosSpin - localY * sinSpin;
+            double py = localX * sinSpin + localY * cosSpin;
             int color = markerColor(t);
 
             if (visible && previousDrawn) {
