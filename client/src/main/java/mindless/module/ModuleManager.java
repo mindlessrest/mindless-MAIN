@@ -86,6 +86,8 @@ public class ModuleManager {
     public static mindless.module.impl.player.InvClicker invClicker;
     public static mindless.module.impl.player.ContainerKeeper containerKeeper;
     public static mindless.module.impl.combat.AutoWeapon autoWeapon;
+    public static mindless.module.impl.client.Macros macros;
+    public static mindless.module.impl.render.KillEffect killEffect;
     public static NoCameraClip noCameraClip;
     public static BedWars bedwars;
     public static Overlay overlay;
@@ -217,6 +219,8 @@ public class ModuleManager {
         this.addModule(invClicker = new mindless.module.impl.player.InvClicker());
         this.addModule(containerKeeper = new mindless.module.impl.player.ContainerKeeper());
         this.addModule(autoWeapon = new mindless.module.impl.combat.AutoWeapon());
+        this.addModule(macros = new mindless.module.impl.client.Macros());
+        this.addModule(killEffect = new mindless.module.impl.render.KillEffect());
         this.addModule(noFall = new NoFall());
         this.addModule(noRotate = new NoRotate());
         this.addModule(safeWalk = new SafeWalk());
