@@ -362,6 +362,13 @@ public class KillAura extends Module {
      * Render events can land just after a combat condition clears the live static
      * target. Retain the most recently validated target for a few frames so HUDs
      * observe the same opponent that KillAura actually acted on.
+     *
+     * A few frames is all this is for. At 900ms it stopped being a race guard and became a
+     * hold in its own right: releasing the mouse with "Require mouse down" on cleared the
+     * target here immediately, but the rings and panel stayed up for the best part of a
+     * second afterwards, which is not what the aura was doing. Holding the last opponent on
+     * screen is the HUD's job and it already does it, with a fade; this only has to survive
+     * the gap between a tick clearing the target and the frame that reads it.
      */
     public EntityLivingBase getHudTarget() {
         EntityLivingBase active = attackingEntity != null ? attackingEntity : target;
@@ -370,7 +377,7 @@ public class KillAura extends Module {
             lastHudTargetAt = System.currentTimeMillis();
             return active;
         }
-        if (lastHudTarget == null || System.currentTimeMillis() - lastHudTargetAt > 900L
+        if (lastHudTarget == null || System.currentTimeMillis() - lastHudTargetAt > 150L
                 || lastHudTarget.isDead || lastHudTarget.getHealth() <= 0.0F
                 || lastHudTarget.worldObj != mc.theWorld) {
             clearHudTarget();

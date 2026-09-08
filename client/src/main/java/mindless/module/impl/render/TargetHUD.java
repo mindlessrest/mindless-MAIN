@@ -199,8 +199,15 @@ private int ringColor(int ringIndex) {
                 fadeTimer = null;
                 if (popInStart < 0) popInStart = System.currentTimeMillis();
             } else if (target != null) {
+                // KillAura counts the chat box as a screen under "Disable in inventory", which
+                // is on by default, so typing clears its target. Hold the panel while chat is
+                // open instead of dropping the opponent and popping back in on send.
+                if (chatOpen) {
+                    lastAliveMS = System.currentTimeMillis();
+                }
                 if (System.currentTimeMillis() - lastAliveMS >= 100 && fadeTimer == null) {
                     (fadeTimer = new Timer((int) POP_OUT_MS)).start();
+                    traceStage(target, "target released, fading out", "");
                 }
             }
             else {
@@ -237,8 +244,20 @@ private int ringColor(int ringIndex) {
         }
         EntityLivingBase auraTarget = getActiveTarget();
 
+        // The rings used to cut out the instant KillAura let go, while the panel held for a
+        // moment and faded, so the two disagreed on their way off screen. They now share the
+        // panel's fade and leave together.
+        float espFade = 1.0f;
         if (auraTarget == null) {
-            return;
+            if (target == null || fadeTimer == null) {
+                return;
+            }
+            espFade = Math.max(0.0f, 1.0f - fadeTimer.getValueFloat(0.0f, 1.0f, 1));
+            espFade *= espFade;
+            if (espFade <= 0.001f) {
+                return;
+            }
+            auraTarget = target;
         }
 
         if (ModuleManager.backtrack.isRenderingServerPositionFor(auraTarget)) {
@@ -246,10 +265,10 @@ private int ringColor(int ringIndex) {
         }
 
         traceStage(auraTarget, "esp ring drawn", "");
-        drawPillEsp(auraTarget);
+        drawPillEsp(auraTarget, espFade);
     }
 
-    private void drawPillEsp(EntityLivingBase entity) {
+    private void drawPillEsp(EntityLivingBase entity, float fade) {
         float partialTicks = mindless.runtime.AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks;
         double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks - mc.getRenderManager().viewerPosX;
         double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - mc.getRenderManager().viewerPosY;
@@ -277,7 +296,7 @@ private int ringColor(int ringIndex) {
             float trailOffset = trail * 0.06f;
             float trailBounce = (float) (Math.sin((time - trailOffset) * Math.PI * 2.0) * 0.5 + 0.5);
             float trailY = trailBounce * entityHeight;
-            float alpha = trail == 0 ? 1.0f : (1.0f - (float) trail / trailCount) * 0.35f;
+            float alpha = (trail == 0 ? 1.0f : (1.0f - (float) trail / trailCount) * 0.35f) * fade;
             float lineWidth = trail == 0 ? 5.0f : 3.0f;
 
             int color = ringColor(trail);
