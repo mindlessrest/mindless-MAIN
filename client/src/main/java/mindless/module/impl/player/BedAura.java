@@ -37,6 +37,9 @@ import java.util.*;
 
 public class BedAura extends Module {
 
+    private static final String[] MODES = {"Silent", "Legit"};
+
+    private final SliderSetting mode;
     private final SliderSetting fov;
     private final SliderSetting range;
     private final SliderSetting rate;
@@ -72,10 +75,12 @@ private static final double AIM_FACE_INSET = 0.12;
     private int hotbarProgrammaticDepth;
     private boolean hasSwapped;
     private int previousSlot = -1;
+    private boolean lastOutsidePolicy;
 
 
     public BedAura() {
         super("Bed Breaker", "Smoothly breaks nearby beds and their defenses.", category.player);
+        this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(breakSpeed = new SliderSetting("Break speed", "x", 1.0, 1.0, 2.0, 0.02));
         this.registerSetting(breakDelay = new SliderSetting("Break delay", "ms", 250.0, 0.0, 250.0, 50.0));
         this.registerSetting(fov = new SliderSetting("FOV", "", 180.0, 30.0, 360.0, 1.0));
@@ -97,7 +102,21 @@ private static final double AIM_FACE_INSET = 0.12;
 
     @Override
     public void guiUpdate() {
+        breakFromOutside.setVisible(!isLegitMode(), this);
         outlineColor.setVisible(renderOutline.isToggled(), this);
+    }
+
+    @Override
+    public String getInfo() {
+        return MODES[(int) mode.getInput()];
+    }
+
+    private boolean isLegitMode() {
+        return (int) mode.getInput() == 1;
+    }
+
+    private boolean shouldBreakFromOutside() {
+        return isLegitMode() || breakFromOutside.isToggled();
     }
 
     @Override
@@ -281,6 +300,17 @@ public boolean shouldOverrideMouseOver() {
         double reach = range.getInput();
         double reachSq = reach * reach;
 
+        boolean outsidePolicy = shouldBreakFromOutside();
+        if (outsidePolicy != lastOutsidePolicy) {
+            lockedPos = null;
+            lockedSide = null;
+            targetPos = null;
+            targetHitVec = null;
+            targetSide = null;
+            rotationAlignedTicks = 0;
+            lastOutsidePolicy = outsidePolicy;
+        }
+
         if (--scanCooldown <= 0) {
             scanCooldown = Math.max(1, (int) Math.round(rate.getInput() / (double) MS_PER_TICK));
             rebuildBedPairsCache(reach + BED_FIND_EXTRA_BLOCKS);
@@ -300,14 +330,16 @@ public boolean shouldOverrideMouseOver() {
 
         if (lockedPos != null) {
             targetPos = lockedPos;
-            targetSide = lockedSide;
-            targetHitVec = recalcHitVec(lockedPos, reachSq);
-            if (targetHitVec == null) {
+            Choice refreshed = recalcLockedChoice(lockedPos, targetHitVec, reachSq);
+            if (refreshed == null) {
                 lockedPos = null;
                 lockedSide = null;
                 resetMining();
                 return;
             }
+            targetHitVec = refreshed.hitVec;
+            targetSide = refreshed.side;
+            lockedSide = refreshed.side;
         } else {
             Choice best = chooseBestTarget(reachSq);
             if (best == null) {
@@ -372,7 +404,7 @@ public boolean shouldOverrideMouseOver() {
         return eye.squareDistanceTo(closest) <= reachSq + 0.25;
     }
 
-    private Vec3 recalcHitVec(BlockPos pos, double reachSq) {
+    private Choice recalcLockedChoice(BlockPos pos, Vec3 preferredHit, double reachSq) {
         AxisAlignedBB bb = BlockUtils.getBlockSelectionBox(pos);
         if (bb == null) {
             return null;
@@ -381,7 +413,42 @@ public boolean shouldOverrideMouseOver() {
         if (eye.squareDistanceTo(RotationUtils.closestPointOnAabb(bb, eye)) > reachSq + 0.25) {
             return null;
         }
-        return RotationUtils.closestPointOnAabb(bb, eye, AIM_FACE_INSET);
+        if (shouldBreakFromOutside()) {
+            Choice visible = traceVisibleBlock(pos, preferredHit, eye);
+            if (visible != null) {
+                return visible;
+            }
+            Vec3 center = new Vec3(
+                    (bb.minX + bb.maxX) * 0.5,
+                    (bb.minY + bb.maxY) * 0.5,
+                    (bb.minZ + bb.maxZ) * 0.5
+            );
+            return traceVisibleBlock(pos, center, eye);
+        }
+        Vec3 hit = RotationUtils.closestPointOnAabb(bb, eye, AIM_FACE_INSET);
+        return new Choice(pos, hit, BlockUtils.facingFromBlockCenterToPoint(pos, hit));
+    }
+
+    private Choice traceVisibleBlock(BlockPos expected, Vec3 point, Vec3 eye) {
+        if (point == null) {
+            return null;
+        }
+        Vec3 delta = point.subtract(eye);
+        double length = delta.lengthVector();
+        if (length < 1e-5) {
+            return null;
+        }
+        Vec3 destination = point.addVector(
+                delta.xCoord / length * 0.02,
+                delta.yCoord / length * 0.02,
+                delta.zCoord / length * 0.02
+        );
+        MovingObjectPosition trace = mc.theWorld.rayTraceBlocks(eye, destination, false, true, false);
+        if (trace == null || trace.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
+                || !expected.equals(trace.getBlockPos()) || trace.hitVec == null || trace.sideHit == null) {
+            return null;
+        }
+        return new Choice(expected, trace.hitVec, trace.sideHit);
     }
 
     @SubscribeEvent
@@ -553,14 +620,14 @@ private BlockPos[] footHeadPair(BlockPos at) {
     }
 
     private List<Choice> buildCandidates(BlockPos[] pair, double reachSq) {
+        if (shouldBreakFromOutside()) {
+            return buildVisibleOutsideCandidates(pair, reachSq);
+        }
+
         List<Choice> out = new ArrayList<>();
         boolean exposed = isBedExposed(pair);
 
-        // On means break it the way a player would: if the bed is buried, take the covering
-        // blocks off first rather than reaching a pickaxe through them. It used to mean the
-        // reverse -- switching it on made the aura hit the bed straight through whatever was
-        // stacked on it, which is the opposite of breaking from outside.
-        if (exposed || !breakFromOutside.isToggled()) {
+        if (exposed) {
             for (BlockPos bp : pair) {
                 addBlockCandidate(bp, reachSq, out);
             }
@@ -590,6 +657,61 @@ private BlockPos[] footHeadPair(BlockPos at) {
             }
         }
         return out;
+    }
+
+    /**
+     * Trace toward several points across the bed rather than assuming its immediately adjacent
+     * blocks are exposed. The first collision on each ray is the layer a real player can reach;
+     * after it breaks, the next scan naturally advances one layer inward.
+     */
+    private List<Choice> buildVisibleOutsideCandidates(BlockPos[] pair, double reachSq) {
+        List<Choice> out = new ArrayList<>();
+        Set<BlockPos> seen = new HashSet<>();
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
+        AxisAlignedBB bedBounds = BlockUtils.unionBlockBounds(pair[0], pair[1]);
+
+        double[] horizontalSamples = {0.18, 0.5, 0.82};
+        double[] verticalSamples = {0.25, 0.72};
+        for (double xPart : horizontalSamples) {
+            for (double zPart : horizontalSamples) {
+                for (double yPart : verticalSamples) {
+                    Vec3 destination = new Vec3(
+                            bedBounds.minX + (bedBounds.maxX - bedBounds.minX) * xPart,
+                            bedBounds.minY + (bedBounds.maxY - bedBounds.minY) * yPart,
+                            bedBounds.minZ + (bedBounds.maxZ - bedBounds.minZ) * zPart
+                    );
+                    MovingObjectPosition trace = mc.theWorld.rayTraceBlocks(eye, destination, false, true, false);
+                    addVisibleTraceCandidate(trace, eye, reachSq, seen, out);
+                }
+            }
+        }
+        return out;
+    }
+
+    private void addVisibleTraceCandidate(MovingObjectPosition trace, Vec3 eye, double reachSq,
+                                          Set<BlockPos> seen, List<Choice> out) {
+        if (trace == null || trace.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
+                || trace.hitVec == null || trace.sideHit == null) {
+            return;
+        }
+        BlockPos pos = trace.getBlockPos();
+        if (pos == null || seen.contains(pos)) {
+            return;
+        }
+        IBlockState state = mc.theWorld.getBlockState(pos);
+        Block block = state.getBlock();
+        if (block == Blocks.air || block.getBlockHardness(mc.theWorld, pos) < 0.0f) {
+            return;
+        }
+        AxisAlignedBB box = BlockUtils.getBlockSelectionBox(pos);
+        if (box == null || eye.squareDistanceTo(RotationUtils.closestPointOnAabb(box, eye)) > reachSq + 1e-3) {
+            return;
+        }
+        if (block instanceof BlockBed && trace.sideHit == EnumFacing.DOWN) {
+            return;
+        }
+        seen.add(pos);
+        out.add(new Choice(pos, trace.hitVec, trace.sideHit));
     }
 
     private boolean canHitThrough(Block block) {

@@ -1,6 +1,7 @@
 package mindless.module.impl.player;
 
 import mindless.event.RightClickDelayTickEvent;
+import mindless.event.PreUpdateEvent;
 import mindless.event.SendPacketEvent;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
@@ -80,6 +81,21 @@ public class FastPlace extends Module {
 
     @SubscribeEvent
     public void onRightClickDelayTick(RightClickDelayTickEvent e) {
+        updateFastPlaceDelay();
+    }
+
+    /**
+     * Keep the placement-delay update on the normal player tick as well as the precise
+     * Minecraft delay hook. The latter is ideal when present, but some launcher runtimes do not
+     * expose that injection point. PreUpdate is shared by Forge and Lunar, so Fast Place still
+     * behaves consistently instead of silently becoming a no-op on those runtimes.
+     */
+    @SubscribeEvent
+    public void onPreUpdate(PreUpdateEvent e) {
+        updateFastPlaceDelay();
+    }
+
+    private void updateFastPlaceDelay() {
         if (!Utils.nullCheck() || !mc.inGameHasFocus) {
             rightClickStartTime = 0L;
             return;
@@ -99,18 +115,7 @@ public class FastPlace extends Module {
             return;
         }
 
-        int delay = (int) tickDelay.getInput();
-        if (delay == 0) {
-            AccessorBridge.Minecraft_setRightClickDelayTimer(mc, 0);
-        }
-        else {
-            if (delay == 4) {
-                return;
-            }
-            if (AccessorBridge.Minecraft_getRightClickDelayTimer(mc) > delay) {
-                AccessorBridge.Minecraft_setRightClickDelayTimer(mc, delay);
-            }
-        }
+        applyConfiguredDelay();
     }
 
     @SubscribeEvent
@@ -120,7 +125,7 @@ public class FastPlace extends Module {
         }
 
         C08PacketPlayerBlockPlacement packet = (C08PacketPlayerBlockPlacement) e.getPacket();
-        if (packet.getPlacedBlockDirection() != 255) {
+        if (packet.getPlacedBlockDirection() == 255) {
             return;
         }
 
@@ -133,10 +138,19 @@ public class FastPlace extends Module {
             return;
         }
 
-        if (Math.random() < 0.7) {
-            if (e.isCancelable()) {
-                e.setCanceled(true);
-            }
+        // Minecraft sets its vanilla delay before the placement packet is sent. Correct it again
+        // here so a successful placement cannot leave one slow vanilla interval behind.
+        applyConfiguredDelay();
+    }
+
+    private void applyConfiguredDelay() {
+        int delay = (int) tickDelay.getInput();
+        if (delay == 0) {
+            AccessorBridge.Minecraft_setRightClickDelayTimer(mc, 0);
+            return;
+        }
+        if (AccessorBridge.Minecraft_getRightClickDelayTimer(mc) > delay) {
+            AccessorBridge.Minecraft_setRightClickDelayTimer(mc, delay);
         }
     }
 
@@ -354,7 +368,11 @@ public class FastPlace extends Module {
         if (isBlockedHoverBlock()) {
             return false;
         }
-        return !requireActivationDelay || now - rightClickStartTime >= (long) activationTime.getInput();
+        if (!requireActivationDelay) {
+            return true;
+        }
+        return rightClickStartTime != 0L
+                && now - rightClickStartTime >= (long) activationTime.getInput();
     }
 
     public int getTotalBlocks() {
