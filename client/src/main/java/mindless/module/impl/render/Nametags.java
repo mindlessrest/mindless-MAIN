@@ -59,6 +59,8 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
     private SliderSetting bgOpacity;
     private ButtonSetting bgBorder;
     private ButtonSetting showHealth;
+    private ButtonSetting markNicked;
+    private mindless.module.setting.impl.TextSetting nickedTag;
     private SliderSetting healthDisplayMode;
     private ButtonSetting showHeartSymbol;
     private ButtonSetting textShadow;
@@ -129,6 +131,8 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
         this.registerSetting(bgOpacity = new SliderSetting("Background Opacity", 0.5, 0.0, 1.0, 0.05));
         this.registerSetting(bgBorder = new ButtonSetting("Background Border", false));
         this.registerSetting(showHealth = new ButtonSetting("Show Health", false));
+        this.registerSetting(markNicked = new ButtonSetting("Mark nicked", true));
+        this.registerSetting(nickedTag = new mindless.module.setting.impl.TextSetting("Nicked tag", "§c[NICK]", "§c[NICK]", 16));
         this.registerSetting(healthDisplayMode = new SliderSetting("Health display", 0, HEALTH_DISPLAY_MODES));
         this.registerSetting(showHeartSymbol = new ButtonSetting("Show Heart Symbol", true));
         this.registerSetting(textShadow = new ButtonSetting("Text Shadow", false));
@@ -327,6 +331,12 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
         }
         else {
             name = entity.getDisplayName().getFormattedText();
+        }
+
+        if (markNicked.isToggled() && mindless.utility.NickDetection.isNicked(entity)) {
+            // A nicked player has a version 1 UUID because the server minted the identity
+            // rather than looking one up, so this costs nothing and needs no API.
+            name = name + " " + nickedTag.getText();
         }
 
         if (showHealth.isToggled()) {
