@@ -56,10 +56,13 @@ public class Scaffold extends Module {
     private EnumFacing queuedFace;
     private Vec3 queuedVec;
     private boolean placeQueued;
+    /** The block the last placement went against, reused while it stays usable. */
+    private BlockPos lastPlacedAgainst;
 
     private float lastYaw, lastPitch;
     private boolean lastRotsValid;
 
+    private ButtonSetting downPlace;
     private boolean eagleActive;
 
     /** Whether Sprint Scaf Mode currently owns the sprint key, and what it last asked for. */
@@ -80,6 +83,7 @@ private int previousSlot = -1;
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
         this.registerSetting(switchBack = new ButtonSetting("Switch back", true));
+        this.registerSetting(downPlace = new ButtonSetting("Down place", true));
     }
 
     @Override
@@ -233,6 +237,7 @@ private void restorePreviousSlot() {
                     mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held,
                             queuedPos, queuedFace, queuedVec);
                     mc.thePlayer.swingItem();
+                    lastPlacedAgainst = queuedPos;
                     placed = true;
                 }
             }
@@ -421,85 +426,183 @@ private void restorePreviousSlot() {
                 shift || Keyboard.isKeyDown(mc.gameSettings.keyBindSneak.getKeyCode()));
     }
 
+    /**
+     * Find the block to place against.
+     *
+     * Three things this does that the previous search did not.
+     *
+     * It keeps the last block. A search that re-picks from scratch every rotation event will
+     * swap between two equally good candidates on consecutive ticks, and the rotation chases
+     * the swap; reusing the previous target while it is still adjacent and still placeable is
+     * what stops that.
+     *
+     * It scans four layers down rather than one, so stepping out over a gap still finds
+     * something to build from instead of failing until the ground comes back.
+     *
+     * And it only raytraces the handful of candidates worth checking. The old search raytraced
+     * inside the candidate loop -- nine by nine positions across two layers, five faces each,
+     * up to eight hundred raytraces per rotation event. Candidates are cheap to reject on
+     * geometry alone, so they are filtered and sorted first and only the closest few are traced.
+     */
     private BlockData findBestPlacement() {
         EntityPlayerSP player = mc.thePlayer;
         float baseYaw = getBaseYaw();
-        BlockPos playerPos = new BlockPos(player);
-        BlockPos scanY = playerPos.down();
+        BlockPos below = new BlockPos(player.posX, player.posY - 1.0, player.posZ);
 
-        double targetX = player.posX + player.motionX;
-        double targetZ = player.posZ + player.motionZ;
-        double targetY = scanY.getY() + 0.5;
+        // Already standing on something: nothing to do.
+        if (!isReplaceable(below)) {
+            return null;
+        }
 
-        double existingScore = Double.MAX_VALUE;
-        BlockData best = null;
-        double bestScore = Double.MAX_VALUE;
+        boolean tower = downPlace.isToggled() && !keepY.isToggled();
 
-        boolean tower = !player.onGround && !keepY.isToggled();
-        int lowestLayer = tower ? -1 : 0;
+        java.util.List<BlockPos> candidates = new java.util.ArrayList<BlockPos>();
+        collectCandidates(candidates, below, -4, 0, false);
 
-        for (int layer = 0; layer >= lowestLayer; layer--) {
-            BlockPos layerPos = scanY.add(0, layer, 0);
-            for (int x = -4; x <= 4; x++) {
-                for (int z = -4; z <= 4; z++) {
-                    BlockPos pos = layerPos.add(x, 0, z);
-                    IBlockState state = mc.theWorld.getBlockState(pos);
+        boolean upward = false;
+        if (candidates.isEmpty()) {
+            if (!tower) {
+                return null;
+            }
+            // Nothing underneath. Look upward for something to build off, refusing any face
+            // whose block would be placed inside the player.
+            collectCandidates(candidates, below, 1, 6, true);
+            if (candidates.isEmpty()) {
+                return null;
+            }
+            upward = true;
+        }
 
-                    if (state.getBlock() == Blocks.air) continue;
-                    if (!state.getBlock().isFullCube()) continue;
-
-                    double exDx = (pos.getX() + 0.5) - targetX;
-                    double exDz = (pos.getZ() + 0.5) - targetZ;
-                    double exDy = (pos.getY() + 0.5) - targetY;
-                    double exScore = exDx * exDx + exDz * exDz + exDy * exDy * 0.25;
-                    if (exScore < existingScore) existingScore = exScore;
-
-                    java.util.List<EnumFacing> facings = new java.util.ArrayList<>();
-                    facings.add(EnumFacing.NORTH);
-                    facings.add(EnumFacing.SOUTH);
-                    facings.add(EnumFacing.EAST);
-                    facings.add(EnumFacing.WEST);
-                    if (tower) facings.add(EnumFacing.UP);
-
-                    for (EnumFacing facing : facings) {
-                        if (!PLACEHOLDER.canPlaceBlockOnSide(mc.theWorld, pos, facing, mc.thePlayer, mc.thePlayer.getHeldItem()))
-                            continue;
-
-                        BlockPos neighbor = pos.offset(facing);
-                        IBlockState neighborState = mc.theWorld.getBlockState(neighbor);
-                        if (neighborState.getBlock() != Blocks.air) continue;
-
-                        double nbX = neighbor.getX() + 0.5;
-                        double nbY = neighbor.getY() + 0.5;
-                        double nbZ = neighbor.getZ() + 0.5;
-                        double dx = nbX - targetX;
-                        double dz = nbZ - targetZ;
-                        double dy = nbY - targetY;
-                        double score = dx * dx + dz * dz + dy * dy * 0.25;
-
-                        if (score >= bestScore) continue;
-
-                        float[] rots = getRotationsForFace(pos, facing, baseYaw);
-                        if (rots == null) rots = getFreeRotationsForFace(pos, facing);
-
-                        Vec3 eye = player.getPositionEyes(1f);
-                        Vec3 look = Utils.getLookVec(rots[0], rots[1]);
-                        Vec3 end = eye.addVector(look.xCoord * 4.5, look.yCoord * 4.5, look.zCoord * 4.5);
-                        MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(eye, end, false, false, true);
-
-                        if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) continue;
-                        if (!hit.getBlockPos().equals(pos)) continue;
-                        if (hit.sideHit != facing) continue;
-
-                        bestScore = score;
-                        best = new BlockData(pos, facing);
-                    }
+        // Keep the previous block while it is still next to us and still has a free face.
+        if (!upward && lastPlacedAgainst != null) {
+            double distance = below.distanceSq(lastPlacedAgainst.getX() + 0.5,
+                    lastPlacedAgainst.getY() + 0.5, lastPlacedAgainst.getZ() + 0.5);
+            if (distance < 2.0) {
+                EnumFacing face = chooseFace(lastPlacedAgainst, below, false);
+                if (face != null && canAim(lastPlacedAgainst, face, baseYaw)) {
+                    return new BlockData(lastPlacedAgainst, face);
                 }
             }
         }
 
-        if (best != null && existingScore <= bestScore) return null;
+        final double centerX = below.getX() + 0.5;
+        final double centerY = below.getY() + 0.5;
+        final double centerZ = below.getZ() + 0.5;
+        java.util.Collections.sort(candidates, new java.util.Comparator<BlockPos>() {
+            @Override
+            public int compare(BlockPos a, BlockPos b) {
+                return Double.compare(a.distanceSq(centerX, centerY, centerZ),
+                        b.distanceSq(centerX, centerY, centerZ));
+            }
+        });
+
+        // Only the nearest few are worth a raytrace; past that the angle is hopeless anyway.
+        int examined = Math.min(candidates.size(), 6);
+        for (int i = 0; i < examined; i++) {
+            BlockPos pos = candidates.get(i);
+            EnumFacing face = chooseFace(pos, below, upward);
+            if (face == null) {
+                continue;
+            }
+            if (canAim(pos, face, baseYaw)) {
+                return new BlockData(pos, face);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Solid blocks in the box that have at least one face open to air.
+     *
+     * @param skipIntersecting refuse a face whose air side overlaps the player, which is what
+     *                         keeps the upward pass from trying to place a block inside us.
+     */
+    private void collectCandidates(java.util.List<BlockPos> into, BlockPos origin,
+                                   int fromY, int toY, boolean skipIntersecting) {
+        for (int x = -4; x <= 4; x++) {
+            for (int y = fromY; y <= toY; y++) {
+                for (int z = -4; z <= 4; z++) {
+                    BlockPos pos = origin.add(x, y, z);
+                    if (isReplaceable(pos)) {
+                        continue;
+                    }
+                    IBlockState state = mc.theWorld.getBlockState(pos);
+                    if (!state.getBlock().isFullCube()) {
+                        continue;
+                    }
+                    for (EnumFacing facing : EnumFacing.VALUES) {
+                        BlockPos neighbour = pos.offset(facing);
+                        if (!isReplaceable(neighbour)) {
+                            continue;
+                        }
+                        if (skipIntersecting && intersectsPlayer(neighbour)) {
+                            continue;
+                        }
+                        into.add(pos);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /** The open face of a block that sits closest to where we want to stand. */
+    private EnumFacing chooseFace(BlockPos pos, BlockPos target, boolean upward) {
+        EnumFacing best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (EnumFacing facing : EnumFacing.VALUES) {
+            if (!upward && facing == EnumFacing.DOWN) {
+                continue;
+            }
+            BlockPos neighbour = pos.offset(facing);
+            if (!isReplaceable(neighbour)) {
+                continue;
+            }
+            if (upward && intersectsPlayer(neighbour)) {
+                continue;
+            }
+            if (!PLACEHOLDER.canPlaceBlockOnSide(mc.theWorld, pos, facing,
+                    mc.thePlayer, mc.thePlayer.getHeldItem())) {
+                continue;
+            }
+            double distance = neighbour.distanceSq(target.getX() + 0.5,
+                    target.getY() + 0.5, target.getZ() + 0.5);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = facing;
+            }
+        }
         return best;
+    }
+
+    /** Whether the face can actually be hit from where we are looking. */
+    private boolean canAim(BlockPos pos, EnumFacing face, float baseYaw) {
+        float[] rots = getRotationsForFace(pos, face, baseYaw);
+        if (rots == null) {
+            rots = getFreeRotationsForFace(pos, face);
+        }
+        if (rots == null) {
+            return false;
+        }
+        Vec3 eye = mc.thePlayer.getPositionEyes(1f);
+        Vec3 look = Utils.getLookVec(rots[0], rots[1]);
+        Vec3 end = eye.addVector(look.xCoord * 4.5, look.yCoord * 4.5, look.zCoord * 4.5);
+        MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(eye, end, false, false, true);
+        return hit != null
+                && hit.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
+                && hit.getBlockPos().equals(pos)
+                && hit.sideHit == face;
+    }
+
+    private boolean isReplaceable(BlockPos pos) {
+        net.minecraft.block.Block block = mc.theWorld.getBlockState(pos).getBlock();
+        return block == Blocks.air || block.getMaterial().isReplaceable();
+    }
+
+    private boolean intersectsPlayer(BlockPos pos) {
+        return new net.minecraft.util.AxisAlignedBB(pos.getX(), pos.getY(), pos.getZ(),
+                pos.getX() + 1.0, pos.getY() + 1.0, pos.getZ() + 1.0)
+                .intersectsWith(mc.thePlayer.getEntityBoundingBox());
     }
 
     private float getBaseYaw() {
