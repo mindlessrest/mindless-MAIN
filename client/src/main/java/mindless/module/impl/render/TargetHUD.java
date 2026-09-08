@@ -47,6 +47,7 @@ public class TargetHUD extends Module {
     private SliderSetting ringColorMode;
     private GroupSetting ringGroup;
     private SliderSetting ringStyle;
+    private SliderSetting ringView;
     private SliderSetting ringCount;
     private SliderSetting ringSize;
     private SliderSetting ringSpeed;
@@ -91,6 +92,10 @@ private static final int RING_COUNT = 6;
     private static final int RING_STYLE_RADAR = 5;
     private static final int RING_STYLE_HELIX = 6;
     private static final int RING_STYLE_BEACON = 7;
+    private static final String[] RING_VIEWS = new String[] { "3D", "2D", "Hybrid" };
+    private static final int RING_VIEW_3D = 0;
+    private static final int RING_VIEW_2D = 1;
+    private static final int RING_VIEW_HYBRID = 2;
 
     private static final String[] MARKER_STYLES = new String[] { "Brackets", "Frame", "Blades" };
     private static final int MARKER_STYLE_BRACKETS = 0;
@@ -204,6 +209,7 @@ private static final int[] DEFAULT_RING_COLORS = {
         this.registerSetting(ringGroup = new GroupSetting("Target rings"));
         this.registerSetting(renderEsp = new ButtonSetting(ringGroup, "Render ESP", true));
         this.registerSetting(ringStyle = new SliderSetting(ringGroup, "Ring style", RING_STYLE_BOUNCE, RING_STYLES));
+        this.registerSetting(ringView = new SliderSetting(ringGroup, "Ring view", RING_VIEW_HYBRID, RING_VIEWS));
         this.registerSetting(ringCount = new SliderSetting(ringGroup, "Ring count", RING_COUNT, 1, RING_COUNT, 1));
         this.registerSetting(ringSize = new SliderSetting(ringGroup, "Ring size", 1.0, 0.4, 2.5, 0.05));
         this.registerSetting(ringSpeed = new SliderSetting(ringGroup, "Ring speed", 1.0, 0.1, 3.0, 0.05));
@@ -259,6 +265,7 @@ private static final int[] DEFAULT_RING_COLORS = {
         boolean esp = renderEsp != null && renderEsp.isToggled();
         int style = ringStyle == null ? RING_STYLE_BOUNCE : (int) ringStyle.getInput();
         if (ringStyle != null) ringStyle.setVisible(esp, this);
+        if (ringView != null) ringView.setVisible(esp, this);
         // Simple is the one style that draws a single ring, so a count would mean nothing.
         boolean countMatters = style != RING_STYLE_RING && style != RING_STYLE_RADAR;
         if (ringCount != null) ringCount.setVisible(esp && countMatters, this);
@@ -459,6 +466,24 @@ private int ringColor(int ringIndex) {
         double speed = ringSpeed == null ? 1.0 : ringSpeed.getInput();
         double time = (System.currentTimeMillis() % 86400000L) / 2000.0 * speed;
 
+        /*
+         * Horizontal rings look best from above, but collapse to a line at the camera angles
+         * used during normal combat. 2D turns the ring plane toward the camera while keeping
+         * it attached to the target in world space. Hybrid only leans it partway, retaining
+         * the grounded 3D ellipse while making its far side readable. The orientation is
+         * calculated once per target/frame, not once per vertex.
+         */
+        int view = ringView == null ? RING_VIEW_HYBRID : (int) ringView.getInput();
+        float viewTilt = 0.0f;
+        float viewSpin = 0.0f;
+        if (view != RING_VIEW_3D) {
+            double horizontalDistance = Math.sqrt(x * x + z * z);
+            double centerToCameraY = -(y + entityHeight * 0.5);
+            float cameraFacingTilt = (float) Math.atan2(horizontalDistance, centerToCameraY);
+            viewTilt = view == RING_VIEW_2D ? cameraFacingTilt : cameraFacingTilt * 0.58f;
+            viewSpin = (float) Math.atan2(-x, -z);
+        }
+
         // A band is world space, so a ring far away thins out to nothing where a screen-space
         // line would not. Widen it with distance, but only up to a point, or a target across
         // the map ends up wearing a dinner plate.
@@ -601,11 +626,11 @@ private int ringColor(int ringIndex) {
             drawn++;
             if (arcSweep > 0.0f) {
                 emitArc(worldRenderer, centerX, ringY, centerZ, radius, thickness, segments,
-                        arcStart, arcSweep, argb, Math.min(255, alpha));
+                        arcStart, arcSweep, viewTilt, viewSpin, argb, Math.min(255, alpha));
             }
             else {
                 emitRing(worldRenderer, centerX, ringY, centerZ, radius, thickness, segments,
-                        tilt, spin, argb, Math.min(255, alpha), soft);
+                        tilt, spin, viewTilt, viewSpin, argb, Math.min(255, alpha), soft);
             }
         }
 
@@ -656,11 +681,15 @@ private int ringColor(int ringIndex) {
      */
     private void emitRing(WorldRenderer worldRenderer, float centerX, float ringY, float centerZ,
                           float radius, float thickness, int segments, float tilt, float spin,
-                          int argb, int alpha, boolean soft) {
+                          float viewTilt, float viewSpin, int argb, int alpha, boolean soft) {
         float cosTilt = (float) Math.cos(tilt);
         float sinTilt = (float) Math.sin(tilt);
         float cosSpin = (float) Math.cos(spin);
         float sinSpin = (float) Math.sin(spin);
+        float cosViewTilt = (float) Math.cos(viewTilt);
+        float sinViewTilt = (float) Math.sin(viewTilt);
+        float cosViewSpin = (float) Math.cos(viewSpin);
+        float sinViewSpin = (float) Math.sin(viewSpin);
 
         int red = (argb >> 16) & 0xFF;
         int green = (argb >> 8) & 0xFF;
@@ -673,13 +702,16 @@ private int ringColor(int ringIndex) {
             int next = segment + 1 == segments ? 0 : segment + 1;
             if (soft) {
                 band(worldRenderer, segment, next, inner, radius, centerX, ringY, centerZ,
-                        cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, 0, alpha);
+                        cosTilt, sinTilt, cosSpin, sinSpin, cosViewTilt, sinViewTilt,
+                        cosViewSpin, sinViewSpin, red, green, blue, 0, alpha);
                 band(worldRenderer, segment, next, radius, outer, centerX, ringY, centerZ,
-                        cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, alpha, 0);
+                        cosTilt, sinTilt, cosSpin, sinSpin, cosViewTilt, sinViewTilt,
+                        cosViewSpin, sinViewSpin, red, green, blue, alpha, 0);
             }
             else {
                 band(worldRenderer, segment, next, inner, outer, centerX, ringY, centerZ,
-                        cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, alpha, alpha);
+                        cosTilt, sinTilt, cosSpin, sinSpin, cosViewTilt, sinViewTilt,
+                        cosViewSpin, sinViewSpin, red, green, blue, alpha, alpha);
             }
         }
     }
@@ -687,11 +719,16 @@ private int ringColor(int ringIndex) {
     private void band(WorldRenderer worldRenderer, int segment, int next, float innerRadius,
                       float outerRadius, float centerX, float ringY, float centerZ,
                       float cosTilt, float sinTilt, float cosSpin, float sinSpin,
+                      float cosViewTilt, float sinViewTilt, float cosViewSpin, float sinViewSpin,
                       int red, int green, int blue, int innerAlpha, int outerAlpha) {
-        ringVertex(worldRenderer, segment, innerRadius, centerX, ringY, centerZ, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, innerAlpha);
-        ringVertex(worldRenderer, next, innerRadius, centerX, ringY, centerZ, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, innerAlpha);
-        ringVertex(worldRenderer, next, outerRadius, centerX, ringY, centerZ, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, outerAlpha);
-        ringVertex(worldRenderer, segment, outerRadius, centerX, ringY, centerZ, cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, outerAlpha);
+        ringVertex(worldRenderer, segment, innerRadius, centerX, ringY, centerZ, cosTilt, sinTilt,
+                cosSpin, sinSpin, cosViewTilt, sinViewTilt, cosViewSpin, sinViewSpin, red, green, blue, innerAlpha);
+        ringVertex(worldRenderer, next, innerRadius, centerX, ringY, centerZ, cosTilt, sinTilt,
+                cosSpin, sinSpin, cosViewTilt, sinViewTilt, cosViewSpin, sinViewSpin, red, green, blue, innerAlpha);
+        ringVertex(worldRenderer, next, outerRadius, centerX, ringY, centerZ, cosTilt, sinTilt,
+                cosSpin, sinSpin, cosViewTilt, sinViewTilt, cosViewSpin, sinViewSpin, red, green, blue, outerAlpha);
+        ringVertex(worldRenderer, segment, outerRadius, centerX, ringY, centerZ, cosTilt, sinTilt,
+                cosSpin, sinSpin, cosViewTilt, sinViewTilt, cosViewSpin, sinViewSpin, red, green, blue, outerAlpha);
     }
 
     /**
@@ -702,7 +739,7 @@ private int ringColor(int ringIndex) {
      */
     private void emitArc(WorldRenderer worldRenderer, float centerX, float ringY, float centerZ,
                          float radius, float thickness, int segments, float startAngle,
-                         float sweep, int argb, int alpha) {
+                         float sweep, float viewTilt, float viewSpin, int argb, int alpha) {
         int red = (argb >> 16) & 0xFF;
         int green = (argb >> 8) & 0xFF;
         int blue = argb & 0xFF;
@@ -719,39 +756,48 @@ private int ringColor(int ringIndex) {
             int alpha0 = Math.round(alpha * t0 * t0);
             int alpha1 = Math.round(alpha * t1 * t1);
             arcQuad(worldRenderer, a0, a1, inner, outer, centerX, ringY, centerZ,
-                    red, green, blue, alpha0, alpha1);
+                    viewTilt, viewSpin, red, green, blue, alpha0, alpha1);
         }
 
         // The arrowhead: a triangle past the leading edge, pointing the way it turns.
         float head = startAngle + sweep;
         float tipAngle = head + sweep * (1.2f / steps);
         float wide = thickness * 2.6f;
-        arcVertex(worldRenderer, head, radius - wide, centerX, ringY, centerZ, red, green, blue, alpha);
-        arcVertex(worldRenderer, head, radius + wide, centerX, ringY, centerZ, red, green, blue, alpha);
-        arcVertex(worldRenderer, tipAngle, radius, centerX, ringY, centerZ, red, green, blue, alpha);
+        arcVertex(worldRenderer, head, radius - wide, centerX, ringY, centerZ, viewTilt, viewSpin, red, green, blue, alpha);
+        arcVertex(worldRenderer, head, radius + wide, centerX, ringY, centerZ, viewTilt, viewSpin, red, green, blue, alpha);
+        arcVertex(worldRenderer, tipAngle, radius, centerX, ringY, centerZ, viewTilt, viewSpin, red, green, blue, alpha);
         // Quads batch, so the triangle is padded to four corners with a repeated tip.
-        arcVertex(worldRenderer, tipAngle, radius, centerX, ringY, centerZ, red, green, blue, alpha);
+        arcVertex(worldRenderer, tipAngle, radius, centerX, ringY, centerZ, viewTilt, viewSpin, red, green, blue, alpha);
     }
 
     private void arcQuad(WorldRenderer worldRenderer, float angle0, float angle1,
                          float inner, float outer, float centerX, float ringY, float centerZ,
+                         float viewTilt, float viewSpin,
                          int red, int green, int blue, int alpha0, int alpha1) {
-        arcVertex(worldRenderer, angle0, inner, centerX, ringY, centerZ, red, green, blue, alpha0);
-        arcVertex(worldRenderer, angle1, inner, centerX, ringY, centerZ, red, green, blue, alpha1);
-        arcVertex(worldRenderer, angle1, outer, centerX, ringY, centerZ, red, green, blue, alpha1);
-        arcVertex(worldRenderer, angle0, outer, centerX, ringY, centerZ, red, green, blue, alpha0);
+        arcVertex(worldRenderer, angle0, inner, centerX, ringY, centerZ, viewTilt, viewSpin, red, green, blue, alpha0);
+        arcVertex(worldRenderer, angle1, inner, centerX, ringY, centerZ, viewTilt, viewSpin, red, green, blue, alpha1);
+        arcVertex(worldRenderer, angle1, outer, centerX, ringY, centerZ, viewTilt, viewSpin, red, green, blue, alpha1);
+        arcVertex(worldRenderer, angle0, outer, centerX, ringY, centerZ, viewTilt, viewSpin, red, green, blue, alpha0);
     }
 
     private void arcVertex(WorldRenderer worldRenderer, float angle, float radius,
                            float centerX, float ringY, float centerZ,
+                           float viewTilt, float viewSpin,
                            int red, int green, int blue, int alpha) {
-        worldRenderer.pos(centerX + Math.cos(angle) * radius, ringY, centerZ + Math.sin(angle) * radius)
+        double px = Math.cos(angle) * radius;
+        double pz = Math.sin(angle) * radius;
+        double tiltedY = -pz * Math.sin(viewTilt);
+        double tiltedZ = pz * Math.cos(viewTilt);
+        double finalX = px * Math.cos(viewSpin) + tiltedZ * Math.sin(viewSpin);
+        double finalZ = -px * Math.sin(viewSpin) + tiltedZ * Math.cos(viewSpin);
+        worldRenderer.pos(centerX + finalX, ringY + tiltedY, centerZ + finalZ)
                 .color(red, green, blue, alpha).endVertex();
     }
 
     private void ringVertex(WorldRenderer worldRenderer, int segment, float radius,
                             float centerX, float ringY, float centerZ,
                             float cosTilt, float sinTilt, float cosSpin, float sinSpin,
+                            float cosViewTilt, float sinViewTilt, float cosViewSpin, float sinViewSpin,
                             int red, int green, int blue, int alpha) {
         double px = circleCos[segment] * radius;
         double pz = circleSin[segment] * radius;
@@ -759,9 +805,13 @@ private int ringColor(int ringIndex) {
         // has to move the Z component into Y.
         double tiltedY = -pz * sinTilt;
         double tiltedZ = pz * cosTilt;
-        double finalX = px * cosSpin + tiltedZ * sinSpin;
-        double finalZ = -px * sinSpin + tiltedZ * cosSpin;
-        worldRenderer.pos(centerX + finalX, ringY + tiltedY, centerZ + finalZ)
+        double styledX = px * cosSpin + tiltedZ * sinSpin;
+        double styledZ = -px * sinSpin + tiltedZ * cosSpin;
+        double finalY = tiltedY * cosViewTilt - styledZ * sinViewTilt;
+        double viewZ = tiltedY * sinViewTilt + styledZ * cosViewTilt;
+        double finalX = styledX * cosViewSpin + viewZ * sinViewSpin;
+        double finalZ = -styledX * sinViewSpin + viewZ * cosViewSpin;
+        worldRenderer.pos(centerX + finalX, ringY + finalY, centerZ + finalZ)
                 .color(red, green, blue, alpha).endVertex();
     }
 
