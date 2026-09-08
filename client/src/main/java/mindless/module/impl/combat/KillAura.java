@@ -279,11 +279,16 @@ public class KillAura extends Module {
         if (ModuleManager.displace != null && ModuleManager.displace.shouldDeferKillAuraAttack()) {
             return;
         }
+        // The standalone module owns the full staged implementation. Never let this legacy
+        // fallback hold a second, conflicting block underneath it.
+        if (!useBuiltInAutoblock() && blocking) {
+            stopBlocking();
+        }
         if (!Utils.nullCheck() || target == null || targetDistance > swingRange.getInput()
                 || !basicCondition() || !settingCondition()
-                || (notUsingItem.isToggled() && !autoBlock.isToggled() && mc.thePlayer.isUsingItem())) {
+                || (notUsingItem.isToggled() && !isAnyAutoblockEnabled() && mc.thePlayer.isUsingItem())) {
             nextClickTime = 0L;
-            if (autoBlock.isToggled() && blocking) stopBlocking();
+            if (useBuiltInAutoblock() && blocking) stopBlocking();
             return;
         }
 
@@ -298,7 +303,7 @@ public class KillAura extends Module {
             nextClickTime += nextDelay();
         }
 
-        if (clicks > 0 && autoBlock.isToggled() && blocking) {
+        if (clicks > 0 && useBuiltInAutoblock() && blocking) {
             stopBlocking();
         }
 
@@ -311,7 +316,7 @@ public class KillAura extends Module {
             lastAttackedHealth = target.getHealth();
         }
 
-        if (autoBlock.isToggled() && target != null && targetDistance <= swingRange.getInput() && Utils.holdingSword()) {
+        if (useBuiltInAutoblock() && target != null && targetDistance <= swingRange.getInput() && Utils.holdingSword()) {
             startBlocking();
         }
     }
@@ -895,6 +900,16 @@ public class KillAura extends Module {
             this.entity = entity;
             this.distance = distance;
         }
+    }
+
+    private boolean useBuiltInAutoblock() {
+        return autoBlock.isToggled()
+                && (ModuleManager.autoBlock == null || !ModuleManager.autoBlock.isOperational());
+    }
+
+    private boolean isAnyAutoblockEnabled() {
+        return useBuiltInAutoblock()
+                || ModuleManager.autoBlock != null && ModuleManager.autoBlock.isOperational();
     }
 
     private void startBlocking() {

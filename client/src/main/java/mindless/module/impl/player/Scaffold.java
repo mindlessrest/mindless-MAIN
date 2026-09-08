@@ -46,6 +46,9 @@ public class Scaffold extends Module {
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
     private final ButtonSetting keepY;
+    private ButtonSetting keepYOnRightClick;
+    private ButtonSetting keepYAutoJump;
+    private SliderSetting keepYJumpChance;
     private final ButtonSetting eagle;
     private final SliderSetting eagleSafety;
     private final ButtonSetting switchBack;
@@ -56,6 +59,23 @@ public class Scaffold extends Module {
     private EnumFacing queuedFace;
     private Vec3 queuedVec;
     private boolean placeQueued;
+
+    /**
+     * The Y the bridge is being held at, or MIN_VALUE when not holding one.
+     *
+     * This is the whole of Keep Y. Without it the search always looks one block under your
+     * feet, so walking off a ledge simply builds downward with you. Locking the level and
+     * searching from there is what makes the bridge stay flat and what turns a jump into a
+     * telly rather than a step down.
+     */
+    private int keepYLevel = Integer.MIN_VALUE;
+    /** Whether the last tick was airborne under our own jump, for re-locking on landing. */
+    private boolean keepYJumping;
+    /** Rolled once per jump so the chance is per hop rather than per tick. */
+    private boolean keepYJumpRolled;
+    private boolean keepYJumpAllowed = true;
+    private boolean keepYJumpHeld;
+    private final java.util.Random keepYRandom = new java.util.Random();
 
     private float lastYaw, lastPitch;
     private boolean lastRotsValid;
@@ -77,6 +97,9 @@ private int previousSlot = -1;
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));
         this.registerSetting(sprint = new SliderSetting("Sprint", 0, new String[]{"Off", "Legit", "Watchdog"}));
         this.registerSetting(keepY = new ButtonSetting("Keep Y", false));
+        this.registerSetting(keepYOnRightClick = new ButtonSetting("Keep Y on right click", false));
+        this.registerSetting(keepYAutoJump = new ButtonSetting("Keep Y auto jump", true));
+        this.registerSetting(keepYJumpChance = new SliderSetting("Keep Y jump chance", "%", 100.0, 0.0, 100.0, 5.0));
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
         this.registerSetting(switchBack = new ButtonSetting("Switch back", true));
@@ -115,6 +138,12 @@ private int previousSlot = -1;
             eagleActive = false;
         }
         releaseSprintScaffold();
+        // The hop presses the jump key; leaving it held here is how a module gets
+        // blamed for the player bouncing after it was switched off.
+        releaseKeepYJump();
+        keepYLevel = Integer.MIN_VALUE;
+        keepYJumping = false;
+        keepYJumpRolled = false;
         restorePreviousSlot();
     }
 private void restorePreviousSlot() {
@@ -147,7 +176,9 @@ private void restorePreviousSlot() {
             }
         }
 
+        updateKeepYLevel();
         BlockData best = findBestPlacement();
+        updateKeepYJump(best != null);
         boolean willFall = Utils.isEdgeOfBlock() && mc.thePlayer.motionY < 0.3;
 
         if (best == null) {
@@ -229,7 +260,7 @@ private void restorePreviousSlot() {
         if (placeQueued && queuedPos != null && queuedFace != null && queuedVec != null) {
             ItemStack held = mc.thePlayer.getHeldItem();
             if (held != null && held.getItem() instanceof ItemBlock) {
-                if (!keepY.isToggled() || queuedFace != EnumFacing.UP) {
+                if (!keepYActive() || queuedFace != EnumFacing.UP) {
                     mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held,
                             queuedPos, queuedFace, queuedVec);
                     mc.thePlayer.swingItem();
@@ -421,11 +452,103 @@ private void restorePreviousSlot() {
                 shift || Keyboard.isKeyDown(mc.gameSettings.keyBindSneak.getKeyCode()));
     }
 
+    /** Whether Keep Y should be governing placement right now. */
+    private boolean keepYActive() {
+        if (keepY == null || !keepY.isToggled()) {
+            return false;
+        }
+        // Narrowed to while the button is held, so a bridge can still be dropped down
+        // deliberately without leaving the mode.
+        return keepYOnRightClick == null || !keepYOnRightClick.isToggled()
+                || Utils.isBindDown(mc.gameSettings.keyBindUseItem);
+    }
+
+    /**
+     * Follow the level the bridge is being built at.
+     *
+     * Re-locked while on the ground and on the tick a jump starts, then left alone in the
+     * air. That is what keeps a telly flat: the hop does not move the level it builds at, so
+     * blocks still go under where you took off from rather than under where you now are.
+     */
+    private void updateKeepYLevel() {
+        if (!keepYActive()) {
+            keepYLevel = Integer.MIN_VALUE;
+            keepYJumping = false;
+            keepYJumpRolled = false;
+            releaseKeepYJump();
+            return;
+        }
+        boolean jumpDown = Utils.isBindDown(mc.gameSettings.keyBindJump);
+        if (jumpDown) {
+            keepYLevel = (int) Math.floor(mc.thePlayer.posY) - 1;
+            keepYJumping = true;
+        }
+        else if (keepYJumping || mc.thePlayer.onGround || keepYLevel == Integer.MIN_VALUE) {
+            keepYLevel = (int) Math.floor(mc.thePlayer.posY) - 1;
+            keepYJumping = false;
+        }
+        if (mc.thePlayer.onGround) {
+            keepYJumpRolled = false;
+        }
+    }
+
+    /**
+     * Hop when there is nothing to build against at the locked level.
+     *
+     * Reaching the far side of a gap means getting the eyes high enough to see the face, and
+     * on flat ground that is a jump. Only while actually moving -- jumping on the spot places
+     * nothing and just looks odd -- and the chance is rolled once per hop rather than per
+     * tick, so a partial setting thins out how many jumps happen instead of stuttering one.
+     */
+    private void updateKeepYJump(boolean hasTarget) {
+        if (!keepYActive() || keepYAutoJump == null || !keepYAutoJump.isToggled()) {
+            releaseKeepYJump();
+            return;
+        }
+        boolean moving = mc.gameSettings.keyBindForward.isKeyDown()
+                || mc.gameSettings.keyBindBack.isKeyDown()
+                || mc.gameSettings.keyBindLeft.isKeyDown()
+                || mc.gameSettings.keyBindRight.isKeyDown();
+        if (hasTarget || !moving || !mc.thePlayer.onGround) {
+            releaseKeepYJump();
+            return;
+        }
+        if (!keepYJumpRolled) {
+            keepYJumpRolled = true;
+            double chance = keepYJumpChance == null ? 100.0 : keepYJumpChance.getInput();
+            keepYJumpAllowed = chance >= 100.0 || keepYRandom.nextDouble() * 100.0 < chance;
+        }
+        if (!keepYJumpAllowed) {
+            releaseKeepYJump();
+            return;
+        }
+        int key = mc.gameSettings.keyBindJump.getKeyCode();
+        net.minecraft.client.settings.KeyBinding.setKeyBindState(key, true);
+        net.minecraft.client.settings.KeyBinding.onTick(key);
+        keepYJumpHeld = true;
+    }
+
+    private void releaseKeepYJump() {
+        if (!keepYJumpHeld) {
+            return;
+        }
+        keepYJumpHeld = false;
+        // Only let go of what we pressed: a jump the player is holding themselves stays held.
+        int key = mc.gameSettings.keyBindJump.getKeyCode();
+        if (!org.lwjgl.input.Keyboard.isKeyDown(key)) {
+            net.minecraft.client.settings.KeyBinding.setKeyBindState(key, false);
+        }
+    }
+
     private BlockData findBestPlacement() {
         EntityPlayerSP player = mc.thePlayer;
         float baseYaw = getBaseYaw();
         BlockPos playerPos = new BlockPos(player);
-        BlockPos scanY = playerPos.down();
+        // Keep Y searches from the level it locked, not from under your feet, which is the
+        // difference between a flat bridge and one that follows you down a drop.
+        BlockPos scanY = keepYActive() && keepYLevel != Integer.MIN_VALUE
+                ? new BlockPos(playerPos.getX(), keepYLevel, playerPos.getZ())
+                : playerPos.down();
 
         double targetX = player.posX + player.motionX;
         double targetZ = player.posZ + player.motionZ;
@@ -435,7 +558,7 @@ private void restorePreviousSlot() {
         BlockData best = null;
         double bestScore = Double.MAX_VALUE;
 
-        boolean tower = !player.onGround && !keepY.isToggled();
+        boolean tower = !player.onGround && !keepYActive();
         int lowestLayer = tower ? -1 : 0;
 
         for (int layer = 0; layer >= lowestLayer; layer--) {

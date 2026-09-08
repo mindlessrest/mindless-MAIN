@@ -11,6 +11,7 @@ import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
+import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Theme;
 import mindless.utility.Timer;
 import mindless.utility.Utils;
@@ -154,6 +155,8 @@ private static final int[] DEFAULT_RING_COLORS = {
     public int posY = 30;
     private float tweenedX = Float.NaN;
     private float tweenedY = Float.NaN;
+    /** Camera matrices captured by this module for its own target-anchored overlays. */
+    private RenderUtils.ProjectionContext targetProjectionContext;
 
     // Acquisition trace. Nothing already in the client records when the panel first drew
     // relative to when KillAura picked the opponent up: the profiler measures time spent in
@@ -408,7 +411,15 @@ private int ringColor(int ringIndex) {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onRenderWorld(RenderWorldLastEvent renderWorldLastEvent) {
-        if (!renderEsp.isToggled() || !Utils.nullCheck()) {
+        if (!Utils.nullCheck()) {
+            return;
+        }
+        // Do not borrow SexyESP's context. If SexyESP is disabled its matrix can be null or one
+        // frame old, which is exactly what made the marker drift when silent aura targeted
+        // somebody away from the crosshair.
+        targetProjectionContext = RenderUtils.captureProjectionContext(
+                targetProjectionContext, ScaledResolutionCache.get().getScaleFactor());
+        if (!renderEsp.isToggled()) {
             return;
         }
         EntityLivingBase auraTarget = getActiveTarget();
@@ -467,11 +478,11 @@ private int ringColor(int ringIndex) {
         double time = (System.currentTimeMillis() % 86400000L) / 2000.0 * speed;
 
         /*
-         * Horizontal rings look best from above, but collapse to a line at the camera angles
-         * used during normal combat. 2D turns the ring plane toward the camera while keeping
-         * it attached to the target in world space. Hybrid only leans it partway, retaining
-         * the grounded 3D ellipse while making its far side readable. The orientation is
-         * calculated once per target/frame, not once per vertex.
+         * Keep every view as a ring around the player's vertical axis.  The old 2D mode fully
+         * bill-boarded the ring to the camera; at normal combat distance that turned it into a
+         * huge upright circle covering the player and most of the screen. 2D and Hybrid now
+         * only add a restrained camera-side lean. That exposes the far edge from a low viewing
+         * angle without changing the original around-the-player silhouette.
          */
         int view = ringView == null ? RING_VIEW_HYBRID : (int) ringView.getInput();
         float viewTilt = 0.0f;
@@ -479,8 +490,10 @@ private int ringColor(int ringIndex) {
         if (view != RING_VIEW_3D) {
             double horizontalDistance = Math.sqrt(x * x + z * z);
             double centerToCameraY = -(y + entityHeight * 0.5);
-            float cameraFacingTilt = (float) Math.atan2(horizontalDistance, centerToCameraY);
-            viewTilt = view == RING_VIEW_2D ? cameraFacingTilt : cameraFacingTilt * 0.58f;
+            float elevation = (float) Math.atan2(centerToCameraY, Math.max(0.001, horizontalDistance));
+            float readableTilt = (float) Math.toRadians(18.0)
+                    + Math.min((float) Math.toRadians(10.0), Math.abs(elevation) * 0.35f);
+            viewTilt = view == RING_VIEW_2D ? readableTilt : readableTilt * 0.52f;
             viewSpin = (float) Math.atan2(-x, -z);
         }
 
@@ -866,8 +879,8 @@ private int ringColor(int ringIndex) {
             float hudW = targetStrWithPadding + padding * 2;
             float hudH = (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding * 2 + footerHeight;
 
-            if (SexyESP.projectionContext != null &&
-                    mindless.utility.RenderUtils.projectTo2D(SexyESP.projectionContext, tx - camX, ty - camY + entityH / 2, tz - camZ, projected)) {
+            if (targetProjectionContext != null &&
+                    mindless.utility.RenderUtils.projectTo2D(targetProjectionContext, tx - camX, ty - camY + entityH / 2, tz - camZ, projected)) {
                 float screenX = (float) projected[0];
                 float screenY = (float) projected[1];
                 switch (posMode) {
@@ -1072,7 +1085,7 @@ private int ringColor(int ringIndex) {
         if (fade <= 0.001f) {
             return;
         }
-        if (SexyESP.projectionContext == null) {
+        if (targetProjectionContext == null) {
             return;
         }
 
@@ -1085,32 +1098,26 @@ private int ringColor(int ringIndex) {
         double camZ = mc.getRenderManager().viewerPosZ;
 
         double[] middle = new double[3];
-        double[] top = new double[3];
-        if (!RenderUtils.projectTo2D(SexyESP.projectionContext,
+        if (!RenderUtils.projectTo2D(targetProjectionContext,
                 tx - camX, ty - camY + entity.height * 0.5, tz - camZ, middle)) {
             return;
         }
-        if (!RenderUtils.projectTo2D(SexyESP.projectionContext,
-                tx - camX, ty - camY + entity.height, tz - camZ, top)) {
+
+        ScaledResolution resolution = ScaledResolutionCache.get();
+        float centerX = (float) middle[0];
+        float centerY = (float) middle[1];
+        // A target behind the camera or outside the viewport has no on-screen body to attach
+        // this marker to. Drawing its projected coordinates anyway produced the enormous arcs
+        // seen at the screen edges while silent aura kept attacking off-crosshair.
+        if (middle[2] < 0.0 || middle[2] > 1.0
+                || centerX < 0.0f || centerX > resolution.getScaledWidth()
+                || centerY < 0.0f || centerY > resolution.getScaledHeight()) {
             return;
         }
 
-        // Size from how tall the target appears, so it shrinks with distance like everything
-        // else on screen instead of staying a fixed lump of pixels.
-        //
-        // The length of the projected segment, not its vertical extent. A world-vertical segment
-        // does not project onto the screen's Y axis alone: pitch the camera up or down, or look
-        // at a target off to one side, and it lands increasingly slanted, so measuring only the
-        // Y gap made the marker shrink as the camera turned even though the target had not moved.
-        double spanX = middle[0] - top[0];
-        double spanY = middle[1] - top[1];
-        float halfHeight = (float) Math.sqrt(spanX * spanX + spanY * spanY);
-        float size = halfHeight * 1.25f * (float) (markerSize == null ? 1.0 : markerSize.getInput());
-        if (size < 0.75f) {
-            return;
-        }
-        float centerX = (float) middle[0];
-        float centerY = (float) middle[1];
+        // Screen-space marker means screen-space sizing: turning silent rotations, changing FOV,
+        // or moving a few blocks must not make the brackets pulse larger and smaller.
+        float size = 34.0f * (float) (markerSize == null ? 1.0 : markerSize.getInput());
 
         int style = markerStyle == null ? MARKER_STYLE_BRACKETS : (int) markerStyle.getInput();
         float thickness = (float) (markerThickness == null ? 2.0 : markerThickness.getInput());
