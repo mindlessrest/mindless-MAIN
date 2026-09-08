@@ -135,6 +135,7 @@ public abstract class MixinGuiNewChat {
         float bgH = (float) (animatedRows * rowHeight * scale + 10.0f);
         float bgBottom = sr.getScaledHeight() - 23.0f;
         float bgY = bgBottom - bgH;
+        float clipY = bgY - (sr.getScaledHeight() - 48.0f);
 
         if (ChatModule.drawBackground()) {
             GlStateManager.pushMatrix();
@@ -144,6 +145,7 @@ public abstract class MixinGuiNewChat {
             GlStateManager.popMatrix();
         }
 
+        mindless.utility.RenderUtils.scissorPushGui(bgX, clipY, bgW, bgH);
         GlStateManager.pushMatrix();
         GlStateManager.translate(8.0f, 20.0f, 0.0f);
         GlStateManager.scale(scale, scale, 1.0f);
@@ -202,6 +204,7 @@ public abstract class MixinGuiNewChat {
         }
 
         GlStateManager.popMatrix();
+        mindless.utility.RenderUtils.scissorPop();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         ci.cancel();
     }

@@ -2,7 +2,6 @@
 #include "app/process_list.hpp"
 #include "window/window.hpp"
 #include <windows.h>
-#include <d3d11.h>
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
@@ -127,16 +126,12 @@ bool draw_chrome(DrawList& dl, const InputState& input,
 {
     const Theme& t = g_theme;
 
-    const float pillH  = 26.0f;
-    const float btnW   = 30.0f;
-    const float pillW  = btnW * 2.0f;
-    const float pillX  = wr.right() - pillW - 14.0f;
-    const float pillY  = wr.y + 11.0f;
-    const float radius = pillH * 0.5f;
-
-    Rect pill = { pillX,        pillY, pillW, pillH };
-    Rect mnR  = { pillX,        pillY, btnW,  pillH };
-    Rect clR  = { pillX + btnW, pillY, btnW,  pillH };
+    const float buttonSize = 24.0f;
+    const float gap = 4.0f;
+    const float right = wr.right() - 14.0f;
+    const float top = wr.y + 11.0f;
+    Rect clR = { right - buttonSize, top, buttonSize, buttonSize };
+    Rect mnR = { clR.x - gap - buttonSize, top, buttonSize, buttonSize };
 
     bool mnHov = mnR.contains(input.mousePos);
     bool clHov = clR.contains(input.mousePos);
@@ -149,37 +144,18 @@ bool draw_chrome(DrawList& dl, const InputState& input,
     float minT   = state.chromeMinHover.value();
     float closeT = state.chromeCloseHover.value();
 
-    dl.fill_rounded_rect(pill, Color(0x1A1C22), radius);
-
-    // Each half keeps the pill's round on its outer end and stops flat at the seam: the fill
-    // overhangs the midline so its inner cap lands outside the clip and never shows.
     if (minT > 0.001f)
-    {
-        dl.push_clip(mnR);
-        dl.fill_rounded_rect({ mnR.x, mnR.y, mnR.w + radius, mnR.h },
-                             t.buttonHover.with_alpha(minT), radius);
-        dl.pop_clip();
-    }
+        dl.fill_rounded_rect(mnR, t.buttonHover.with_alpha(minT), t.buttonRadius);
     if (closeT > 0.001f)
-    {
-        dl.push_clip(clR);
-        dl.fill_rounded_rect({ clR.x - radius, clR.y, clR.w + radius, clR.h },
-                             t.buttonHover.with_alpha(closeT), radius);
-        dl.pop_clip();
-    }
-
-    dl.fill_rect({ pill.x + btnW, pill.y + 7.0f, 1.0f, pill.h - 14.0f },
-                 Color(0x282B36).with_alpha(1.0f - std::max(minT, closeT)));
-
-    dl.stroke_rounded_rect(pill, Color(0x282B36), radius, 1.0f);
+        dl.fill_rounded_rect(clR, t.danger.with_alpha(0.16f * closeT), t.buttonRadius);
 
     const float dashW = 8.0f;
     const float dashH = 1.5f;
-    dl.fill_rounded_rect({ mnR.x + (btnW - dashW) * 0.5f, mnR.y + (mnR.h - dashH) * 0.5f,
+    dl.fill_rounded_rect({ mnR.x + (mnR.w - dashW) * 0.5f, mnR.y + (mnR.h - dashH) * 0.5f,
                            dashW, dashH },
                          t.textSecond.lerp(t.text, minT), dashH * 0.5f);
 
-    const char* xStr = "\xD7";
+    const char* xStr = "\xC3\x97";
     float xw = fonts.normal.measure_text_width(xStr);
     float xt = vcenter_text(fonts.normal, clR.y, clR.h);
     dl.draw_text(xStr, { clR.x + (clR.w - xw) * 0.5f, xt },
@@ -224,24 +200,30 @@ static void draw_splash(DrawList& dl, AppState& state,
         state.transition_to(Screen::Login, 1.0f);
 }
 
-static void draw_title_bar(DrawList& dl, ScreenFonts fonts, const Rect& wr, float alpha)
+static void draw_title_bar(DrawList& dl, ScreenFonts fonts, const Rect& wr,
+                           const Image& logo, float alpha)
 {
-    const float pad   = 16.0f;
+    const float pad   = 18.0f;
     const float lineH = 20.0f;
     const float top   = wr.y + 13.0f;
 
-    dl.draw_text("Mindless", { wr.x + pad, vcenter_text(fonts.normal, top, lineH) },
-                 g_theme.textSecond.with_alpha(0.85f * alpha), fonts.normal);
+    float wordX = wr.x + pad;
+    if (logo.valid())
+    {
+        const float logoH = 16.0f;
+        const float logoW = logoH * static_cast<float>(logo.width) / static_cast<float>(logo.height);
+        dl.draw_image(logo, { wordX, top + (lineH - logoH) * 0.5f, logoW, logoH }, alpha);
+        wordX += logoW + 8.0f;
+    }
+    dl.draw_text("Mindless", { wordX, vcenter_text(fonts.normal, top, lineH) },
+                 g_theme.text.with_alpha(alpha), fonts.normal);
 }
 
 static const float kRowHeight = 48.0f;
 static const float kRowGap = 4.0f;
 static const float kListGap = 14.0f;
-static const int   kMaxVisibleRows = 4;
 
-// Neither screen is titled. The window is named once in the title bar, and the fields and rows
-// below say what they are, so a heading would only repeat them and cost a third of the panel.
-static const float kContentTop = 46.0f;
+static const float kContentTop = 54.0f;
 
 
 
@@ -421,8 +403,9 @@ static std::string clipboard_text()
             int n = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
             if (n > 1)
             {
-                out.resize(static_cast<size_t>(n) - 1);
+                out.resize(static_cast<size_t>(n));
                 WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), n, nullptr, nullptr);
+                out.pop_back();
             }
             GlobalUnlock(data);
         }
@@ -504,8 +487,7 @@ static bool draw_checkbox(DrawList& dl, FontAtlas& cap, Rect r, const char* labe
 
 static void draw_login_content(DrawList& dl, AppState& state,
                                 const InputState& input, ScreenFonts fonts,
-                                const Rect& wr, float alpha, float dt,
-                                ID3D11Device* device)
+                                const Rect& wr, float alpha, float dt)
 {
     const Theme& t  = g_theme;
     FontAtlas&   fn = fonts.normal;
@@ -523,8 +505,11 @@ static void draw_login_content(DrawList& dl, AppState& state,
     const float checkH   = 16.0f;
     const float checkGap = 9.0f;
     const float hintGap  = 8.0f;
-    float groupH = fieldH * 2.0f + 10.0f + checkGap + checkH + hintGap + cap.lineHeight();
-    float groupY = contentTop + (btnR.y - contentTop - groupH) * 0.5f;
+    dl.draw_text("Welcome back", { fieldX, contentTop }, t.text.with_alpha(alpha), fonts.title);
+    dl.draw_text("Sign in to continue to Mindless", { fieldX, contentTop + 25.0f },
+                 t.textSecond.with_alpha(alpha), cap);
+
+    float groupY = contentTop + 50.0f;
 
     Rect userR = { fieldX, groupY,                 fieldW, fieldH };
     Rect passR = { fieldX, userR.bottom() + 10.0f, fieldW, fieldH };
@@ -677,10 +662,6 @@ static void draw_login_content(DrawList& dl, AppState& state,
 
     if (submit && !state.authInProgress)
     {
-        state.release_process_icons();
-        state.processes    = enumerate_targets(device);
-        state.refreshAccum = 0.0f;
-        state.selectedIdx  = -1;
         state.sign_in();
     }
 }
@@ -717,7 +698,12 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
     float listW   = wr.w - pad * 2.0f;
     float listX   = wr.x + pad;
 
-    float listTop = wr.y + kContentTop;
+    float headingY = wr.y + kContentTop;
+    dl.draw_text("Select Minecraft", { listX, headingY }, t.text.with_alpha(alpha), fonts.title);
+    dl.draw_text("Choose the instance to load into", { listX, headingY + 25.0f },
+                 t.textSecond.with_alpha(alpha), fonts.caption);
+
+    float listTop = headingY + 50.0f;
     float rowH    = kRowHeight;
     float rowGap  = kRowGap;
 
@@ -734,13 +720,13 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
         float       emptyY = listArea.y + (listArea.h - emptyH) * 0.5f;
 
         Rect ghost = { listX, emptyY, listW, kRowHeight };
-        dl.fill_rounded_rect(ghost, Color(0x000000).with_alpha(0.16f * alpha), t.cardRadius);
+        dl.fill_rounded_rect(ghost, t.background.with_alpha(0.45f * alpha), t.cardRadius);
         dl.stroke_rounded_rect(ghost, t.buttonBorder.with_alpha(0.5f * alpha), t.cardRadius, 1.0f);
 
         const float tileSz = 32.0f;
         float tileX = ghost.x + 11.0f;
         dl.fill_rounded_rect({ tileX, ghost.y + (ghost.h - tileSz) * 0.5f, tileSz, tileSz },
-                             Color(0x000000).with_alpha(0.2f * alpha), 8.0f);
+                             t.surfaceRaised.with_alpha(alpha), 8.0f);
 
         FontAtlas& cap = fonts.caption;
         float textX  = tileX + tileSz + 11.0f;
@@ -797,6 +783,9 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
 
         dl.fill_rounded_rect(row, rowBg.with_alpha(rowBg.a * alpha),           t.cardRadius);
         dl.stroke_rounded_rect(row, rowBorder.with_alpha(rowBorder.a * alpha), t.cardRadius, 1.0f);
+        if (selected)
+            dl.fill_rounded_rect({ row.x, row.y + 8.0f, 2.5f, row.h - 16.0f },
+                                 t.accent.with_alpha(alpha), 1.25f);
 
         const auto& pe = state.processes[i];
 
@@ -811,7 +800,7 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
         Rect  tile   = { tileX, tileY, tileSz, tileSz };
         Color tileBg = t.buttonHover.lerp(t.buttonBorder, 0.35f);
         dl.fill_rounded_rect(tile, tileBg.with_alpha(tileBg.a * alpha), 9.0f);
-        dl.stroke_rounded_rect(tile, Color(0xFFFFFF).with_alpha(0.05f * alpha), 9.0f, 1.0f);
+        dl.stroke_rounded_rect(tile, t.divider.with_alpha(alpha), 9.0f, 1.0f);
 
         float iconX = tileX + (tileSz - iconSz) * 0.5f;
         float iconY = tileY + (tileSz - iconSz) * 0.5f;
@@ -893,19 +882,28 @@ static void draw_loading_content(DrawList& dl, AppState& state,
         return;
     }
 
-    float top = wr.y + wr.h * 0.34f;
-    draw_text_centered(dl, fn, state.targetDisplay.empty() ? "Minecraft" : state.targetDisplay,
-                       cx, top, t.textSecond.with_alpha(alpha));
+    float top = wr.y + kContentTop;
+    dl.draw_text("Loading Mindless", { barX, top }, t.text.with_alpha(alpha), fonts.title);
+    dl.draw_text(state.targetDisplay.empty() ? "Minecraft" : state.targetDisplay,
+                 { barX, top + 25.0f }, t.textSecond.with_alpha(alpha), fonts.caption);
 
-    float statusY = top + fn.lineHeight() + 4.0f;
+    Rect statusCard = { barX, top + 58.0f, barW, 92.0f };
+    dl.fill_rounded_rect(statusCard, t.surfaceRaised.with_alpha(alpha), t.cardRadius);
+    dl.stroke_rounded_rect(statusCard, t.buttonBorder.with_alpha(alpha), t.cardRadius, 1.0f);
+
+    float statusY = statusCard.y + 20.0f;
     draw_loading_status(dl, fn, state.statusText, cx, statusY,
                         t.text.with_alpha(alpha), state.spinElapsed);
 
-    float barY = statusY + fn.lineHeight() + 20.0f;
-    draw_sweep_bar(dl, { barX, barY, barW, t.progressH }, state.spinElapsed,
-                   t.trackBg, t.trackFill, alpha);
+    float barY = statusCard.bottom() - 25.0f;
+    Rect track = { statusCard.x + 16.0f, barY, statusCard.w - 32.0f, t.progressH };
+    dl.fill_rounded_rect(track, t.trackBg.with_alpha(alpha), t.progressH * 0.5f);
+    float progress = clamp(state.loadProgress, 0.0f, 1.0f);
+    if (progress > 0.001f)
+        dl.fill_rounded_rect({ track.x, track.y, track.w * progress, track.h },
+                             t.trackFill.with_alpha(alpha), track.h * 0.5f);
 
-    float footY = barY + t.progressH + 12.0f;
+    float footY = statusCard.bottom() + 12.0f;
     float pidW  = fonts.caption.measure_text_width(state.targetPid.c_str());
     dl.draw_text(state.targetPid, { cx - pidW * 0.5f, footY },
                  t.textDisable.with_alpha(alpha), fonts.caption);
@@ -915,8 +913,7 @@ static const float kSlideTravel = 0.11f;
 
 void draw_screen(DrawList& dl, AppState& state, const InputState& input,
                  ScreenFonts fonts, const Rect& wr, const Image& logo,
-                 float dt, bool& closeRequested, Window* window,
-                 ID3D11Device* device)
+                 float dt, bool& closeRequested, Window* window)
 {
     state.advance_tweens(dt);
 
@@ -932,26 +929,13 @@ void draw_screen(DrawList& dl, AppState& state, const InputState& input,
     // corner overhangs the curve at y+1 and leaves a bright nub outside the panel.
     Rect  sheen  = { wr.x + g_theme.windowRadius, wr.y + 1.0f,
                      wr.w - g_theme.windowRadius * 2.0f, 1.0f };
-    Color sheenA = Color(0xFFFFFF).with_alpha(0.0f);
-    Color sheenB = Color(0xFFFFFF).with_alpha(0.05f * bgOpacity);
+    Color sheenA = g_theme.text.with_alpha(0.0f);
+    Color sheenB = g_theme.text.with_alpha(0.05f * bgOpacity);
     float sheenH = sheen.w * 0.5f;
     dl.fill_rounded_rect_gradient(sheen, { sheen.x, sheen.y, sheenH, sheen.h },
                                   sheenA, sheenB, 0.5f);
     dl.fill_rounded_rect_gradient(sheen, { sheen.x + sheenH, sheen.y, sheenH, sheen.h },
                                   sheenB, sheenA, 0.5f);
-
-    // The mark, blown up and cropped by the panel, gives the empty half of every screen
-    // something to sit on. Clipped short of the corner radius so it never squares them off.
-    if (logo.valid() && state.screen != Screen::Splash)
-    {
-        float markH = wr.h * 0.82f;
-        float markW = markH * (static_cast<float>(logo.width) / static_cast<float>(logo.height));
-        Rect  mark  = { wr.right() - markW * 0.55f, wr.bottom() - markH * 0.6f, markW, markH };
-
-        dl.push_clip(wr.inset(g_theme.windowRadius));
-        dl.draw_image(logo, mark, 0.10f * bgOpacity);
-        dl.pop_clip();
-    }
 
     if (state.screen == Screen::Splash)
     {
@@ -979,11 +963,11 @@ void draw_screen(DrawList& dl, AppState& state, const InputState& input,
 
         Rect outWr = wr.translated(outOffset, 0.0f);
         dl.push_clip(wr);
-        draw_title_bar(dl, fonts, outWr, outAlpha);
+        draw_title_bar(dl, fonts, outWr, logo, outAlpha);
         switch (state.prevScreen)
         {
         case Screen::Login:
-            draw_login_content(dl, state, idleInput, fonts, outWr, outAlpha, 0.0f, device);
+            draw_login_content(dl, state, idleInput, fonts, outWr, outAlpha, 0.0f);
             break;
         case Screen::ProcessSelect:
             draw_process_select_content(dl, state, idleInput, fonts, outWr, outAlpha, 0.0f);
@@ -1009,11 +993,11 @@ void draw_screen(DrawList& dl, AppState& state, const InputState& input,
 
         Rect inWr = wr.translated(inOffset, 0.0f);
         dl.push_clip(wr);
-        draw_title_bar(dl, fonts, inWr, inAlpha);
+        draw_title_bar(dl, fonts, inWr, logo, inAlpha);
         switch (state.screen)
         {
         case Screen::Login:
-            draw_login_content(dl, state, liveInput, fonts, inWr, inAlpha, dt, device);
+            draw_login_content(dl, state, liveInput, fonts, inWr, inAlpha, dt);
             break;
         case Screen::ProcessSelect:
             draw_process_select_content(dl, state, liveInput, fonts, inWr, inAlpha, dt);

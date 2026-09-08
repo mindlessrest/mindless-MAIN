@@ -7,6 +7,8 @@
 #include <shellapi.h>
 #include <string>
 #include <unordered_map>
+#include <algorithm>
+#include <cctype>
 
 #pragma comment(lib, "Psapi.lib")
 
@@ -35,8 +37,9 @@ static BOOL CALLBACK enum_windows_proc(HWND hwnd, LPARAM lp)
         int len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, nullptr, 0, nullptr, nullptr);
         if (len > 1)
         {
-            std::string title(static_cast<size_t>(len - 1), '\0');
+            std::string title(static_cast<size_t>(len), '\0');
             WideCharToMultiByte(CP_UTF8, 0, buf, -1, title.data(), len, nullptr, nullptr);
+            title.pop_back();
             ctx->titleByPid[pid] = std::move(title);
         }
     }
@@ -50,7 +53,7 @@ static std::string detect_display(const std::string& windowTitle)
     return "Minecraft";
 }
 
-static std::string detect_subtitle(const std::string& windowTitle, DWORD pid)
+static std::string detect_subtitle(const std::string& windowTitle, const char* executable, DWORD pid)
 {
     char buf[48];
     if (windowTitle.find("Lunar Client") != std::string::npos)
@@ -58,7 +61,7 @@ static std::string detect_subtitle(const std::string& windowTitle, DWORD pid)
         snprintf(buf, sizeof(buf), "PID %lu", pid);
         return buf;
     }
-    snprintf(buf, sizeof(buf), "javaw.exe - PID %lu", pid);
+    snprintf(buf, sizeof(buf), "%s - PID %lu", executable, pid);
     return buf;
 }
 
@@ -80,11 +83,15 @@ static bool is_game_process(const wchar_t* exeName)
 
 static bool is_minecraft_window(const std::string& title)
 {
-    if (title.find("Minecraft") != std::string::npos) return true;
-    if (title.find("Lunar Client") != std::string::npos) return true;
-    if (title.find("Badlion") != std::string::npos) return true;
-    if (title.find("Forge") != std::string::npos) return true;
-    if (title.find("Fabric") != std::string::npos) return true;
+    std::string lower = title;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    if (lower.find("minecraft") != std::string::npos) return true;
+    if (lower.find("lunar client") != std::string::npos) return true;
+    if (lower.find("badlion") != std::string::npos) return true;
+    if (lower.find("forge") != std::string::npos) return true;
+    if (lower.find("fabric") != std::string::npos) return true;
     return false;
 }
 
@@ -183,9 +190,9 @@ std::vector<ProcessEntry> enumerate_targets(ID3D11Device* device)
 
             ProcessEntry pe;
             pe.pid      = pid;
-            pe.name     = "javaw.exe";
+            pe.name     = _wcsicmp(entry.szExeFile, L"java.exe") == 0 ? "java.exe" : "javaw.exe";
             pe.display  = detect_display(title);
-            pe.subtitle = detect_subtitle(title, pid);
+            pe.subtitle = detect_subtitle(title, pe.name.c_str(), pid);
             pe.icon     = pe.display == "Lunar Client" ? load_lunar_icon(device) : Image{};
             if (!pe.icon.valid())
                 pe.icon = extract_process_icon(pid, device);

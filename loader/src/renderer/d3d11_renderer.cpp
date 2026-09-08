@@ -5,6 +5,7 @@
 #include <dcomp.h>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 #include <cassert>
 
 static const char* g_shaderSrc = R"HLSL(
@@ -85,7 +86,8 @@ float4 ps_main(VS_Output input) : SV_TARGET
     if (input.mode > 1.5)
     {
         float4 texel = gTexture.Sample(gSampler, input.uv);
-        return float4(texel.rgb, texel.a * input.color.a);
+        float3 color = texel.a > 0.0001 ? texel.rgb / texel.a : 0.0;
+        return float4(color, texel.a * input.color.a);
     }
     if (input.mode > 0.5)
     {
@@ -162,9 +164,15 @@ bool Renderer::create_device_and_swap_chain(HWND hwnd)
     IDXGIAdapter*  dxgiAdapter = nullptr;
     IDXGIFactory2* dxgiFactory = nullptr;
 
-    device_->QueryInterface(IID_PPV_ARGS(&dxgiDevice));
-    dxgiDevice->GetAdapter(&dxgiAdapter);
-    dxgiAdapter->GetParent(IID_PPV_ARGS(&dxgiFactory));
+    if (FAILED(device_->QueryInterface(IID_PPV_ARGS(&dxgiDevice))) ||
+        FAILED(dxgiDevice->GetAdapter(&dxgiAdapter)) ||
+        FAILED(dxgiAdapter->GetParent(IID_PPV_ARGS(&dxgiFactory))))
+    {
+        if (dxgiFactory) dxgiFactory->Release();
+        if (dxgiAdapter) dxgiAdapter->Release();
+        if (dxgiDevice) dxgiDevice->Release();
+        return false;
+    }
 
     // A swap chain bound straight to the HWND cannot carry per-pixel alpha. Going through
     // DirectComposition instead is what lets the window be genuinely transparent outside the
@@ -183,7 +191,7 @@ bool Renderer::create_device_and_swap_chain(HWND hwnd)
     IDCompositionVisual* visual = nullptr;
 
     IDXGIDevice* dxgi = nullptr;
-    device_->QueryInterface(IID_PPV_ARGS(&dxgi));
+    if (FAILED(device_->QueryInterface(IID_PPV_ARGS(&dxgi)))) return false;
     hr = DCompositionCreateDevice(dxgi, IID_PPV_ARGS(&comp));
     if (dxgi) dxgi->Release();
     if (FAILED(hr)) return false;
@@ -196,9 +204,15 @@ bool Renderer::create_device_and_swap_chain(HWND hwnd)
         return false;
     }
 
-    visual->SetContent(swapChain_);
-    target->SetRoot(visual);
-    comp->Commit();
+    if (FAILED(visual->SetContent(swapChain_)) ||
+        FAILED(target->SetRoot(visual)) ||
+        FAILED(comp->Commit()))
+    {
+        visual->Release();
+        target->Release();
+        comp->Release();
+        return false;
+    }
 
     compDevice_ = comp;
     compTarget_ = target;
@@ -209,7 +223,8 @@ bool Renderer::create_device_and_swap_chain(HWND hwnd)
 bool Renderer::create_render_target()
 {
     ID3D11Texture2D* backbuf = nullptr;
-    swapChain_->GetBuffer(0, IID_PPV_ARGS(&backbuf));
+    if (!swapChain_ || !device_ || FAILED(swapChain_->GetBuffer(0, IID_PPV_ARGS(&backbuf))))
+        return false;
     HRESULT hr = device_->CreateRenderTargetView(backbuf, nullptr, &rtv_);
     backbuf->Release();
     return SUCCEEDED(hr);
@@ -225,6 +240,7 @@ bool Renderer::create_pipeline()
         if (errBlob) errBlob->Release();
         return false;
     }
+    if (errBlob) { errBlob->Release(); errBlob = nullptr; }
 
     hr = D3DCompile(g_shaderSrc, strlen(g_shaderSrc), nullptr, nullptr, nullptr,
                     "ps_main", "ps_4_0", 0, 0, &psBlob, &errBlob);
@@ -233,9 +249,15 @@ bool Renderer::create_pipeline()
         if (errBlob) errBlob->Release();
         return false;
     }
+    if (errBlob) { errBlob->Release(); errBlob = nullptr; }
 
-    device_->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &vs_);
-    device_->CreatePixelShader(psBlob->GetBufferPointer(),  psBlob->GetBufferSize(), nullptr, &ps_);
+    if (FAILED(device_->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &vs_)) ||
+        FAILED(device_->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &ps_)))
+    {
+        vsBlob->Release();
+        psBlob->Release();
+        return false;
+    }
 
     D3D11_INPUT_ELEMENT_DESC layout[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT,       0, offsetof(Vertex, x),    D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -245,24 +267,25 @@ bool Renderer::create_pipeline()
         { "SHAPE",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, cx),   D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "PARAM",    0, DXGI_FORMAT_R32G32_FLOAT,       0, offsetof(Vertex, radius), D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
-    device_->CreateInputLayout(layout, 6, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &inputLayout_);
+    hr = device_->CreateInputLayout(layout, 6, vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), &inputLayout_);
 
     vsBlob->Release();
     psBlob->Release();
+    if (FAILED(hr)) return false;
 
     D3D11_BUFFER_DESC vbd = {};
     vbd.Usage          = D3D11_USAGE_DYNAMIC;
     vbd.ByteWidth      = sizeof(Vertex) * MaxVertices;
     vbd.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
     vbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    device_->CreateBuffer(&vbd, nullptr, &vertexBuf_);
+    if (FAILED(device_->CreateBuffer(&vbd, nullptr, &vertexBuf_))) return false;
 
     D3D11_BUFFER_DESC cbd = {};
     cbd.Usage          = D3D11_USAGE_DYNAMIC;
     cbd.ByteWidth      = 16;
     cbd.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
     cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    device_->CreateBuffer(&cbd, nullptr, &constantBuf_);
+    if (FAILED(device_->CreateBuffer(&cbd, nullptr, &constantBuf_))) return false;
 
     // Standard straight-alpha blend.
     D3D11_BLEND_DESC bd = {};
@@ -274,14 +297,14 @@ bool Renderer::create_pipeline()
     bd.RenderTarget[0].DestBlendAlpha        = D3D11_BLEND_INV_SRC_ALPHA;
     bd.RenderTarget[0].BlendOpAlpha          = D3D11_BLEND_OP_ADD;
     bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    device_->CreateBlendState(&bd, &blendState_);
+    if (FAILED(device_->CreateBlendState(&bd, &blendState_))) return false;
 
     D3D11_RASTERIZER_DESC rd = {};
     rd.FillMode        = D3D11_FILL_SOLID;
     rd.CullMode        = D3D11_CULL_NONE;
     rd.ScissorEnable   = TRUE;
     rd.DepthClipEnable = TRUE;
-    device_->CreateRasterizerState(&rd, &rastState_);
+    if (FAILED(device_->CreateRasterizerState(&rd, &rastState_))) return false;
 
     D3D11_SAMPLER_DESC smp = {};
     smp.Filter         = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -290,28 +313,38 @@ bool Renderer::create_pipeline()
     smp.AddressW       = D3D11_TEXTURE_ADDRESS_CLAMP;
     smp.ComparisonFunc = D3D11_COMPARISON_NEVER;
     smp.MaxLOD         = D3D11_FLOAT32_MAX;
-    device_->CreateSamplerState(&smp, &sampler_);
+    if (FAILED(device_->CreateSamplerState(&smp, &sampler_))) return false;
 
     smp.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
-    device_->CreateSamplerState(&smp, &fontSampler_);
+    if (FAILED(device_->CreateSamplerState(&smp, &fontSampler_))) return false;
 
     return true;
 }
 
 void Renderer::resize(int width, int height)
 {
+    if (width <= 0 || height <= 0 || !swapChain_ || !context_) return;
     if (width == width_ && height == height_) return;
-    width_  = width;
-    height_ = height;
-
+    flush();
+    context_->OMSetRenderTargets(0, nullptr, nullptr);
     if (rtv_) { rtv_->Release(); rtv_ = nullptr; }
-    swapChain_->ResizeBuffers(0, static_cast<UINT>(width), static_cast<UINT>(height),
-                               DXGI_FORMAT_B8G8R8A8_UNORM, 0);
-    create_render_target();
+    const HRESULT hr = swapChain_->ResizeBuffers(0, static_cast<UINT>(width), static_cast<UINT>(height),
+                                                  DXGI_FORMAT_UNKNOWN, 0);
+    if (FAILED(hr))
+    {
+        create_render_target();
+        return;
+    }
+    if (create_render_target())
+    {
+        width_ = width;
+        height_ = height;
+    }
 }
 
 void Renderer::begin_frame()
 {
+    if (!context_ || !rtv_) return;
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (SUCCEEDED(context_->Map(constantBuf_, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
     {
@@ -364,6 +397,15 @@ void Renderer::present(bool vsync)
 void Renderer::push_clip(Rect r)
 {
     flush();
+    if (!clipStack_.empty())
+    {
+        const Rect& parent = clipStack_.back();
+        const float left = std::max(r.x, parent.x);
+        const float top = std::max(r.y, parent.y);
+        const float right = std::min(r.right(), parent.right());
+        const float bottom = std::min(r.bottom(), parent.bottom());
+        r = { left, top, std::max(0.0f, right - left), std::max(0.0f, bottom - top) };
+    }
     clipStack_.push_back(r);
     currentClip_ = r;
     clipping_ = true;
@@ -392,10 +434,10 @@ void Renderer::pop_clip()
 void Renderer::apply_clip()
 {
     D3D11_RECT scissor = {
-        (LONG)currentClip_.x,
-        (LONG)currentClip_.y,
-        (LONG)currentClip_.right(),
-        (LONG)currentClip_.bottom()
+        static_cast<LONG>(std::floor(std::clamp(currentClip_.x, 0.0f, static_cast<float>(width_)))),
+        static_cast<LONG>(std::floor(std::clamp(currentClip_.y, 0.0f, static_cast<float>(height_)))),
+        static_cast<LONG>(std::ceil(std::clamp(currentClip_.right(), 0.0f, static_cast<float>(width_)))),
+        static_cast<LONG>(std::ceil(std::clamp(currentClip_.bottom(), 0.0f, static_cast<float>(height_))))
     };
     context_->RSSetScissorRects(1, &scissor);
 }
@@ -413,11 +455,13 @@ void Renderer::flush()
     if (vertices_.empty()) return;
 
     D3D11_MAPPED_SUBRESOURCE mapped;
-    if (SUCCEEDED(context_->Map(vertexBuf_, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+    if (FAILED(context_->Map(vertexBuf_, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
     {
-        memcpy(mapped.pData, vertices_.data(), vertices_.size() * sizeof(Vertex));
-        context_->Unmap(vertexBuf_, 0);
+        vertices_.clear();
+        return;
     }
+    memcpy(mapped.pData, vertices_.data(), vertices_.size() * sizeof(Vertex));
+    context_->Unmap(vertexBuf_, 0);
     context_->Draw(static_cast<UINT>(vertices_.size()), 0);
     vertices_.clear();
 }
@@ -517,12 +561,15 @@ void Renderer::draw_text(const char* text, Vec2 pos, Color c, const FontAtlas& a
     float x        = std::round(pos.x);
     float baseline = std::round(pos.y + atlas.ascender());
 
-    const unsigned char* p = reinterpret_cast<const unsigned char*>(text);
-    while (*p)
+    uint32_t previous = 0;
+    while (*text)
     {
-        uint32_t cp = *p++;
+        const uint32_t cp = decode_utf8(text);
         const Glyph* g = atlas.glyph(cp);
+        if (!g) g = atlas.glyph(0xFFFD);
         if (!g) continue;
+
+        x += atlas.kerning(previous, g->index);
 
         // bearing.x: pixels to the right of the cursor to the glyph left edge.
         // bearing.y: pixels above the baseline to the glyph top edge.
@@ -537,6 +584,7 @@ void Renderer::draw_text(const char* text, Vec2 pos, Color c, const FontAtlas& a
             c, 1.0f);
 
         x += g->advance;
+        previous = g->index;
     }
 }
 

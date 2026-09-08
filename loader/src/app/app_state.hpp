@@ -211,20 +211,6 @@ struct AppState
     {
         uiElapsed += dt;
 
-        for (auto& t : rowHover)  t.advance(dt);
-        continueHover.advance(dt);
-        backHover.advance(dt);
-        retryHover.advance(dt);
-        chromeMinHover.advance(dt);
-        chromeCloseHover.advance(dt);
-        userFocus.advance(dt);
-        passFocus.advance(dt);
-        userHover.advance(dt);
-        passHover.advance(dt);
-        signInHover.advance(dt);
-        rememberHover.advance(dt);
-        rememberCheck.advance(dt);
-
         if (slideInT  < 1.0f) slideInT  = std::min(1.0f, slideInT  + dt / SlideDuration);
         if (slideOutT < 1.0f) slideOutT = std::min(1.0f, slideOutT + dt / SlideDuration);
     }

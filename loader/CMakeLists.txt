@@ -128,11 +128,9 @@ add_custom_target(MindlessResources DEPENDS "${RES_FILE}")
 add_executable(MindlessLoader WIN32 ${SOURCES})
 add_dependencies(MindlessLoader MindlessResources)
 
-set(MINDLESS_PRODUCTION_OBFUSCATION_FLAGS "" CACHE STRING "Production compiler protection flags")
+option(MINDLESS_PRODUCTION "Build without development-only behavior" OFF)
 option(MINDLESS_PRIVATE_PDB "Emit a private PDB for post-build protection" OFF)
-if (MINDLESS_PRODUCTION_OBFUSCATION_FLAGS)
-    target_compile_options(MindlessLoader PRIVATE "SHELL:${MINDLESS_PRODUCTION_OBFUSCATION_FLAGS}")
-else()
+if (NOT MINDLESS_PRODUCTION)
     target_compile_definitions(MindlessLoader PRIVATE _NONPROD=1)
 endif()
 
@@ -204,6 +202,8 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         -Wno-padded
         -Wno-unsafe-buffer-usage
         -Wno-switch-default
+        -Wno-covered-switch-default
+        -Wno-c2y-extensions
         -Wno-global-constructors
         -Wno-exit-time-destructors
         -Wno-language-extension-token

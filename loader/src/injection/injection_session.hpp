@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <chrono>
+#include <vector>
 #include "auth/auth_shared.hpp"
 
 namespace mindless
@@ -39,8 +40,7 @@ public:
 private:
     InjectionPhase phase_ = InjectionPhase::Idle;
     uint32_t targetProcessId_ = 0;
-    const void* dllData_ = nullptr;
-    DWORD dllSize_ = 0;
+    std::vector<uint8_t> dllBytes_;
     std::string status_ = "Idle";
     std::string solution_;
 

@@ -24,37 +24,6 @@ OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
 TOOL_CACHE_FILE = Path(__file__).resolve().parent / ".build_tools_cache.json"
 CPU_COUNT = max(1, os.cpu_count() or 4)
 
-# Voyager passes are deliberately broad in production, but their expansion must
-# stay bounded: constenc and repeated pass loops can make a single clang process
-# exhaust the memory available on a GitHub-hosted runner.
-VOYAGER_LOADER_FLAGS = (
-    "-mllvm -voyager"
-    " -mllvm -enable-strcry"
-    " -mllvm -strcry_prob=100"
-    " -mllvm -enable-cffobf"
-    " -mllvm -enable-subobf"
-    " -mllvm -sub_prob=50"
-    " -mllvm -sub_loop=1"
-    " -mllvm -enable-splitobf"
-    " -mllvm -split_num=2"
-)
-
-VOYAGER_NATIVE_FLAGS = (
-    "-mllvm -voyager"
-    " -mllvm -enable-cffobf"
-    " -mllvm -enable-bcfobf"
-    " -mllvm -bcf_prob=85"
-    " -mllvm -bcf_loop=1"
-    " -mllvm -bcf_cond_compl=3"
-    " -mllvm -enable-subobf"
-    " -mllvm -sub_prob=85"
-    " -mllvm -sub_loop=1"
-    " -mllvm -enable-splitobf"
-    " -mllvm -split_num=3"
-    " -mllvm -enable-strcry"
-    " -mllvm -strcry_prob=100"
-)
-
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
 FORGE_JAR_OBF   = CLIENT_DIR / "build" / "libs" / "mindless-obf.jar"
@@ -335,7 +304,7 @@ def run(cmd, cwd, env=None):
     return result.returncode == 0
 
 
-def update_preset(clang, lld, ninja, vcpkg, voyager=None):
+def update_preset(clang, lld, ninja, vcpkg, prod=False):
     source = PRESET_FILE if PRESET_FILE.is_file() else PRESET_TEMPLATE
     if not source.is_file():
         err(f"{source.name} not found in loader/")
@@ -347,56 +316,15 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
     for preset in data.get("configurePresets", []):
         if preset.get("name") == "windows-clang":
             cv = preset.setdefault("cacheVariables", {})
-            loader_c = clang
-            loader_cxx = clang
-            if voyager:
-                loader_c = voyager / "bin" / "clang.exe"
-                loader_cxx = voyager_cxx(voyager)
-            cv["CMAKE_C_COMPILER"]     = str(loader_c).replace("\\", "/")
-            cv["CMAKE_CXX_COMPILER"]   = str(loader_cxx).replace("\\", "/")
+            cv["CMAKE_C_COMPILER"]     = str(clang).replace("\\", "/")
+            cv["CMAKE_CXX_COMPILER"]   = str(clang).replace("\\", "/")
             cv["CMAKE_LINKER"]         = str(lld).replace("\\", "/")
             cv["CMAKE_MAKE_PROGRAM"]   = str(ninja).replace("\\", "/")
             cv["CMAKE_TOOLCHAIN_FILE"] = toolchain
             cv["VCPKG_INSTALLED_DIR"]  = str(LOADER_DIR / "vcpkg_installed").replace("\\", "/")
             cv["VCPKG_TARGET_TRIPLET"] = "x64-windows-static"
-            if voyager:
-                # ── Loader --prod obfuscation (Voyager/Hikari LLVM passes) ────────────────
-                # Rationale for each pass:
-                #   -enable-cffobf        : flattens every function into a dispatch-switch loop;
-                #                           the strongest single anti-analysis pass
-                #   -enable-bcfobf        : inserts opaque predicates + dead branches; forces
-                #                           decompilers to reason about unreachable code paths
-                #     -bcf_prob=100       : apply to every eligible basic block
-                #     -bcf_loop=3         : run the pass three times per function for deeper nesting
-                #     -bcf_cond_compl=5   : maximally complex opaque predicate expressions
-                #     -bcf_junkasm        : inject junk inline asm into altered blocks
-                #   -enable-subobf        : replaces arithmetic/logic with equivalent but
-                #                           harder-to-pattern-match sequences
-                #     -sub_prob=100       : substitute every eligible instruction
-                #     -sub_loop=3         : loop substitution 3x for compounding effect
-                #   -enable-splitobf      : splits every basic block into multiple; inflates CFG
-                #     -split_num=10       : maximum allowed splits per block
-                #   -enable-constenc      : XOR-encrypts integer constants at compile time,
-                #                           decrypts at runtime; defeats constant-propagation
-                #     -constenc_times=3   : loop 3x
-                #     -constenc_togv      : also move constants to global variables
-                #     -constenc_togv_prob=80
-                #     -constenc_subxor    : obfuscate the XOR itself
-                #     -constenc_subxor_prob=80
-                #   -enable-strcry        : encrypts every string literal; defeats grep/strings
-                #     -strcry_prob=100    : encrypt all string elements
-                #   -enable-funcwra       : wraps callsites in thunks; obscures call graph
-                #     -fw_prob=80         : wrap 80 % of callsites
-                #     -fw_times=3         : triple-wrap
-                # Production profile: keep the custom Voyager clang for compilation,
-                # but avoid the multiplicative pass settings that can make LLVM exhaust
-                # memory on CI runners. Linking still uses the separately detected normal
-                # LLVM lld-link.exe through CMAKE_LINKER below.
-                cv["MINDLESS_PRODUCTION_OBFUSCATION_FLAGS"] = VOYAGER_LOADER_FLAGS
-                cv["MINDLESS_PRIVATE_PDB"] = "ON"
-            else:
-                cv.pop("MINDLESS_PRODUCTION_OBFUSCATION_FLAGS", None)
-                cv["MINDLESS_PRIVATE_PDB"] = "OFF"
+            cv["MINDLESS_PRODUCTION"] = "ON" if prod else "OFF"
+            cv["MINDLESS_PRIVATE_PDB"] = "ON" if prod else "OFF"
             cv.pop("CMAKE_C_FLAGS_RELEASE", None)
             cv.pop("CMAKE_CXX_FLAGS_RELEASE", None)
     preset_contents = json.dumps(data, indent=4) + "\n"
@@ -409,23 +337,6 @@ def update_preset(clang, lld, ninja, vcpkg, voyager=None):
         if cmake_cache.is_file():
             cmake_cache.unlink()
             info("CMakeCache.txt deleted (preset changed — forcing reconfigure)")
-
-
-def detect_voyager():
-    env_path = os.environ.get("VOYAGER_PATH")
-    if not env_path:
-        return None
-    root = Path(env_path).resolve()
-    cxx = root / "bin" / "clang-cl.exe"
-    if not cxx.is_file():
-        cxx = root / "bin" / "clang++.exe"
-    required = [root / "bin" / "clang.exe", cxx, root / "lib" / "clang" / "20"]
-    return root if all(path.exists() for path in required) else None
-
-
-def voyager_cxx(root):
-    clang_cl = root / "bin" / "clang-cl.exe"
-    return clang_cl if clang_cl.is_file() else root / "bin" / "clang++.exe"
 
 
 def build_obf_jar(jdk):
@@ -495,7 +406,7 @@ def build_client(jdk17):
     return True
 
 
-def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
+def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False):
     section("MindlessNative.dll - build")
 
     if prod:
@@ -520,11 +431,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
         ok(f"Using obfuscated Lunar JAR")
 
     native_clang = clang
-    if voyager:
-        hikari_clang = voyager / "bin" / "clang.exe"
-        if hikari_clang.is_file():
-            native_clang = hikari_clang
-            ok(f"Hikari clang  : {native_clang}")
 
     NATIVE_BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -536,39 +442,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
             dist_dll.unlink()
     except PermissionError:
         warn("MindlessNative.dll is in use by another process, skipping deletion")
-
-    # ── MindlessNative.dll --prod obfuscation (Voyager/Hikari LLVM passes) ───
-    # Stronger than the loader flags intentionally: the native DLL is the
-    # highest-value target (it carries the embedded JARs and injection logic),
-    # so it receives the full suite.  Passes not used for the loader
-    # (bcfobf, splitobf, constenc, funcwra) are added here.
-    #
-    #   -enable-cffobf              : control-flow flattening (dispatch loop)
-    #   -enable-bcfobf              : bogus control flow + opaque predicates
-    #     -bcf_prob=100             : all blocks
-    #     -bcf_loop=3               : three nesting passes
-    #     -bcf_cond_compl=5         : most complex predicate form
-    #     -bcf_junkasm              : inject junk asm into altered blocks
-    #   -enable-subobf              : instruction substitution
-    #     -sub_prob=100             : all eligible instructions
-    #     -sub_loop=3               : three substitution passes
-    #   -enable-splitobf            : basic-block splitting (inflates CFG)
-    #     -split_num=10             : maximum splits per block
-    #   -enable-constenc            : constant encryption (XOR at rest)
-    #     -constenc_times=3
-    #     -constenc_togv            : hoist constants into global vars
-    #     -constenc_togv_prob=80
-    #     -constenc_subxor          : obfuscate the XOR operator itself
-    #     -constenc_subxor_prob=80
-    #   -enable-strcry              : string encryption
-    #     -strcry_prob=100          : all string elements
-    #   -enable-funcwra             : callsite thunk wrapping (obscures call graph)
-    #     -fw_prob=80
-    #     -fw_times=3
-    hikari_cflags = ""
-    if voyager and native_clang != clang:
-        hikari_cflags = VOYAGER_NATIVE_FLAGS
-
 
     cfg_cmd = [
         str(cmake), "-S", str(NATIVE_DIR), "-B", str(NATIVE_BUILD_DIR),
@@ -583,8 +456,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
         f"-DMINDLESS_PRODUCTION={'ON' if prod else 'OFF'}",
         f"-DMINDLESS_DEBUG_LOGS={'ON' if os.environ.get('MINDLESS_DEBUG_LOGS') == '1' else 'OFF'}",
     ]
-    if hikari_cflags:
-        cfg_cmd.append(f"-DCMAKE_C_FLAGS_RELEASE={hikari_cflags}")
     extra_env = {
         "PATH": str(native_clang.parent) + os.pathsep
         + str(lld.parent) + os.pathsep
@@ -603,7 +474,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
         or expected_production_cache not in cache_text
         or expected_debug_cache not in cache_text
         or expected_build_type_cache not in cache_text
-        or (bool(hikari_cflags) and hikari_cflags not in cache_text)
     )
     if needs_configure:
         if not run(cfg_cmd, CLIENT_DIR, extra_env):
@@ -613,9 +483,8 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     else:
         info("configure skipped (CMakeCache up to date)")
 
-    native_jobs = 1 if voyager else CPU_COUNT
     build_cmd = [str(cmake), "--build", str(NATIVE_BUILD_DIR), "--config", "Release",
-                 "--parallel", str(native_jobs)]
+                 "--parallel", str(CPU_COUNT)]
     if not run(build_cmd, CLIENT_DIR, extra_env):
         err("MindlessNative build failed")
         return False
@@ -633,7 +502,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, voyager=None, prod=False):
     return True
 
 
-def build_loader(cmake, extra_env, voyager=False):
+def build_loader(cmake, extra_env):
     section("Loader - configure")
     loader_cache = BUILD_DIR / "CMakeCache.txt"
     loader_cmakelists = LOADER_DIR / "CMakeLists.txt"
@@ -661,9 +530,8 @@ def build_loader(cmake, extra_env, voyager=False):
         loader_exe_build.unlink()
 
     section("Loader - build")
-    loader_jobs = 1 if voyager else CPU_COUNT
     cmd = [str(cmake), "--build", str(BUILD_DIR), "--config", "Release",
-           "--parallel", str(loader_jobs)]
+           "--parallel", str(CPU_COUNT)]
     if not run(cmd, LOADER_DIR, extra_env):
         err("cmake build failed")
         return False
@@ -781,16 +649,6 @@ def main():
     else:
         warn("No JDK found - MindlessNative.dll build will fail")
 
-    voyager = None
-    if prod_flag:
-        voyager = detect_voyager()
-        if voyager:
-            ok(f"Voyager       : {voyager}")
-        else:
-            err("Voyager compiler validation failed")
-            err("Set VOYAGER_PATH to the extracted root containing bin and lib\\clang\\20")
-            sys.exit(1)
-
     save_tool_cache({
         "clang": clang, "lld": lld, "ninja": ninja, "vcpkg": vcpkg, "cmake": cmake,
         "jdk17": jdk17, "jdk_any": jdk_any,
@@ -826,7 +684,7 @@ def main():
                 sys.exit(1)
 
         if jdk_any and llvm and cmake and ninja:
-            if not build_native_dll(cmake, clang, lld, ninja, jdk_any, voyager=voyager, prod=prod_flag):
+            if not build_native_dll(cmake, clang, lld, ninja, jdk_any, prod=prod_flag):
                 print(f"\n{BOLD}{RED}Build failed.{RESET}")
                 sys.exit(1)
         else:
@@ -834,13 +692,10 @@ def main():
 
     if build_loader_flag and llvm and ninja and vcpkg and cmake:
         section("Updating CMakePresets.json")
-        update_preset(clang, lld, ninja, vcpkg, voyager=voyager)
+        update_preset(clang, lld, ninja, vcpkg, prod=prod_flag)
         ok("preset updated")
 
-        if voyager:
-            extra_env["PATH"] = str(voyager / "bin") + os.pathsep + extra_env.get("PATH", os.environ.get("PATH", ""))
-
-        if not build_loader(cmake, extra_env, voyager=bool(voyager)):
+        if not build_loader(cmake, extra_env):
             success = False
 
     print()
@@ -848,10 +703,8 @@ def main():
         print(f"{BOLD}{GREEN}All done.{RESET}")
         if prod_flag:
             print(f"  {GREEN}[PROD BUILD]{RESET}", end="")
-            if voyager:
-                print(f" Voyager obfuscation applied", end="")
             if FORGE_JAR_OBF.is_file():
-                print(f" + JAR obfuscation", end="")
+                print(f" JAR obfuscation applied", end="")
             print()
         if OUTPUT_EXE.is_file():
             size_mb = OUTPUT_EXE.stat().st_size / (1024 * 1024)

@@ -73,6 +73,8 @@ private static final double AIM_FACE_INSET = 0.12;
     private boolean miningActive;
     private boolean controlsInput;
     private int rotationAlignedTicks;
+    private int retargetDelayTicks;
+    private boolean lockedTargetBed;
     private int hotbarProgrammaticDepth;
     private boolean hasSwapped;
     private int previousSlot = -1;
@@ -128,6 +130,7 @@ private static final double AIM_FACE_INSET = 0.12;
         resetMining();
         bedPairsCache.clear();
         scanCooldown = 0;
+        retargetDelayTicks = 0;
     }
 
     @Override
@@ -315,6 +318,11 @@ public boolean shouldOverrideMouseOver() {
             lastOutsidePolicy = outsidePolicy;
         }
 
+        if (retargetDelayTicks > 0) {
+            retargetDelayTicks--;
+            return;
+        }
+
         if (--scanCooldown <= 0) {
             scanCooldown = Math.max(1, (int) Math.round(rate.getInput() / (double) MS_PER_TICK));
             rebuildBedPairsCache(reach + BED_FIND_EXTRA_BLOCKS);
@@ -327,8 +335,10 @@ public boolean shouldOverrideMouseOver() {
 
         if (lockedPos != null) {
             if (!isLockedTargetValid(reachSq)) {
-                lockedPos = null;
-                lockedSide = null;
+                boolean finishedBed = lockedTargetBed && BlockUtils.getBlock(lockedPos) == Blocks.air;
+                resetMining();
+                if (finishedBed) retargetDelayTicks = 6;
+                return;
             }
         }
 
@@ -355,6 +365,7 @@ public boolean shouldOverrideMouseOver() {
             targetSide = best.side;
             lockedPos = best.pos;
             lockedSide = best.side;
+            lockedTargetBed = BlockUtils.getBlock(best.pos) instanceof BlockBed;
             rotationAlignedTicks = 0;
         }
 
@@ -382,12 +393,14 @@ public boolean shouldOverrideMouseOver() {
         // otherwise mining is gated on a rotation the server never sees.
         float yawError = Math.abs(MathHelper.wrapAngleTo180_float(targetRotations[0] - fixed[0]));
         float pitchError = Math.abs(targetRotations[1] - fixed[1]);
-        if (yawError <= 4.0F && pitchError <= 4.0F) {
-            rotationAlignedTicks++;
-        } else {
-            rotationAlignedTicks = 0;
+        if (!miningActive) {
+            if (yawError <= 4.0F && pitchError <= 4.0F) {
+                rotationAlignedTicks++;
+            } else {
+                rotationAlignedTicks = 0;
+            }
+            miningActive = rotationAlignedTicks >= 2;
         }
-        miningActive = rotationAlignedTicks >= 2;
         e.setYaw(fixed[0]);
         e.setPitch(fixed[1]);
     }
@@ -474,6 +487,7 @@ public boolean shouldOverrideMouseOver() {
         rotationAlignedTicks = 0;
         lockedPos = null;
         lockedSide = null;
+        lockedTargetBed = false;
         if (switchBackWhenDone.isToggled() && previousSlot != -1 && Utils.nullCheck()) {
             setSlot(previousSlot);
         }

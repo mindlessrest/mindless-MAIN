@@ -47,6 +47,29 @@ void Input::add_text(wchar_t ch)
         next_.textInput.append(buf, static_cast<size_t>(n));
 }
 
+void Input::release_mouse()
+{
+    next_.lmbPressed = false;
+    next_.rmbPressed = false;
+    set_mouse_button(0, false);
+    set_mouse_button(1, false);
+}
+
+void Input::release_all()
+{
+    release_mouse();
+
+    for (int vk = 0; vk < 256; ++vk)
+    {
+        next_.keys[vk] = false;
+        next_.keysPressed[vk] = false;
+        next_.keysRepeat[vk] = false;
+    }
+
+    next_.mouseWheel = 0.0f;
+    next_.textInput.clear();
+}
+
 void Input::next_frame()
 {
     Vec2 prev = firstFrame_ ? next_.mousePos : current_.mousePos;

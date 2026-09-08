@@ -17,6 +17,7 @@ import mindless.utility.Utils;
 import mindless.utility.shader.GlowBloomShader;
 import mindless.utility.shader.GlowShader;
 import mindless.utility.shader.KawaseBloom;
+import mindless.utility.shader.RoundedUtils;
 import mindless.utility.shader.SeparableOutlineShader;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
@@ -133,10 +134,6 @@ public class SexyESP extends Module {
     private static final int STATS_FULL = 3;
 
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
-    private static final float[][] TAG_OUTLINE_OFFSETS = {
-            {-0.7f, 0.0f}, {0.7f, 0.0f}, {0.0f, -0.7f}, {0.0f, 0.7f},
-            {-0.5f, -0.5f}, {0.5f, -0.5f}, {-0.5f, 0.5f}, {0.5f, 0.5f}
-    };
     private final SliderSetting font;
 private MindlessFontRenderer espFont() {
         if (font == null) return FontManager.getNametagRenderer(FONT_OPTIONS[0]);
@@ -202,14 +199,14 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(enemyColor = new ColorSetting(tagGroup, "Enemy color", 255, 85, 85));
         registerSetting(tagDistance = new ButtonSetting(tagGroup, "Distance in name", false));
         registerSetting(tagPing = new ButtonSetting(tagGroup, "Ping in name", false));
-        registerSetting(tagBackground = new ButtonSetting(tagGroup, "Background", false));
-        registerSetting(tagBackgroundColor = new ColorSetting(tagGroup, "Background color", 0, 0, 0, 128));
-        registerSetting(tagBackgroundRadius = new SliderSetting(tagGroup, "Background radius", 2.0, 0.0, 8.0, 0.5));
-        registerSetting(tagPadding = new SliderSetting(tagGroup, "Background padding", 2.0, 0.0, 8.0, 0.5));
+        registerSetting(tagBackground = new ButtonSetting(tagGroup, "Background", true));
+        registerSetting(tagBackgroundColor = new ColorSetting(tagGroup, "Background color", 10, 10, 12, 190));
+        registerSetting(tagBackgroundRadius = new SliderSetting(tagGroup, "Background radius", 4.0, 0.0, 8.0, 0.5));
+        registerSetting(tagPadding = new SliderSetting(tagGroup, "Background padding", 4.0, 0.0, 8.0, 0.5));
         registerSetting(itemTags = new ButtonSetting(tagGroup, "Held item", true));
-        registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.7, 0.4, 1.0, 0.05));
-        registerSetting(distanceTextScale = new ButtonSetting(tagGroup, "Distance scaling", true));
-        registerSetting(textBorder = new ButtonSetting(tagGroup, "Text outline", true,
+        registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.75, 0.4, 1.0, 0.05));
+        registerSetting(distanceTextScale = new ButtonSetting(tagGroup, "Distance scaling", false));
+        registerSetting(textBorder = new ButtonSetting(tagGroup, "Text shadow", true,
                 "Tags.Text shadow", "Text shadow", "Tags.Black text outline", "Black text outline"));
 
         GroupSetting statsGroup = new GroupSetting("Stats");
@@ -824,13 +821,12 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         rectBatch.flush();
         GlStateManager.enableTexture2D();
         GlStateManager.pushMatrix();
-        GlStateManager.translate(centerX - width / 2.0, y, 0);
+        GlStateManager.translate(Math.rint((centerX - width / 2.0) * 2.0) / 2.0,
+                Math.rint(y * 2.0) / 2.0, 0);
         GlStateManager.scale(scale, scale, 1);
 
         if (textBorder.isToggled()) {
-            for (float[] offset : TAG_OUTLINE_OFFSETS) {
-                drawNameSegments(tagFont, offset[0], offset[1], 0xD8000000);
-            }
+            drawNameSegments(tagFont, 0.65f, 0.8f, 0xB0000000);
         }
 
         drawNameSegments(tagFont, 0.0f, 0.0f, -1);
@@ -1073,31 +1069,14 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         return out.toString();
     }
 
-    /**
-     * Rounded corners are approximated by stacking inset bars rather than tessellating a disc --
-     * the tag batch is flat-rect only, and a shader round here would force a flush per nametag.
-     */
     private void drawTagBackground(double left, double top, double right, double bottom,
                                    double radius, int color) {
-        double r = Math.max(0.0, Math.min(radius, Math.min(right - left, bottom - top) / 2.0));
-        if (r <= 0.15) {
-            drawFlatRect(left, top, right, bottom, color);
-            return;
-        }
-        drawFlatRect(left, top + r, right, bottom - r, color);
-
-        // Four horizontal slices per cap, each inset to the circle at its widest edge. Enough to
-        // read as a curve at nametag scale without a shader round, which would cost a batch flush
-        // for every tag on screen.
-        final int steps = 4;
-        for (int i = 0; i < steps; i++) {
-            double y0 = r * i / steps;
-            double y1 = r * (i + 1) / steps;
-            double dy = r - y1;
-            double inset = r - Math.sqrt(Math.max(0.0, r * r - dy * dy));
-            drawFlatRect(left + inset, top + y0, right - inset, top + y1, color);
-            drawFlatRect(left + inset, bottom - y1, right - inset, bottom - y0, color);
-        }
+        rectBatch.flush();
+        float width = (float) Math.max(0.0, right - left);
+        float height = (float) Math.max(0.0, bottom - top);
+        float r = (float) Math.max(0.0, Math.min(radius, Math.min(width, height) / 2.0));
+        RoundedUtils.drawRound((float) left, (float) top, width, height, r, color);
+        restoreFlatOverlayState();
     }
 
     private void drawScaledString(String text, double x, double y, double scale, boolean centered) {

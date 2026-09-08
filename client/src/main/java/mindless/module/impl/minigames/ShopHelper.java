@@ -18,6 +18,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,8 +35,7 @@ public class ShopHelper extends Module {
     public static final int CLICK_ALLOW = 0;
     /** Swallow the click entirely. */
     public static final int CLICK_CANCEL = 1;
-    /** Send it as a clone click instead, which buys without the pickup animation. */
-    public static final int CLICK_QUICK_MOVE = 2;
+    public static final int CLICK_PURCHASE = 2;
 
     private static final int IRON_TINT = 0xE8E8E8;
     private static final int GOLD_TINT = 0xFFAA00;
@@ -63,6 +63,8 @@ public class ShopHelper extends Module {
 
     private final Map<Item, Integer> resources = new HashMap<Item, Integer>();
     private final EnumMap<Gear, Integer> owned = new EnumMap<Gear, Integer>(Gear.class);
+    private final Map<ItemStack, Integer> highlights = new IdentityHashMap<ItemStack, Integer>();
+    private int highlightRefreshTicks;
 
     public ShopHelper() {
         super("Shop Helper", "Tints what you can afford and blocks bad clicks.", category.bedwars);
@@ -79,6 +81,8 @@ public class ShopHelper extends Module {
     public void onDisable() {
         resources.clear();
         owned.clear();
+        highlights.clear();
+        highlightRefreshTicks = 0;
     }
 
     // ------------------------------------------------------------------ state
@@ -91,14 +95,24 @@ public class ShopHelper extends Module {
      */
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END || !Utils.nullCheck()) return;
-        if (!isShopOpen(mc.currentScreen)) return;
+        if (event.phase != TickEvent.Phase.END) return;
+        if (!Utils.nullCheck() || !isShopOpen(mc.currentScreen)) {
+            resources.clear();
+            owned.clear();
+            highlights.clear();
+            highlightRefreshTicks = 0;
+            return;
+        }
 
         resources.clear();
         owned.clear();
 
         scan(mc.thePlayer.inventory.mainInventory);
         scan(mc.thePlayer.inventory.armorInventory);
+        if (--highlightRefreshTicks <= 0) {
+            rebuildHighlights((GuiContainer) mc.currentScreen);
+            highlightRefreshTicks = 5;
+        }
     }
 
     private void scan(ItemStack[] contents) {
@@ -131,12 +145,34 @@ public class ShopHelper extends Module {
         if (!highlightAffordable.isToggled() || stack == null) return 0;
         if (onlyInGame.isToggled() && !inGame()) return 0;
 
+        Integer cached = highlights.get(stack);
+        if (cached != null) return cached;
+
+        int colour = computeHighlightColour(stack);
+        highlights.put(stack, colour);
+        return colour;
+    }
+
+    private int computeHighlightColour(ItemStack stack) {
+
         Cost cost = costOf(stack);
         if (cost == null || !canAfford(cost)) return 0;
         if (isTieredDuplicate(stack)) return 0;
 
         int alpha = Math.round(255.0f * (float) (opacity.getInput() / 100.0));
         return (Math.max(0, Math.min(255, alpha)) << 24) | tintFor(cost.resource);
+    }
+
+    private void rebuildHighlights(GuiContainer gui) {
+        highlights.clear();
+        if (gui == null || gui.inventorySlots == null || gui.inventorySlots.inventorySlots == null) return;
+        for (Object entry : gui.inventorySlots.inventorySlots) {
+            if (!(entry instanceof Slot)) continue;
+            Slot slot = (Slot) entry;
+            if (!slot.getHasStack()) continue;
+            ItemStack stack = slot.getStack();
+            highlights.put(stack, computeHighlightColour(stack));
+        }
     }
 
     /** What to do with a click on a shop slot. */
@@ -163,16 +199,8 @@ public class ShopHelper extends Module {
             return CLICK_CANCEL;
         }
 
-        // The buy is re-sent as a clone click (button 2, mode 3) rather than a quick move.
-        //
-        // A quick move is a shift click. Hypixel reads that as a purchase on the category pages
-        // only: on Upgrades & Traps it is not a buy at all, which is why paying diamonds for an
-        // upgrade did nothing, and on Quick Buy it unbinds the slot instead of buying it. A clone
-        // click carries no shift, so the server sees a plain click on the item on every page --
-        // and because the stack never lands on the cursor, the pickup animation never plays.
-        //
-        if (clickType == 0 && replaceClicks.isToggled()) {
-            return CLICK_QUICK_MOVE;
+        if (clickedButton == 0 && clickType == 0 && replaceClicks.isToggled()) {
+            return CLICK_PURCHASE;
         }
         return CLICK_ALLOW;
     }

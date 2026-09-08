@@ -47,6 +47,8 @@ public:
     void add_mouse_wheel(float delta);
     void set_key(int vk, bool down);
     void add_text(wchar_t ch);
+    void release_mouse();
+    void release_all();
     void next_frame();
 
     const InputState& state() const { return current_; }

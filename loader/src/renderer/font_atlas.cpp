@@ -8,6 +8,32 @@
 namespace mindless
 {
 
+uint32_t decode_utf8(const char*& text)
+{
+    const auto* bytes = reinterpret_cast<const unsigned char*>(text);
+    if (!*bytes) return 0;
+    uint32_t codepoint = 0;
+    size_t length = 0;
+    if (bytes[0] < 0x80) { codepoint = bytes[0]; length = 1; }
+    else if ((bytes[0] & 0xE0) == 0xC0) { codepoint = bytes[0] & 0x1F; length = 2; }
+    else if ((bytes[0] & 0xF0) == 0xE0) { codepoint = bytes[0] & 0x0F; length = 3; }
+    else if ((bytes[0] & 0xF8) == 0xF0) { codepoint = bytes[0] & 0x07; length = 4; }
+    else { ++text; return 0xFFFD; }
+    for (size_t i = 1; i < length; ++i)
+    {
+        if ((bytes[i] & 0xC0) != 0x80) { ++text; return 0xFFFD; }
+        codepoint = (codepoint << 6) | (bytes[i] & 0x3F);
+    }
+    const bool invalid = (length == 2 && codepoint < 0x80) ||
+                         (length == 3 && codepoint < 0x800) ||
+                         (length == 4 && codepoint < 0x10000) ||
+                         codepoint > 0x10FFFF ||
+                         (codepoint >= 0xD800 && codepoint <= 0xDFFF);
+    if (invalid) { ++text; return 0xFFFD; }
+    text += length;
+    return codepoint;
+}
+
 FontAtlas::~FontAtlas()
 {
     destroy_ft();
@@ -22,27 +48,39 @@ void FontAtlas::destroy_ft()
 
 bool FontAtlas::load(const char* path, float pixelHeight, ID3D11Device* device)
 {
+    destroy_ft();
+    if (srv_) { srv_->Release(); srv_ = nullptr; }
+    glyphs_.clear();
+    kerning_.clear();
     fontSize_ = pixelHeight;
-    if (FT_Init_FreeType(&ft_) != 0)            return false;
-    if (FT_New_Face(ft_, path, 0, &face_) != 0) return false;
-    return build(pixelHeight, device);
+    if (!device || FT_Init_FreeType(&ft_) != 0) return false;
+    if (FT_New_Face(ft_, path, 0, &face_) != 0) { destroy_ft(); return false; }
+    const bool loaded = build(pixelHeight, device);
+    if (!loaded) destroy_ft();
+    return loaded;
 }
 
 bool FontAtlas::load_from_memory(const void* data, size_t size,
                                   float pixelHeight, ID3D11Device* device)
 {
+    destroy_ft();
+    if (srv_) { srv_->Release(); srv_ = nullptr; }
+    glyphs_.clear();
+    kerning_.clear();
     fontSize_ = pixelHeight;
-    if (FT_Init_FreeType(&ft_) != 0) return false;
+    if (!data || size == 0 || !device || FT_Init_FreeType(&ft_) != 0) return false;
     if (FT_New_Memory_Face(ft_,
             static_cast<const FT_Byte*>(data),
             static_cast<FT_Long>(size), 0, &face_) != 0)
-        return false;
-    return build(pixelHeight, device);
+    { destroy_ft(); return false; }
+    const bool loaded = build(pixelHeight, device);
+    if (!loaded) destroy_ft();
+    return loaded;
 }
 
 bool FontAtlas::build(float pixelHeight, ID3D11Device* device)
 {
-    FT_Set_Pixel_Sizes(face_, 0, static_cast<FT_UInt>(pixelHeight));
+    if (FT_Set_Pixel_Sizes(face_, 0, static_cast<FT_UInt>(pixelHeight)) != 0) return false;
 
     struct TempGlyph
     {
@@ -50,13 +88,16 @@ bool FontAtlas::build(float pixelHeight, ID3D11Device* device)
         int                  w, h;
         int                  bearingX, bearingY;
         int                  advance;
+        uint32_t             index;
         std::vector<uint8_t> bitmap;
     };
 
     std::vector<uint32_t> codepoints;
     for (uint32_t cp = 32; cp <= 126; ++cp)
         codepoints.push_back(cp);
-    codepoints.push_back(215);  // × multiplication sign
+    for (uint32_t cp = 160; cp <= 383; ++cp)
+        codepoints.push_back(cp);
+    codepoints.push_back(0xFFFD);
 
     std::vector<TempGlyph> temp;
     temp.reserve(codepoints.size());
@@ -78,6 +119,7 @@ bool FontAtlas::build(float pixelHeight, ID3D11Device* device)
         tg.bearingX  = slot->bitmap_left;
         tg.bearingY  = slot->bitmap_top;
         tg.advance   = static_cast<int>(slot->advance.x >> 6);
+        tg.index     = idx;
 
         tg.bitmap.resize(static_cast<size_t>(w) * static_cast<size_t>(h));
         if (w > 0 && h > 0)
@@ -144,11 +186,23 @@ bool FontAtlas::build(float pixelHeight, ID3D11Device* device)
         g.advance = static_cast<float>(tg.advance);
         g.width   = static_cast<float>(tg.w);
         g.height  = static_cast<float>(tg.h);
+        g.index   = tg.index;
 
         glyphs_[tg.codepoint] = g;
 
         curX += tg.w + pad;
         rowH = std::max(rowH, tg.h);
+    }
+
+    if (FT_HAS_KERNING(face_))
+    {
+        for (const auto& left : temp)
+            for (const auto& right : temp)
+            {
+                FT_Vector delta = {};
+                if (FT_Get_Kerning(face_, left.index, right.index, FT_KERNING_DEFAULT, &delta) == 0 && delta.x != 0)
+                    kerning_[(static_cast<uint64_t>(left.index) << 32) | right.index] = static_cast<float>(delta.x) / 64.0f;
+            }
     }
 
     // --- Metrics ---
@@ -202,13 +256,27 @@ const Glyph* FontAtlas::glyph(uint32_t codepoint) const
 float FontAtlas::measure_text_width(const char* text) const
 {
     float w = 0;
+    uint32_t previous = 0;
     while (*text)
     {
-        unsigned char c = static_cast<unsigned char>(*text++);
-        if (const Glyph* g = glyph(c))
+        const uint32_t codepoint = decode_utf8(text);
+        const Glyph* g = glyph(codepoint);
+        if (!g) g = glyph(0xFFFD);
+        if (g)
+        {
+            w += kerning(previous, g->index);
             w += g->advance;
+            previous = g->index;
+        }
     }
     return w;
+}
+
+float FontAtlas::kerning(uint32_t leftIndex, uint32_t rightIndex) const
+{
+    if (!leftIndex || !rightIndex) return 0.0f;
+    const auto it = kerning_.find((static_cast<uint64_t>(leftIndex) << 32) | rightIndex);
+    return it == kerning_.end() ? 0.0f : it->second;
 }
 
 } // namespace mindless

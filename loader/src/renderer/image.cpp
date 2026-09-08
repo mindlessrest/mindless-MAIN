@@ -28,29 +28,52 @@ static Image upload_pixels(unsigned char* pixels, int w, int h, ID3D11Device* de
     img.width  = w;
     img.height = h;
 
+    const size_t pixelCount = static_cast<size_t>(w) * static_cast<size_t>(h);
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
+        const unsigned int alpha = pixels[i * 4 + 3];
+        pixels[i * 4 + 0] = static_cast<unsigned char>((pixels[i * 4 + 0] * alpha + 127) / 255);
+        pixels[i * 4 + 1] = static_cast<unsigned char>((pixels[i * 4 + 1] * alpha + 127) / 255);
+        pixels[i * 4 + 2] = static_cast<unsigned char>((pixels[i * 4 + 2] * alpha + 127) / 255);
+    }
+
     D3D11_TEXTURE2D_DESC desc = {};
     desc.Width            = static_cast<UINT>(w);
     desc.Height           = static_cast<UINT>(h);
-    desc.MipLevels        = 1;
+    desc.MipLevels        = 0;
     desc.ArraySize        = 1;
     desc.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
     desc.SampleDesc.Count = 1;
-    desc.Usage            = D3D11_USAGE_IMMUTABLE;
-    desc.BindFlags        = D3D11_BIND_SHADER_RESOURCE;
-
-    D3D11_SUBRESOURCE_DATA sd = {};
-    sd.pSysMem     = pixels;
-    sd.SysMemPitch = static_cast<UINT>(w) * 4;
+    desc.Usage            = D3D11_USAGE_DEFAULT;
+    desc.BindFlags        = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    desc.MiscFlags        = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 
     ID3D11Texture2D* tex = nullptr;
-    if (FAILED(device->CreateTexture2D(&desc, &sd, &tex))) return img;
+    if (FAILED(device->CreateTexture2D(&desc, nullptr, &tex))) return img;
 
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Format              = DXGI_FORMAT_R8G8B8A8_UNORM;
     srvDesc.ViewDimension       = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
+    srvDesc.Texture2D.MostDetailedMip = 0;
+    srvDesc.Texture2D.MipLevels = UINT_MAX;
 
     HRESULT hr = device->CreateShaderResourceView(tex, &srvDesc, &img.srv);
+    if (SUCCEEDED(hr))
+    {
+        ID3D11DeviceContext* context = nullptr;
+        device->GetImmediateContext(&context);
+        if (context)
+        {
+            context->UpdateSubresource(tex, 0, nullptr, pixels, static_cast<UINT>(w) * 4, 0);
+            context->GenerateMips(img.srv);
+            context->Release();
+        }
+        else
+        {
+            img.srv->Release();
+            img.srv = nullptr;
+        }
+    }
     tex->Release();
     if (FAILED(hr)) img.srv = nullptr;
     return img;

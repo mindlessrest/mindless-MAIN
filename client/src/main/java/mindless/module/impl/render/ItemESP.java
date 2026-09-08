@@ -6,7 +6,6 @@ import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.runtime.AccessorBridge;
-import mindless.runtime.LunarEventBridge;
 import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
@@ -215,9 +214,7 @@ private static final double STACK_RADIUS_SQ = 9.0D;
         if (hideInGui.isToggled() && mc.currentScreen != null) return;
 
         ScaledResolution resolution = ScaledResolutionCache.get();
-        if (!LunarEventBridge.isDirectLunar()) {
-            AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, event.partialTicks, 0);
-        }
+        AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, event.partialTicks, 0);
         projectionContext = RenderUtils.captureProjectionContext(projectionContext, resolution.getScaleFactor());
         if (projectionContext == null) return;
 
@@ -227,6 +224,7 @@ private static final double STACK_RADIUS_SQ = 9.0D;
         mc.entityRenderer.setupOverlayRendering();
         draw(resolution);
         cards.clear();
+        AccessorBridge.EntityRenderer_callSetupCameraTransform(mc.entityRenderer, event.partialTicks, 0);
     }
 
     private static final Comparator<Card> FAR_FIRST = new Comparator<Card>() {

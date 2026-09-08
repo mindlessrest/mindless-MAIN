@@ -48,11 +48,10 @@ public abstract class TransformerGuiContainerShop {
         if (decision == ShopHelper.CLICK_ALLOW) return;
 
         ci.setCancelled(true);
-        if (decision != ShopHelper.CLICK_QUICK_MOVE) return;
+        if (decision != ShopHelper.CLICK_PURCHASE) return;
 
         Minecraft mc = Minecraft.getMinecraft();
-        // Clone click, matching MixinGuiContainerShop: see the note there for why not a quick move.
         mc.playerController.windowClick(self.inventorySlots.windowId, slotId,
-                2, 3, mc.thePlayer);
+                0, 0, mc.thePlayer);
     }
 }

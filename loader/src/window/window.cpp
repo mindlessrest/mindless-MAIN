@@ -36,10 +36,19 @@ bool Window::create(const wchar_t* title, int width, int height)
     DWORD style   = WS_POPUP | WS_MINIMIZEBOX;
     DWORD exStyle = WS_EX_NOREDIRECTIONBITMAP;
 
-    int screenW = GetSystemMetrics(SM_CXSCREEN);
-    int screenH = GetSystemMetrics(SM_CYSCREEN);
-    int x = (screenW - width)  / 2;
-    int y = (screenH - height) / 2;
+    POINT cursor = {};
+    GetCursorPos(&cursor);
+    HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO monitorInfo = { sizeof(monitorInfo) };
+    if (!GetMonitorInfoW(monitor, &monitorInfo))
+    {
+        monitorInfo.rcWork.right = GetSystemMetrics(SM_CXSCREEN);
+        monitorInfo.rcWork.bottom = GetSystemMetrics(SM_CYSCREEN);
+    }
+
+    const RECT& workArea = monitorInfo.rcWork;
+    int x = workArea.left + (workArea.right - workArea.left - width) / 2;
+    int y = workArea.top + (workArea.bottom - workArea.top - height) / 2;
 
     hwnd_ = CreateWindowExW(
         exStyle, ClassName, title,
@@ -65,8 +74,6 @@ void Window::destroy()
 
 bool Window::poll_events()
 {
-    input_.next_frame();
-
     MSG msg;
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
     {
@@ -77,6 +84,8 @@ bool Window::poll_events()
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+
+    input_.next_frame();
 
     return !shouldClose_;
 }
@@ -136,6 +145,12 @@ LRESULT Window::handle_message(UINT msg, WPARAM wp, LPARAM lp)
         {
             POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
             ScreenToClient(hwnd_, &pt);
+            if (dragX_ > 0 && dragY_ > 0 &&
+                (pt.x < dragX_ || pt.x >= width_ - dragX_ ||
+                 pt.y < dragY_ || pt.y >= height_ - dragY_))
+            {
+                return HTTRANSPARENT;
+            }
             if (pt.x >= dragX_ && pt.x < dragX_ + dragW_ &&
                 pt.y >= dragY_ && pt.y < dragY_ + dragH_)
             {
@@ -160,6 +175,17 @@ LRESULT Window::handle_message(UINT msg, WPARAM wp, LPARAM lp)
         }
         return 0;
 
+    case WM_DPICHANGED:
+    {
+        const auto* suggested = reinterpret_cast<const RECT*>(lp);
+        SetWindowPos(hwnd_, nullptr,
+                     suggested->left, suggested->top,
+                     suggested->right - suggested->left,
+                     suggested->bottom - suggested->top,
+                     SWP_NOACTIVATE | SWP_NOZORDER);
+        return 0;
+    }
+
     case WM_MOUSEMOVE:
         input_.set_mouse_pos(static_cast<float>(GET_X_LPARAM(lp)),
                               static_cast<float>(GET_Y_LPARAM(lp)));
@@ -171,12 +197,22 @@ LRESULT Window::handle_message(UINT msg, WPARAM wp, LPARAM lp)
         return 0;
 
     case WM_LBUTTONUP:
-        ReleaseCapture();
+        if (GetCapture() == hwnd_)
+            ReleaseCapture();
         input_.set_mouse_button(0, false);
         return 0;
 
     case WM_RBUTTONDOWN: input_.set_mouse_button(1, true);  return 0;
     case WM_RBUTTONUP:   input_.set_mouse_button(1, false); return 0;
+
+    case WM_CAPTURECHANGED:
+    case WM_CANCELMODE:
+        input_.release_mouse();
+        return 0;
+
+    case WM_KILLFOCUS:
+        input_.release_all();
+        return 0;
 
     case WM_MOUSEWHEEL:
         input_.add_mouse_wheel(

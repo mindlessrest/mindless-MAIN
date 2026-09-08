@@ -49,14 +49,10 @@ public abstract class MixinGuiContainerShop {
         if (decision == ShopHelper.CLICK_ALLOW) return;
 
         ci.cancel();
-        if (decision != ShopHelper.CLICK_QUICK_MOVE) return;
+        if (decision != ShopHelper.CLICK_PURCHASE) return;
 
         Minecraft mc = Minecraft.getMinecraft();
-        // Button 2, mode 3 -- a clone click. Mode 1 is a quick move, which is a shift click: the
-        // server only treats that as a buy on the category pages, and the stack visibly travels
-        // to the cursor first. A clone click reads as a plain click on every shop page and moves
-        // nothing client side, so there is no animation to hide.
         mc.playerController.windowClick(self.inventorySlots.windowId, slotId,
-                2, 3, mc.thePlayer);
+                0, 0, mc.thePlayer);
     }
 }

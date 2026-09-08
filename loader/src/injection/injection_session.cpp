@@ -88,8 +88,8 @@ bool InjectionSession::start(uint32_t processId, const void* dllData, size_t dll
     }
     if (dllData && dllSize > 0)
     {
-        dllData_ = dllData;
-        dllSize_ = static_cast<DWORD>(dllSize);
+        const auto* bytes = static_cast<const uint8_t*>(dllData);
+        dllBytes_.assign(bytes, bytes + dllSize);
     }
     else
     {
@@ -119,8 +119,10 @@ void InjectionSession::reset()
     injectDone_ = false;
     injectSuccess_ = false;
     progress_ = 0.0f;
-    dllData_ = nullptr;
-    dllSize_ = 0;
+    if (!dllBytes_.empty())
+        SecureZeroMemory(dllBytes_.data(), dllBytes_.size());
+    dllBytes_.clear();
+    dllBytes_.shrink_to_fit();
 }
 
 bool InjectionSession::inject_remote()
@@ -144,7 +146,7 @@ bool InjectionSession::inject_remote()
     }
     inj_log("target opened, entering manual map");
 
-    if (!manual_map_inject(process, targetProcessId_, dllData_, dllSize_))
+    if (!manual_map_inject(process, targetProcessId_, dllBytes_.data(), dllBytes_.size()))
     {
         inj_log("manual_map_inject returned false");
         CloseHandle(process);

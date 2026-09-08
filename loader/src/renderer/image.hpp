@@ -9,6 +9,30 @@ namespace mindless
 // Create via load_png(); destroy by calling release().
 struct Image
 {
+    Image() = default;
+    ~Image() { release(); }
+    Image(const Image&) = delete;
+    Image& operator=(const Image&) = delete;
+    Image(Image&& other) noexcept
+        : srv(other.srv), width(other.width), height(other.height)
+    {
+        other.srv = nullptr;
+        other.width = 0;
+        other.height = 0;
+    }
+    Image& operator=(Image&& other) noexcept
+    {
+        if (this == &other) return *this;
+        release();
+        srv = other.srv;
+        width = other.width;
+        height = other.height;
+        other.srv = nullptr;
+        other.width = 0;
+        other.height = 0;
+        return *this;
+    }
+
     ID3D11ShaderResourceView* srv    = nullptr;
     int                       width  = 0;
     int                       height = 0;

@@ -237,6 +237,11 @@ void Application::start_auth()
             snprintf(dbg, sizeof(dbg), "[MindlessLoader] Exception: %s\n", e.what());
             OutputDebugStringA(dbg);
         }
+        catch (...)
+        {
+            pendingAuthError_ = "Authentication failed unexpectedly";
+            OutputDebugStringA("[MindlessLoader] Unknown authentication exception\n");
+        }
         authDone_ = true;
     });
 }
@@ -326,6 +331,13 @@ void Application::start_download()
             pendingDownloadSolution_ = e.what();
             pendingDownloadFailed_ = true;
         }
+        catch (...)
+        {
+            OutputDebugStringA("[Mindless] Unknown download exception\n");
+            pendingDownloadStatus_ = "Download failed";
+            pendingDownloadSolution_ = "An unexpected error interrupted the download.";
+            pendingDownloadFailed_ = true;
+        }
         downloadDone_ = true;
     });
 }
@@ -360,6 +372,7 @@ int Application::run()
         if (protection::isCompromised() && state_.screen != Screen::Login
             && state_.screen != Screen::Closing)
         {
+            injection_.reset();
             if (!state_.dllBytes.empty())
             {
                 SecureZeroMemory(state_.dllBytes.data(), state_.dllBytes.size());
@@ -403,6 +416,10 @@ int Application::run()
                             protection::startWatchdog();
                             save_credentials(state_.username.text, state_.password.text, state_.rememberMe);
                             mindless::save_session_username(state_.username.text);
+                            state_.release_process_icons();
+                            state_.processes = enumerate_targets(renderer_.device());
+                            state_.refreshAccum = 0.0f;
+                            state_.selectedIdx = -1;
                             state_.statusText = "Authenticated";
                             // Fetch the payload now rather than on the loading screen. It is over
                             // 50MB and the transfer used to be entirely serial in front of the
@@ -599,6 +616,9 @@ int Application::run()
 
         if (state_.screen == Screen::ProcessSelect)
         {
+            if (injection_.phase() != InjectionPhase::Idle)
+                injection_.reset();
+
             state_.refreshAccum += dt;
             if (state_.refreshAccum >= AppState::RefreshInterval)
             {
@@ -723,7 +743,7 @@ void Application::draw_frame(float dt)
     ScreenFonts fonts { fontNormal_, fontTitle_, fontCaption_ };
 
     bool closeRequested = false;
-    draw_screen(drawList_, state_, input, fonts, panel, logo_, dt, closeRequested, &window_, renderer_.device());
+    draw_screen(drawList_, state_, input, fonts, panel, logo_, dt, closeRequested, &window_);
 
     if (closeRequested)
         window_.close();

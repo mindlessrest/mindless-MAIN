@@ -19,7 +19,10 @@ struct Glyph
     float   advance;  // horizontal advance in pixels
     float   width;
     float   height;
+    uint32_t index;
 };
+
+uint32_t decode_utf8(const char*& text);
 
 // Glyph atlas for a single font + size. Upload once, reuse forever.
 class FontAtlas
@@ -42,6 +45,7 @@ public:
 
     // Width of a UTF-8 string in pixels.
     float measure_text_width(const char* text) const;
+    float kerning(uint32_t leftIndex, uint32_t rightIndex) const;
 
     // ascender: distance from baseline to top of tallest glyph (positive, in px)
     float ascender()   const { return ascender_; }
@@ -65,6 +69,7 @@ public:
 
 private:
     std::unordered_map<uint32_t, Glyph> glyphs_;
+    std::unordered_map<uint64_t, float> kerning_;
     ID3D11ShaderResourceView* srv_ = nullptr;
 
     float ascender_   = 0;

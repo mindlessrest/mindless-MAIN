@@ -7,7 +7,6 @@
 #include "ui/draw_list.hpp"
 #include "ui/theme.hpp"
 #include "renderer/font_atlas.hpp"
-#include <d3d11.h>
 
 namespace mindless
 {
@@ -28,7 +27,6 @@ bool draw_chrome(ui::DrawList& dl, const InputState& input,
 
 void draw_screen(ui::DrawList& dl, AppState& state, const InputState& input,
                  ScreenFonts fonts, const Rect& windowRect, const Image& logo,
-                 float dt, bool& closeRequested, Window* window,
-                 ID3D11Device* device);
+                 float dt, bool& closeRequested, Window* window);
 
 } // namespace mindless
