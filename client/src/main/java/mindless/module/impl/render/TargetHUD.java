@@ -55,6 +55,9 @@ public class TargetHUD extends Module {
     private ButtonSetting ringSoftEdges;
     private SliderSetting headStyle;
     private ButtonSetting hitEffects;
+    private SliderSetting hitStyle;
+    private SliderSetting hitParticleColor;
+    private SliderSetting hitParticleAmount;
     private ColorSetting hitColor;
     private SliderSetting hitStrengthScale;
     private final ColorSetting[] ringColors = new ColorSetting[RING_COUNT];
@@ -79,6 +82,19 @@ private static final int[] DEFAULT_RING_COLORS = {
     };
 
     private static final long HIT_FLASH_MS = 260L;
+    private static final String[] HIT_STYLES =
+            new String[] { "Flash", "Sparks", "Orbs", "Shatter", "Ripple", "Embers" };
+    private static final int HIT_STYLE_FLASH = 0;
+    private static final int HIT_STYLE_SPARKS = 1;
+    private static final int HIT_STYLE_ORBS = 2;
+    private static final int HIT_STYLE_SHATTER = 3;
+    private static final int HIT_STYLE_RIPPLE = 4;
+    private static final int HIT_STYLE_EMBERS = 5;
+    private static final String[] HIT_PARTICLE_COLORS =
+            new String[] { "Hit color", "Theme", "Rainbow" };
+    private static final int HIT_COLORS_HIT = 0;
+    private static final int HIT_COLORS_THEME = 1;
+    private static final int HIT_COLORS_RAINBOW = 2;
     private static final long POP_IN_MS = 140L;
     private static final long POP_OUT_MS = 160L;
     private static final String[] POSITION_MODES = new String[] {
@@ -141,6 +157,9 @@ private static final int[] DEFAULT_RING_COLORS = {
         this.registerSetting(healthColor = new ButtonSetting("Traditional health color", false));
         this.registerSetting(headStyle = new SliderSetting("Head style", HEAD_STYLE_FLAT, HEAD_STYLES));
         this.registerSetting(hitEffects = new ButtonSetting("Hit effects", true));
+        this.registerSetting(hitStyle = new SliderSetting("Hit effect", HIT_STYLE_FLASH, HIT_STYLES));
+        this.registerSetting(hitParticleColor = new SliderSetting("Effect colors", HIT_COLORS_HIT, HIT_PARTICLE_COLORS));
+        this.registerSetting(hitParticleAmount = new SliderSetting("Effect amount", 1.0, 0.25, 2.0, 0.05));
         this.registerSetting(hitColor = new ColorSetting("Hit color", 255, 92, 92, 190));
         this.registerSetting(hitStrengthScale = new SliderSetting("Hit strength", 1.0, 0.2, 2.0, 0.05));
 
@@ -170,6 +189,19 @@ private static final int[] DEFAULT_RING_COLORS = {
     @Override
     public void guiUpdate() {
         glowSize.setVisible(mode.getInput() == 0, this);
+
+        boolean hits = hitEffects != null && hitEffects.isToggled();
+        int hitMode = hitStyle == null ? HIT_STYLE_FLASH : (int) hitStyle.getInput();
+        if (hitStyle != null) hitStyle.setVisible(hits, this);
+        if (hitStrengthScale != null) hitStrengthScale.setVisible(hits, this);
+        // Flash is the plain overlay -- it has no particles to colour or count.
+        boolean particles = hits && hitMode != HIT_STYLE_FLASH;
+        if (hitParticleColor != null) hitParticleColor.setVisible(particles, this);
+        if (hitParticleAmount != null) hitParticleAmount.setVisible(particles, this);
+        if (hitColor != null) {
+            int colorMode = hitParticleColor == null ? HIT_COLORS_HIT : (int) hitParticleColor.getInput();
+            hitColor.setVisible(hits && (!particles || colorMode == HIT_COLORS_HIT), this);
+        }
 
         boolean esp = renderEsp != null && renderEsp.isToggled();
         int style = ringStyle == null ? RING_STYLE_TRAIL : (int) ringStyle.getInput();
@@ -276,6 +308,9 @@ private int ringColor(int ringIndex) {
             if (healthTrackedTarget == target && health < lastHealth - 1.0E-4) {
                 hitStrength = (float) Math.max(0.25, Math.min(1.0, (lastHealth - health) * 5.0));
                 hitFlashStart = System.currentTimeMillis();
+                // Deferred: the head box is not known until the panel lays itself out, and
+                // the particles are spawned around it.
+                hitSpawnPending = true;
             }
             healthTrackedTarget = target;
             lastHealth = health;
@@ -710,9 +745,15 @@ private int ringColor(int ringIndex) {
                 GlStateManager.scale(punch, punch, 1.0f);
                 GlStateManager.translate(-centreX, -centreY, 0.0f);
                 drawPlayerHead((EntityPlayer) target, headX, headY, headSize, headSize, alpha);
-                drawHitFlash(headX, headY, headSize, hit, alpha);
+                if (hitStyleValue() == HIT_STYLE_FLASH) {
+                    drawHitFlash(headX, headY, headSize, hit, alpha);
+                }
                 GlStateManager.popMatrix();
             }
+
+            // Outside the punch matrix: the particles are thrown off the head, they do not
+            // ride its scale. They also outlive the punch, so this is not inside the branch.
+            updateAndDrawHitParticles(headX, headY, headSize, alpha);
         }
 
         RenderUtils.drawRoundedRectangle((float) n13, (float) n15, (float) n14,
@@ -770,6 +811,391 @@ private int ringColor(int ringIndex) {
      * Scaled by how much health the target actually lost, so chip damage gives a nudge and a
      * crit gives a real punch, rather than every hit looking identical.
      */
+    // ---------------------------------------------------------------- hit particles
+
+    /**
+     * A pool, not a list. Hits arrive several times a second in a fight and allocating a
+     * particle per spark would put a steady stream of short-lived objects through the nursery
+     * for something purely decorative. The pool is allocated once and reused; running out just
+     * means the oldest effect is not extended, which nobody can see.
+     */
+    private static final int MAX_HIT_PARTICLES = 64;
+    private static final int CIRCLE_SEGMENTS = 16;
+    private static final float[] CIRCLE_COS = new float[CIRCLE_SEGMENTS + 1];
+    private static final float[] CIRCLE_SIN = new float[CIRCLE_SEGMENTS + 1];
+
+    static {
+        for (int i = 0; i <= CIRCLE_SEGMENTS; i++) {
+            double angle = Math.PI * 2.0 * i / CIRCLE_SEGMENTS;
+            CIRCLE_COS[i] = (float) Math.cos(angle);
+            CIRCLE_SIN[i] = (float) Math.sin(angle);
+        }
+    }
+
+    private static final class HitParticle {
+        boolean active;
+        int kind;
+        float x;
+        float y;
+        float velocityX;
+        float velocityY;
+        float life;
+        float maxLife;
+        float size;
+        float rotation;
+        float spin;
+        int rgb;
+    }
+
+    private final HitParticle[] hitParticles = new HitParticle[MAX_HIT_PARTICLES];
+    private final java.util.Random hitRandom = new java.util.Random();
+    private boolean hitSpawnPending;
+    private long lastParticleFrame;
+
+    {
+        for (int i = 0; i < hitParticles.length; i++) {
+            hitParticles[i] = new HitParticle();
+        }
+    }
+
+    private int hitStyleValue() {
+        return hitStyle == null ? HIT_STYLE_FLASH : (int) hitStyle.getInput();
+    }
+
+    /** A colour for one particle, by the configured scheme. */
+    private int particleColor(int index) {
+        int scheme = hitParticleColor == null ? HIT_COLORS_HIT : (int) hitParticleColor.getInput();
+        if (scheme == HIT_COLORS_RAINBOW) {
+            // Spread over the wheel rather than random per particle, so a burst reads as a set
+            // of distinct colours instead of mud.
+            float hue = (index * 0.13f + hitRandom.nextFloat() * 0.08f) % 1.0f;
+            return Color.HSBtoRGB(hue, 0.72f, 1.0f) & 0xFFFFFF;
+        }
+        if (scheme == HIT_COLORS_THEME) {
+            return Theme.getGradient((int) theme.getInput(), index * 24.0) & 0xFFFFFF;
+        }
+        int base = hitColor == null ? new Color(255, 92, 92).getRGB() : hitColor.getColor();
+        return base & 0xFFFFFF;
+    }
+
+    private HitParticle freeParticle() {
+        for (HitParticle particle : hitParticles) {
+            if (!particle.active) {
+                return particle;
+            }
+        }
+        return null;
+    }
+
+    private void spawnHitParticles(int style, float centerX, float centerY, float headSize) {
+        float strength = Math.max(0.25f, Math.min(1.0f, hitStrength));
+        float amount = (float) (hitParticleAmount == null ? 1.0 : hitParticleAmount.getInput());
+        int count;
+        switch (style) {
+            case HIT_STYLE_SPARKS:  count = Math.round((9 + 11 * strength) * amount); break;
+            case HIT_STYLE_ORBS:    count = Math.round((5 + 7 * strength) * amount); break;
+            case HIT_STYLE_SHATTER: count = Math.round((7 + 9 * strength) * amount); break;
+            case HIT_STYLE_EMBERS:  count = Math.round((5 + 6 * strength) * amount); break;
+            case HIT_STYLE_RIPPLE:  count = 1; break;
+            default: return;
+        }
+
+        for (int i = 0; i < count; i++) {
+            HitParticle particle = freeParticle();
+            if (particle == null) {
+                return;
+            }
+            particle.active = true;
+            particle.kind = style;
+            particle.rgb = particleColor(i);
+            particle.rotation = hitRandom.nextFloat() * (float) Math.PI * 2.0f;
+
+            double angle = hitRandom.nextDouble() * Math.PI * 2.0;
+            float speed;
+
+            switch (style) {
+                case HIT_STYLE_SPARKS:
+                    // Thrown out from just inside the head, fast, and pulled down.
+                    speed = headSize * (1.6f + hitRandom.nextFloat() * 2.4f) * strength;
+                    particle.x = centerX + (float) Math.cos(angle) * headSize * 0.18f;
+                    particle.y = centerY + (float) Math.sin(angle) * headSize * 0.18f;
+                    particle.velocityX = (float) Math.cos(angle) * speed;
+                    particle.velocityY = (float) Math.sin(angle) * speed;
+                    particle.size = headSize * (0.05f + hitRandom.nextFloat() * 0.04f);
+                    particle.maxLife = 0.28f + hitRandom.nextFloat() * 0.22f;
+                    break;
+                case HIT_STYLE_ORBS:
+                    // Slower and heavier than sparks so they read as objects, not streaks.
+                    speed = headSize * (0.8f + hitRandom.nextFloat() * 1.3f) * strength;
+                    particle.x = centerX + (float) Math.cos(angle) * headSize * 0.12f;
+                    particle.y = centerY + (float) Math.sin(angle) * headSize * 0.12f;
+                    particle.velocityX = (float) Math.cos(angle) * speed;
+                    particle.velocityY = (float) Math.sin(angle) * speed - headSize * 0.4f;
+                    particle.size = headSize * (0.12f + hitRandom.nextFloat() * 0.09f);
+                    particle.maxLife = 0.45f + hitRandom.nextFloat() * 0.35f;
+                    break;
+                case HIT_STYLE_SHATTER:
+                    speed = headSize * (1.2f + hitRandom.nextFloat() * 1.8f) * strength;
+                    particle.x = centerX + (float) Math.cos(angle) * headSize * 0.22f;
+                    particle.y = centerY + (float) Math.sin(angle) * headSize * 0.22f;
+                    particle.velocityX = (float) Math.cos(angle) * speed;
+                    particle.velocityY = (float) Math.sin(angle) * speed;
+                    particle.size = headSize * (0.09f + hitRandom.nextFloat() * 0.07f);
+                    particle.spin = (hitRandom.nextFloat() - 0.5f) * 16.0f;
+                    particle.maxLife = 0.35f + hitRandom.nextFloat() * 0.25f;
+                    break;
+                case HIT_STYLE_EMBERS:
+                    // Drift up and out, slowly, with no gravity pulling them back.
+                    particle.x = centerX + (hitRandom.nextFloat() - 0.5f) * headSize * 0.8f;
+                    particle.y = centerY + (hitRandom.nextFloat() - 0.5f) * headSize * 0.5f;
+                    particle.velocityX = (hitRandom.nextFloat() - 0.5f) * headSize * 0.7f;
+                    particle.velocityY = -headSize * (0.6f + hitRandom.nextFloat() * 0.8f);
+                    particle.size = headSize * (0.06f + hitRandom.nextFloat() * 0.06f);
+                    particle.maxLife = 0.6f + hitRandom.nextFloat() * 0.5f;
+                    break;
+                case HIT_STYLE_RIPPLE:
+                default:
+                    particle.x = centerX;
+                    particle.y = centerY;
+                    particle.velocityX = 0.0f;
+                    particle.velocityY = 0.0f;
+                    particle.size = headSize * 0.5f;
+                    particle.maxLife = 0.42f;
+                    break;
+            }
+            particle.life = particle.maxLife;
+        }
+    }
+
+    /**
+     * Advance and draw the particles over the head.
+     *
+     * Everything is triangles in a single batch, additive except Shatter, which is solid shards
+     * and wants ordinary blending. Positions are panel coordinates, so the panel's own pop-in
+     * scale carries them without any extra work.
+     */
+    private void updateAndDrawHitParticles(int headX, int headY, int headSize, int panelAlpha) {
+        int style = hitStyleValue();
+        boolean enabled = hitEffects != null && hitEffects.isToggled() && style != HIT_STYLE_FLASH;
+
+        long now = System.currentTimeMillis();
+        float delta = lastParticleFrame == 0L ? 0.0f : (now - lastParticleFrame) / 1000.0f;
+        lastParticleFrame = now;
+        // A frame that took a second is a stall, not a second of motion.
+        if (delta > 0.1f) delta = 0.1f;
+        if (delta < 0.0f) delta = 0.0f;
+
+        if (hitSpawnPending) {
+            hitSpawnPending = false;
+            if (enabled) {
+                spawnHitParticles(style, headX + headSize * 0.5f, headY + headSize * 0.5f, headSize);
+            }
+        }
+
+        boolean any = false;
+        for (HitParticle particle : hitParticles) {
+            if (!particle.active) continue;
+            if (!enabled) {
+                particle.active = false;
+                continue;
+            }
+            particle.life -= delta;
+            if (particle.life <= 0.0f) {
+                particle.active = false;
+                continue;
+            }
+            particle.x += particle.velocityX * delta;
+            particle.y += particle.velocityY * delta;
+            particle.rotation += particle.spin * delta;
+            switch (particle.kind) {
+                case HIT_STYLE_SPARKS:
+                    particle.velocityY += headSize * 5.0f * delta;
+                    particle.velocityX *= 1.0f - Math.min(0.9f, 2.2f * delta);
+                    break;
+                case HIT_STYLE_ORBS:
+                    particle.velocityY += headSize * 2.4f * delta;
+                    break;
+                case HIT_STYLE_SHATTER:
+                    particle.velocityY += headSize * 4.0f * delta;
+                    break;
+                case HIT_STYLE_EMBERS:
+                    particle.velocityX += (float) Math.sin(particle.life * 9.0f) * headSize * 0.9f * delta;
+                    break;
+                default:
+                    break;
+            }
+            any = true;
+        }
+        if (!any) {
+            return;
+        }
+
+        boolean additive = style != HIT_STYLE_SHATTER;
+        GlStateManager.disableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, additive ? GL11.GL_ONE : GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.disableAlpha();
+        GlStateManager.shadeModel(GL11.GL_SMOOTH);
+        GlStateManager.depthMask(false);
+
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer worldRenderer = tessellator.getWorldRenderer();
+        worldRenderer.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_COLOR);
+
+        float panelFade = Math.max(0, Math.min(255, panelAlpha)) / 255.0f;
+        for (HitParticle particle : hitParticles) {
+            if (!particle.active) continue;
+            float remaining = particle.life / particle.maxLife;
+            switch (particle.kind) {
+                case HIT_STYLE_SPARKS:
+                    emitSpark(worldRenderer, particle, remaining, panelFade);
+                    break;
+                case HIT_STYLE_SHATTER:
+                    emitShard(worldRenderer, particle, remaining, panelFade);
+                    break;
+                case HIT_STYLE_RIPPLE:
+                    emitRipple(worldRenderer, particle, remaining, panelFade);
+                    break;
+                case HIT_STYLE_EMBERS: {
+                    // Flicker: an ember that holds a constant brightness looks like a dot.
+                    float flicker = 0.72f + 0.28f * (float) Math.sin(particle.life * 21.0f + particle.rotation);
+                    emitGlow(worldRenderer, particle.x, particle.y, particle.size * (0.6f + 0.4f * remaining),
+                            particle.rgb, remaining * remaining * flicker * panelFade);
+                    break;
+                }
+                case HIT_STYLE_ORBS:
+                default: {
+                    float fade = remaining * remaining;
+                    emitGlow(worldRenderer, particle.x, particle.y, particle.size, particle.rgb, fade * 0.55f * panelFade);
+                    // A tighter, brighter core inside the halo is what makes it read as a ball
+                    // with light in it rather than a smudge.
+                    emitGlow(worldRenderer, particle.x, particle.y, particle.size * 0.42f, particle.rgb, fade * panelFade);
+                    break;
+                }
+            }
+        }
+
+        tessellator.draw();
+
+        GlStateManager.depthMask(true);
+        GlStateManager.shadeModel(GL11.GL_FLAT);
+        GlStateManager.enableAlpha();
+        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    /** A radial blob: full alpha at the centre, nothing at the rim. */
+    private void emitGlow(WorldRenderer worldRenderer, float centerX, float centerY,
+                          float radius, int rgb, float alpha) {
+        int a = Math.round(Math.max(0.0f, Math.min(1.0f, alpha)) * 255.0f);
+        if (a <= 1 || radius <= 0.0f) return;
+        int red = (rgb >> 16) & 0xFF;
+        int green = (rgb >> 8) & 0xFF;
+        int blue = rgb & 0xFF;
+        for (int i = 0; i < CIRCLE_SEGMENTS; i++) {
+            worldRenderer.pos(centerX, centerY, 0.0).color(red, green, blue, a).endVertex();
+            worldRenderer.pos(centerX + CIRCLE_COS[i] * radius, centerY + CIRCLE_SIN[i] * radius, 0.0)
+                    .color(red, green, blue, 0).endVertex();
+            worldRenderer.pos(centerX + CIRCLE_COS[i + 1] * radius, centerY + CIRCLE_SIN[i + 1] * radius, 0.0)
+                    .color(red, green, blue, 0).endVertex();
+        }
+    }
+
+    /** A streak along the direction of travel, bright and wide at the head, gone at the tail. */
+    private void emitSpark(WorldRenderer worldRenderer, HitParticle particle, float remaining, float panelFade) {
+        float speed = (float) Math.sqrt(particle.velocityX * particle.velocityX
+                + particle.velocityY * particle.velocityY);
+        if (speed < 0.0001f) return;
+        float dirX = particle.velocityX / speed;
+        float dirY = particle.velocityY / speed;
+        float length = particle.size * (2.2f + speed * 0.02f);
+        float halfWidth = particle.size * 0.5f;
+
+        float tailX = particle.x - dirX * length;
+        float tailY = particle.y - dirY * length;
+        float normalX = -dirY * halfWidth;
+        float normalY = dirX * halfWidth;
+
+        int a = Math.round(Math.max(0.0f, Math.min(1.0f, remaining * panelFade)) * 255.0f);
+        if (a <= 1) return;
+        int red = (particle.rgb >> 16) & 0xFF;
+        int green = (particle.rgb >> 8) & 0xFF;
+        int blue = particle.rgb & 0xFF;
+
+        // Two triangles making a wedge: full width and full alpha at the head, a point at the tail.
+        worldRenderer.pos(particle.x + normalX, particle.y + normalY, 0.0).color(red, green, blue, a).endVertex();
+        worldRenderer.pos(particle.x - normalX, particle.y - normalY, 0.0).color(red, green, blue, a).endVertex();
+        worldRenderer.pos(tailX, tailY, 0.0).color(red, green, blue, 0).endVertex();
+
+        worldRenderer.pos(particle.x + normalX * 0.35f, particle.y + normalY * 0.35f, 0.0)
+                .color(255, 255, 255, Math.round(a * 0.7f)).endVertex();
+        worldRenderer.pos(particle.x - normalX * 0.35f, particle.y - normalY * 0.35f, 0.0)
+                .color(255, 255, 255, Math.round(a * 0.7f)).endVertex();
+        worldRenderer.pos(tailX * 0.5f + particle.x * 0.5f, tailY * 0.5f + particle.y * 0.5f, 0.0)
+                .color(red, green, blue, 0).endVertex();
+    }
+
+    /** A solid rotating shard. */
+    private void emitShard(WorldRenderer worldRenderer, HitParticle particle, float remaining, float panelFade) {
+        int a = Math.round(Math.max(0.0f, Math.min(1.0f, remaining * panelFade)) * 255.0f);
+        if (a <= 1) return;
+        int red = (particle.rgb >> 16) & 0xFF;
+        int green = (particle.rgb >> 8) & 0xFF;
+        int blue = particle.rgb & 0xFF;
+        float size = particle.size * (0.4f + 0.6f * remaining);
+        for (int corner = 0; corner < 3; corner++) {
+            double angle = particle.rotation + corner * Math.PI * 2.0 / 3.0;
+            worldRenderer.pos(particle.x + Math.cos(angle) * size, particle.y + Math.sin(angle) * size, 0.0)
+                    .color(red, green, blue, a).endVertex();
+        }
+    }
+
+    /** An expanding ring with a soft edge on both sides. */
+    private void emitRipple(WorldRenderer worldRenderer, HitParticle particle, float remaining, float panelFade) {
+        float grown = 1.0f - remaining;
+        float radius = particle.size * (0.35f + 1.25f * grown);
+        float thickness = particle.size * 0.16f * (0.4f + 0.6f * remaining);
+        int a = Math.round(Math.max(0.0f, Math.min(1.0f, remaining * remaining * panelFade)) * 255.0f);
+        if (a <= 1) return;
+        int red = (particle.rgb >> 16) & 0xFF;
+        int green = (particle.rgb >> 8) & 0xFF;
+        int blue = particle.rgb & 0xFF;
+
+        for (int i = 0; i < CIRCLE_SEGMENTS; i++) {
+            float innerX0 = particle.x + CIRCLE_COS[i] * (radius - thickness);
+            float innerY0 = particle.y + CIRCLE_SIN[i] * (radius - thickness);
+            float innerX1 = particle.x + CIRCLE_COS[i + 1] * (radius - thickness);
+            float innerY1 = particle.y + CIRCLE_SIN[i + 1] * (radius - thickness);
+            float midX0 = particle.x + CIRCLE_COS[i] * radius;
+            float midY0 = particle.y + CIRCLE_SIN[i] * radius;
+            float midX1 = particle.x + CIRCLE_COS[i + 1] * radius;
+            float midY1 = particle.y + CIRCLE_SIN[i + 1] * radius;
+            float outerX0 = particle.x + CIRCLE_COS[i] * (radius + thickness);
+            float outerY0 = particle.y + CIRCLE_SIN[i] * (radius + thickness);
+            float outerX1 = particle.x + CIRCLE_COS[i + 1] * (radius + thickness);
+            float outerY1 = particle.y + CIRCLE_SIN[i + 1] * (radius + thickness);
+
+            rippleQuad(worldRenderer, innerX0, innerY0, innerX1, innerY1, midX1, midY1, midX0, midY0,
+                    red, green, blue, 0, a);
+            rippleQuad(worldRenderer, midX0, midY0, midX1, midY1, outerX1, outerY1, outerX0, outerY0,
+                    red, green, blue, a, 0);
+        }
+    }
+
+    private void rippleQuad(WorldRenderer worldRenderer,
+                            float x0, float y0, float x1, float y1,
+                            float x2, float y2, float x3, float y3,
+                            int red, int green, int blue, int alphaNear, int alphaFar) {
+        worldRenderer.pos(x0, y0, 0.0).color(red, green, blue, alphaNear).endVertex();
+        worldRenderer.pos(x1, y1, 0.0).color(red, green, blue, alphaNear).endVertex();
+        worldRenderer.pos(x2, y2, 0.0).color(red, green, blue, alphaFar).endVertex();
+
+        worldRenderer.pos(x0, y0, 0.0).color(red, green, blue, alphaNear).endVertex();
+        worldRenderer.pos(x2, y2, 0.0).color(red, green, blue, alphaFar).endVertex();
+        worldRenderer.pos(x3, y3, 0.0).color(red, green, blue, alphaFar).endVertex();
+    }
+
     private float hitEnvelope() {
         if (hitEffects == null || !hitEffects.isToggled() || hitFlashStart < 0L) {
             return 0.0f;
@@ -1021,6 +1447,10 @@ private static final float[][] HEAD_UVS = {
         popInStart = -1;
         hitFlashStart = -1L;
         hitStrength = 0.0f;
+        hitSpawnPending = false;
+        for (HitParticle particle : hitParticles) {
+            particle.active = false;
+        }
         healthTrackedTarget = null;
         tweenedX = Float.NaN;
         tweenedY = Float.NaN;
