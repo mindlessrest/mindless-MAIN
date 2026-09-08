@@ -7,6 +7,8 @@ import mindless.event.RightClickDelayTickEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
+import mindless.module.setting.impl.ColorSetting;
+import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.RotationUtils;
@@ -53,6 +55,29 @@ public class Scaffold extends Module {
      * of at its centre.
      */
     private static final String[] ROTATION_MODES = new String[]{"Back", "Normal", "Offset", "Diagonal"};
+
+    /**
+     * How the bridge is built, which is a different question from where to look.
+     *
+     * Normal places behind you as fast as the aim allows. Keep Y refuses to descend, so a
+     * bridge stays level instead of stepping down where the ground falls away. Legit sneaks at
+     * the edge and releases after a delay, which is what a person does and what makes it hold
+     * up on a server watching for the things people cannot do.
+     */
+    private static final String[] SCAFFOLD_MODES = new String[]{"Normal", "Legit", "Keep Y"};
+    private static final int SCAFFOLD_NORMAL = 0;
+    private static final int SCAFFOLD_LEGIT = 1;
+    private static final int SCAFFOLD_KEEP_Y = 2;
+
+    private static final String[] MOVE_FIX_MODES = new String[]{"None", "Silent", "Strict"};
+    private static final int MOVE_FIX_NONE = 0;
+    private static final int MOVE_FIX_SILENT = 1;
+    private static final int MOVE_FIX_STRICT = 2;
+
+    private static final String[] ESP_COLOR_MODES = new String[]{"Theme", "Theme custom", "Custom"};
+    private static final int ESP_THEME = 0;
+    private static final int ESP_THEME_CUSTOM = 1;
+    private static final int ESP_CUSTOM = 2;
     /** How long the outline takes to fall away once the target moves on. */
     private static final long TARGET_FADE_MS = 220L;
     private static final int ROT_BACK = 0;
@@ -100,6 +125,31 @@ public class Scaffold extends Module {
     private ButtonSetting showTarget;
     private ButtonSetting targetFadeOut;
     private ButtonSetting targetShade;
+    private SliderSetting scaffoldMode;
+    private SliderSetting normalRotation;
+    private SliderSetting legitRotation;
+    private SliderSetting keepYRotation;
+    private SliderSetting moveFix;
+    private SliderSetting rotationSmoothing;
+    private SliderSetting angleStep;
+    private ButtonSetting dontRenderRotation;
+    private ButtonSetting autoItem;
+    private ButtonSetting itemCounter;
+    private ButtonSetting fakeItem;
+    private SliderSetting legitEdgeOffset;
+    private SliderSetting legitUnsneakDelay;
+    private ButtonSetting keepYOnRightClick;
+    private ButtonSetting keepYBlinkRotation;
+    private SliderSetting keepYJumpForwardChance;
+    private SliderSetting espColorMode;
+    private ColorSetting espCustomColor;
+    private GroupSetting rotationGroup;
+    private GroupSetting modeGroup;
+    private GroupSetting visualGroup;
+
+    /** Ticks the legit-mode sneak has been held, for the unsneak delay. */
+    private int legitSneakTicks = -1;
+    private final java.util.Random scaffoldRandom = new java.util.Random();
     private boolean eagleActive;
 
     /** Whether Sprint Scaf Mode currently owns the sprint key, and what it last asked for. */
@@ -120,19 +170,46 @@ private int previousSlot = -1;
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
         this.registerSetting(switchBack = new ButtonSetting("Switch back", true));
+        this.registerSetting(scaffoldMode = new SliderSetting("Mode", SCAFFOLD_NORMAL, SCAFFOLD_MODES));
         this.registerSetting(downPlace = new ButtonSetting("Down place", true));
-        this.registerSetting(rotationMode = new SliderSetting("Rotation", ROT_DIAGONAL, ROTATION_MODES));
-        this.registerSetting(offsetAmount = new SliderSetting("Offset", 0.15, 0.0, 1.0, 0.01));
-        this.registerSetting(aimCheck = new ButtonSetting("Aim check", true));
-        this.registerSetting(strictAimCheck = new ButtonSetting("Strict aim check", true));
         this.registerSetting(swing = new ButtonSetting("Swing", true));
-        this.registerSetting(straightAirDelay = new SliderSetting("Straight air delay", " tick", 1, 0, 4, 1));
-        this.registerSetting(diagonalAirDelay = new SliderSetting("Diagonal air delay", " tick", 1, 0, 4, 1));
-        this.registerSetting(straightJumpBlocks = new SliderSetting("Straight jump blocks", 0, 0, 3, 1));
-        this.registerSetting(diagonalJumpBlocks = new SliderSetting("Diagonal jump blocks", 0, 0, 3, 1));
-        this.registerSetting(showTarget = new ButtonSetting("Show target", true));
-        this.registerSetting(targetFadeOut = new ButtonSetting("Target fade out", true));
-        this.registerSetting(targetShade = new ButtonSetting("Target shade", false));
+
+        // Each mode keeps its own rotation. What reads well while sprinting a flat bridge is
+        // not what reads well while sneaking along an edge, and having one shared setting
+        // meant changing mode silently changed how the aim behaved.
+        this.registerSetting(rotationGroup = new GroupSetting("Rotation"));
+        this.registerSetting(rotationMode = new SliderSetting(rotationGroup, "Rotation", ROT_DIAGONAL, ROTATION_MODES));
+        this.registerSetting(normalRotation = new SliderSetting(rotationGroup, "Normal rotation", ROT_DIAGONAL, ROTATION_MODES));
+        this.registerSetting(legitRotation = new SliderSetting(rotationGroup, "Legit rotation", ROT_BACK, ROTATION_MODES));
+        this.registerSetting(keepYRotation = new SliderSetting(rotationGroup, "Keep Y rotation", ROT_DIAGONAL, ROTATION_MODES));
+        this.registerSetting(offsetAmount = new SliderSetting(rotationGroup, "Offset", 0.15, 0.0, 1.0, 0.01));
+        this.registerSetting(rotationSmoothing = new SliderSetting(rotationGroup, "Smoothing", "%", 0.0, 0.0, 100.0, 1.0));
+        this.registerSetting(angleStep = new SliderSetting(rotationGroup, "Angle step", "\u00b0", 90.0, 1.0, 180.0, 1.0));
+        this.registerSetting(aimCheck = new ButtonSetting(rotationGroup, "Aim check", true));
+        this.registerSetting(strictAimCheck = new ButtonSetting(rotationGroup, "Strict aim check", true));
+        this.registerSetting(moveFix = new SliderSetting(rotationGroup, "Move fix", MOVE_FIX_SILENT, MOVE_FIX_MODES));
+        this.registerSetting(dontRenderRotation = new ButtonSetting(rotationGroup, "Dont render rotation", false));
+
+        this.registerSetting(modeGroup = new GroupSetting("Mode options"));
+        this.registerSetting(legitEdgeOffset = new SliderSetting(modeGroup, "Legit edge offset", 0.0, 0.0, 0.3, 0.01));
+        this.registerSetting(legitUnsneakDelay = new SliderSetting(modeGroup, "Legit unsneak delay", "ms", 50.0, 50.0, 300.0, 5.0));
+        this.registerSetting(keepYOnRightClick = new ButtonSetting(modeGroup, "Keep Y on right click", false));
+        this.registerSetting(keepYBlinkRotation = new ButtonSetting(modeGroup, "Keep Y blink rotation", false));
+        this.registerSetting(keepYJumpForwardChance = new SliderSetting(modeGroup, "Keep Y jump forward", "%", 100.0, 0.0, 100.0, 1.0));
+        this.registerSetting(straightAirDelay = new SliderSetting(modeGroup, "Straight air delay", " tick", 1, 0, 4, 1));
+        this.registerSetting(diagonalAirDelay = new SliderSetting(modeGroup, "Diagonal air delay", " tick", 1, 0, 4, 1));
+        this.registerSetting(straightJumpBlocks = new SliderSetting(modeGroup, "Straight jump blocks", 0, 0, 3, 1));
+        this.registerSetting(diagonalJumpBlocks = new SliderSetting(modeGroup, "Diagonal jump blocks", 0, 0, 3, 1));
+
+        this.registerSetting(visualGroup = new GroupSetting("Visual"));
+        this.registerSetting(autoItem = new ButtonSetting(visualGroup, "Auto item", true));
+        this.registerSetting(itemCounter = new ButtonSetting(visualGroup, "Item counter", true));
+        this.registerSetting(fakeItem = new ButtonSetting(visualGroup, "Fake item", true));
+        this.registerSetting(showTarget = new ButtonSetting(visualGroup, "Show target", true));
+        this.registerSetting(targetFadeOut = new ButtonSetting(visualGroup, "Target fade out", true));
+        this.registerSetting(targetShade = new ButtonSetting(visualGroup, "Target shade", false));
+        this.registerSetting(espColorMode = new SliderSetting(visualGroup, "Target color", ESP_THEME, ESP_COLOR_MODES));
+        this.registerSetting(espCustomColor = new ColorSetting(visualGroup, "Custom color", 0, 170, 255, 64));
     }
 
     @Override
@@ -229,6 +306,8 @@ private void restorePreviousSlot() {
         // does not snap. Falling still forces the aim down at the face, since a bridge that
         // misses while you are already off the edge is the one that actually costs you.
         float[] target = placementRotations(best.pos, best.face);
+        target[0] = quantiseYaw(target[0]);
+        target = applySmoothing(target);
         float[] rots = applySpeedCap(lastRotsValid ? lastYaw : baseYaw,
                 lastRotsValid ? lastPitch : mc.thePlayer.rotationPitch,
                 target[0], willFall ? target[1] : Math.max(target[1], 82f));
@@ -287,7 +366,7 @@ private void restorePreviousSlot() {
         if (airAllows && placeQueued && queuedPos != null && queuedFace != null && queuedVec != null) {
             ItemStack held = mc.thePlayer.getHeldItem();
             if (held != null && held.getItem() instanceof ItemBlock) {
-                if (!keepY.isToggled() || queuedFace != EnumFacing.UP) {
+                if (!keepingY() || queuedFace != EnumFacing.UP) {
                     mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, held,
                             queuedPos, queuedFace, queuedVec);
                     if (swing.isToggled()) {
@@ -304,6 +383,7 @@ private void restorePreviousSlot() {
         placeQueued = false;
 
         updateEagle(placed);
+        updateLegitSneak();
 
         int sprintMode = (int) sprint.getInput();
         if (sprintMode != 0) {
@@ -363,9 +443,99 @@ private void restorePreviousSlot() {
             }
         }
 
-        int alpha = Math.max(0, Math.min(255, Math.round(0x40 * strength)));
-        int color = (alpha << 24) | 0x00AAFF;
+        int base = targetOutlineColor();
+        int alpha = Math.max(0, Math.min(255, Math.round(((base >>> 24) & 0xFF) * strength)));
+        int color = (alpha << 24) | (base & 0xFFFFFF);
         RenderUtils.renderBlock(drawAt, color, true, targetShade.isToggled());
+    }
+
+    /** The outline colour, by mode. Theme custom takes the theme hue at the custom opacity. */
+    private int targetOutlineColor() {
+        int mode = espColorMode == null ? ESP_THEME : (int) espColorMode.getInput();
+        int customAlpha = espCustomColor == null ? 0x40 : espCustomColor.getAlpha();
+        switch (mode) {
+            case ESP_CUSTOM:
+                return (customAlpha << 24) | (espCustomColor.getRGB() & 0xFFFFFF);
+            case ESP_THEME_CUSTOM:
+                return (customAlpha << 24)
+                        | (mindless.module.impl.render.HUD.getHudColor(0.0) & 0xFFFFFF);
+            case ESP_THEME:
+            default:
+                return 0x40000000 | (mindless.module.impl.render.HUD.getHudColor(0.0) & 0xFFFFFF);
+        }
+    }
+
+    /**
+     * Legit mode: crouch at the edge, and let go a moment later.
+     *
+     * Sneaking is what stops a player walking off the block they are building from, so a mode
+     * claiming to be legitimate has to actually do it. The release is delayed because letting
+     * go on the exact tick the edge clears is a tell in itself -- a hand is late.
+     */
+    private void updateLegitSneak() {
+        if (scaffoldMode == null || (int) scaffoldMode.getInput() != SCAFFOLD_LEGIT) {
+            if (legitSneakTicks >= 0) {
+                setShiftOverride(false);
+                legitSneakTicks = -1;
+            }
+            return;
+        }
+
+        double offset = legitEdgeOffset == null ? 0.0 : legitEdgeOffset.getInput();
+        boolean atEdge = isOverEdge(offset > 0.0 ? 1 : 0);
+        if (atEdge) {
+            setShiftOverride(true);
+            legitSneakTicks = 0;
+            return;
+        }
+        if (legitSneakTicks < 0) {
+            return;
+        }
+        int holdTicks = (int) Math.max(1.0,
+                (legitUnsneakDelay == null ? 50.0 : legitUnsneakDelay.getInput()) / 50.0);
+        if (++legitSneakTicks >= holdTicks) {
+            setShiftOverride(false);
+            legitSneakTicks = -1;
+        }
+    }
+
+    @Override
+    public void guiUpdate() {
+        int mode = scaffoldMode == null ? SCAFFOLD_NORMAL : (int) scaffoldMode.getInput();
+        // Only the rotation belonging to the active mode is worth showing; the shared one is
+        // left for profiles written before the modes existed.
+        if (rotationMode != null) rotationMode.setVisible(false, this);
+        if (normalRotation != null) normalRotation.setVisible(mode == SCAFFOLD_NORMAL, this);
+        if (legitRotation != null) legitRotation.setVisible(mode == SCAFFOLD_LEGIT, this);
+        if (keepYRotation != null) keepYRotation.setVisible(mode == SCAFFOLD_KEEP_Y, this);
+        if (offsetAmount != null) offsetAmount.setVisible(activeRotationMode() == ROT_OFFSET, this);
+        if (strictAimCheck != null) {
+            strictAimCheck.setVisible(aimCheck == null || aimCheck.isToggled(), this);
+        }
+
+        boolean legit = mode == SCAFFOLD_LEGIT;
+        if (legitEdgeOffset != null) legitEdgeOffset.setVisible(legit, this);
+        if (legitUnsneakDelay != null) legitUnsneakDelay.setVisible(legit, this);
+
+        boolean keeping = mode == SCAFFOLD_KEEP_Y;
+        if (keepYOnRightClick != null) keepYOnRightClick.setVisible(keeping, this);
+        if (keepYBlinkRotation != null) keepYBlinkRotation.setVisible(keeping, this);
+        if (keepYJumpForwardChance != null) keepYJumpForwardChance.setVisible(keeping, this);
+        if (keepY != null) keepY.setVisible(!keeping, this);
+
+        if (espCustomColor != null) {
+            int esp = espColorMode == null ? ESP_THEME : (int) espColorMode.getInput();
+            espCustomColor.setVisible(esp != ESP_THEME, this);
+        }
+        if (targetFadeOut != null) {
+            targetFadeOut.setVisible(showTarget == null || showTarget.isToggled(), this);
+        }
+        if (targetShade != null) {
+            targetShade.setVisible(showTarget == null || showTarget.isToggled(), this);
+        }
+        if (eagleSafety != null) {
+            eagleSafety.setVisible(eagle == null || eagle.isToggled(), this);
+        }
     }
 
     private void updateEagle(boolean placedThisTick) {
@@ -546,7 +716,7 @@ private void restorePreviousSlot() {
             return null;
         }
 
-        boolean tower = downPlace.isToggled() && !keepY.isToggled();
+        boolean tower = downPlace.isToggled() && !keepingY();
 
         java.util.List<BlockPos> candidates = new java.util.ArrayList<BlockPos>();
         collectCandidates(candidates, below, -4, 0, false);
@@ -704,11 +874,86 @@ private void restorePreviousSlot() {
      * so the movement yaw is simply the opposite of it, and every rotation mode is written
      * against this rather than against the camera.
      */
+    /**
+     * Snap the yaw to a fixed step around the movement direction.
+     *
+     * At ninety degrees this gives the four square angles behind you and nothing between, so
+     * the head sits on one of a handful of headings instead of tracking every block exactly --
+     * a much shorter list of distinct rotations than a continuous aim produces. Set it to one
+     * to leave the aim alone.
+     */
+    private float quantiseYaw(float yaw) {
+        double step = angleStep == null ? 90.0 : angleStep.getInput();
+        if (step <= 1.0) {
+            return yaw;
+        }
+        float base = movementYaw();
+        float relative = MathHelper.wrapAngleTo180_float(yaw - base);
+        float snapped = (float) (Math.round(relative / step) * step);
+        return base + snapped;
+    }
+
+    /**
+     * Ease the aim toward its target instead of arriving in one step.
+     *
+     * Separate from Rotation speed, which caps how far the head may travel in a tick. This
+     * blends toward the target so the approach decelerates, which is what a hand does; at zero
+     * it is off entirely.
+     */
+    private float[] applySmoothing(float[] target) {
+        double amount = rotationSmoothing == null ? 0.0 : rotationSmoothing.getInput();
+        if (amount <= 0.0 || !lastRotsValid) {
+            return target;
+        }
+        float blend = (float) (1.0 - Math.min(0.95, amount / 100.0 * 0.95));
+        float yaw = lastYaw + MathHelper.wrapAngleTo180_float(target[0] - lastYaw) * blend;
+        float pitch = lastPitch + (target[1] - lastPitch) * blend;
+        return new float[]{yaw, pitch};
+    }
+
     /** Both an axis and a strafe held, which is what makes a bridge diagonal. */
     private boolean isMovingDiagonally() {
         boolean axis = mc.gameSettings.keyBindForward.isKeyDown() || mc.gameSettings.keyBindBack.isKeyDown();
         boolean strafe = mc.gameSettings.keyBindLeft.isKeyDown() || mc.gameSettings.keyBindRight.isKeyDown();
         return axis && strafe;
+    }
+
+    /**
+     * Whether the bridge is being held level.
+     *
+     * The old Keep Y toggle is kept because profiles store it and people have it set; the
+     * mode does the same job, and either one turning it on is enough.
+     */
+    private boolean keepingY() {
+        if (keepY != null && keepY.isToggled()) {
+            return true;
+        }
+        if (scaffoldMode == null) {
+            return false;
+        }
+        if ((int) scaffoldMode.getInput() != SCAFFOLD_KEEP_Y) {
+            return false;
+        }
+        // Keep Y on right click narrows it to while the button is actually held, so a bridge
+        // can be dropped down deliberately without leaving the mode.
+        return keepYOnRightClick == null || !keepYOnRightClick.isToggled()
+                || org.lwjgl.input.Mouse.isButtonDown(1);
+    }
+
+    /** The rotation the current mode asks for. */
+    private int activeRotationMode() {
+        if (scaffoldMode == null) {
+            return rotationMode == null ? ROT_DIAGONAL : (int) rotationMode.getInput();
+        }
+        switch ((int) scaffoldMode.getInput()) {
+            case SCAFFOLD_LEGIT:
+                return legitRotation == null ? ROT_BACK : (int) legitRotation.getInput();
+            case SCAFFOLD_KEEP_Y:
+                return keepYRotation == null ? ROT_DIAGONAL : (int) keepYRotation.getInput();
+            case SCAFFOLD_NORMAL:
+            default:
+                return normalRotation == null ? ROT_DIAGONAL : (int) normalRotation.getInput();
+        }
     }
 
     private float movementYaw() {
@@ -767,7 +1012,7 @@ private void restorePreviousSlot() {
         float right = moveYaw + 135.0f;
         float yaw;
 
-        switch ((int) rotationMode.getInput()) {
+        switch (activeRotationMode()) {
             case ROT_NORMAL: {
                 yaw = direct[0];
                 if (aimHits(pos, face, back, pitch)) {
@@ -1051,7 +1296,8 @@ private void restorePreviousSlot() {
 
     private Item getBlockItem() {
         ItemStack held = mc.thePlayer.inventory.getCurrentItem();
-        if (held == null || !(held.getItem() instanceof ItemBlock) || held.stackSize <= 1) {
+        boolean maySwitch = autoItem == null || autoItem.isToggled();
+        if (maySwitch && (held == null || !(held.getItem() instanceof ItemBlock) || held.stackSize <= 1)) {
             int slot = getBestBlockSlot();
             if (slot != -1) mc.thePlayer.inventory.currentItem = slot;
         }
