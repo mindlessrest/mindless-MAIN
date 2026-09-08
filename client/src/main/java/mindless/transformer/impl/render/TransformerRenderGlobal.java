@@ -1,21 +1,43 @@
 package mindless.transformer.impl.render;
 
+import mindless.runtime.LunarEventBridge;
 import mindless.runtime.RenderGlobalState;
+import net.lenni0451.classtransform.InjectionCallback;
 import net.lenni0451.classtransform.annotations.CInline;
 import net.lenni0451.classtransform.annotations.CShadow;
 import net.lenni0451.classtransform.annotations.CTarget;
 import net.lenni0451.classtransform.annotations.CTransformer;
+import net.lenni0451.classtransform.annotations.injection.CInject;
 import net.lenni0451.classtransform.annotations.injection.CRedirect;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.MovingObjectPosition;
 
 @CTransformer(RenderGlobal.class)
 public class TransformerRenderGlobal {
     @CShadow
     private Minecraft mc;
+
+    /**
+     * Fire the block highlight event and honour a cancel.
+     *
+     * This is what Forge does at the same point. Without it Block Overlay never hears about a
+     * targeted block under Lunar, so none of its modes -- not even Hidden, which only cancels
+     * the vanilla box -- had any effect on that launch path.
+     */
+    @CInline
+    @CInject(method = "drawSelectionBox", target = @CTarget("HEAD"))
+    private void onDrawSelectionBox(EntityPlayer player, MovingObjectPosition target,
+                                    int execute, float partialTicks,
+                                    InjectionCallback callback) {
+        if (LunarEventBridge.postDrawBlockHighlight(player, target, execute, partialTicks)) {
+            callback.setCancelled(true);
+        }
+    }
 
     @CInline
     @CRedirect(method = "isRenderEntityOutlines",

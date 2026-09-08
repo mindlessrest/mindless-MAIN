@@ -8,6 +8,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.server.S02PacketChat;
 import net.minecraft.world.World;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
+import net.minecraftforge.client.event.DrawBlockHighlightEvent;
+import net.minecraft.util.MovingObjectPosition;
 import mindless.event.CancelableMouseEvent;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
@@ -107,6 +109,30 @@ public static boolean postChat(S02PacketChat packet) {
         ClientChatReceivedEvent event = new ClientChatReceivedEvent(
                 packet.getType(), packet.getChatComponent());
         return SYNTHETIC_EVENT_BUS.post(event);
+    }
+
+    /**
+     * The block highlight event, for the Lunar path.
+     *
+     * Forge fires this from its own hook inside drawSelectionBox, so on the Forge path it
+     * arrives without help. There is no Forge under Lunar, and nothing else posted it, so
+     * Block Overlay listened for an event that was never sent and the whole module did
+     * nothing at all in that launch path -- including the modes that only cancel vanilla.
+     *
+     * @return true when a listener cancelled it, meaning vanilla must not draw its box.
+     */
+    public static boolean postDrawBlockHighlight(EntityPlayer player,
+                                                 MovingObjectPosition target,
+                                                 int subId, float partialTicks) {
+        if (!DIRECT_LUNAR || player == null || target == null) {
+            return false;
+        }
+        Minecraft mc = Minecraft.getMinecraft();
+        ItemStack held = player.inventory == null ? null : player.inventory.getCurrentItem();
+        DrawBlockHighlightEvent event = new DrawBlockHighlightEvent(
+                mc.renderGlobal, player, target, subId, held, partialTicks);
+        SYNTHETIC_EVENT_BUS.post(event);
+        return event.isCanceled();
     }
 
     public static void postEntityJoin(Entity entity, World world) {
