@@ -27,6 +27,11 @@ import java.util.List;
  */
 public final class ChatWrapping {
 
+    // A wrapWidth at or below this is nonsensical (nothing could ever fit), and trimToWidth
+    // would previously hand back "" forever, turning every chat line into an empty component --
+    // i.e. the whole chat goes invisible. Clamp instead of trusting the caller.
+    private static final int MIN_WRAP_WIDTH = 20;
+
     private ChatWrapping() {
     }
 
@@ -36,12 +41,24 @@ public final class ChatWrapping {
         // Applied here rather than only at draw time: this is where a line is measured and
         // broken, so widening chat without it would draw a wider panel around text that had
         // already been wrapped to the old width.
-        wrapWidth = ChatModule.wrappingWidth(wrapWidth);
+        int configuredWidth = ChatModule.wrappingWidth(wrapWidth);
+        int effectiveWidth = Math.max(MIN_WRAP_WIDTH, configuredWidth);
         MindlessFontRenderer font = ChatModule.getCustomFont();
         if (font == null) {
             return GuiUtilRenderComponents.splitText(component, wrapWidth, vanillaFont, spaceAtEnd, keepFormatting);
         }
-        return splitWith(font, component, wrapWidth, spaceAtEnd, keepFormatting);
+        try {
+            List<IChatComponent> result = splitWith(font, component, effectiveWidth, spaceAtEnd, keepFormatting);
+            if (result == null || result.isEmpty()) {
+                // Shouldn't happen anymore, but never let a broken custom measurement silently
+                // swallow a message -- fall back to vanilla rather than drawing nothing.
+                return GuiUtilRenderComponents.splitText(component, wrapWidth, vanillaFont, spaceAtEnd, keepFormatting);
+            }
+            return result;
+        }
+        catch (RuntimeException fallbackToVanilla) {
+            return GuiUtilRenderComponents.splitText(component, wrapWidth, vanillaFont, spaceAtEnd, keepFormatting);
+        }
     }
 
     private static List<IChatComponent> splitWith(MindlessFontRenderer font, IChatComponent component,
@@ -89,9 +106,23 @@ public final class ChatWrapping {
                         head = "";
                         tail = styled;
                     }
-                    ChatComponentText carried = new ChatComponentText(FontRenderer.getFormatFromString(head) + tail);
-                    carried.setChatStyle(part.getChatStyle().createShallowCopy());
-                    pending.add(i + 1, carried);
+
+                    // If, after all that, head is still empty while used == 0, nothing was
+                    // consumed at all -- the tail we're about to carry over is identical to what
+                    // we started with, so the next pass would hit this exact branch again and
+                    // loop forever producing blank lines. Force at least one real character
+                    // through so every pass makes progress and the message stays visible.
+                    if (head.isEmpty() && used == 0 && !tail.isEmpty()) {
+                        int forced = firstCharacterLength(tail);
+                        head = tail.substring(0, forced);
+                        tail = tail.substring(forced);
+                    }
+
+                    if (!tail.isEmpty()) {
+                        ChatComponentText carried = new ChatComponentText(FontRenderer.getFormatFromString(head) + tail);
+                        carried.setChatStyle(part.getChatStyle().createShallowCopy());
+                        pending.add(i + 1, carried);
+                    }
                 }
 
                 width = font.getStringWidth(head);
@@ -144,6 +175,17 @@ public final class ChatWrapping {
             kept.append(c);
         }
         return kept.toString();
+    }
+
+    /**
+     * Length in characters of the first "real" character of text, treating a leading formatting
+     * code (§ + code char) as part of the same unit so we never split one off on its own.
+     */
+    private static int firstCharacterLength(String text) {
+        if (text.length() >= 2 && text.charAt(0) == '§') {
+            return Math.min(text.length(), 3);
+        }
+        return Math.min(text.length(), 1);
     }
 
     private static String stripColoursIfDisabled(String text, boolean keepFormatting) {
