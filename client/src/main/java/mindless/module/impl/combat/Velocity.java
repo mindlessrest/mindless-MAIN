@@ -61,6 +61,7 @@ public class Velocity extends Module {
     private SliderSetting reduceTicks;
 
     private ButtonSetting requireMoving;
+    private mindless.utility.combat.EntityTargets targets;
 
     private final Random random = new Random();
 
@@ -114,6 +115,9 @@ public class Velocity extends Module {
         this.registerSetting(requireMoving = new ButtonSetting("Require moving", false));
         this.registerSetting(onlyWhileTargeting = new ButtonSetting("Only while targeting", false));
         this.registerSetting(disableS = new ButtonSetting("Disable while holding S", false));
+        // Expo gates the whole module on somebody being nearby and worth reacting to, which
+        // is what stops it firing on fall damage and mob hits in an empty lobby.
+        this.targets = new mindless.utility.combat.EntityTargets(this, "Targets", 10.0, 1.0, 20.0);
         this.closetModule = true;
     }
 
@@ -197,6 +201,10 @@ public class Velocity extends Module {
         }
         if (onlyWhileTargeting.isToggled()
                 && (mc.objectMouseOver == null || mc.objectMouseOver.entityHit == null)) {
+            return false;
+        }
+        // Nobody worth reacting to nearby means this was not combat knockback.
+        if (targets != null && targets.findNearest() == null) {
             return false;
         }
         double roll = chance.getInput();

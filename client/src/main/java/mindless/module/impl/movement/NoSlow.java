@@ -144,9 +144,13 @@ public class NoSlow extends Module {
 
     /** Whether Autoblock currently has a block standing. */
     private static boolean isBlockingNow() {
-        return ModuleManager.autoBlock != null
-                && ModuleManager.autoBlock.isEnabled()
-                && ModuleManager.autoBlock.isActive();
+        if (ModuleManager.autoBlock == null || !ModuleManager.autoBlock.isEnabled()) {
+            return false;
+        }
+        // Autoblock owns this decision: it knows whether a block is standing and
+        // whether it wants the slowdown lifted right now, including its own
+        // disable-in-range rule. Asking it is what keeps the two from disagreeing.
+        return ModuleManager.autoBlock.isActive() && ModuleManager.autoBlock.allowsNoSlow();
     }
 
     @Override

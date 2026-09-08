@@ -49,14 +49,19 @@ public class Autoblock extends Module {
     private static final int MODE_LEGIT = 2;
 
     private final SliderSetting mode;
-    private final SliderSetting range;
-    private final SliderSetting fov;
+    private final mindless.utility.combat.EntityTargets targets;
 
     private final GroupSetting conditionGroup;
     private final ButtonSetting requireLeftClick;
+    private final ButtonSetting manualLeftClick;
     private final ButtonSetting requireRightClick;
     private final ButtonSetting requireKillAura;
-    private final ButtonSetting onlyPlayers;
+
+    private final GroupSetting noSlowGroup;
+    private final ButtonSetting allowNoSlow;
+    private final ButtonSetting onlyUnblockWithoutNoSlow;
+    private final ButtonSetting disableNoSlowInRange;
+    private final SliderSetting noSlowDisableRange;
 
     private final GroupSetting unblockGroup;
     private final ButtonSetting smartUnblock;
@@ -88,19 +93,27 @@ public class Autoblock extends Module {
     public Autoblock() {
         super("Autoblock", "Blocks with your sword without giving up the swing.", category.combat, 0);
         this.registerSetting(mode = new SliderSetting("Mode", MODE_BLOCKHIT, MODES));
-        this.registerSetting(range = new SliderSetting("Range", 4.0, 2.0, 6.0, 0.1));
-        this.registerSetting(fov = new SliderSetting("FOV", "°", 180.0, 30.0, 360.0, 5.0));
 
         this.registerSetting(conditionGroup = new GroupSetting("Conditions"));
         this.registerSetting(requireLeftClick = new ButtonSetting(conditionGroup, "Require left click", true));
+        this.registerSetting(manualLeftClick = new ButtonSetting(conditionGroup, "Manual left click", false));
         this.registerSetting(requireRightClick = new ButtonSetting(conditionGroup, "Require right click", false));
-        this.registerSetting(requireKillAura = new ButtonSetting(conditionGroup, "Require KillAura", false));
-        this.registerSetting(onlyPlayers = new ButtonSetting(conditionGroup, "Players only", true));
+        this.registerSetting(requireKillAura = new ButtonSetting(conditionGroup, "Require KillAura", true));
+
+        // How the block interacts with No Slow. Blocking at full speed is the loudest part of
+        // an autoblock, so these decide when to give the speed back.
+        this.registerSetting(noSlowGroup = new GroupSetting("No Slow"));
+        this.registerSetting(allowNoSlow = new ButtonSetting(noSlowGroup, "Allow No Slow", true));
+        this.registerSetting(onlyUnblockWithoutNoSlow = new ButtonSetting(noSlowGroup, "Only unblock without No Slow", true));
+        this.registerSetting(disableNoSlowInRange = new ButtonSetting(noSlowGroup, "Disable No Slow in range", true));
+        this.registerSetting(noSlowDisableRange = new SliderSetting(noSlowGroup, "No Slow disable range", " block", 3.5, 0.0, 8.0, 0.05));
+
+        this.targets = new mindless.utility.combat.EntityTargets(this, "Targets", 5.0, 1.0, 8.0);
 
         this.registerSetting(unblockGroup = new GroupSetting("Smart unblock"));
         this.registerSetting(smartUnblock = new ButtonSetting(unblockGroup, "Smart unblock", false));
-        this.registerSetting(smartUnblockChance = new SliderSetting(unblockGroup, "Unblock chance", "%", 25.0, 0.0, 100.0, 5.0));
-        this.registerSetting(smartUnblockTicks = new SliderSetting(unblockGroup, "Unblock ticks", 2.0, 1.0, 10.0, 1.0));
+        this.registerSetting(smartUnblockChance = new SliderSetting(unblockGroup, "Unblock chance", "%", 100.0, 0.0, 100.0, 5.0));
+        this.registerSetting(smartUnblockTicks = new SliderSetting(unblockGroup, "Unblock ticks", 8.0, 0.0, 15.0, 1.0));
 
         this.registerSetting(visualBlocking = new ButtonSetting("Visual blocking", true));
         this.registerSetting(cooldown = new SliderSetting("Cooldown", "ms", 0.0, 0.0, 500.0, 25.0));
@@ -226,7 +239,7 @@ public class Autoblock extends Module {
 
         injecting = true;
         try {
-            if (currentMode() == MODE_BLOCKHIT) {
+            if (currentMode() == MODE_BLOCKHIT && shouldReleaseForAttack()) {
                 // Bounce the held item off the sword and straight back. The round trip is what
                 // clears the server's item-in-use record; the slot we land on does not matter,
                 // only that it is a different one.
@@ -270,7 +283,11 @@ public class Autoblock extends Module {
         }
         // The aura swinging on its own counts as the left button being down; otherwise the
         // module would refuse to block for exactly the setup it exists to support.
-        if (requireLeftClick.isToggled() && !Mouse.isButtonDown(0) && !auraAttacking) {
+        // Manual left click means only a real button press counts; the aura swinging on its
+        // own is not enough. Off, an aura attacking stands in for the button, which is the
+        // setup this module exists to support.
+        boolean pressed = Mouse.isButtonDown(0) || (!manualLeftClick.isToggled() && auraAttacking);
+        if (requireLeftClick.isToggled() && !pressed) {
             return false;
         }
         if (requireRightClick.isToggled() && !Mouse.isButtonDown(1)) {
@@ -280,19 +297,33 @@ public class Autoblock extends Module {
     }
 
     private EntityLivingBase findTarget() {
-        double reach = range.getInput();
-        EntityLivingBase found = CombatTargeting.findTarget(reach * reach);
-        if (found == null) {
-            return null;
+        return targets.findNearest();
+    }
+
+    /**
+     * Whether No Slow may lift the blocking slowdown right now.
+     *
+     * No Slow asks this rather than deciding for itself, so the two cannot disagree about
+     * whether a block is standing. Disable in range exists because moving at full speed is
+     * least believable exactly when someone is close enough to watch it.
+     */
+    public boolean allowsNoSlow() {
+        if (!isEnabled() || !allowNoSlow.isToggled()) {
+            return false;
         }
-        if (onlyPlayers.isToggled() && !(found instanceof EntityPlayer)) {
-            return null;
+        if (disableNoSlowInRange.isToggled() && target != null && Utils.nullCheck()) {
+            if (mc.thePlayer.getDistanceToEntity(target) <= noSlowDisableRange.getInput()) {
+                return false;
+            }
         }
-        double allowed = fov.getInput();
-        if (allowed < 360.0 && !Utils.inFov((float) allowed, found)) {
-            return null;
-        }
-        return found;
+        return true;
+    }
+
+    /** Whether the block should be dropped for a swing rather than bounced through a slot. */
+    private boolean shouldReleaseForAttack() {
+        // With No Slow lifted the block is already paying for itself; releasing it as well
+        // gives up the speed for nothing.
+        return !onlyUnblockWithoutNoSlow.isToggled() || !allowsNoSlow();
     }
 
     private boolean isCoolingDown() {
