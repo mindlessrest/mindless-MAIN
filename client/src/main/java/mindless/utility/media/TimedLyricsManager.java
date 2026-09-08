@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.LinkedHashMap;
 import java.util.regex.Matcher;
@@ -24,6 +25,12 @@ final class TimedLyricsManager {
     private static final String LRCLIB_SEARCH_URL = "https://lrclib.net/api/search";
     private static final String NETEASE_SEARCH_URL = "https://music.163.com/api/search/get";
     private static final String NETEASE_LYRIC_URL = "https://music.163.com/api/song/lyric";
+    private static final String LYRICS_OVH_URL = "https://api.lyrics.ovh/v1/";
+    /** Per-request ceiling. A provider that misses it loses its turn rather than the whole lookup. */
+    private static final int HTTP_CONNECT_TIMEOUT_MS = 2500;
+    private static final int HTTP_READ_TIMEOUT_MS = 4000;
+    /** Total budget for the parallel lookup. */
+    private static final long LOOKUP_BUDGET_MS = 7000L;
     private static final Pattern LRC_TIMESTAMP_PATTERN = Pattern.compile("\\[(\\d{1,2}):(\\d{2})(?:\\.(\\d{1,3}))?\\]");
     private static final Pattern DECORATION_PATTERN = Pattern.compile("\\s*(\\([^)]*\\)|\\[[^]]*\\]|\\{[^}]*\\})\\s*");
     private static final Pattern NETEASE_CREDIT_LINE_PATTERN = Pattern.compile("^[?ï¼Ÿ\u4e00-\u9fff]{1,8}\\s*[:ï¼š]");
@@ -193,33 +200,148 @@ final class TimedLyricsManager {
         cache.put(trackKey, lyrics);
     }
 
-    private static TimedLyrics fetchTimedLyrics(SystemMediaInfo mediaInfo) {
+    /**
+     * Ask every provider at once and take the best answer.
+     *
+     * These used to run one after another, so a track only LRCLIB has never paid for NetEase,
+     * but a track nobody has paid for all of them end to end -- five round trips of waiting
+     * before the widget could say there were no lyrics. They are independent lookups, so the
+     * cost is now the slowest one rather than the sum.
+     *
+     * Priority still decides the winner, not arrival order: a fast poor match must not beat a
+     * slower exact one. LRCLIB is preferred because its results are synced and matched on
+     * duration, then NetEase, and lyrics.ovh last because it has no timing at all.
+     *
+     * This runs on the shared executor, never the render thread, so the extra concurrency
+     * costs connections and not frames.
+     */
+    private static TimedLyrics fetchTimedLyrics(final SystemMediaInfo mediaInfo) {
+        List<Future<TimedLyrics>> providers = new ArrayList<Future<TimedLyrics>>();
         try {
-            JsonObject exactRecord = fetchExactRecord(mediaInfo);
-            if (exactRecord != null) {
-                TimedLyrics exactLyrics = parseLyricsRecord(exactRecord);
-                if (exactLyrics.isAvailable()) {
-                    return exactLyrics;
+            providers.add(Mindless.getCachedExecutor().submit(new Callable<TimedLyrics>() {
+                @Override
+                public TimedLyrics call() {
+                    JsonObject record = fetchExactRecord(mediaInfo);
+                    TimedLyrics lyrics = record == null ? TimedLyrics.empty() : parseLyricsRecord(record);
+                    if (lyrics.isAvailable()) {
+                        return lyrics;
+                    }
+                    JsonObject fallback = fetchFallbackRecord(mediaInfo);
+                    return fallback == null ? TimedLyrics.empty() : parseLyricsRecord(fallback);
                 }
-            }
-
-            JsonObject fallbackRecord = fetchFallbackRecord(mediaInfo);
-            if (fallbackRecord != null) {
-                TimedLyrics fallbackLyrics = parseLyricsRecord(fallbackRecord);
-                if (fallbackLyrics.isAvailable()) {
-                    return fallbackLyrics;
+            }));
+            providers.add(Mindless.getCachedExecutor().submit(new Callable<TimedLyrics>() {
+                @Override
+                public TimedLyrics call() {
+                    return fetchNeteaseTimedLyrics(mediaInfo);
                 }
-            }
+            }));
+            providers.add(Mindless.getCachedExecutor().submit(new Callable<TimedLyrics>() {
+                @Override
+                public TimedLyrics call() {
+                    return fetchLyricsOvh(mediaInfo);
+                }
+            }));
 
-            TimedLyrics neteaseLyrics = fetchNeteaseTimedLyrics(mediaInfo);
-            if (neteaseLyrics.isAvailable()) {
-                return neteaseLyrics;
+            long deadline = System.currentTimeMillis() + LOOKUP_BUDGET_MS;
+            for (Future<TimedLyrics> provider : providers) {
+                long remaining = deadline - System.currentTimeMillis();
+                TimedLyrics lyrics = awaitQuietly(provider, Math.max(0L, remaining));
+                if (lyrics != null && lyrics.isAvailable()) {
+                    return lyrics;
+                }
             }
         }
         catch (Exception ignored) {
         }
+        finally {
+            // Whoever lost the race is no longer wanted; a provider left running would hold a
+            // connection open past the track it was looking up.
+            for (Future<TimedLyrics> provider : providers) {
+                provider.cancel(true);
+            }
+        }
 
         return TimedLyrics.unavailable("No synced lyrics found");
+    }
+
+    private static TimedLyrics awaitQuietly(Future<TimedLyrics> provider, long timeoutMs) {
+        try {
+            return provider.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
+        catch (Exception unfinished) {
+            return null;
+        }
+    }
+
+    /**
+     * Plain lyrics from lyrics.ovh, the last resort.
+     *
+     * This service returns words and nothing else -- no timestamps -- so the lines are spread
+     * evenly across the track. That is an estimate and it drifts, badly on anything with a long
+     * intro or instrumental break, which is why it is only reached when both synced providers
+     * have come back empty. The status says so rather than presenting it as real sync.
+     */
+    private static TimedLyrics fetchLyricsOvh(SystemMediaInfo mediaInfo) {
+        String title = mediaInfo.getTitle().trim();
+        String artist = mediaInfo.getArtist().trim();
+        if (title.isEmpty() || artist.isEmpty()) {
+            return TimedLyrics.empty();
+        }
+
+        long durationMs = mediaInfo.getDurationMs();
+        if (durationMs <= 0L) {
+            // With no duration there is nothing to spread the lines across.
+            return TimedLyrics.empty();
+        }
+
+        String url = LYRICS_OVH_URL + urlEncode(artist) + "/" + urlEncode(title);
+        String response = NetworkUtils.getTextFromURL(url, HTTP_CONNECT_TIMEOUT_MS, HTTP_READ_TIMEOUT_MS);
+        if (response == null || response.isEmpty()) {
+            return TimedLyrics.empty();
+        }
+
+        String body;
+        try {
+            JsonElement parsed = new JsonParser().parse(new StringReader(response));
+            if (!parsed.isJsonObject()) {
+                return TimedLyrics.empty();
+            }
+            JsonElement lyricsElement = parsed.getAsJsonObject().get("lyrics");
+            if (lyricsElement == null || lyricsElement.isJsonNull()) {
+                return TimedLyrics.empty();
+            }
+            body = lyricsElement.getAsString();
+        }
+        catch (Exception malformed) {
+            return TimedLyrics.empty();
+        }
+        if (body == null || body.trim().isEmpty()) {
+            return TimedLyrics.empty();
+        }
+
+        List<TimedLyrics.LyricsLine> lines = new ArrayList<TimedLyrics.LyricsLine>();
+        List<String> text = new ArrayList<String>();
+        for (String raw : body.split("\\r?\\n")) {
+            String trimmed = raw.trim();
+            // The service prefixes a credits header before the first blank line.
+            if (trimmed.isEmpty() && text.isEmpty()) {
+                continue;
+            }
+            text.add(trimmed);
+        }
+        while (!text.isEmpty() && text.get(text.size() - 1).isEmpty()) {
+            text.remove(text.size() - 1);
+        }
+        if (text.isEmpty()) {
+            return TimedLyrics.empty();
+        }
+
+        long step = Math.max(1L, durationMs / text.size());
+        for (int i = 0; i < text.size(); i++) {
+            lines.add(new TimedLyrics.LyricsLine(i * step, text.get(i)));
+        }
+        return TimedLyrics.estimated(lines);
     }
 
     private static JsonObject fetchExactRecord(SystemMediaInfo mediaInfo) {
@@ -240,7 +362,7 @@ final class TimedLyricsManager {
             url.append("&duration=").append(Math.max(1L, mediaInfo.getDurationMs() / 1000L));
         }
 
-        String response = NetworkUtils.getTextFromURL(url.toString(), false, false);
+        String response = NetworkUtils.getTextFromURL(url.toString(), HTTP_CONNECT_TIMEOUT_MS, HTTP_READ_TIMEOUT_MS);
         if (response == null || response.trim().isEmpty()) {
             return null;
         }
@@ -264,7 +386,7 @@ final class TimedLyricsManager {
             url.append("&album_name=").append(urlEncode(mediaInfo.getAlbum().trim()));
         }
 
-        String response = NetworkUtils.getTextFromURL(url.toString(), false, false);
+        String response = NetworkUtils.getTextFromURL(url.toString(), HTTP_CONNECT_TIMEOUT_MS, HTTP_READ_TIMEOUT_MS);
         if (response == null || response.trim().isEmpty()) {
             return null;
         }

@@ -32,6 +32,20 @@ public final class TimedLyrics {
         return new TimedLyrics(false, false, statusMessage, Collections.<LyricsLine>emptyList());
     }
 
+    /**
+     * Lyrics whose timings were guessed rather than supplied.
+     *
+     * Spread evenly over the track by whoever built them, so they drift. Marked separately
+     * from real synced lyrics purely so the status line can be honest about it.
+     */
+    public static TimedLyrics estimated(List<LyricsLine> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return EMPTY;
+        }
+        return new TimedLyrics(true, false, "Lyrics (estimated timing)",
+                Collections.unmodifiableList(new ArrayList<LyricsLine>(lines)));
+    }
+
     public static TimedLyrics of(List<LyricsLine> lines) {
         if (lines == null || lines.isEmpty()) {
             return empty();

@@ -27,6 +27,32 @@ public class NetworkUtils {
         return !contents.isEmpty() && !contents.contains("Invalid");
     }
 
+    /**
+     * A GET that is allowed to give up.
+     *
+     * The plain getTextFromURL sets no timeouts at all, so a host that accepts the connection
+     * and then stops talking holds the calling thread for the JVM default -- which on some
+     * platforms is indefinitely. That is tolerable for a one-off call and not tolerable for a
+     * provider chain, where one slow host stalls every provider queued behind it.
+     */
+    public static String getTextFromURL(String _url, int connectTimeoutMs, int readTimeoutMs) {
+        String contents = "";
+        HttpURLConnection con = null;
+        try {
+            URL url = new URL(_url);
+            con = (HttpURLConnection) url.openConnection();
+            con.setConnectTimeout(connectTimeoutMs);
+            con.setReadTimeout(readTimeoutMs);
+            contents = getTextFromConnection(con, false);
+        } catch (IOException ignored) {
+        } finally {
+            if (con != null) {
+                con.disconnect();
+            }
+        }
+        return contents;
+    }
+
     public static String getTextFromURL(String _url, boolean appendNewline, boolean sendHardwareId) {
         String contents = "";
         HttpURLConnection con = null;
