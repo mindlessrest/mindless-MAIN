@@ -82,9 +82,12 @@ public abstract class TransformerGuiNewChat {
         }
 
         boolean chatOpen = getChatOpen();
-        int lineCount = ChatModule.lines(getLineCount());
         float scale = Math.max(0.1f, getChatScale());
         int chatWidth = MathHelper.ceiling_float_int(ChatModule.width(getChatWidth()) / scale);
+        MindlessFontRenderer chatFont = ChatModule.getCustomFont();
+        float rowHeight = (chatFont != null ? chatFont.getLineHeight() : 9.0f) + ChatModule.lineSpacing();
+        if (rowHeight < 1.0f) rowHeight = 1.0f;
+        int lineCount = ChatModule.lines(getLineCount(), rowHeight, scale);
         int visibleLines = Math.min(lineCount, Math.max(0, totalLines - scrollPos));
         ScaledResolution sr = ScaledResolutionCache.get();
         long now = System.currentTimeMillis();
@@ -96,9 +99,6 @@ public abstract class TransformerGuiNewChat {
         }
         double newestEase = GuiNewChatState.easeOutCubic(newestProgress);
         double animatedRows = Math.max(0.0, visibleLines - 1.0 + newestEase);
-        MindlessFontRenderer chatFont = ChatModule.getCustomFont();
-        float rowHeight = (chatFont != null ? chatFont.getLineHeight() : 9.0f) + ChatModule.lineSpacing();
-        if (rowHeight < 1.0f) rowHeight = 1.0f;
         float headSize = ChatModule.playerHeads() ? ChatModule.headSize() : 0.0f;
         float textIndent = headSize > 0.0f ? headSize + 2.0f : 0.0f;
         float bgX = 3.0f;
@@ -115,7 +115,9 @@ public abstract class TransformerGuiNewChat {
                     : mc.fontRendererObj.getStringWidth(measuredText);
             if (lineWidth > widestLine) widestLine = lineWidth;
         }
-        float contentWidth = Math.min((float) chatWidth, widestLine + 6.0f);
+        float contentWidth = ChatModule.hasCustomWidth()
+                ? chatWidth
+                : Math.min((float) chatWidth, widestLine + 6.0f);
         if (contentWidth < 24.0f) contentWidth = 24.0f;
         float bgW = contentWidth * scale + 10.0f + textIndent * scale;
         float bgH = (float) (animatedRows * rowHeight * scale + 10.0f);

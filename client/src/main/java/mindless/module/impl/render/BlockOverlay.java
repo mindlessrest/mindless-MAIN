@@ -26,6 +26,7 @@ import net.minecraft.util.BlockPos;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraftforge.client.event.DrawBlockHighlightEvent;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.opengl.GL11;
@@ -112,6 +113,19 @@ public class BlockOverlay extends Module {
             return;
         }
         e.setCanceled(true);
+    }
+
+    /**
+     * Draw custom geometry from the reliable end-of-world pass. Rendering directly inside
+     * drawSelectionBox depended on launcher-specific GL state and, on Lunar, on an injected
+     * highlight callback that is not present in every renderer build. The highlight event now
+     * only decides whether vanilla is cancelled; both Forge and Lunar render the replacement
+     * through the same RenderWorldLastEvent path.
+     */
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onRenderWorldLast(RenderWorldLastEvent event) {
+        int mode = (int) renderMode.getInput();
+        if (mode < 2) return;
         if (!Utils.nullCheck()) return;
         if (!persistence.isToggled() && mc.thePlayer.isSpectator()) return;
         BlockPos pos = getFocusedBlock();

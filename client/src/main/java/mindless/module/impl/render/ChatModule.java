@@ -7,6 +7,8 @@ import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.runtime.GuiNewChatState;
 import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.IChatComponent;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 public class ChatModule extends Module {
@@ -24,6 +26,7 @@ public class ChatModule extends Module {
     private static SliderSetting headSize;
     private static SliderSetting lineSpacing;
     private static SliderSetting chatWidth;
+    private static SliderSetting chatHeight;
     private static SliderSetting chatLines;
     private static ButtonSetting markOwnMessages;
     private static SliderSetting ownMarkerText;
@@ -43,6 +46,7 @@ public class ChatModule extends Module {
         // and it governs wrapping as well as the panel, so a wider chat actually fits more on
         // a line rather than drawing a wider box around the same wrapping.
         this.registerSetting(chatWidth = new SliderSetting("Chat width", "px", true, 320.0, 80.0, 640.0, 5.0));
+        this.registerSetting(chatHeight = new SliderSetting("Chat height", "px", true, 180.0, 36.0, 360.0, 5.0));
         this.registerSetting(chatLines = new SliderSetting("Chat lines", true, 10.0, 1.0, 30.0, 1.0));
         this.registerSetting(markOwnMessages = new ButtonSetting("Mark own messages", true));
         this.registerSetting(ownMarkerText = new SliderSetting("Own marker", 0,
@@ -65,6 +69,12 @@ public class ChatModule extends Module {
         if (headSize != null) {
             headSize.setVisible(playerHeads != null && playerHeads.isToggled(), this);
         }
+        if (chatLines != null) {
+            chatLines.setVisible(chatHeight == null || chatHeight.getInput() < 0.0, this);
+        }
+        if (ownMarkerText != null) {
+            ownMarkerText.setVisible(markOwnMessages != null && markOwnMessages.isToggled(), this);
+        }
     }
 
     @Override
@@ -79,7 +89,7 @@ public class ChatModule extends Module {
 
     @Override
     public void onSlide(SliderSetting setting) {
-        if (setting == font || setting == fontScale) {
+        if (setting == font || setting == fontScale || setting == chatWidth) {
             rewrapChat();
         }
     }
@@ -145,7 +155,19 @@ public static float backgroundOpacity() {
         String sender = GuiNewChatState.resolvedSenderOf(event.message);
         if (sender == null || !sender.equalsIgnoreCase(mc.thePlayer.getName())) return;
 
+        // Lunar can expose the same packet through its natural Forge bus and Mindless's
+        // compatibility bus. Appending is therefore deliberately idempotent: whichever path
+        // arrives second sees the existing marker and leaves the component alone.
+        if (hasOwnMarker(event.message)) return;
+
         event.message.appendSibling(new ChatComponentText(" \u00a77" + ownMarkerLabel()));
+    }
+
+    private static boolean hasOwnMarker(IChatComponent component) {
+        String plain = EnumChatFormatting.getTextWithoutFormattingCodes(component.getFormattedText());
+        if (plain == null) return false;
+        plain = plain.trim();
+        return plain.endsWith("(you)") || plain.endsWith("(me)") || plain.endsWith("<-- you");
     }
 
     private static String ownMarkerLabel() {
@@ -177,12 +199,37 @@ public static float backgroundOpacity() {
         return (int) chatWidth.getInput();
     }
 
+    public static boolean hasCustomWidth() {
+        return active() && chatWidth != null && chatWidth.getInput() >= 0.0;
+    }
+
+    /** Width used by GuiNewChat's stored-line splitter (logical pixels, before chat scale). */
+    public static int wrappingWidth(int vanillaWidth) {
+        if (!hasCustomWidth()) return vanillaWidth;
+        net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getMinecraft();
+        float scale = 1.0f;
+        if (minecraft != null && minecraft.ingameGUI != null
+                && minecraft.ingameGUI.getChatGUI() != null) {
+            scale = Math.max(0.1f, minecraft.ingameGUI.getChatGUI().getChatScale());
+        }
+        return Math.max(1, (int) Math.ceil(chatWidth.getInput() / scale));
+    }
+
     /** Visible lines, or the vanilla count when the override is off. */
     public static int lines(int vanillaLines) {
         if (!active() || chatLines == null || chatLines.getInput() < 0) {
             return vanillaLines;
         }
         return Math.max(1, (int) chatLines.getInput());
+    }
+
+    /** Pixel height takes precedence over the legacy line-count control when enabled. */
+    public static int lines(int vanillaLines, float rowHeight, float scale) {
+        if (active() && chatHeight != null && chatHeight.getInput() >= 0.0) {
+            float physicalRowHeight = Math.max(1.0f, rowHeight * Math.max(0.1f, scale));
+            return Math.max(1, (int) Math.floor(chatHeight.getInput() / physicalRowHeight));
+        }
+        return lines(vanillaLines);
     }
 
 public static float lineSpacing() {
