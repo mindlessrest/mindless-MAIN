@@ -112,6 +112,7 @@ public class ModuleManager {
     public static Displace displace;
     public static ShopHelper shopHelper;
     public static BedTracker bedTracker;
+    public static mindless.module.impl.bedwars.BedDefender bedDefender;
     public static ResourceTracker resourceTracker;
     public static EventTimers eventTimers;
     public static Autoblock autoBlock;
@@ -165,6 +166,7 @@ public class ModuleManager {
         this.addModule(new PickupAlerts());
         this.addModule(new UpgradeAlerts());
         this.addModule(bedTracker = new BedTracker());
+        this.addModule(bedDefender = new mindless.module.impl.bedwars.BedDefender());
         this.addModule(resourceTracker = new ResourceTracker());
         this.addModule(eventTimers = new EventTimers());
         this.addModule(bedwars = new BedWars());

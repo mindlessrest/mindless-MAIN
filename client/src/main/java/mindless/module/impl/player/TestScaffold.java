@@ -237,9 +237,7 @@ private Vec3 ltPendHit = null;
 
 public TestScaffold() {
     super("Test Scaffold", "Experimental scaffold port.", category.player);
-    this.registerSetting(new DescriptionSetting("Credits to Lizzie - @jenrnr."));
-    this.registerSetting(new DescriptionSetting("This module would not exist without their"));
-    this.registerSetting(new DescriptionSetting("scaffold. We thank you ❤"));
+    this.registerSetting(new DescriptionSetting("Scaffold by Lizzie (@jenrnr) ❤"));
     this.registerSetting(towerMode = new SliderSetting("Tower", 0, TOWER_MODES));
     this.registerSetting(keepMode = new SliderSetting("Keep Y", 0, KEEP_MODES));
     GroupSetting yOptions = new GroupSetting("Y Options");
