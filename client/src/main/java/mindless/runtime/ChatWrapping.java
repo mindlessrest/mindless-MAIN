@@ -49,7 +49,8 @@ public final class ChatWrapping {
         }
         try {
             List<IChatComponent> result = splitWith(font, component, effectiveWidth, spaceAtEnd, keepFormatting);
-            if (result == null || result.isEmpty()) {
+            if (result == null || result.isEmpty()
+                    || (hasVisibleText(component) && !hasVisibleText(result))) {
                 // Shouldn't happen anymore, but never let a broken custom measurement silently
                 // swallow a message -- fall back to vanilla rather than drawing nothing.
                 return GuiUtilRenderComponents.splitText(component, wrapWidth, vanillaFont, spaceAtEnd, keepFormatting);
@@ -59,6 +60,19 @@ public final class ChatWrapping {
         catch (RuntimeException fallbackToVanilla) {
             return GuiUtilRenderComponents.splitText(component, wrapWidth, vanillaFont, spaceAtEnd, keepFormatting);
         }
+    }
+
+    private static boolean hasVisibleText(IChatComponent component) {
+        if (component == null) return false;
+        String text = EnumChatFormatting.getTextWithoutFormattingCodes(component.getFormattedText());
+        return text != null && !text.trim().isEmpty();
+    }
+
+    private static boolean hasVisibleText(List<IChatComponent> components) {
+        for (IChatComponent component : components) {
+            if (hasVisibleText(component)) return true;
+        }
+        return false;
     }
 
     private static List<IChatComponent> splitWith(MindlessFontRenderer font, IChatComponent component,

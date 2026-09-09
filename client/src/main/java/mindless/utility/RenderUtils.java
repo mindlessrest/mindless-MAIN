@@ -1882,6 +1882,20 @@ public static void syncGlStateFromDriver(int mask) {
      * ran first.
      */
     public static void beginTextPass() {
+        // Several Lunar render paths issue raw OpenGL calls, which can leave GlStateManager's
+        // cached booleans disagreeing with the driver. Calling enableAlpha() in that state is a
+        // no-op even though GL_ALPHA_TEST is really disabled, and every glyph can disappear.
+        // Establish the driver state directly first; the wrapper calls below keep Minecraft's
+        // expected state/cache contract for the rest of the HUD pass.
+        OpenGlHelper.glUseProgram(0);
+        GL11.glDisable(GL11.GL_LIGHTING);
+        GL11.glDisable(GL11.GL_FOG);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glEnable(GL11.GL_ALPHA_TEST);
+        GL11.glAlphaFunc(GL11.GL_GREATER, 0.1F);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL14.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
         GlStateManager.disableLighting();
         GlStateManager.disableFog();
         GlStateManager.enableTexture2D();
@@ -1893,6 +1907,7 @@ public static void syncGlStateFromDriver(int mask) {
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         GlStateManager.colorMask(true, true, true, true);
         GL11.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
+        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
 

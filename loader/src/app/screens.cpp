@@ -460,11 +460,11 @@ static bool draw_checkbox(DrawList& dl, FontAtlas& cap, Rect r, const char* labe
     float h = hover.value();
     float c = checkAnim.value();
 
-    Color boxBg = t.buttonBg.lerp(t.buttonHover, h).lerp(t.accent, c);
+    Color boxBg = t.buttonBg.lerp(t.buttonHover, h).lerp(t.surfaceRaised, c * 0.7f);
     Color boxBorder = t.buttonBorder.lerp(t.accent, c);
 
     if (c > 0.01f)
-        dl.glow_rounded_rect(boxR, t.accent.with_alpha(0.25f * c * alpha), 3.0f, 6.0f);
+        dl.glow_rounded_rect(boxR, t.accent.with_alpha(0.12f * c * alpha), 3.0f, 5.0f);
 
     dl.fill_rounded_rect(boxR, boxBg.with_alpha(alpha), 3.0f);
     dl.stroke_rounded_rect(boxR, boxBorder.with_alpha(alpha), 3.0f, 1.0f);
@@ -473,8 +473,9 @@ static bool draw_checkbox(DrawList& dl, FontAtlas& cap, Rect r, const char* labe
     {
         float cx = boxR.x + boxR.w * 0.5f;
         float cy = boxR.y + boxR.h * 0.5f;
-        dl.fill_rounded_rect({ cx - 3.0f * c, cy - 3.0f * c, 6.0f * c, 6.0f * c },
-                             t.accentText.with_alpha(c * alpha), 1.5f);
+        float dot = 5.0f * c;
+        dl.fill_rounded_rect({ cx - dot * 0.5f, cy - dot * 0.5f, dot, dot },
+                             t.accent.with_alpha(c * alpha), dot * 0.5f);
     }
 
     float textX = boxR.right() + 7.0f;
@@ -783,10 +784,6 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
 
         dl.fill_rounded_rect(row, rowBg.with_alpha(rowBg.a * alpha),           t.cardRadius);
         dl.stroke_rounded_rect(row, rowBorder.with_alpha(rowBorder.a * alpha), t.cardRadius, 1.0f);
-        if (selected)
-            dl.fill_rounded_rect({ row.x, row.y + 8.0f, 2.5f, row.h - 16.0f },
-                                 t.accent.with_alpha(alpha), 1.25f);
-
         const auto& pe = state.processes[i];
 
         const float tileSz  = 32.0f;
@@ -884,29 +881,28 @@ static void draw_loading_content(DrawList& dl, AppState& state,
 
     float top = wr.y + kContentTop;
     dl.draw_text("Loading Mindless", { barX, top }, t.text.with_alpha(alpha), fonts.title);
-    dl.draw_text(state.targetDisplay.empty() ? "Minecraft" : state.targetDisplay,
-                 { barX, top + 25.0f }, t.textSecond.with_alpha(alpha), fonts.caption);
+    const std::string target = state.targetDisplay.empty() ? "Minecraft" : state.targetDisplay;
+    const float metaY = top + 25.0f;
+    dl.draw_text(target, { barX, metaY }, t.textSecond.with_alpha(alpha), fonts.caption);
+    float pidW = fonts.caption.measure_text_width(state.targetPid.c_str());
+    dl.draw_text(state.targetPid, { barX + barW - pidW, metaY },
+                 t.textDisable.with_alpha(alpha), fonts.caption);
 
-    Rect statusCard = { barX, top + 58.0f, barW, 92.0f };
+    Rect statusCard = { barX, top + 54.0f, barW, 80.0f };
     dl.fill_rounded_rect(statusCard, t.surfaceRaised.with_alpha(alpha), t.cardRadius);
     dl.stroke_rounded_rect(statusCard, t.buttonBorder.with_alpha(alpha), t.cardRadius, 1.0f);
 
-    float statusY = statusCard.y + 20.0f;
+    float statusY = statusCard.y + 17.0f;
     draw_loading_status(dl, fn, state.statusText, cx, statusY,
                         t.text.with_alpha(alpha), state.spinElapsed);
 
-    float barY = statusCard.bottom() - 25.0f;
+    float barY = statusCard.bottom() - 21.0f;
     Rect track = { statusCard.x + 16.0f, barY, statusCard.w - 32.0f, t.progressH };
     dl.fill_rounded_rect(track, t.trackBg.with_alpha(alpha), t.progressH * 0.5f);
     float progress = clamp(state.loadProgress, 0.0f, 1.0f);
     if (progress > 0.001f)
         dl.fill_rounded_rect({ track.x, track.y, track.w * progress, track.h },
                              t.trackFill.with_alpha(alpha), track.h * 0.5f);
-
-    float footY = statusCard.bottom() + 12.0f;
-    float pidW  = fonts.caption.measure_text_width(state.targetPid.c_str());
-    dl.draw_text(state.targetPid, { cx - pidW * 0.5f, footY },
-                 t.textDisable.with_alpha(alpha), fonts.caption);
 }
 
 static const float kSlideTravel = 0.11f;
