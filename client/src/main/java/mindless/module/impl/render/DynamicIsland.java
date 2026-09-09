@@ -17,6 +17,8 @@ import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.item.ItemBlock;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -31,15 +33,16 @@ public class DynamicIsland extends Module {
     private static final float DEFAULT_TEXT_Y = 5.0f;
     private static final float WATERMARK_SCALE = 3.0f;
     private static final float EDGE_MARGIN = 4.0f;
-    private static final float PAD_X = 6.0f;
-    private static final float BADGE_SIZE = 12.0f;
-    private static final float BADGE_GAP = 5.0f;
-    private static final float VALUE_GAP = 10.0f;
-    private static final float HEIGHT = 21.0f;
+    private static final float PAD_X = 7.0f;
+    private static final float BADGE_SIZE = 13.5f;
+    private static final float BADGE_GAP = 5.5f;
+    private static final float VALUE_GAP = 7.0f;
+    private static final float HEIGHT = 22.5f;
     private static final float WIDTH_SMOOTH_TIME = 0.105f;
     private static final int STATE_IDLE = 0;
     private static final int STATE_NOTIFICATION = 1;
-    private static final int STATE_SCAFFOLD = 2;
+    private static final int STATE_BREAKER = 2;
+    private static final int STATE_SCAFFOLD = 3;
     private static final int MAX_TOGGLES = 8;
 
     private final SliderSetting mode;
@@ -61,6 +64,7 @@ public class DynamicIsland extends Module {
     private float widthVelocity;
     private float contentFade = 1.0f;
     private float scaffoldProgress;
+    private float breakerProgress;
     private int scaffoldPeak;
     private int islandState = STATE_IDLE;
     private long lastFrameNanos;
@@ -106,6 +110,7 @@ public class DynamicIsland extends Module {
         widthVelocity = 0.0f;
         contentFade = 1.0f;
         scaffoldProgress = 0.0f;
+        breakerProgress = 0.0f;
         scaffoldPeak = 0;
         islandState = STATE_IDLE;
         lastFrameNanos = 0L;
@@ -159,11 +164,24 @@ public class DynamicIsland extends Module {
         String nextLabel = "Mindless";
         String nextValue = "";
         String nextKey = "idle";
-        if (ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled()) {
+        Toggle toggle = latestToggle(System.currentTimeMillis());
+        if (toggle != null) {
+            nextState = STATE_NOTIFICATION;
+            nextLabel = toggle.name;
+            nextValue = toggle.enabled ? "ON" : "OFF";
+            nextKey = "notification:" + toggle.name + ':' + toggle.enabled;
+        } else if (ModuleManager.bedAura != null && ModuleManager.bedAura.isActivelyMining()) {
+            nextState = STATE_BREAKER;
+            nextLabel = "Bed Breaker";
+            float target = Math.max(0.0f, Math.min(1.0f,
+                    ModuleManager.bedAura.getAuraBreakProgress()));
+            breakerProgress = approach(breakerProgress, target, 12.0f, delta);
+            nextValue = Math.round(target * 100.0f) + "%";
+            nextKey = "breaker";
+        } else if (ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled()) {
             nextState = STATE_SCAFFOLD;
             nextLabel = "Blocks";
-            BlockCounter counter = ModuleManager.blockCounter;
-            int blocks = counter == null ? 0 : Math.max(0, counter.islandCount());
+            int blocks = scaffoldBlockCount();
             nextValue = Integer.toString(blocks);
             nextKey = "scaffold";
             if (scaffoldPeak == 0) {
@@ -175,15 +193,9 @@ public class DynamicIsland extends Module {
                 scaffoldProgress = approach(scaffoldProgress, target, 9.0f, delta);
             }
         } else {
+            breakerProgress = 0.0f;
             scaffoldPeak = 0;
             scaffoldProgress = 0.0f;
-            Toggle toggle = latestToggle(System.currentTimeMillis());
-            if (toggle != null) {
-                nextState = STATE_NOTIFICATION;
-                nextLabel = toggle.name;
-                nextValue = toggle.enabled ? "ON" : "OFF";
-                nextKey = "notification:" + toggle.name + ':' + toggle.enabled;
-            }
         }
         if (!nextKey.equals(stateKey)) {
             stateKey = nextKey;
@@ -196,8 +208,8 @@ public class DynamicIsland extends Module {
 
     private void drawBackdrop(float x, float y, float width, float height, float radius, int alpha) {
         if (dropShadow.isToggled()) {
-            RoundedUtils.drawRoundShadow(x, y + 1.0f, width, height, radius,
-                    3.0f, withAlpha(0x000000, Math.round(alpha * 0.42f)));
+            RoundedUtils.drawRoundShadow(x, y + 0.8f, width, height, radius,
+                    2.0f, withAlpha(0x000000, Math.round(alpha * 0.32f)));
         }
         if (blurBackdrop.isToggled()) {
             BlurUtils.prepareBlur(x, y, width, height);
@@ -205,12 +217,8 @@ public class DynamicIsland extends Module {
             BlurUtils.blurEndRegion(2, 2.2f, alpha / 255.0f, x, y, width, height);
         }
         RoundedUtils.drawGradientVertical(x, y, width, height, radius,
-                new java.awt.Color(45, 43, 52, alpha),
-                new java.awt.Color(25, 24, 30, alpha));
-        RoundedUtils.drawRoundOutline(x + 0.25f, y + 0.25f, width - 0.5f, height - 0.5f,
-                Math.max(0.0f, radius - 0.25f), 0.35f,
-                new java.awt.Color(0, 0, 0, 0),
-                new java.awt.Color(255, 255, 255, Math.min(22, alpha / 9)));
+                new java.awt.Color(39, 38, 46, alpha),
+                new java.awt.Color(26, 25, 31, alpha));
     }
 
     private void drawContent(MindlessFontRenderer text, float x, float y, float width,
@@ -222,16 +230,16 @@ public class DynamicIsland extends Module {
         float badgeX = x + PAD_X * uiScale;
         float badgeY = y + (height - badge) * 0.5f;
         int accent = ThemeManager.getWatermarkColor(0.0) & 0xFFFFFF;
-        RoundedUtils.drawRound(badgeX, badgeY, badge, badge, badge * 0.5f,
-                withAlpha(accent, Math.min(alpha, 105)));
-        float markHeight = 5.7f * uiScale;
+        float markHeight = 9.2f * uiScale;
         float markWidth = markHeight * LOGO_ASPECT;
         drawLogo(badgeX + (badge - markWidth) * 0.5f,
                 badgeY + (badge - markHeight) * 0.5f,
-                markWidth, markHeight, withAlpha(0xF6F2FF, alpha));
+                markWidth, markHeight, withAlpha(0xDCD5F3, alpha));
         float labelX = badgeX + badge + BADGE_GAP * uiScale;
         float textY = y + (height - text.getFontHeight() * uiScale) * 0.5f;
-        if (islandState == STATE_SCAFFOLD) textY -= 1.15f * uiScale;
+        if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
+            textY -= 1.15f * uiScale;
+        }
         drawScaled(text, stateLabel, labelX, textY, uiScale, withAlpha(0xF1F1F5, alpha));
         if (!stateValue.isEmpty()) {
             float valueWidth = text.getStringWidth(stateValue) * uiScale;
@@ -240,7 +248,7 @@ public class DynamicIsland extends Module {
                     ? 0xA7A6AE : 0xF1F1F5;
             drawScaled(text, stateValue, valueX, textY, uiScale, withAlpha(valueRgb, alpha));
         }
-        if (islandState == STATE_SCAFFOLD) {
+        if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
             float barX = labelX;
             float barY = y + height - 4.1f * uiScale;
             float barWidth = Math.max(10.0f * uiScale,
@@ -248,7 +256,8 @@ public class DynamicIsland extends Module {
             float barHeight = Math.max(1.0f, 1.65f * uiScale);
             RoundedUtils.drawRound(barX, barY, barWidth, barHeight, barHeight * 0.5f,
                     withAlpha(0xFFFFFF, Math.min(alpha, 36)));
-            float fill = barWidth * Math.max(0.0f, Math.min(1.0f, scaffoldProgress));
+            float progress = islandState == STATE_BREAKER ? breakerProgress : scaffoldProgress;
+            float fill = barWidth * Math.max(0.0f, Math.min(1.0f, progress));
             if (fill > 0.5f) {
                 RoundedUtils.drawRound(barX, barY, fill, barHeight, barHeight * 0.5f,
                         withAlpha(accent, alpha));
@@ -261,6 +270,18 @@ public class DynamicIsland extends Module {
         float width = PAD_X * 2.0f + BADGE_SIZE + BADGE_GAP + text.getStringWidth(stateLabel);
         if (!stateValue.isEmpty()) width += VALUE_GAP + text.getStringWidth(stateValue);
         return Math.max(48.0f, width);
+    }
+
+    private int scaffoldBlockCount() {
+        if (!Utils.nullCheck()) return 0;
+        int count = 0;
+        for (int i = 0; i < 9; i++) {
+            ItemStack stack = mc.thePlayer.inventory.mainInventory[i];
+            if (stack != null && stack.getItem() instanceof ItemBlock && stack.stackSize > 0) {
+                count += stack.stackSize;
+            }
+        }
+        return count;
     }
 
     private void pollToggles(long now) {
