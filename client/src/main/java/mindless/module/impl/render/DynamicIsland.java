@@ -12,7 +12,6 @@ import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.font.ModuleFont;
 import mindless.utility.shader.BlurUtils;
-import mindless.utility.shader.HudGlowHelper;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
@@ -25,13 +24,9 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.opengl.GL11;
 
 public class DynamicIsland extends Module {
-    private static final String[] MODES = {"Island", "Text"};
     private static final String[] ANCHORS = {"Top centre", "Top left", "Top right", "Custom"};
     private static final String LOGO_RESOURCE = "/assets/mindless/textures/gui/mindless_mark.png";
     private static final float LOGO_ASPECT = 32.0f / 22.0f;
-    private static final float DEFAULT_TEXT_X = 5.0f;
-    private static final float DEFAULT_TEXT_Y = 5.0f;
-    private static final float WATERMARK_SCALE = 3.0f;
     private static final float EDGE_MARGIN = 4.0f;
     private static final float PAD_X = 7.0f;
     private static final float BADGE_SIZE = 13.5f;
@@ -45,7 +40,6 @@ public class DynamicIsland extends Module {
     private static final int STATE_SCAFFOLD = 3;
     private static final int MAX_TOGGLES = 8;
 
-    private final SliderSetting mode;
     private final SliderSetting font;
     private final SliderSetting anchor;
     private final SliderSetting notificationDuration;
@@ -73,14 +67,11 @@ public class DynamicIsland extends Module {
     private String stateLabel = "Mindless";
     private String stateValue = "";
 
-    public float textPosX = DEFAULT_TEXT_X;
-    public float textPosY = DEFAULT_TEXT_Y;
     public float islandPosX = -1.0f;
     public float islandPosY = -1.0f;
 
     public DynamicIsland() {
         super("Dynamic Island", "Shows Mindless, notifications and Scaffold blocks.", category.render);
-        this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(anchor = new SliderSetting("Anchor", 0, ANCHORS));
         this.registerSetting(font = new SliderSetting("Font", 0, ModuleFont.options()));
         notificationDuration = new SliderSetting(
@@ -98,10 +89,9 @@ public class DynamicIsland extends Module {
 
     @Override
     public void guiUpdate() {
-        boolean island = isIslandMode();
-        anchor.setVisible(island, this);
-        notificationDuration.setVisible(island, this);
-        styleGroup.setVisible(island, this);
+        anchor.setVisible(true, this);
+        notificationDuration.setVisible(true, this);
+        styleGroup.setVisible(true, this);
     }
 
     @Override
@@ -126,8 +116,7 @@ public class DynamicIsland extends Module {
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !Utils.nullCheck()) return;
         if (mc.currentScreen != null || mc.gameSettings.showDebugInfo) return;
-        if (isIslandMode()) renderIsland();
-        else renderTextWatermark();
+        renderIsland();
     }
 
     @SubscribeEvent
@@ -395,33 +384,6 @@ public class DynamicIsland extends Module {
         return FontManager.getHudRenderer(ModuleFont.nameOf(font), HUD.getSelectedFontScale());
     }
 
-    private MindlessFontRenderer watermarkFont() {
-        return FontManager.getHudRenderer(ModuleFont.nameOf(font),
-                HUD.getSelectedFontScale() * WATERMARK_SCALE);
-    }
-
-    private void renderTextWatermark() {
-        MindlessFontRenderer text = watermarkFont();
-        if (text == null) return;
-        String value = "Mindless";
-        int baseColor = ThemeManager.getWatermarkColor(0.0);
-        int r = (baseColor >> 16) & 0xFF;
-        int g = (baseColor >> 8) & 0xFF;
-        int b = baseColor & 0xFF;
-        if (HudGlowHelper.isAvailable()) {
-            HudGlowHelper.beginMask();
-            drawWatermark(text, value);
-            HudGlowHelper.endAndComposite(8.0f, 1.2f, r, g, b);
-        }
-        drawWatermark(text, value);
-    }
-
-    private void drawWatermark(MindlessFontRenderer text, String value) {
-        text.drawGlyphString(value, textPosX, textPosY,
-                (character, xOffset, width, formattingColor)
-                        -> ThemeManager.getWatermarkColor(xOffset * 0.1), false);
-    }
-
     public float[] getIslandBounds() {
         MindlessFontRenderer text = islandFont();
         if (text == null) return null;
@@ -434,17 +396,7 @@ public class DynamicIsland extends Module {
         return new float[]{x, y, x + width, y + height};
     }
 
-    public float[] getTextBounds() {
-        MindlessFontRenderer text = watermarkFont();
-        if (text == null) return null;
-        String value = "Mindless";
-        return new float[]{textPosX, textPosY,
-                textPosX + text.getStringWidth(value), textPosY + text.getFontHeight()};
-    }
-
     public void resetPosition() {
-        textPosX = DEFAULT_TEXT_X;
-        textPosY = DEFAULT_TEXT_Y;
         islandPosX = -1.0f;
         islandPosY = -1.0f;
     }
@@ -456,11 +408,7 @@ public class DynamicIsland extends Module {
     }
 
     public boolean isCustomAnchored() {
-        return isIslandMode() && (int) anchor.getInput() == 3;
-    }
-
-    public boolean isIslandMode() {
-        return (int) mode.getInput() == 0;
+        return (int) anchor.getInput() == 3;
     }
 
     private float anchoredX(ScaledResolution resolution, float width) {

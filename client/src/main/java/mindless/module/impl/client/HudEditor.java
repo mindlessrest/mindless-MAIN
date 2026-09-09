@@ -8,6 +8,7 @@ import mindless.module.impl.render.Radar;
 import mindless.module.impl.render.DynamicIsland;
 import mindless.module.impl.render.StatsHUD;
 import mindless.module.impl.render.TargetHUD;
+import mindless.module.impl.render.Watermark;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.runtime.GuiIngameState;
@@ -784,32 +785,10 @@ private void beginResize(Element element, int handle) {
 
             if (ModuleManager.dynamicIsland != null) {
                 final DynamicIsland island = ModuleManager.dynamicIsland;
-                elements.add(new Element("Island Text") {
-                    @Override
-                    void render() {
-                        setBounds(island.isIslandMode() ? null : island.getTextBounds());
-                    }
-
-                    @Override
-                    void moveTo(float left, float top) {
-                        island.textPosX = left;
-                        island.textPosY = top;
-                        setBounds(island.getTextBounds());
-                    }
-
-                    @Override
-                    void reset() {
-                        island.resetPosition();
-                    }
-                });
-
-                // Grabbable on every anchor. It used to be offered only on Custom, so the pill was
-                // the one element here you could not drag -- you had to know to go and change a
-                // setting first. Taking hold of it switches the anchor for you.
                 elements.add(new Element("Dynamic Island") {
                     @Override
                     void render() {
-                        setBounds(island.isIslandMode() ? island.getIslandBounds() : null);
+                        setBounds(island.getIslandBounds());
                     }
 
                     @Override
@@ -821,6 +800,27 @@ private void beginResize(Element element, int handle) {
                     @Override
                     void reset() {
                         island.resetPosition();
+                    }
+                });
+            }
+
+            if (ModuleManager.watermark != null) {
+                final Watermark watermark = ModuleManager.watermark;
+                elements.add(new Element("Watermark") {
+                    @Override
+                    void render() {
+                        setBounds(watermark.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        watermark.moveTo(left, top);
+                        setBounds(watermark.renderPreview());
+                    }
+
+                    @Override
+                    void reset() {
+                        watermark.resetPosition();
                     }
                 });
             }

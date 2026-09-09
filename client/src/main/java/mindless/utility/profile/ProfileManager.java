@@ -17,6 +17,7 @@ import mindless.module.impl.render.BlockCounter;
 import mindless.module.impl.render.HUD;
 import mindless.module.impl.render.PotionHUD;
 import mindless.module.impl.render.TargetHUD;
+import mindless.module.impl.render.Watermark;
 import mindless.module.setting.Setting;
 import mindless.module.setting.impl.BlockListSetting;
 import mindless.module.setting.impl.ButtonSetting;
@@ -304,6 +305,11 @@ private static boolean isAutoSaveEnabled() {
             moduleInformation.addProperty("posY", counter.getPosY());
             moduleInformation.addProperty("relPosX", counter.getRelativePosX());
             moduleInformation.addProperty("relPosY", counter.getRelativePosY());
+        }
+        else if (module instanceof Watermark) {
+            Watermark watermark = (Watermark) module;
+            moduleInformation.addProperty("posX", watermark.posX);
+            moduleInformation.addProperty("posY", watermark.posY);
         }
         else if (module instanceof BedWars) {
             BedWars bedWars = (BedWars) module;
@@ -761,6 +767,14 @@ private static void applyModulePosition(Module module, JsonObject moduleInformat
                     float posY = moduleInformation.has("posY") ? moduleInformation.get("posY").getAsFloat() : counter.getPosY();
                     counter.setAbsolutePosition(posX, posY);
                 }
+            }
+            else if (module instanceof Watermark) {
+                Watermark watermark = (Watermark) module;
+                float posX = moduleInformation.has("posX")
+                        ? moduleInformation.get("posX").getAsFloat() : watermark.posX;
+                float posY = moduleInformation.has("posY")
+                        ? moduleInformation.get("posY").getAsFloat() : watermark.posY;
+                watermark.moveTo(posX, posY);
             }
             else if (module instanceof BedWars) {
                 BedWars bedWars = (BedWars) module;
