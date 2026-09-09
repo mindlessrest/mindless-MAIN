@@ -57,19 +57,19 @@ public final class LunarEventBridge {
         // reported against this boundary rather than surfacing later as an unexplained symptom.
         // Diagnostics measured this pass leaving blend enabled and the depth test disabled, so
         // both are captured and put back rather than left for whatever draws next.
-        boolean blendWas = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_BLEND);
-        boolean depthWas = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_DEPTH_TEST);
+        GlSnapshot before = GlSnapshot.take();
         mindless.utility.Diagnostics.sectionBegin("render tick " + phase);
         try {
             SYNTHETIC_EVENT_BUS.post(new TickEvent.RenderTickEvent(phase, partialTicks));
         }
         finally {
-            mindless.utility.Diagnostics.sectionEnd();
-            restoreToggle(org.lwjgl.opengl.GL11.GL_BLEND, blendWas);
-            restoreToggle(org.lwjgl.opengl.GL11.GL_DEPTH_TEST, depthWas);
             if (phase == TickEvent.Phase.END) {
                 RenderUtils.restoreGuiTextState();
             }
+            before.restore();
+            // Closed after the restores, so it reports what actually survives the pass
+            // rather than the state part way through cleaning up.
+            mindless.utility.Diagnostics.sectionEnd();
         }
     }
 
@@ -77,24 +77,76 @@ public final class LunarEventBridge {
         if (!DIRECT_LUNAR) return;
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft == null || minecraft.theWorld == null || minecraft.renderGlobal == null) return;
-        boolean worldBlendWas = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_BLEND);
-        boolean worldDepthWas = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_DEPTH_TEST);
+        GlSnapshot before = GlSnapshot.take();
         mindless.utility.Diagnostics.sectionBegin("render world last");
         try {
             SYNTHETIC_EVENT_BUS.post(
                     new RenderWorldLastEvent(minecraft.renderGlobal, partialTicks));
         }
         finally {
-            mindless.utility.Diagnostics.sectionEnd();
-            restoreToggle(org.lwjgl.opengl.GL11.GL_BLEND, worldBlendWas);
-            restoreToggle(org.lwjgl.opengl.GL11.GL_DEPTH_TEST, worldDepthWas);
             RenderUtils.restoreGuiTextState();
+            before.restore();
+            mindless.utility.Diagnostics.sectionEnd();
         }
     }
-private static void restoreToggle(int capability, boolean wasEnabled) {
-        if (org.lwjgl.opengl.GL11.glIsEnabled(capability) == wasEnabled) return;
-        if (wasEnabled) org.lwjgl.opengl.GL11.glEnable(capability);
-        else org.lwjgl.opengl.GL11.glDisable(capability);
+    /**
+     * The fixed-function state the host had before a synthetic pass ran.
+     *
+     * Alpha is captured alongside blend and depth because restoreGuiTextState forces the
+     * vanilla GUI values and those outlived the pass: diagnostics reported the alpha test
+     * switched on and its reference moved from 0.01 to 0.1 on every frame. The repairs that
+     * call makes to the shader, texture unit and colour are still wanted, so it runs first
+     * and only the state the host actually had is put back afterwards.
+     *
+     * Restored through GlStateManager rather than raw GL, or its cache would still believe
+     * whatever a module last told it and skip the next enable as redundant.
+     */
+    private static final class GlSnapshot {
+        private final boolean blend;
+        private final boolean depth;
+        private final boolean alpha;
+        private final int alphaFunc;
+        private final float alphaRef;
+
+        private GlSnapshot(boolean blend, boolean depth, boolean alpha,
+                           int alphaFunc, float alphaRef) {
+            this.blend = blend;
+            this.depth = depth;
+            this.alpha = alpha;
+            this.alphaFunc = alphaFunc;
+            this.alphaRef = alphaRef;
+        }
+
+        static GlSnapshot take() {
+            return new GlSnapshot(
+                    org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_BLEND),
+                    org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_DEPTH_TEST),
+                    org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_ALPHA_TEST),
+                    org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_ALPHA_TEST_FUNC),
+                    org.lwjgl.opengl.GL11.glGetFloat(org.lwjgl.opengl.GL11.GL_ALPHA_TEST_REF));
+        }
+
+        void restore() {
+            if (blend) {
+                net.minecraft.client.renderer.GlStateManager.enableBlend();
+            }
+            else {
+                net.minecraft.client.renderer.GlStateManager.disableBlend();
+            }
+            if (depth) {
+                net.minecraft.client.renderer.GlStateManager.enableDepth();
+            }
+            else {
+                net.minecraft.client.renderer.GlStateManager.disableDepth();
+            }
+            net.minecraft.client.renderer.GlStateManager.alphaFunc(alphaFunc, alphaRef);
+            if (alpha) {
+                net.minecraft.client.renderer.GlStateManager.enableAlpha();
+            }
+            else {
+                net.minecraft.client.renderer.GlStateManager.disableAlpha();
+            }
+        }
     }
 
     public static boolean nextMouseEvent() {
