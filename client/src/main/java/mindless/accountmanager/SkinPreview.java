@@ -109,7 +109,9 @@ public final class SkinPreview {
         // flips Y because it goes through world space first, and this does not.
         GlStateManager.scale(-scale, scale, scale);
         GlStateManager.rotate(pitch, 1.0f, 0.0f, 0.0f);
-        GlStateManager.rotate(yaw, 0.0f, 1.0f, 0.0f);
+        // The biped model is built facing away down -Z, and the GUI camera looks the other
+        // way, so without this half turn the preview opens on the back of the head.
+        GlStateManager.rotate(yaw + 180.0f, 0.0f, 1.0f, 0.0f);
         // Applied first, in model space: shifts the two-unit body onto its own middle so it
         // turns about its waist instead of orbiting the panel centre.
         GlStateManager.translate(0.0f, -0.5f, 0.0f);

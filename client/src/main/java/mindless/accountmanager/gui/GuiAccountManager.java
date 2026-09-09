@@ -430,8 +430,11 @@ public class GuiAccountManager extends GuiScreen {
 
         previewW = Math.min(150, gutter);
         previewX = listRight + 14;
-        previewY = LIST_TOP;
-        previewH = Math.min(230, height - FOOTER_H - LIST_TOP - 10);
+        // Centred in the space beside the list rather than pinned to its top, so it sits
+        // level with the rows instead of riding up against the header.
+        int available = height - FOOTER_H - LIST_TOP - 10;
+        previewH = Math.min(230, available);
+        previewY = LIST_TOP + Math.max(0, (available - previewH) / 2);
         if (previewH < 90) {
             previewW = 0;
             return;
