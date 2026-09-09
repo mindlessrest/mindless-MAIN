@@ -79,8 +79,9 @@ private static final double AIM_FACE_INSET = 0.12;
     private boolean hasSwapped;
     private int previousSlot = -1;
     private boolean lastOutsidePolicy;
-    private BlockPos legitPathBedFoot;
-    private Vec3 legitPathDestination;
+    private BlockPos pathBedFoot;
+    private Vec3 pathDestination;
+    private int pathInitialBlocks;
 
 
     public BedAura() {
@@ -242,6 +243,12 @@ private void releaseInputControl() {
         return miningActive && isEnabled() && Utils.nullCheck() && mc.currentScreen == null && canMineBlocks() && !shouldYieldToKillAura();
     }
 
+    public boolean isBreakingRoute() {
+        return isEnabled() && Utils.nullCheck() && mc.currentScreen == null
+                && canMineBlocks() && !shouldYieldToKillAura()
+                && (pathDestination != null || miningActive);
+    }
+
     public boolean isPrioritizingKillAura() {
         return prioritizeKillAura.isToggled();
     }
@@ -268,6 +275,18 @@ private void releaseInputControl() {
             return 0f;
         }
         return AccessorBridge.PlayerControllerMP_getCurBlockDamageMP(mc.playerController);
+    }
+
+    public float getAuraTotalProgress() {
+        float blockProgress = Math.max(0.0f, Math.min(1.0f, getAuraBreakProgress()));
+        if (pathDestination == null || pathInitialBlocks <= 0 || !Utils.nullCheck()) {
+            return blockProgress;
+        }
+        int remaining = countPathBlocks(mc.thePlayer.getPositionEyes(1.0f), pathDestination);
+        if (remaining == Integer.MAX_VALUE) return blockProgress;
+        int completed = Math.max(0, pathInitialBlocks - remaining);
+        return Math.max(0.0f, Math.min(1.0f,
+                (completed + blockProgress) / (float) pathInitialBlocks));
     }
 public boolean shouldOverrideMouseOver() {
         return isEnabled() && miningActive && canMineBlocks()
@@ -339,13 +358,15 @@ public boolean shouldOverrideMouseOver() {
             if (!isLockedTargetValid(reachSq)) {
                 boolean blockFinished = BlockUtils.getBlock(lockedPos) == Blocks.air;
                 boolean finishedBed = lockedTargetBed && blockFinished;
-                BlockPos continuingBed = !finishedBed && blockFinished && isLegitMode()
-                        ? legitPathBedFoot : null;
-                Vec3 continuingDestination = continuingBed != null ? legitPathDestination : null;
+                BlockPos continuingBed = !finishedBed && blockFinished && shouldBreakFromOutside()
+                        ? pathBedFoot : null;
+                Vec3 continuingDestination = continuingBed != null ? pathDestination : null;
+                int continuingInitialBlocks = continuingBed != null ? pathInitialBlocks : 0;
                 resetMining();
                 if (continuingBed != null && continuingDestination != null) {
-                    legitPathBedFoot = continuingBed;
-                    legitPathDestination = continuingDestination;
+                    pathBedFoot = continuingBed;
+                    pathDestination = continuingDestination;
+                    pathInitialBlocks = continuingInitialBlocks;
                 }
                 if (finishedBed) retargetDelayTicks = 6;
                 return;
@@ -376,9 +397,13 @@ public boolean shouldOverrideMouseOver() {
             lockedPos = best.pos;
             lockedSide = best.side;
             lockedTargetBed = BlockUtils.getBlock(best.pos) instanceof BlockBed;
-            if (isLegitMode() && best.pathDestination != null) {
-                legitPathBedFoot = best.bedFoot;
-                legitPathDestination = best.pathDestination;
+            if (best.pathDestination != null) {
+                boolean continuing = pathBedFoot != null && pathBedFoot.equals(best.bedFoot)
+                        && pathDestination != null && pathDestination.equals(best.pathDestination)
+                        && pathInitialBlocks > 0;
+                pathBedFoot = best.bedFoot;
+                pathDestination = best.pathDestination;
+                if (!continuing) pathInitialBlocks = Math.max(1, best.pathBlocks);
             }
             rotationAlignedTicks = 0;
         }
@@ -514,8 +539,9 @@ public boolean shouldOverrideMouseOver() {
         targetSide = null;
         hasSwapped = false;
         previousSlot = -1;
-        legitPathBedFoot = null;
-        legitPathDestination = null;
+        pathBedFoot = null;
+        pathDestination = null;
+        pathInitialBlocks = 0;
     }
 
     private void rebuildBedPairsCache(double searchRange) {
@@ -593,13 +619,14 @@ private BlockPos[] footHeadPair(BlockPos at) {
         float curProg = AccessorBridge.PlayerControllerMP_getCurBlockDamageMP(mc.playerController);
         BlockPos breaking = AccessorBridge.PlayerControllerMP_getCurrentBlock(mc.playerController);
 
-        if (isLegitMode() && legitPathBedFoot != null && legitPathDestination != null) {
-            Choice continuing = continueLegitPath(reachSq);
+        if (shouldBreakFromOutside() && pathBedFoot != null && pathDestination != null) {
+            Choice continuing = continuePath(reachSq);
             if (continuing != null) {
                 return continuing;
             }
-            legitPathBedFoot = null;
-            legitPathDestination = null;
+            pathBedFoot = null;
+            pathDestination = null;
+            pathInitialBlocks = 0;
         }
 
         List<BlockPos[]> exposed = new ArrayList<>();
@@ -654,7 +681,7 @@ private BlockPos[] footHeadPair(BlockPos at) {
         }
         double timeEst = 1.0 / bestHotbar;
 
-        if (isLegitMode() && ch.pathBlocks > 0) {
+        if (ch.pathBlocks > 0) {
             timeEst += ch.pathBlocks * 1000.0;
         }
 
@@ -709,10 +736,10 @@ private BlockPos[] footHeadPair(BlockPos at) {
         return out;
     }
 
-    private Choice continueLegitPath(double reachSq) {
+    private Choice continuePath(double reachSq) {
         BlockPos[] pair = null;
         for (BlockPos[] cached : bedPairsCache) {
-            if (cached != null && cached.length >= 2 && legitPathBedFoot.equals(cached[0])) {
+            if (cached != null && cached.length >= 2 && pathBedFoot.equals(cached[0])) {
                 pair = cached;
                 break;
             }
@@ -723,17 +750,17 @@ private BlockPos[] footHeadPair(BlockPos at) {
 
         Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
         MovingObjectPosition trace = mc.theWorld.rayTraceBlocks(
-                eye, legitPathDestination, false, true, false);
+                eye, pathDestination, false, true, false);
         Choice choice = visibleTraceChoice(trace, eye, reachSq);
         if (choice == null) {
             return null;
         }
-        int blocks = countPathBlocks(eye, legitPathDestination);
+        int blocks = countPathBlocks(eye, pathDestination);
         if (blocks == Integer.MAX_VALUE) {
             return null;
         }
         return new Choice(choice.pos, choice.hitVec, choice.side,
-                legitPathBedFoot, legitPathDestination, blocks);
+                pathBedFoot, pathDestination, blocks);
     }
 
     private List<Choice> buildLegitOutsideCandidates(BlockPos[] pair, double reachSq) {
@@ -807,8 +834,7 @@ private BlockPos[] footHeadPair(BlockPos at) {
      * after it breaks, the next scan naturally advances one layer inward.
      */
     private List<Choice> buildVisibleOutsideCandidates(BlockPos[] pair, double reachSq) {
-        List<Choice> out = new ArrayList<>();
-        Set<BlockPos> seen = new HashSet<>();
+        Map<BlockPos, Choice> bestByFirstBlock = new HashMap<>();
         Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
         AxisAlignedBB bedBounds = BlockUtils.unionBlockBounds(pair[0], pair[1]);
 
@@ -823,21 +849,23 @@ private BlockPos[] footHeadPair(BlockPos at) {
                             bedBounds.minZ + (bedBounds.maxZ - bedBounds.minZ) * zPart
                     );
                     MovingObjectPosition trace = mc.theWorld.rayTraceBlocks(eye, destination, false, true, false);
-                    addVisibleTraceCandidate(trace, eye, reachSq, seen, out);
+                    Choice visible = visibleTraceChoice(trace, eye, reachSq);
+                    if (visible == null) continue;
+                    int pathBlocks = countPathBlocks(eye, destination);
+                    if (pathBlocks == Integer.MAX_VALUE) continue;
+                    Choice candidate = new Choice(visible.pos, visible.hitVec, visible.side,
+                            pair[0], destination, pathBlocks);
+                    Choice previous = bestByFirstBlock.get(candidate.pos);
+                    if (previous == null || candidate.pathBlocks < previous.pathBlocks
+                            || candidate.pathBlocks == previous.pathBlocks
+                            && eye.squareDistanceTo(candidate.hitVec)
+                            < eye.squareDistanceTo(previous.hitVec)) {
+                        bestByFirstBlock.put(candidate.pos, candidate);
+                    }
                 }
             }
         }
-        return out;
-    }
-
-    private void addVisibleTraceCandidate(MovingObjectPosition trace, Vec3 eye, double reachSq,
-                                          Set<BlockPos> seen, List<Choice> out) {
-        Choice choice = visibleTraceChoice(trace, eye, reachSq);
-        if (choice == null || seen.contains(choice.pos)) {
-            return;
-        }
-        seen.add(choice.pos);
-        out.add(choice);
+        return new ArrayList<>(bestByFirstBlock.values());
     }
 
     private Choice visibleTraceChoice(MovingObjectPosition trace, Vec3 eye, double reachSq) {

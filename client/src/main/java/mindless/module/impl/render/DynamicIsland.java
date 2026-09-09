@@ -159,11 +159,11 @@ public class DynamicIsland extends Module {
             nextLabel = toggle.name;
             nextValue = toggle.enabled ? "ON" : "OFF";
             nextKey = "notification:" + toggle.name + ':' + toggle.enabled;
-        } else if (ModuleManager.bedAura != null && ModuleManager.bedAura.isActivelyMining()) {
+        } else if (ModuleManager.bedAura != null && ModuleManager.bedAura.isBreakingRoute()) {
             nextState = STATE_BREAKER;
             nextLabel = "Bed Breaker";
             float target = Math.max(0.0f, Math.min(1.0f,
-                    ModuleManager.bedAura.getAuraBreakProgress()));
+                    ModuleManager.bedAura.getAuraTotalProgress()));
             breakerProgress = approach(breakerProgress, target, 12.0f, delta);
             nextValue = Math.round(target * 100.0f) + "%";
             nextKey = "breaker";
