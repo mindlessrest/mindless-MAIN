@@ -263,6 +263,15 @@ private float aboutOpenProgress = 0f;
     private ResourceLocation mascotTextureMindless;
     private boolean mascotCatLoadAttempted;
     private boolean mascotMindlessLoadAttempted;
+    private static ResourceLocation mascotTextureCustom;
+    /** The path the custom texture was built from, so a new pick reloads it. */
+    private static String mascotCustomLoadedFrom;
+
+    /** Drop the cached custom image so the next frame picks up a newly chosen file. */
+    public static void invalidateCustomMascot() {
+        mascotTextureCustom = null;
+        mascotCustomLoadedFrom = null;
+    }
     private int categoryIconLoadIndex;
     private final Map<Module.category, ResourceLocation> categoryIcons = new IdentityHashMap<Module.category, ResourceLocation>();
 
@@ -456,7 +465,7 @@ private float aboutOpenProgress = 0f;
         if (Gui.mascot == null) return;
 
         int input = (int) Gui.mascot.getInput();
-        if (input != 0 && input != 1) return;
+        if (input != 0 && input != 1 && input != 3) return;
 
         ensureUiTextures();
 
@@ -470,11 +479,22 @@ private float aboutOpenProgress = 0f;
                     "/assets/mindless/textures/gui/mascot_0.png", true);
         }
 
-        ResourceLocation targetTexture = (input == 0) ? mascotTextureMindless : mascotTextureCat;
+        ResourceLocation targetTexture;
+        float aspect = 1.0f;
+        if (input == 3) {
+            targetTexture = customMascotTexture();
+            aspect = mascotCustomAspect;
+        }
+        else {
+            targetTexture = (input == 0) ? mascotTextureMindless : mascotTextureCat;
+        }
         if (targetTexture == null) return;
 
-        float mascotH = panelH * 0.75f;
-        float mascotW = mascotH;
+        float sizePercent = Gui.mascotScale == null ? 100f : (float) Gui.mascotScale.getInput();
+        float mascotH = panelH * 0.75f * (sizePercent / 100f);
+        // A chosen image is rarely square, so it keeps its own proportions instead of being
+        // stretched into the box the bundled art happens to fit.
+        float mascotW = mascotH * aspect;
         float mx = width - mascotW - 50f + mascotDragOffsetX;
         float my = height - mascotH - 50f + mascotDragOffsetY;
 
@@ -488,8 +508,9 @@ private float aboutOpenProgress = 0f;
         mascotDrawW = mascotW;
         mascotDrawH = mascotH;
 
+        float alpha = Gui.mascotOpacity == null ? 1f : (float) (Gui.mascotOpacity.getInput() / 100.0);
         drawTextureRegion(targetTexture, mx, my, mascotW, mascotH,
-                0, 0, 1, 1, 1, 1, 1f, 1f, 1f, 1f);
+                0, 0, 1, 1, 1, 1, 1f, 1f, 1f, alpha);
     }
 
     /**
@@ -499,7 +520,7 @@ private float aboutOpenProgress = 0f;
         if (mascotDrawW <= 0f || mascotDrawH <= 0f) return false;
         if (Gui.mascot == null) return false;
         int input = (int) Gui.mascot.getInput();
-        if (input != 0 && input != 1) return false;
+        if (input != 0 && input != 1 && input != 3) return false;
         if (insideDashboard(mx, my)) return false;
         if (!inside(mx, my, mascotX, mascotY, mascotX + mascotDrawW, mascotY + mascotDrawH)) return false;
 
@@ -2449,6 +2470,49 @@ private static float corner(float radius, float w, float h) {
             case client: return "settings";
             default: return cat.name();
         }
+    }
+
+    private static float mascotCustomAspect = 1.0f;
+
+    /**
+     * The user's own mascot image, loaded from disk and cached until the path changes.
+     *
+     * Read from an absolute path rather than copied into the pack, so pointing at a file and
+     * later editing that file shows the edit -- and nothing has to be cleaned up if they
+     * change their mind.
+     */
+    private ResourceLocation customMascotTexture() {
+        String path = Gui.mascotPath == null ? "" : Gui.mascotPath.getText().trim();
+        if (path.isEmpty()) {
+            return null;
+        }
+        if (mascotTextureCustom != null && path.equals(mascotCustomLoadedFrom)) {
+            return mascotTextureCustom;
+        }
+        // Remembered even on failure, so a missing or unreadable file is not retried every
+        // frame the GUI is open.
+        mascotCustomLoadedFrom = path;
+        mascotTextureCustom = null;
+        try {
+            java.io.File file = new java.io.File(path);
+            if (!file.isFile()) {
+                return null;
+            }
+            BufferedImage image = ImageIO.read(file);
+            if (image == null) {
+                return null;
+            }
+            mascotCustomAspect = image.getHeight() == 0
+                    ? 1.0f : (float) image.getWidth() / image.getHeight();
+            DynamicTexture texture = new DynamicTexture(image);
+            texture.setBlurMipmap(true, false);
+            mascotTextureCustom = mc.getTextureManager()
+                    .getDynamicTextureLocation("mindless_mascot_custom", texture);
+        }
+        catch (Exception unreadable) {
+            mascotTextureCustom = null;
+        }
+        return mascotTextureCustom;
     }
 
     private ResourceLocation loadBundledTexture(String name, String path, boolean smooth) {
