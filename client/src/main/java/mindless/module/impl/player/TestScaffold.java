@@ -5,6 +5,7 @@ import mindless.event.PreUpdateEvent;
 import mindless.event.SendPacketEvent;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
+import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.script.ScriptDefaults.client;
@@ -236,6 +237,9 @@ private Vec3 ltPendHit = null;
 
 public TestScaffold() {
     super("Test Scaffold", "Experimental scaffold port.", category.player);
+    this.registerSetting(new DescriptionSetting("Credits to Lizzie - @jenrnr."));
+    this.registerSetting(new DescriptionSetting("This module would not exist without their"));
+    this.registerSetting(new DescriptionSetting("scaffold. We thank you ❤"));
     this.registerSetting(towerMode = new SliderSetting("Tower", 0, TOWER_MODES));
     this.registerSetting(keepMode = new SliderSetting("Keep Y", 0, KEEP_MODES));
     GroupSetting yOptions = new GroupSetting("Y Options");
