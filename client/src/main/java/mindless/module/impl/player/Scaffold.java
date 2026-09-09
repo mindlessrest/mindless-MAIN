@@ -447,6 +447,11 @@ private void restorePreviousSlot() {
                 && sprintScafActive && sprintScafSprinting;
     }
 
+    /** True only while Scaffold currently owns or has a valid upcoming placement. */
+    public boolean isActivelyScaffolding() {
+        return this.isEnabled() && (placeQueued || queuedPos != null || previewPos != null);
+    }
+
     private void setShiftOverride(boolean shift) {
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(),
                 shift || Keyboard.isKeyDown(mc.gameSettings.keyBindSneak.getKeyCode()));

@@ -7,6 +7,7 @@ import mindless.event.PreMotionEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.module.ModuleManager;
 import mindless.module.impl.combat.WTap;
+import mindless.module.impl.movement.KeepSprint;
 import mindless.module.impl.movement.NoSlow;
 import mindless.module.impl.movement.Sprint;
 import mindless.module.impl.movement.Timer;
@@ -44,6 +45,12 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
     @Override
     @Shadow
     public abstract void setSprinting(boolean p_setSprinting_1_);
+
+    private void mindless$enableSprintUnlessReset() {
+        if (!KeepSprint.consumeSprintEnableCancellation()) {
+            this.setSprinting(true);
+        }
+    }
     @Shadow
     protected int sprintToggleTimer;
     @Shadow
@@ -310,12 +317,12 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
             if (this.sprintToggleTimer <= 0 && !effectiveSprintKeyDown) {
                 this.sprintToggleTimer = 7;
             } else {
-                this.setSprinting(true);
+                this.mindless$enableSprintUnlessReset();
             }
         }
 
         if (!this.isSprinting() && effectiveSprintKeyDown && (this.movementInput.moveForward != 0 || this.movementInput.moveStrafe != 0)  && (this.movementInput.moveForward >= f && flag3) && (!(this.isUsingItem() || mc.thePlayer.isBlocking()) || !stopSprint) && !this.isPotionActive(Potion.blindness)) {
-            this.setSprinting(true);
+            this.mindless$enableSprintUnlessReset();
         }
 
         Scaffold scaffold = ModuleManager.scaffold;
@@ -340,7 +347,7 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
                 && !this.isCollidedHorizontally && !ModuleUtils.setSlow
                 && !this.mc.gameSettings.keyBindSneak.isKeyDown()
                 && !this.isPotionActive(Potion.blindness)) {
-            this.setSprinting(true);
+            this.mindless$enableSprintUnlessReset();
         }
 
         Sprint sprintMod = ModuleManager.sprint;
@@ -351,7 +358,7 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
             if (sprintMod.allowWhileBackwards() && this.movementInput.moveForward < 0) force = true;
             if (sprintMod.allowWhileSideways() && this.movementInput.moveForward == 0 && this.movementInput.moveStrafe != 0) force = true;
             if (sprintMod.allowWhileUsingItem() && this.isUsingItem()) force = true;
-            if (force) this.setSprinting(true);
+            if (force) this.mindless$enableSprintUnlessReset();
         }
 
         if (this.capabilities.allowFlying) {
