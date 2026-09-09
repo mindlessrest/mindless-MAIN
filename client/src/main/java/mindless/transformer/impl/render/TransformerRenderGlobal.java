@@ -30,7 +30,7 @@ public class TransformerRenderGlobal {
      * the vanilla box -- had any effect on that launch path.
      */
     @CInline
-    @CInject(method = "drawSelectionBox", target = @CTarget("HEAD"))
+    @CInject(method = "drawSelectionBox", target = @CTarget("HEAD"), cancellable = true)
     private void onDrawSelectionBox(EntityPlayer player, MovingObjectPosition target,
                                     int execute, float partialTicks,
                                     InjectionCallback callback) {
