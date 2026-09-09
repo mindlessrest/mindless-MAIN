@@ -131,8 +131,12 @@ public static boolean postChat(S02PacketChat packet) {
         ItemStack held = player.inventory == null ? null : player.inventory.getCurrentItem();
         DrawBlockHighlightEvent event = new DrawBlockHighlightEvent(
                 mc.renderGlobal, player, target, subId, held, partialTicks);
+        mindless.module.impl.render.BlockOverlay.resetVanillaSuppression();
         SYNTHETIC_EVENT_BUS.post(event);
-        return event.isCanceled();
+        // Cancellation is unavailable on this path, so the module reports its decision
+        // directly; isCanceled still covers any listener that can cancel.
+        return event.isCanceled()
+                || mindless.module.impl.render.BlockOverlay.isVanillaSuppressed();
     }
 
     public static void postEntityJoin(Entity entity, World world) {

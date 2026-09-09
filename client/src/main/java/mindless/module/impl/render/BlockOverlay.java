@@ -102,17 +102,33 @@ public class BlockOverlay extends Module {
         return RENDER_MODES[(int) renderMode.getInput()];
     }
 
+    /**
+     * Whether the last highlight event asked for the vanilla box to be dropped.
+     *
+     * Lunar's copy of DrawBlockHighlightEvent arrives without Forge's @Cancelable, so
+     * setCanceled throws there. Recording the intent separately lets the Lunar bridge read
+     * the same decision without depending on cancellation working.
+     */
+    private static volatile boolean suppressVanilla;
+
+    public static void resetVanillaSuppression() {
+        suppressVanilla = false;
+    }
+
+    public static boolean isVanillaSuppressed() {
+        return suppressVanilla;
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onDrawBlockHighlight(DrawBlockHighlightEvent e) {
         int mode = (int) renderMode.getInput();
-        if (mode == 0) {
-            e.setCanceled(true);
-            return;
-        }
         if (mode == 1) {
             return;
         }
-        e.setCanceled(true);
+        suppressVanilla = true;
+        if (e.isCancelable()) {
+            e.setCanceled(true);
+        }
     }
 
     /**
