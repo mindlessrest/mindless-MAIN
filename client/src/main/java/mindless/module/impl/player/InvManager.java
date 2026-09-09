@@ -463,6 +463,11 @@ public class InvManager extends Module {
                     return true;
                 }
 
+                if (itemStack.stackSize > currentBlocks.stackSize) {
+                    normalSortClick(inventoryIndex, targetSlot, 2);
+                    return true;
+                }
+
                 if (currentBlocks.stackSize >= currentBlocks.getMaxStackSize()) {
                     continue;
                 }
@@ -476,10 +481,6 @@ public class InvManager extends Module {
                         normalSortClick(inventoryIndex, 0, 1);
                         return true;
                     }
-                }
-                else if (itemStack.stackSize > currentBlocks.stackSize) {
-                    normalSortClick(inventoryIndex, targetSlot, 2);
-                    return true;
                 }
             }
             else if (item instanceof ItemAppleGold) {

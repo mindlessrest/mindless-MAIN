@@ -140,6 +140,7 @@ private static final double AIM_FACE_INSET = 0.12;
     public void onUpdate() {
         if (Utils.nullCheck()) {
             OwnBedTracker.tick();
+            applyMiningKeyState();
         }
     }
 

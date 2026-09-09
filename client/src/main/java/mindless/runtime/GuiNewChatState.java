@@ -282,40 +282,24 @@ public static String senderOf(net.minecraft.util.IChatComponent component) {
     public static void drawGlass(float x, float y, float w, float h, boolean includeInput,
                                    int screenWidth, int screenHeight) {
         if (w <= 0.0f || h <= 0.0f) return;
-        if (includeInput) {
-            inputSurfaceFrame = BlurUtils.getFrameSerial();
-        }
         float maskLeft = x - 2.0f;
         float maskTop = y - 2.0f;
         float maskRight = x + w + 2.0f;
         float maskBottom = y + h + 2.0f;
         if (includeInput) {
-            maskLeft = Math.min(maskLeft, 1.0f);
-            maskTop = Math.min(maskTop, screenHeight - 17.0f);
-            maskRight = Math.max(maskRight, screenWidth - 1.0f);
-            maskBottom = Math.max(maskBottom, screenHeight);
-        }
-        if (includeInput) {
             BlurUtils.prepareBlur(maskLeft, maskTop, maskRight - maskLeft, maskBottom - maskTop);
             RoundedUtils.drawRound(x, y, w, h, chatPanelRadius(), 0xFF000000);
-            RoundedUtils.drawRound(3.0f, screenHeight - 15.0f,
-                    screenWidth - 6.0f, 13.0f, chatPanelRadius(), 0xFF000000);
             float bx = x - 2, by = y - 2, bw = w + 4;
             float bh = h + 4;
-            float inputBottom = screenHeight - 15.0f + 13.0f + 2.0f;
-            bh = Math.max(bh, inputBottom - by);
             BlurUtils.blurEndRegion(2, 2.4f, mindless.module.impl.render.ChatModule.backgroundOpacity(), bx, by, bw, bh);
         }
 
         RoundedUtils.drawRound(x, y, w, h, chatPanelRadius(), PANEL_FILL_COLOR);
-        if (includeInput) {
-            RoundedUtils.drawRound(3.0f, screenHeight - 15.0f,
-                    screenWidth - 6.0f, 13.0f, chatPanelRadius(), PANEL_FILL_COLOR);
-        }
     }
 
     public static void drawSurface(float x, float y, float w, float h) {
         if (w <= 0.0f || h <= 0.0f) return;
+        inputSurfaceFrame = BlurUtils.getFrameSerial();
         BlurUtils.prepareBlur();
         RoundedUtils.drawRound(x, y, w, h, panelRadius(), 0xFF000000);
         BlurUtils.blurEndRegion(2, 2.4f, PANEL_BLUR_OPACITY, x - 2, y - 2, w + 4, h + 4);

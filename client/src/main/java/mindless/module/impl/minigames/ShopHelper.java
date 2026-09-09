@@ -213,7 +213,7 @@ public class ShopHelper extends Module {
     }
 
     private boolean inGame() {
-        return Utils.getBedwarsStatus() == 2;
+        return Utils.getBedwarsStatus() == 2 || isShopOpen(mc.currentScreen);
     }
 
     private static String titleOf(Object screen) {

@@ -410,6 +410,7 @@ private int ringColor(int ringIndex) {
             lastHealth = health;
             playerInfo += " " + Utils.getHealthStr(target, true);
             if (!screenHides) {
+                mc.entityRenderer.setupOverlayRendering();
                 drawTargetMarker(target, presentationProgress());
                 drawTargetHUD(fadeTimer, playerInfo, health);
             }
