@@ -98,6 +98,7 @@ public class ModuleManager {
     public static AutoTool autoTool;
     public static AutoSwap autoSwap;
     public static Scaffold scaffold;
+    public static mindless.module.impl.player.TestScaffold testScaffold;
     public static Stasis stasis;
     public static Clutch clutch;
     public static Sprint sprint;
@@ -205,6 +206,7 @@ public class ModuleManager {
         this.addModule(autoSwap = new AutoSwap());
         this.addModule(new BridgeAssist());
         this.addModule(scaffold = new Scaffold());
+        this.addModule(testScaffold = new mindless.module.impl.player.TestScaffold());
         this.addModule(clutch = new Clutch());
         this.addModule(autoTool = new AutoTool());
         this.addModule(bedAura = new BedAura());

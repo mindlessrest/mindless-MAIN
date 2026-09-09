@@ -119,6 +119,19 @@ public class SliderSetting extends Setting {
         return this.minString;
     }
 
+    /** The option currently selected, or an empty string when this slider has no options. */
+    public String getSelectedOption() {
+        if (options == null || options.length == 0) {
+            return "";
+        }
+        int index = (int) getInput();
+        // A disabled slider reads back as -1, which is not an option.
+        if (index < 0 || index >= options.length) {
+            return "";
+        }
+        return options[index];
+    }
+
     public String[] getOptions() {
         return options;
     }
