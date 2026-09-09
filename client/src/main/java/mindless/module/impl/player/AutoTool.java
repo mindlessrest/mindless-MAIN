@@ -4,7 +4,6 @@ import mindless.event.PrePlayerInteractEvent;
 import mindless.event.PreSlotScrollEvent;
 import mindless.event.SlotUpdateEvent;
 import mindless.runtime.AccessorBridge;
-import mindless.runtime.ItemRendererState;
 import mindless.module.Module;
 import mindless.module.setting.impl.BlockListSetting;
 import mindless.module.setting.impl.ButtonSetting;
@@ -146,11 +145,6 @@ public class AutoTool extends Module {
         if (!Utils.nullCheck()) {
             resetState(true);
             return;
-        }
-
-        if (spoofItem.isToggled() && previousSlot != mc.thePlayer.inventory.currentItem && previousSlot != -1) {
-            ItemRendererState.setCancelUpdate(true);
-            ItemRendererState.setCancelReset(true);
         }
 
         int currentTick = ++tickCounter;
@@ -383,5 +377,24 @@ public class AutoTool extends Module {
     private void resetNextHover() {
         nextHoverStartTick = -1;
         nextHoverSlot = -1;
+    }
+
+    /**
+     * Whether the hand should still be showing what the player chose rather than the tool.
+     *
+     * Asked every frame by the item renderers, so it is a condition and not a flag they
+     * consume. The previous arming was a one-shot set once per client tick and cleared by
+     * the first renderer to read it, which left most frames unsuppressed at any sensible
+     * frame rate -- and it was evaluated before the swap it was meant to hide, so the tick
+     * that actually changed slots was never covered at all. Between the two, the equip
+     * animation played and the tool appeared.
+     */
+    public boolean isSpoofingHeldItem() {
+        return spoofItem.isToggled() && hasSwapped && previousSlot != -1;
+    }
+
+    /** The slot the player had selected before Auto Tool took it. */
+    public int getSpoofSlot() {
+        return previousSlot;
     }
 }

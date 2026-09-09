@@ -11,6 +11,7 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.combat.AutoClicker;
+import mindless.module.impl.player.AutoTool;
 import mindless.module.impl.player.Freecam;
 import mindless.module.impl.world.AntiBot;
 import mindless.module.setting.impl.SliderSetting;
@@ -1702,9 +1703,18 @@ public static boolean isMining() {
         return 0;
     }
 
+    /**
+     * What the hand should draw: the player's own item while Auto Tool is borrowing the slot.
+     *
+     * Gated on the module actually holding a tool now, rather than on the setting alone. The
+     * old test passed whenever the setting was on and then fell back to the current slot,
+     * so outside a swap it spoofed the held item with itself and hid nothing.
+     */
     public static ItemStack getSpoofedItem(ItemStack original) {
-        if (ModuleManager.autoTool != null && ModuleManager.autoTool.isEnabled() && ModuleManager.autoTool.spoofItem.isToggled() && mc.thePlayer != null) {
-            return mc.thePlayer.inventory.getStackInSlot(ModuleManager.autoTool.previousSlot == -1 ? mc.thePlayer.inventory.currentItem : ModuleManager.autoTool.previousSlot);
+        AutoTool autoTool = ModuleManager.autoTool;
+        if (autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem()
+                && mc.thePlayer != null) {
+            return mc.thePlayer.inventory.getStackInSlot(autoTool.getSpoofSlot());
         }
         return original;
     }

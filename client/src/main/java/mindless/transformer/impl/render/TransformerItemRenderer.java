@@ -105,7 +105,8 @@ public abstract class TransformerItemRenderer {
     @CInline
     @CInject(method = "updateEquippedItem", target = @CTarget("HEAD"), cancellable = true)
     private void onUpdateEquippedItem(InjectionCallback ci) {
-        if (ItemRendererState.isForceSwordBlockAnimationActive()) {
+        if (ItemRendererState.isForceSwordBlockAnimationActive()
+                || ItemRendererState.isHeldItemSpoofActive()) {
             this.equippedProgress = 1.0F;
             this.prevEquippedProgress = 1.0F;
             ci.setCancelled(true);
@@ -122,7 +123,8 @@ public abstract class TransformerItemRenderer {
     @CInline
     @CInject(method = "resetEquippedProgress", target = @CTarget("HEAD"), cancellable = true)
     private void injectResetEquippedProgress(InjectionCallback ci) {
-        if (ItemRendererState.isForceSwordBlockAnimationActive()) {
+        if (ItemRendererState.isForceSwordBlockAnimationActive()
+                || ItemRendererState.isHeldItemSpoofActive()) {
             this.equippedProgress = 1.0F;
             this.prevEquippedProgress = 1.0F;
             ci.setCancelled(true);
@@ -139,7 +141,8 @@ public abstract class TransformerItemRenderer {
     @CInline
     @CInject(method = "resetEquippedProgress2", target = @CTarget("HEAD"), cancellable = true)
     private void injectResetEquippedProgress2(InjectionCallback ci) {
-        if (ItemRendererState.isForceSwordBlockAnimationActive()) {
+        if (ItemRendererState.isForceSwordBlockAnimationActive()
+                || ItemRendererState.isHeldItemSpoofActive()) {
             this.equippedProgress = 1.0F;
             this.prevEquippedProgress = 1.0F;
             ci.setCancelled(true);

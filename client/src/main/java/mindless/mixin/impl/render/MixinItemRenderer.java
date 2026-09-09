@@ -56,6 +56,12 @@ public class MixinItemRenderer implements IMixinItemRenderer {
 
     @Inject(method = "updateEquippedItem", at = @At("HEAD"), cancellable = true)
     private void onUpdateEquippedItem(CallbackInfo ci) {
+        if (ItemRendererState.isHeldItemSpoofActive()) {
+            equippedProgress = 1.0F;
+            prevEquippedProgress = 1.0f;
+            ci.cancel();
+            return;
+        }
         if (ItemRendererState.isCancelUpdate()) {
             ItemRendererState.setCancelUpdate(false);
             equippedProgress = 1.0F;
@@ -66,6 +72,12 @@ public class MixinItemRenderer implements IMixinItemRenderer {
 
     @Inject(method = "resetEquippedProgress", at = @At("HEAD"), cancellable = true)
     public void injectResetEquippedProgress(CallbackInfo ci) {
+        if (ItemRendererState.isHeldItemSpoofActive()) {
+            equippedProgress = 1.0F;
+            prevEquippedProgress = 1.0f;
+            ci.cancel();
+            return;
+        }
         if (ItemRendererState.isCancelReset()) {
             ItemRendererState.setCancelReset(false);
             equippedProgress = 1.0F;
@@ -76,6 +88,12 @@ public class MixinItemRenderer implements IMixinItemRenderer {
 
     @Inject(method = "resetEquippedProgress2", at = @At("HEAD"), cancellable = true)
     public void injectResetEquippedProgress2(CallbackInfo ci) {
+        if (ItemRendererState.isHeldItemSpoofActive()) {
+            equippedProgress = 1.0F;
+            prevEquippedProgress = 1.0f;
+            ci.cancel();
+            return;
+        }
         if (ItemRendererState.isCancelReset()) {
             ItemRendererState.setCancelReset(false);
             equippedProgress = 1.0F;

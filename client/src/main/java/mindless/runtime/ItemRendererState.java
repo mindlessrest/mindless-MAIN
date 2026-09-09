@@ -24,6 +24,17 @@ public final class ItemRendererState {
     public static boolean isCancelReset() { return cancelReset; }
     public static void setCancelReset(boolean value) { cancelReset = value; }
 
+    /**
+     * Whether Auto Tool is holding a tool the player did not pick.
+     *
+     * While this is true the equip animation is frozen, because the hand is drawing an item
+     * that never left it and a dip-and-raise would give the swap away.
+     */
+    public static boolean isHeldItemSpoofActive() {
+        mindless.module.impl.player.AutoTool autoTool = mindless.module.ModuleManager.autoTool;
+        return autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem();
+    }
+
     public static void setForceSwordBlockAnimation(boolean value) {
         forceSwordBlockAnimationActive = value;
     }
