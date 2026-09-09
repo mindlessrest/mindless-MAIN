@@ -25,6 +25,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.lwjgl.opengl.GL11;
 
 import java.util.IdentityHashMap;
@@ -66,6 +67,27 @@ public abstract class MixinGuiNewChat {
 
     @Shadow
     public abstract int getChatWidth();
+
+    @Inject(method = "getChatComponent", at = @At("HEAD"), cancellable = true)
+    private void mindless$getChatComponent(int mouseX, int mouseY,
+                                           CallbackInfoReturnable<IChatComponent> callbackInfo) {
+        float scale = Math.max(0.1f, getChatScale());
+        float rowHeight = (ChatModule.getCustomFont() != null
+                ? ChatModule.getCustomFont().getLineHeight() : 9.0f) + ChatModule.lineSpacing();
+        int line = MathHelper.floor_double((ScaledResolutionCache.get().getScaledHeight() - 36.0 - mouseY)
+                / (rowHeight * scale));
+        if (line < 0 || line >= getLineCount() || line + scrollPos >= drawnChatLines.size()) {
+            callbackInfo.setReturnValue(null);
+            return;
+        }
+        int x = MathHelper.floor_double((mouseX - 8.0) / scale);
+        float head = ChatModule.playerHeads() ? ChatModule.headSize() + 2.0f : 0.0f;
+        if (x < head) {
+            callbackInfo.setReturnValue(null);
+            return;
+        }
+        callbackInfo.setReturnValue(drawnChatLines.get(line + scrollPos).getChatComponent());
+    }
 
     /**
      * Wraps incoming lines with the font they will be drawn in.

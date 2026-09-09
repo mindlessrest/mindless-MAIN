@@ -2,6 +2,7 @@
 #include "app/process_list.hpp"
 #include "window/window.hpp"
 #include <windows.h>
+#include <shellapi.h>
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
@@ -499,7 +500,11 @@ static void draw_login_content(DrawList& dl, AppState& state,
 
     float contentTop = wr.y + kContentTop;
 
-    Rect btnR = { fieldX, wr.bottom() - pad - t.buttonH, fieldW, t.buttonH };
+    float btnGap = 8.0f;
+    float browserW = 124.0f;
+    Rect btnR = { fieldX, wr.bottom() - pad - t.buttonH,
+                  fieldW - browserW - btnGap, t.buttonH };
+    Rect browserR = { btnR.right() + btnGap, btnR.y, browserW, t.buttonH };
 
     const float fieldH   = 38.0f;
     const float checkH   = 16.0f;
@@ -562,6 +567,12 @@ static void draw_login_content(DrawList& dl, AppState& state,
 
     std::string_view btnText = state.authInProgress ? "Signing in..." : "Sign in";
     bool submit = draw_button(dl, fn, btnR, btnText, input, state.signInHover, dt, alpha, true);
+    if (draw_button(dl, cap, browserR, "Open browser", input, state.backHover, dt, alpha, false))
+    {
+        ShellExecuteA(nullptr, "open", "https://mindless.rest/login?client=loader",
+                      nullptr, nullptr, SW_SHOWNORMAL);
+        state.authError = "Complete login in your browser, then sign in here";
+    }
 
     if (dt > 0.0f)
     {
@@ -934,7 +945,7 @@ static void draw_loading_content(DrawList& dl, AppState& state,
     dl.draw_text(state.targetPid, { barX + barW - pidW, metaY },
                  t.textDisable.with_alpha(alpha), fonts.caption);
 
-    Rect statusCard = { barX, top + 52.0f, barW, 74.0f };
+    Rect statusCard = { barX, top + 52.0f, barW, 78.0f };
     dl.fill_rounded_rect(statusCard, t.surfaceRaised.with_alpha(alpha), t.cardRadius);
     dl.stroke_rounded_rect(statusCard, t.buttonBorder.with_alpha(alpha), t.cardRadius, 1.0f);
 
@@ -983,12 +994,19 @@ static void draw_loading_content(DrawList& dl, AppState& state,
     // now; this says how much of the whole there is left, which one changing line cannot.
     static const char* kPhases[3] = { "Download", "Transform", "Launch" };
     int current = progress < 0.46f ? 0 : (progress < 0.985f ? 1 : 2);
-
-    const float rowH = 26.0f;
-    float rowY = statusCard.bottom() + 18.0f;
+    float phaseY = statusCard.bottom() + 18.0f;
+    float phaseGap = 8.0f;
+    float phaseW = (barW - phaseGap * 2.0f) / 3.0f;
     for (int i = 0; i < 3; ++i)
-        draw_phase_row(dl, fn, kPhases[i], barX + 3.0f, rowY + rowH * i, rowH,
-                       i - current, state.spinElapsed, alpha, i < 2);
+    {
+        Rect phase = { barX + i * (phaseW + phaseGap), phaseY, phaseW, 28.0f };
+        Color fill = i < current ? t.surfaceRaised : (i == current ? t.accentDim : t.buttonBg);
+        Color border = i == current ? t.accent.with_alpha(0.34f) : t.buttonBorder;
+        dl.fill_rounded_rect(phase, fill.with_alpha(alpha), t.tagRadius);
+        dl.stroke_rounded_rect(phase, border.with_alpha(alpha), t.tagRadius, 1.0f);
+        draw_text_in_box(dl, fonts.caption, kPhases[i], phase,
+                         (i <= current ? t.text : t.textDisable).with_alpha(alpha));
+    }
 
     // Worth one line at the bottom: the window goes away on its own, and without saying so
     // it looks like something still has to be clicked.
