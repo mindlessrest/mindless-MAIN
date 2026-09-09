@@ -19,6 +19,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+
     outputs:
       forge-jar-sha256: ${{ steps.release-metadata.outputs.forge-jar-sha256 }}
       lunar-jar-sha256: ${{ steps.release-metadata.outputs.lunar-jar-sha256 }}
@@ -49,6 +50,9 @@ jobs:
           "rev=$rev" >> $env:GITHUB_OUTPUT
           "archives=$env:LOCALAPPDATA\vcpkg\archives" >> $env:GITHUB_OUTPUT
 
+      # Binary packages downloaded/built by vcpkg.
+      # This only creates a new cache when the runner image/vcpkg
+      # revision/vcpkg manifest changes.
       - name: Cache vcpkg binary packages
         uses: actions/cache@v4
         with:
@@ -58,19 +62,27 @@ jobs:
             vcpkg-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.vcpkg.outputs.rev }}-
             vcpkg-${{ runner.os }}-${{ env.ImageOS }}-
 
+      # Don't use github.sha here.
+      #
+      # github.sha changes on every commit, which causes Actions to
+      # create a fresh cache after basically every build.
+      #
+      # Instead, invalidate the cache when native/build configuration
+      # files actually change.
       - name: Restore native build cache
         uses: actions/cache@v4
         with:
           path: |
             client/native_build
             loader/out/build
-            loader/CMakePresets.json
             loader/vcpkg_installed
-          key: native-v3-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.vcpkg.outputs.rev }}-${{ github.sha }}
+          key: native-v4-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.vcpkg.outputs.rev }}-${{ hashFiles('client/native/**', 'loader/CMakeLists.txt', 'loader/**/*.cmake', 'loader/vcpkg.json', 'loader/vcpkg-configuration.json', 'loader/CMakePresets.json') }}
           restore-keys: |
-            native-v3-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.vcpkg.outputs.rev }}-
-            native-v3-${{ runner.os }}-${{ env.ImageOS }}-
+            native-v4-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.vcpkg.outputs.rev }}-
+            native-v4-${{ runner.os }}-${{ env.ImageOS }}-
 
+      # The obfuscator only needs rebuilding when its own sources or
+      # Gradle configuration change.
       - name: Restore obfuscator cache
         id: obfuscator-cache
         uses: actions/cache@v4
@@ -84,6 +96,7 @@ jobs:
           if ('${{ steps.obfuscator-cache.outputs.cache-hit }}' -eq 'true') {
             $env:MINDLESS_OBF_CACHE_HIT = "1"
           }
+
           python tools/build.py --prod --no-cache
 
       - name: Verify release files
@@ -109,12 +122,25 @@ jobs:
             }
           }
 
-          $forgeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath "client/build/libs/mindless-obf.jar").Hash.ToLowerInvariant()
-          $lunarHash = (Get-FileHash -Algorithm SHA256 -LiteralPath "client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar").Hash.ToLowerInvariant()
+          $forgeHash = (
+            Get-FileHash `
+              -Algorithm SHA256 `
+              -LiteralPath "client/build/libs/mindless-obf.jar"
+          ).Hash.ToLowerInvariant()
+
+          $lunarHash = (
+            Get-FileHash `
+              -Algorithm SHA256 `
+              -LiteralPath "client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar"
+          ).Hash.ToLowerInvariant()
+
           "forge-jar-sha256=$forgeHash" >> $env:GITHUB_OUTPUT
           "lunar-jar-sha256=$lunarHash" >> $env:GITHUB_OUTPUT
 
-          New-Item -ItemType Directory -Path release -Force | Out-Null
+          New-Item `
+            -ItemType Directory `
+            -Path release `
+            -Force | Out-Null
 
           Copy-Item `
             -LiteralPath "MindlessLoader.exe" `
@@ -124,13 +150,15 @@ jobs:
             -LiteralPath "client/native_build/dist/MindlessNative.dll" `
             -Destination "release/MindlessNative.dll"
 
+      # The publish job consumes this immediately, so keeping every
+      # build artifact for a week just burns Actions storage.
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: mindless-client-${{ github.sha }}
           path: release/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
           compression-level: 0
 
       - name: Upload private crash mappings
