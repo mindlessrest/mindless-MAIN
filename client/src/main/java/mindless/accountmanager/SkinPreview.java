@@ -92,21 +92,27 @@ public final class SkinPreview {
         }
 
         float centerX = x + width / 2.0f;
-        float bottomY = y + height - height * 0.08f;
-        // The model is two blocks tall in its own units; size it from the panel rather than a
-        // constant so the preview fills whatever space the layout gives it.
-        float scale = height / 2.6f;
+        float centerY = y + height / 2.0f;
+        // The model is two units tall once ModelRenderer applies its 1/16 scale, so this fills
+        // the panel height rather than sitting as a thumbnail in the middle of it. Width is
+        // capped too, or a short wide panel would push the arms outside it.
+        float scale = Math.min(height / 2.15f, width / 1.3f);
 
         ModelPlayer model = model(slimModel);
         pose(model, mouseX, mouseY, centerX, y + height / 2.0f);
 
         GlStateManager.pushMatrix();
         GlStateManager.enableColorMaterial();
-        GlStateManager.translate(centerX, bottomY, 100.0f);
-        // Negative Y flips the model upright; GUI space runs the other way to world space.
-        GlStateManager.scale(scale, -scale, scale);
+        GlStateManager.translate(centerX, centerY, 100.0f);
+        // Only X is mirrored. Model space already runs +Y downward, the same way GUI space
+        // does, so negating Y as well is what had it standing on its head -- the entity path
+        // flips Y because it goes through world space first, and this does not.
+        GlStateManager.scale(-scale, scale, scale);
         GlStateManager.rotate(pitch, 1.0f, 0.0f, 0.0f);
         GlStateManager.rotate(yaw, 0.0f, 1.0f, 0.0f);
+        // Applied first, in model space: shifts the two-unit body onto its own middle so it
+        // turns about its waist instead of orbiting the panel centre.
+        GlStateManager.translate(0.0f, -0.5f, 0.0f);
 
         RenderHelper.enableStandardItemLighting();
         GlStateManager.enableDepth();
@@ -154,7 +160,7 @@ public final class SkinPreview {
         float lookYaw = 0.0f;
         float lookPitch = 0.0f;
         if (!dragging) {
-            lookYaw = Math.max(-35.0f, Math.min(35.0f, (mouseX - centerX) * 0.25f));
+            lookYaw = Math.max(-35.0f, Math.min(35.0f, (centerX - mouseX) * 0.25f));
             lookPitch = Math.max(-25.0f, Math.min(25.0f, (mouseY - centerY) * 0.25f));
         }
 

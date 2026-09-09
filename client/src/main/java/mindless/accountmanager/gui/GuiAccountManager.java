@@ -122,7 +122,9 @@ public class GuiAccountManager extends GuiScreen {
         listPanelW = contentW - (splitLayout ? detailPanelW + gap : 0);
         listPanelX = contentX;
         detailPanelX = listPanelX + listPanelW + gap;
-        searchTop = HEADER_H + 22;
+        // Clear of the "Accounts (n)" heading, which is drawn at panelTop + 10 and is about
+        // nine pixels tall; the old offset started the box two pixels into it.
+        searchTop = HEADER_H + 36;
         listTop = searchTop + SEARCH_H + 10;
         footerTop = Math.max(listTop + 74, height - FOOTER_H);
     }
@@ -429,10 +431,10 @@ public class GuiAccountManager extends GuiScreen {
                     panelBottom - previewTop - 14, 6f, 0xB8121417);
             outline(detailPanelX + 14, previewTop, detailPanelW - 28, panelBottom - previewTop - 14);
             regular.drawString("PROFILE PREVIEW", detailPanelX + 25f, previewTop + 11f, C_DIM, false);
-            previewX = detailPanelX + 20;
-            previewY = previewTop + 26;
-            previewW = detailPanelW - 40;
-            previewH = panelBottom - previewTop - 44;
+            previewX = detailPanelX + 16;
+            previewY = previewTop + 24;
+            previewW = detailPanelW - 32;
+            previewH = panelBottom - previewTop - 38;
             String previewName = StringUtils.isBlank(account.getUsername()) ? null : account.getUsername();
             ResourceLocation skin = mindless.accountmanager.PlayerSkinCache.get(previewName);
             if (skin != null && previewH > 40) {
