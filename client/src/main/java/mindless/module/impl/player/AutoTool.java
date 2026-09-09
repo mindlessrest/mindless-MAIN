@@ -390,8 +390,19 @@ public class AutoTool extends Module {
      * animation played and the tool appeared.
      */
     public boolean isSpoofingHeldItem() {
-        return spoofItem.isToggled() && hasSwapped && previousSlot != -1;
+        boolean active = spoofItem.isToggled() && hasSwapped && previousSlot != -1;
+        if (active != reportedSpoofActive) {
+            reportedSpoofActive = active;
+            mindless.utility.Diagnostics.log("autotool", active
+                    ? "spoof on, showing slot " + previousSlot
+                    : "spoof off (toggled=" + spoofItem.isToggled()
+                            + " swapped=" + hasSwapped + " previous=" + previousSlot + ")");
+        }
+        return active;
     }
+
+    /** Last reported spoof state, so the log records the change and not every frame. */
+    private boolean reportedSpoofActive;
 
     /** The slot the player had selected before Auto Tool took it. */
     public int getSpoofSlot() {

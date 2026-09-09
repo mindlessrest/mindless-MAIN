@@ -1714,9 +1714,29 @@ public static boolean isMining() {
         AutoTool autoTool = ModuleManager.autoTool;
         if (autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem()
                 && mc.thePlayer != null) {
-            return mc.thePlayer.inventory.getStackInSlot(autoTool.getSpoofSlot());
+            ItemStack spoofed = mc.thePlayer.inventory.getStackInSlot(autoTool.getSpoofSlot());
+            reportSpoofedItem(original, spoofed);
+            return spoofed;
         }
         return original;
+    }
+
+    private static ItemStack lastReportedSpoofSource;
+
+    /**
+     * Say once per swap what the hand was asked to draw and what it was given.
+     *
+     * Reaching this at all proves the renderer hook is live, which is the half of the
+     * question the module side cannot answer on its own.
+     */
+    private static void reportSpoofedItem(ItemStack original, ItemStack spoofed) {
+        if (spoofed == lastReportedSpoofSource) {
+            return;
+        }
+        lastReportedSpoofSource = spoofed;
+        mindless.utility.Diagnostics.log("autotool", "hand asked for "
+                + (original == null ? "nothing" : original.getDisplayName())
+                + ", drawing " + (spoofed == null ? "nothing" : spoofed.getDisplayName()));
     }
 
     public static boolean scaffoldDiagonal(boolean strict) {
