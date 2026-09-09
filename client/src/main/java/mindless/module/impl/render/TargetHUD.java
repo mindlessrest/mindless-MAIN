@@ -41,6 +41,7 @@ public class TargetHUD extends Module {
     private SliderSetting theme;
     private SliderSetting glowSize;
     private SliderSetting positionMode;
+    private SliderSetting positionSmoothness;
     private ButtonSetting renderEsp;
     private ButtonSetting showDifference;
     private ButtonSetting showStatus;
@@ -109,7 +110,7 @@ private static final int RING_COUNT = 6;
     private static final int MARKER_COLORS_CUSTOM = 2;
     private static final int MARKER_COLORS_GRADIENT = 3;
     /** Points around the marker outline. 64 is smooth at any size anyone will use. */
-    private static final int MARKER_SEGMENTS = 64;
+    private static final int MARKER_SEGMENTS = 96;
     private static final String[] HEAD_STYLES = new String[] { "3D", "Flat", "2D" };
     private static final int HEAD_STYLE_3D = 0;
     private static final int HEAD_STYLE_FLAT = 1;
@@ -155,6 +156,10 @@ private static final int[] DEFAULT_RING_COLORS = {
     public int posY = 30;
     private float tweenedX = Float.NaN;
     private float tweenedY = Float.NaN;
+    private long lastPositionUpdateNanos;
+    private int tweenTargetId = Integer.MIN_VALUE;
+    private final double[] projectedTargetPoint = new double[3];
+    private final float[] projectedTargetBounds = new float[4];
     /** Camera matrices captured by this module for its own target-anchored overlays. */
     private RenderUtils.ProjectionContext targetProjectionContext;
 
@@ -194,6 +199,7 @@ private static final int[] DEFAULT_RING_COLORS = {
         this.registerSetting(theme = new SliderSetting("Theme", 0, Theme.THEMES_SETTING));
         this.registerSetting(glowSize = new SliderSetting("Glow size", 9.0, 2.0, 20.0, 0.5));
         this.registerSetting(positionMode = new SliderSetting("Position", 0, POSITION_MODES));
+        this.registerSetting(positionSmoothness = new SliderSetting("Position smoothness", 65.0, 0.0, 100.0, 1.0));
         this.registerSetting(showDifference = new ButtonSetting("Show difference", true));
         this.registerSetting(showStatus = new ButtonSetting("Show win or loss", true));
         this.registerSetting(healthColor = new ButtonSetting("Traditional health color", false));
@@ -250,6 +256,7 @@ private static final int[] DEFAULT_RING_COLORS = {
     @Override
     public void guiUpdate() {
         glowSize.setVisible(mode.getInput() == 0, this);
+        positionSmoothness.setVisible(positionMode != null && positionMode.getInput() > 0.0, this);
 
         boolean hits = hitEffects != null && hitEffects.isToggled();
         int hitMode = hitStyle == null ? HIT_STYLE_FLASH : (int) hitStyle.getInput();
@@ -828,6 +835,56 @@ private int ringColor(int ringIndex) {
                 .color(red, green, blue, alpha).endVertex();
     }
 
+    private boolean projectTargetBounds(EntityLivingBase entity, float[] output) {
+        if (entity == null || output == null || output.length < 4 || targetProjectionContext == null) {
+            return false;
+        }
+
+        float partialTicks = mindless.runtime.AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks;
+        double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks
+                - mc.getRenderManager().viewerPosX;
+        double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks
+                - mc.getRenderManager().viewerPosY;
+        double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks
+                - mc.getRenderManager().viewerPosZ;
+        double halfWidth = entity.width * 0.5;
+
+        double minX = Double.MAX_VALUE;
+        double minY = Double.MAX_VALUE;
+        double maxX = -Double.MAX_VALUE;
+        double maxY = -Double.MAX_VALUE;
+        int valid = 0;
+
+        for (int xi = -1; xi <= 1; xi += 2) {
+            for (int zi = -1; zi <= 1; zi += 2) {
+                for (int yi = 0; yi <= 1; yi++) {
+                    if (!RenderUtils.projectTo2D(targetProjectionContext,
+                            x + xi * halfWidth, y + yi * entity.height, z + zi * halfWidth,
+                            projectedTargetPoint)) {
+                        continue;
+                    }
+                    if (projectedTargetPoint[2] <= 0.005 || projectedTargetPoint[2] >= 1.0) {
+                        continue;
+                    }
+                    minX = Math.min(minX, projectedTargetPoint[0]);
+                    minY = Math.min(minY, projectedTargetPoint[1]);
+                    maxX = Math.max(maxX, projectedTargetPoint[0]);
+                    maxY = Math.max(maxY, projectedTargetPoint[1]);
+                    valid++;
+                }
+            }
+        }
+
+        if (valid < 4 || maxX <= minX || maxY <= minY) {
+            return false;
+        }
+        output[0] = (float) minX;
+        output[1] = (float) minY;
+        output[2] = (float) maxX;
+        output[3] = (float) maxY;
+        return true;
+    }
+
     private void drawTargetHUD(Timer fadeTimer, String string, double health) {
         if (showDifference.isToggled() && target != null) {
             float enemyHealth = target.isDead ? 0 : Utils.getTotalHealth(target);
@@ -864,40 +921,58 @@ private int ringColor(int ringIndex) {
 
         int posMode = positionMode != null ? (int) positionMode.getInput() : 0;
         if (posMode > 0 && target != null) {
-            float partialTicks = mindless.runtime.AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks;
-            double tx = target.lastTickPosX + (target.posX - target.lastTickPosX) * partialTicks;
-            double ty = target.lastTickPosY + (target.posY - target.lastTickPosY) * partialTicks;
-            double tz = target.lastTickPosZ + (target.posZ - target.lastTickPosZ) * partialTicks;
-            float entityH = target.height;
-            float entityW = target.width;
-            double camX = mc.getRenderManager().viewerPosX;
-            double camY = mc.getRenderManager().viewerPosY;
-            double camZ = mc.getRenderManager().viewerPosZ;
-            double[] projected = new double[3];
             float sw = scaledResolution.getScaledWidth();
             float sh = scaledResolution.getScaledHeight();
-            float hudW = targetStrWithPadding + padding * 2;
+            float hudW = targetStrWithPadding + padding;
             float hudH = (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding * 2 + footerHeight;
+            float anchorGap = 10.0f;
 
-            if (targetProjectionContext != null &&
-                    mindless.utility.RenderUtils.projectTo2D(targetProjectionContext, tx - camX, ty - camY + entityH / 2, tz - camZ, projected)) {
-                float screenX = (float) projected[0];
-                float screenY = (float) projected[1];
+            if (projectTargetBounds(target, projectedTargetBounds)) {
+                float left = projectedTargetBounds[0];
+                float top = projectedTargetBounds[1];
+                float right = projectedTargetBounds[2];
+                float bottom = projectedTargetBounds[3];
+                float centerX = (left + right) * 0.5f;
+                float centerY = (top + bottom) * 0.5f;
+                float panelLeft;
+                float panelTop;
                 switch (posMode) {
-                    case 1: desiredX = screenX - hudW - 10; desiredY = screenY - hudH / 2; break;
-                    case 2: desiredX = screenX + 10; desiredY = screenY - hudH / 2; break;
-                    case 3: desiredX = screenX - hudW / 2; desiredY = screenY - hudH - entityH * 20; break;
-                    case 4: desiredX = screenX - hudW / 2; desiredY = screenY + entityH * 10; break;
-                    case 5: desiredX = screenX - hudW / 2; desiredY = screenY - hudH / 2; break;
+                    case 1: panelLeft = left - anchorGap - hudW; panelTop = centerY - hudH * 0.5f; break;
+                    case 2: panelLeft = right + anchorGap; panelTop = centerY - hudH * 0.5f; break;
+                    case 3: panelLeft = centerX - hudW * 0.5f; panelTop = top - anchorGap - hudH; break;
+                    case 4: panelLeft = centerX - hudW * 0.5f; panelTop = bottom + anchorGap; break;
+                    case 5:
+                    default: panelLeft = centerX - hudW * 0.5f; panelTop = centerY - hudH * 0.5f; break;
                 }
-                desiredX = Math.max(2, Math.min(sw - hudW - 2, desiredX));
-                desiredY = Math.max(2, Math.min(sh - hudH - 2, desiredY));
+                panelLeft = Math.max(2.0f, Math.min(sw - hudW - 2.0f, panelLeft));
+                panelTop = Math.max(2.0f, Math.min(sh - hudH - 2.0f, panelTop));
+                desiredX = panelLeft + padding;
+                desiredY = panelTop + padding;
             }
         }
 
-        if (Float.isNaN(tweenedX)) { tweenedX = desiredX; tweenedY = desiredY; }
-        tweenedX += (desiredX - tweenedX) * 0.15f;
-        tweenedY += (desiredY - tweenedY) * 0.15f;
+        long positionNow = System.nanoTime();
+        int currentTargetId = target == null ? Integer.MIN_VALUE : target.getEntityId();
+        if (Float.isNaN(tweenedX) || currentTargetId != tweenTargetId) {
+            tweenedX = desiredX;
+            tweenedY = desiredY;
+            tweenTargetId = currentTargetId;
+            lastPositionUpdateNanos = positionNow;
+        }
+        float smoothness = (float) (positionSmoothness == null ? 65.0 : positionSmoothness.getInput());
+        float positionBlend;
+        if (posMode == 0 || smoothness <= 0.0f) {
+            positionBlend = 1.0f;
+        } else {
+            float elapsed = lastPositionUpdateNanos == 0L ? 1.0f / 60.0f
+                    : Math.max(1.0f / 240.0f, Math.min(0.05f,
+                    (positionNow - lastPositionUpdateNanos) / 1_000_000_000.0f));
+            float response = 30.0f - 26.0f * (smoothness / 100.0f);
+            positionBlend = 1.0f - (float) Math.exp(-response * elapsed);
+        }
+        lastPositionUpdateNanos = positionNow;
+        tweenedX += (desiredX - tweenedX) * positionBlend;
+        tweenedY += (desiredY - tweenedY) * positionBlend;
 
         final int x = Math.round(tweenedX);
         final int y = Math.round(tweenedY);
@@ -1073,10 +1148,9 @@ private int ringColor(int ringIndex) {
      * a size taken from how tall the target actually appears, which is what makes it read as a
      * sight rather than as scenery.
      *
-     * The outline is a superellipse, so one parameter takes it from a circle to a hard square and
-     * every point on it has its outward normal pointing straight away from the centre. That makes
-     * the band, the gaps and the rotation all fall out of a single angle sweep, with no separate
-     * cases for the straight edges and the corners.
+     * The outline is a superellipse, so one parameter takes it from a circle to a hard square.
+     * The band, gaps and rotation all come from one angle sweep, with no separate geometry paths
+     * for the straight edges and corners.
      */
     private void drawTargetMarker(EntityLivingBase entity, float fade) {
         if (markerEnabled == null || !markerEnabled.isToggled() || entity == null) {
@@ -1089,31 +1163,13 @@ private int ringColor(int ringIndex) {
             return;
         }
 
-        float partialTicks = mindless.runtime.AccessorBridge.Minecraft_getTimer(mc).renderPartialTicks;
-        double tx = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks;
-        double ty = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks;
-        double tz = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks;
-        double camX = mc.getRenderManager().viewerPosX;
-        double camY = mc.getRenderManager().viewerPosY;
-        double camZ = mc.getRenderManager().viewerPosZ;
-
-        double[] middle = new double[3];
-        if (!RenderUtils.projectTo2D(targetProjectionContext,
-                tx - camX, ty - camY + entity.height * 0.5, tz - camZ, middle)) {
+        if (!projectTargetBounds(entity, projectedTargetBounds)) {
             return;
         }
 
         ScaledResolution resolution = ScaledResolutionCache.get();
-        float centerX = (float) middle[0];
-        float centerY = (float) middle[1];
-        // A target behind the camera or outside the viewport has no on-screen body to attach
-        // this marker to. Drawing its projected coordinates anyway produced the enormous arcs
-        // seen at the screen edges while silent aura kept attacking off-crosshair.
-        if (middle[2] < 0.0 || middle[2] > 1.0
-                || centerX < 0.0f || centerX > resolution.getScaledWidth()
-                || centerY < 0.0f || centerY > resolution.getScaledHeight()) {
-            return;
-        }
+        float centerX = (projectedTargetBounds[0] + projectedTargetBounds[2]) * 0.5f;
+        float centerY = (projectedTargetBounds[1] + projectedTargetBounds[3]) * 0.5f;
 
         // Screen-space marker means screen-space sizing: turning silent rotations, changing FOV,
         // or moving a few blocks must not make the brackets pulse larger and smaller.
@@ -1121,6 +1177,11 @@ private int ringColor(int ringIndex) {
 
         int style = markerStyle == null ? MARKER_STYLE_BRACKETS : (int) markerStyle.getInput();
         float thickness = (float) (markerThickness == null ? 2.0 : markerThickness.getInput());
+        float markerExtent = size + thickness;
+        if (centerX - markerExtent < 0.0f || centerX + markerExtent > resolution.getScaledWidth()
+                || centerY - markerExtent < 0.0f || centerY + markerExtent > resolution.getScaledHeight()) {
+            return;
+        }
         float gap = style == MARKER_STYLE_FRAME
                 ? 0.0f
                 : (float) (markerGap == null ? 0.35 : markerGap.getInput());
@@ -1231,9 +1292,8 @@ private int ringColor(int ringIndex) {
     /**
      * One segment of the outline, as a quad straddling the path.
      *
-     * The outward direction is the direction from the centre, which is exactly the surface
-     * normal of a superellipse, so the band keeps an even width all the way round including
-     * through the corners.
+     * The perpendicular of each path segment keeps the band at the requested on-screen width;
+     * using the direction from the centre made squared corners flare and left diagonal end caps.
      */
     private void markerBand(WorldRenderer worldRenderer, float centerX, float centerY,
                             double fromX, double fromY, double toX, double toY,
@@ -1243,15 +1303,20 @@ private int ringColor(int ringIndex) {
         if (fromLength < 0.0001 || toLength < 0.0001) {
             return;
         }
-        double fromNormalX = fromX / fromLength * thickness;
-        double fromNormalY = fromY / fromLength * thickness;
-        double toNormalX = toX / toLength * thickness;
-        double toNormalY = toY / toLength * thickness;
+        double segmentX = toX - fromX;
+        double segmentY = toY - fromY;
+        double segmentLength = Math.sqrt(segmentX * segmentX + segmentY * segmentY);
+        if (segmentLength < 0.0001) {
+            return;
+        }
+        double halfThickness = thickness * 0.5;
+        double normalX = -segmentY / segmentLength * halfThickness;
+        double normalY = segmentX / segmentLength * halfThickness;
 
-        markerVertex(worldRenderer, centerX + fromX - fromNormalX, centerY + fromY - fromNormalY, fromColor);
-        markerVertex(worldRenderer, centerX + toX - toNormalX, centerY + toY - toNormalY, toColor);
-        markerVertex(worldRenderer, centerX + toX + toNormalX, centerY + toY + toNormalY, toColor);
-        markerVertex(worldRenderer, centerX + fromX + fromNormalX, centerY + fromY + fromNormalY, fromColor);
+        markerVertex(worldRenderer, centerX + fromX - normalX, centerY + fromY - normalY, fromColor);
+        markerVertex(worldRenderer, centerX + toX - normalX, centerY + toY - normalY, toColor);
+        markerVertex(worldRenderer, centerX + toX + normalX, centerY + toY + normalY, toColor);
+        markerVertex(worldRenderer, centerX + fromX + normalX, centerY + fromY + normalY, fromColor);
     }
 
     private void markerVertex(WorldRenderer worldRenderer, double x, double y, int argb) {
@@ -1912,6 +1977,8 @@ private static final float[][] HEAD_UVS = {
         healthTrackedTarget = null;
         tweenedX = Float.NaN;
         tweenedY = Float.NaN;
+        lastPositionUpdateNanos = 0L;
+        tweenTargetId = Integer.MIN_VALUE;
     }
 
     /**
