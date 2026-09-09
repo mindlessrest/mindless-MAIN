@@ -1,6 +1,7 @@
 package mindless.utility.profile;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 import java.io.File;
@@ -36,7 +37,7 @@ import java.nio.file.StandardCopyOption;
 public final class ProfileMigrations {
 
     /** Bump when a migration is added below. */
-    public static final int CURRENT_VERSION = 1;
+    public static final int CURRENT_VERSION = 2;
 
     private static final String VERSION_KEY = "configVersion";
 
@@ -113,8 +114,84 @@ public final class ProfileMigrations {
     private static void applyStep(JsonObject profile, int version) {
         switch (version) {
             case 0:
+                break;
+            case 1:
+                mergeScaffoldModules(profile);
+                break;
             default:
                 break;
+        }
+    }
+
+    private static void mergeScaffoldModules(JsonObject profile) {
+        JsonElement modulesElement = profile.get("modules");
+        if (modulesElement == null || !modulesElement.isJsonArray()) {
+            return;
+        }
+        JsonArray modules = modulesElement.getAsJsonArray();
+        JsonObject scaffold = null;
+        JsonObject telly = null;
+        for (int i = 0; i < modules.size(); i++) {
+            JsonElement element = modules.get(i);
+            if (element == null || !element.isJsonObject()) {
+                continue;
+            }
+            JsonObject module = element.getAsJsonObject();
+            JsonElement name = module.get("name");
+            if (name == null || !name.isJsonPrimitive()) {
+                continue;
+            }
+            String moduleName = name.getAsString();
+            if ("Scaffold".equalsIgnoreCase(moduleName)) {
+                scaffold = module;
+            }
+            else if ("Test Scaffold".equalsIgnoreCase(moduleName)) {
+                telly = module;
+            }
+        }
+        if (telly == null) {
+            return;
+        }
+        boolean tellyEnabled = false;
+        try {
+            tellyEnabled = telly.has("enabled") && telly.get("enabled").getAsBoolean();
+        }
+        catch (Exception ignored) {
+        }
+        if (scaffold == null) {
+            scaffold = telly;
+            scaffold.addProperty("name", "Scaffold");
+            scaffold.addProperty("Mode", 1);
+            if (scaffold.has("Keep Y")) {
+                scaffold.add("Telly.Keep Y", scaffold.remove("Keep Y"));
+            }
+        }
+        else {
+            for (java.util.Map.Entry<String, JsonElement> entry : telly.entrySet()) {
+                String key = entry.getKey();
+                if ("name".equals(key) || "enabled".equals(key) || "hidden".equals(key)
+                        || "keybind".equals(key)) {
+                    continue;
+                }
+                scaffold.add("Keep Y".equals(key) ? "Telly.Keep Y" : key, entry.getValue());
+            }
+            java.util.Iterator<JsonElement> iterator = modules.iterator();
+            while (iterator.hasNext()) {
+                if (iterator.next() == telly) {
+                    iterator.remove();
+                    break;
+                }
+            }
+        }
+        if (tellyEnabled) {
+            scaffold.addProperty("Mode", 1);
+            scaffold.addProperty("enabled", true);
+            if (telly.has("hidden")) {
+                scaffold.add("hidden", telly.get("hidden"));
+            }
+            if (telly.has("keybind")) {
+                scaffold.add("keybind", telly.get("keybind"));
+            }
         }
     }
 

@@ -239,7 +239,12 @@ public TestScaffold() {
     super("Test Scaffold", "Experimental scaffold port.", category.player);
     this.registerSetting(new DescriptionSetting("Credits to Lizzie - @jenrnr ❤"));
     this.registerSetting(towerMode = new SliderSetting("Tower", 0, TOWER_MODES));
-    this.registerSetting(keepMode = new SliderSetting("Keep Y", 0, KEEP_MODES));
+    this.registerSetting(keepMode = new SliderSetting("Keep Y", 0, KEEP_MODES) {
+        @Override
+        public String getProfileKey() {
+            return "Telly.Keep Y";
+        }
+    });
     GroupSetting yOptions = new GroupSetting("Y Options");
     this.registerSetting(yOptions);
     this.registerSetting(rmbActivate = new ButtonSetting(yOptions, "RMB Activate", false));
@@ -297,6 +302,10 @@ public void onDisable() {
         sprintSuppressed = false;
     }
     resetShared();
+}
+
+public boolean isActivelyScaffolding() {
+    return placedThisTick || ourPlace || needValid || ltPendHit != null;
 }
 
 

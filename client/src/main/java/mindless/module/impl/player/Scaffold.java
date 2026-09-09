@@ -3,11 +3,14 @@ package mindless.module.impl.player;
 import java.awt.Color;
 import mindless.event.ClientRotationEvent;
 import mindless.event.PreUpdateEvent;
+import mindless.event.PrePlayerInputEvent;
+import mindless.event.SendPacketEvent;
 import mindless.event.RightClickDelayTickEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.module.setting.Setting;
 import mindless.utility.RenderUtils;
 import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
@@ -43,6 +46,7 @@ import java.io.IOException;
 
 public class Scaffold extends Module {
     private static final ItemBlock PLACEHOLDER = new ItemBlock(Blocks.tnt);
+    private final SliderSetting mode;
     private final SliderSetting rotationSpeed;
     private final SliderSetting sprint;
     private final ButtonSetting keepY;
@@ -52,6 +56,8 @@ public class Scaffold extends Module {
     private final ButtonSetting eagle;
     private final SliderSetting eagleSafety;
     private final ButtonSetting switchBack;
+    private final TestScaffold telly = new TestScaffold();
+    private int activeMode = -1;
 
     private BlockPos previewPos;
     private EnumFacing previewFace;
@@ -94,6 +100,8 @@ private int previousSlot = -1;
 
     public Scaffold() {
         super("Scaffold", "Bridges by placing blocks under your feet.", category.player);
+        this.closetModule = true;
+        this.registerSetting(mode = new SliderSetting("Mode", 0, new String[]{"Normal", "Telly"}));
         this.registerSetting(rotationSpeed = new SliderSetting("Rotation speed", 180, 1, 360, 1));
         this.registerSetting(sprint = new SliderSetting("Sprint", 0, new String[]{"Off", "Legit", "Watchdog"}));
         this.registerSetting(keepY = new ButtonSetting("Keep Y", false));
@@ -103,10 +111,40 @@ private int previousSlot = -1;
         this.registerSetting(eagle = new ButtonSetting("Eagle", false));
         this.registerSetting(eagleSafety = new SliderSetting("Eagle safety", " tick", 1, 1, 3, 0.1));
         this.registerSetting(switchBack = new ButtonSetting("Switch back", true));
+        for (Setting setting : telly.getSettings()) {
+            this.registerSetting(setting);
+        }
+    }
+
+    @Override
+    public void guiUpdate() {
+        boolean normal = !isTellyMode();
+        rotationSpeed.setVisible(normal, this);
+        sprint.setVisible(normal, this);
+        keepY.setVisible(normal, this);
+        keepYOnRightClick.setVisible(normal, this);
+        keepYAutoJump.setVisible(normal, this);
+        keepYJumpChance.setVisible(normal, this);
+        eagle.setVisible(normal, this);
+        eagleSafety.setVisible(normal, this);
+        switchBack.setVisible(normal, this);
+        for (Setting setting : telly.getSettings()) {
+            setting.setVisible(!normal, this);
+        }
+        syncMode();
     }
 
     @Override
     public void onEnable() {
+        activeMode = isTellyMode() ? 1 : 0;
+        if (activeMode == 1) {
+            telly.onEnable();
+            return;
+        }
+        enableNormal();
+    }
+
+    private void enableNormal() {
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
         sprintScafActive = false;
         sprintScafSprinting = false;
@@ -126,6 +164,15 @@ private int previousSlot = -1;
 
     @Override
     public void onDisable() {
+        if (activeMode == 1) {
+            telly.onDisable();
+        } else {
+            disableNormal();
+        }
+        activeMode = -1;
+    }
+
+    private void disableNormal() {
         previewPos = null;
         previewFace = null;
         queuedPos = null;
@@ -146,6 +193,36 @@ private int previousSlot = -1;
         keepYJumpRolled = false;
         restorePreviousSlot();
     }
+
+    private boolean isTellyMode() {
+        return (int) mode.getInput() == 1;
+    }
+
+    @Override
+    public String getInfo() {
+        return isTellyMode() ? "Telly" : "Normal";
+    }
+
+    private void syncMode() {
+        if (!isEnabled()) {
+            return;
+        }
+        int selected = isTellyMode() ? 1 : 0;
+        if (selected == activeMode) {
+            return;
+        }
+        if (activeMode == 1) {
+            telly.onDisable();
+        } else if (activeMode == 0) {
+            disableNormal();
+        }
+        activeMode = selected;
+        if (activeMode == 1) {
+            telly.onEnable();
+        } else {
+            enableNormal();
+        }
+    }
 private void restorePreviousSlot() {
         int slot = previousSlot;
         previousSlot = -1;
@@ -162,6 +239,8 @@ private void restorePreviousSlot() {
 
     @SubscribeEvent
     public void onClientRotation(ClientRotationEvent e) {
+        syncMode();
+        if (isTellyMode()) return;
         if (!Utils.nullCheck()) return;
 
         float baseYaw = getBaseYaw();
@@ -254,6 +333,11 @@ private void restorePreviousSlot() {
 
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent e) {
+        syncMode();
+        if (isTellyMode()) {
+            telly.onPreUpdate(e);
+            return;
+        }
         if (!Utils.nullCheck()) return;
 
         boolean placed = false;
@@ -284,6 +368,8 @@ private void restorePreviousSlot() {
 
     @SubscribeEvent
     public void onRightClickDelay(RightClickDelayTickEvent e) {
+        syncMode();
+        if (isTellyMode()) return;
         if (!Utils.nullCheck() || !mc.inGameHasFocus) return;
         if (!Utils.isBindDown(mc.gameSettings.keyBindUseItem)) return;
         ItemStack held = mc.thePlayer.getHeldItem();
@@ -297,6 +383,11 @@ private void restorePreviousSlot() {
 
     @SubscribeEvent
     public void onRenderWorld(RenderWorldLastEvent e) {
+        syncMode();
+        if (isTellyMode()) {
+            telly.onRenderWorld(e);
+            return;
+        }
         if (previewPos == null) return;
         int color = 0x4000AAFF;
         RenderUtils.renderBlock(previewPos, color, true, false);
@@ -443,13 +534,33 @@ private void restorePreviousSlot() {
      * backwards Scaffold sprint from ordinary backwards movement.
      */
     public boolean isSprintScaffoldSprinting() {
-        return this.isEnabled() && (int) sprint.getInput() != 0
+        return this.isEnabled() && !isTellyMode() && (int) sprint.getInput() != 0
                 && sprintScafActive && sprintScafSprinting;
     }
 
     /** True only while Scaffold currently owns or has a valid upcoming placement. */
     public boolean isActivelyScaffolding() {
-        return this.isEnabled() && (placeQueued || queuedPos != null || previewPos != null);
+        return this.isEnabled() && (isTellyMode()
+                ? telly.isActivelyScaffolding()
+                : placeQueued || queuedPos != null || previewPos != null);
+    }
+
+    @SubscribeEvent(priority = net.minecraftforge.fml.common.eventhandler.EventPriority.HIGHEST)
+    public void onTellyPlayerInput(PrePlayerInputEvent event) {
+        syncMode();
+        if (isTellyMode()) telly.onPrePlayerInput(event);
+    }
+
+    @SubscribeEvent(priority = net.minecraftforge.fml.common.eventhandler.EventPriority.HIGHEST)
+    public void onTellyPacketSent(SendPacketEvent event) {
+        syncMode();
+        if (isTellyMode()) telly.onPacketSent(event);
+    }
+
+    @SubscribeEvent(priority = net.minecraftforge.fml.common.eventhandler.EventPriority.HIGHEST)
+    public void onTellyMouse(net.minecraftforge.client.event.MouseEvent event) {
+        syncMode();
+        if (isTellyMode()) telly.onMouse(event);
     }
 
     private void setShiftOverride(boolean shift) {
