@@ -95,6 +95,8 @@ public class GuiAccountManager extends GuiScreen {
     private int contentW;
     private int listPanelX;
     private int listPanelW;
+    private final mindless.accountmanager.SkinPreview skinPreview = new mindless.accountmanager.SkinPreview();
+    private int previewX, previewY, previewW, previewH;
     private int detailPanelX;
     private int detailPanelW;
     private int searchTop;
@@ -369,7 +371,7 @@ public class GuiAccountManager extends GuiScreen {
                     listTop + 18f, C_DIM, false);
         }
 
-        if (splitLayout) drawAccountDetails(sfReg, sfBold, panelTop, panelBottom);
+        if (splitLayout) drawAccountDetails(sfReg, sfBold, panelTop, panelBottom, mx, my);
 
         drawFooterPanels(sfReg, sfBold);
         drawStyledButtons(mx, my, sfReg);
@@ -389,7 +391,7 @@ public class GuiAccountManager extends GuiScreen {
     }
 
     private void drawAccountDetails(MindlessFontRenderer regular, MindlessFontRenderer bold,
-                                    int panelTop, int panelBottom) {
+                                    int panelTop, int panelBottom, int mx, int my) {
         RoundedUtils.drawRound(detailPanelX, panelTop, detailPanelW, panelBottom - panelTop, 7f, C_PANEL);
         outline(detailPanelX, panelTop, detailPanelW, panelBottom - panelTop);
         bold.drawString("Account details", detailPanelX + 14f, panelTop + 10f, C_TEXT, false);
@@ -427,10 +429,24 @@ public class GuiAccountManager extends GuiScreen {
                     panelBottom - previewTop - 14, 6f, 0xB8121417);
             outline(detailPanelX + 14, previewTop, detailPanelW - 28, panelBottom - previewTop - 14);
             regular.drawString("PROFILE PREVIEW", detailPanelX + 25f, previewTop + 11f, C_DIM, false);
-            int previewSize = Math.min(74, panelBottom - previewTop - 42);
-            if (previewSize > 24) {
-                drawHead(head, detailPanelX + (detailPanelW - previewSize) / 2,
-                        previewTop + 29, previewSize);
+            previewX = detailPanelX + 20;
+            previewY = previewTop + 26;
+            previewW = detailPanelW - 40;
+            previewH = panelBottom - previewTop - 44;
+            String previewName = StringUtils.isBlank(account.getUsername()) ? null : account.getUsername();
+            ResourceLocation skin = mindless.accountmanager.PlayerSkinCache.get(previewName);
+            if (skin != null && previewH > 40) {
+                skinPreview.draw(skin, mindless.accountmanager.PlayerSkinCache.isSlim(previewName),
+                        previewX, previewY, previewW, previewH, mx, my);
+            }
+            else {
+                // The sheet is still downloading; the head crop is already cached, so show
+                // that rather than an empty box.
+                int previewSize = Math.min(74, panelBottom - previewTop - 42);
+                if (previewSize > 24) {
+                    drawHead(head, detailPanelX + (detailPanelW - previewSize) / 2,
+                            previewTop + 29, previewSize);
+                }
             }
         }
     }
@@ -531,7 +547,17 @@ public class GuiAccountManager extends GuiScreen {
     @Override
     protected void mouseClicked(int mx, int my, int btn) throws IOException {
         if (searchField != null) searchField.mouseClicked(mx, my, btn);
+        if (btn == 0 && skinPreview.mouseClicked(mx, my, previewX, previewY, previewW, previewH)) {
+            // Taken as a drag on the model, so it must not also press whatever is underneath.
+            return;
+        }
         super.mouseClicked(mx, my, btn);
+    }
+
+    @Override
+    protected void mouseReleased(int mx, int my, int state) {
+        skinPreview.endDrag();
+        super.mouseReleased(mx, my, state);
     }
 
     @Override
@@ -742,6 +768,9 @@ public class GuiAccountManager extends GuiScreen {
         }
 
         @Override protected void drawBackground() {}
+
+        @Override
+        protected void overlayBackground(int startY, int endY, int startAlpha, int endAlpha) {}
 
         @Override
         protected void drawSlot(int id, int x, int y, int h, int mx, int my) {
