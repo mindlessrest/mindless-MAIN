@@ -212,7 +212,7 @@ private float aboutOpenProgress = 0f;
     private final Map<SliderSetting, Float> sliderProgressAnimation = new IdentityHashMap<SliderSetting, Float>();
     private final Object searchAnimationKey = new Object();
     private final Manager profileManagerModule = new Manager();
-private static float guiDragOffsetX = 0f;
+    private static float guiDragOffsetX = 0f;
     private static float guiDragOffsetY = 0f;
 
     public static float getDragOffsetX() {
@@ -328,6 +328,9 @@ private static float guiDragOffsetX = 0f;
             detailContentReveal = ease(detailContentReveal, 1f, 18f);
         }
 
+        // Apply drag input before laying out this frame. Updating after rendering made the
+        // dashboard trail the cursor by one frame and exaggerated text shimmer while moving.
+        updateDragging(mx, my);
         computeLayout();
         drawBackdrop(renderScale);
         drawDashboardShadows((float) renderScale);
@@ -362,7 +365,6 @@ private static float guiDragOffsetX = 0f;
             }
         }
         GlStateManager.popMatrix();
-        updateDragging(mx, my);
         clampScrolls();
 
         GlStateManager.popMatrix();
@@ -419,20 +421,27 @@ private static float guiDragOffsetX = 0f;
         detailW = detailWFull * openEased;
         float usedByDetail = detailW > 1f ? detailW + gap : 0f;
         centerW = totalW - sideW - gap - usedByDetail;
-        baseX = snapToPixel(Math.max(5f, (width - totalW) / 2f + guiDragOffsetX));
-        baseY = snapToPixel(Math.max(6f, (height - panelH) / 2f + guiDragOffsetY));
-        centerX = snapToPixel(baseX + sideW + gap);
-        detailX = snapToPixel(centerX + centerW + gap);
+        baseX = snapToTextGrid(Math.max(5f, (width - totalW) / 2f + guiDragOffsetX));
+        baseY = snapToTextGrid(Math.max(6f, (height - panelH) / 2f + guiDragOffsetY));
+        centerX = snapToTextGrid(baseX + sideW + gap);
+        detailX = snapToTextGrid(centerX + centerW + gap);
     }
-private float pixelScale() {
+
+    /**
+     * Keeps the moving dashboard on the same sampling grid used by drawText. The previous
+     * framebuffer-pixel snap let panels move between glyph sampling positions, so text appeared
+     * to change weight and shape relative to its row while the GUI was being dragged.
+     */
+    private float snapToTextGrid(float value) {
+        float scale = (float) getActiveRenderScale();
+        if (scale <= 0.01f) scale = 1f;
+        return Math.round(value * scale) / scale;
+    }
+
+    private float pixelScale() {
         float scale = (float) getActiveRenderScale()
                 * Math.max(1, ScaledResolutionCache.get().getScaleFactor());
         return scale > 0.01f ? scale : 1f;
-    }
-
-    private float snapToPixel(float value) {
-        float scale = pixelScale();
-        return Math.round(value * scale) / scale;
     }
 
     private void drawPanels() {

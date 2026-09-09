@@ -75,24 +75,32 @@ public class GuiAccountManager extends GuiScreen {
     private static int sortMode = SORT_MANUAL;
     private GuiButton sortButton;
     private String lastSearch = "";
-    static final int C_BG       = 0xF0080A0C;
-    static final int C_PANEL    = 0xEE0D1012;
-    static final int C_ROW      = 0xE0181B1C;
-    static final int C_ROW_HOV  = 0xEC1F2223;
-    static final int C_SEL      = 0x339F8FD2;
-    static final int C_ACCENT   = 0xFF9F8FD2;
-    static final int C_ACCENT_DIM = 0x559F8FD2;
-    static final int C_TEXT     = 0xFFEBEAE6;
-    static final int C_MUTED    = 0xFF9D9E9C;
-    static final int C_DIM      = 0xFF696C6C;
-    static final int C_BORDER   = 0x34D2D2CC;
-    static final int C_DANGER   = 0xFFDB6864;
-    static final int C_SUCCESS  = 0xFF6EBF7A;
-    private static final int HEADER_H   = 42;
-    private static final int SEARCH_TOP = HEADER_H + 8;
-    private static final int SEARCH_H   = 24;
-    private static final int LIST_TOP   = SEARCH_TOP + SEARCH_H + 8;
-    private static final int FOOTER_H   = 94;
+    static final int C_BG       = 0xF207080A;
+    static final int C_PANEL    = 0xF00D0F12;
+    static final int C_ROW      = 0xE817191C;
+    static final int C_ROW_HOV  = 0xF0202327;
+    static final int C_SEL      = 0x2EE8E8E8;
+    static final int C_ACCENT   = 0xFFF0F0EE;
+    static final int C_ACCENT_DIM = 0x58C7C8CA;
+    static final int C_TEXT     = 0xFFF0F0EE;
+    static final int C_MUTED    = 0xFFA7A9AC;
+    static final int C_DIM      = 0xFF707378;
+    static final int C_BORDER   = 0x3AD8DADF;
+    static final int C_DANGER   = 0xFFD6817E;
+    static final int C_SUCCESS  = 0xFFD7D9D7;
+    private static final int HEADER_H   = 52;
+    private static final int SEARCH_H   = 26;
+    private static final int FOOTER_H   = 132;
+    private int contentX;
+    private int contentW;
+    private int listPanelX;
+    private int listPanelW;
+    private int detailPanelX;
+    private int detailPanelW;
+    private int searchTop;
+    private int listTop;
+    private int footerTop;
+    private boolean splitLayout;
 
     public GuiAccountManager(GuiScreen previousScreen) {
         this.previousScreen = previousScreen;
@@ -103,75 +111,95 @@ public class GuiAccountManager extends GuiScreen {
         GuiAccountManager.notification = notification;
     }
 
+    private void computeLayout() {
+        contentW = Math.max(300, Math.min(1180, width - 28));
+        contentX = (width - contentW) / 2;
+        splitLayout = contentW >= 760;
+        int gap = 10;
+        detailPanelW = splitLayout ? Math.max(270, Math.round(contentW * .34f)) : 0;
+        listPanelW = contentW - (splitLayout ? detailPanelW + gap : 0);
+        listPanelX = contentX;
+        detailPanelX = listPanelX + listPanelW + gap;
+        searchTop = HEADER_H + 22;
+        listTop = searchTop + SEARCH_H + 10;
+        footerTop = Math.max(listTop + 74, height - FOOTER_H);
+    }
+
     @Override
     public void initGui() {
         AccountManager.load();
         AutoSkinSettings.load();
         Keyboard.enableRepeatEvents(true);
         buttonList.clear();
+        computeLayout();
 
         if (SessionManager.getLaunchSession() != null) {
             String launchName = SessionManager.getLaunchSession().getUsername();
             String label = "Restore: " + launchName;
             int rw = Math.min(220, fontRendererObj.getStringWidth(label) + 12);
-            restoreButton = new GuiButton(4, width - rw - 14, 11, rw, 20, label);
+            restoreButton = new GuiButton(4, contentX + contentW - rw, 16, rw, 22, label);
             buttonList.add(restoreButton);
         } else {
             restoreButton = null;
         }
 
-        int contentW = Math.min(620, width - 32);
-        int contentX = width / 2 - contentW / 2;
-        int sfW = contentW;
-        int sfX = width / 2 - sfW / 2;
-        searchField = new GuiTextField(0, fontRendererObj, sfX + 8, SEARCH_TOP + 4, sfW - 16, SEARCH_H - 8);
+        int searchX = listPanelX + 14;
+        int searchW = listPanelW - 28;
+        searchField = new GuiTextField(0, fontRendererObj, searchX + 10, searchTop + 5,
+                searchW - 124, SEARCH_H - 9);
         searchField.setMaxStringLength(64);
         searchField.setCanLoseFocus(true);
         searchField.setEnableBackgroundDrawing(false);
 
-        sortButton = new GuiButton(11, sfX + sfW - 84, SEARCH_TOP + 2, 80, SEARCH_H - 4,
+        sortButton = new GuiButton(11, searchX + searchW - 108, searchTop + 3, 104, SEARCH_H - 6,
                 "Sort: " + SORT_MODES[sortMode]);
         buttonList.add(sortButton);
-        // leave room for the sort control so long queries do not run under it
-        searchField.width = sfW - 16 - 88;
 
-        int bFooterTop = height - FOOTER_H + 6;
-        int gap = 5;
-        int fourW = (contentW - gap * 3) / 4;
-        localtsButton  = new GuiButton(9, contentX, bFooterTop, fourW, 20, "Localts");
-        nicealtsButton = new GuiButton(10, contentX + (fourW + gap), bFooterTop, fourW, 20, "NiceAlts");
+        int groupGap = 10;
+        int groupW = (contentW - groupGap * 2) / 3;
+        int buttonGap = 5;
+        int halfW = (groupW - 24 - buttonGap) / 2;
+        int actionX = contentX + 12;
+        int toolsX = contentX + groupW + groupGap + 12;
+        int appearanceX = contentX + (groupW + groupGap) * 2 + 12;
+        int innerW = groupW - 24;
+        int row1 = footerTop + 34;
+        int row2 = row1 + 27;
+        int row3 = row2 + 27;
+
+        loginButton  = new GuiButton(0, actionX, row1, halfW, 22, "Login");
+        GuiButton addButton = new GuiButton(1, actionX + halfW + buttonGap, row1, halfW, 22, "Add");
+        renameButton = new GuiButton(5, actionX, row2, halfW, 22, "Rename");
+        skinButton   = new GuiButton(6, actionX + halfW + buttonGap, row2, halfW, 22, "Change skin");
+        deleteButton = new GuiButton(2, actionX, row3, innerW, 22, "Delete selected");
+        buttonList.add(loginButton);
+        buttonList.add(addButton);
+        buttonList.add(renameButton);
+        buttonList.add(skinButton);
+        buttonList.add(deleteButton);
+
+        localtsButton  = new GuiButton(9, toolsX, row1, halfW, 22, "Localts");
+        nicealtsButton = new GuiButton(10, toolsX + halfW + buttonGap, row1, halfW, 22, "NiceAlts");
         buttonList.add(localtsButton);
         buttonList.add(nicealtsButton);
-        deleteInvalidButton = new GuiButton(7, contentX + 2 * (fourW + gap), bFooterTop, fourW, 20, "Delete invalid");
-        pasteTokenButton    = new GuiButton(8, contentX + 3 * (fourW + gap), bFooterTop, fourW, 20, "Paste token");
+        pasteTokenButton = new GuiButton(8, toolsX, row2, halfW, 22, "Paste token");
+        deleteInvalidButton = new GuiButton(7, toolsX + halfW + buttonGap, row2, halfW, 22, "Delete invalid");
         buttonList.add(deleteInvalidButton);
         buttonList.add(pasteTokenButton);
-
-        int sixW = (contentW - gap * 5) / 6;
-        loginButton  = new GuiButton(0, contentX, bFooterTop + 25, sixW, 20, "Login");
-        renameButton = new GuiButton(5, contentX + 2 * (sixW + gap), bFooterTop + 25, sixW, 20, "Rename");
-        buttonList.add(loginButton);
-        buttonList.add(renameButton);
-        buttonList.add(new GuiButton(1, contentX + (sixW + gap), bFooterTop + 25, sixW, 20, "Add"));
-        skinButton   = new GuiButton(6, contentX + 3 * (sixW + gap), bFooterTop + 25, sixW, 20, "Skin");
-        deleteButton = new GuiButton(2, contentX + 4 * (sixW + gap), bFooterTop + 25, sixW, 20, "Delete");
-        cancelButton = new GuiButton(3, contentX + 5 * (sixW + gap), bFooterTop + 25, sixW, 20, "Done");
-        buttonList.add(deleteButton);
-        buttonList.add(skinButton);
+        cancelButton = new GuiButton(3, toolsX, row3, innerW, 22, "Done");
         buttonList.add(cancelButton);
 
-        int threeW = (contentW - gap * 2) / 3;
-        presetSkinButton = new GuiButton(13, contentX, bFooterTop + 50, threeW, 20,
+        presetSkinButton = new GuiButton(13, appearanceX, row1, innerW, 22,
                 AutoSkinSettings.hasPreset() ? "Replace preset skin" : "Select preset skin");
-        autoSkinButton = new GuiButton(14, contentX + threeW + gap, bFooterTop + 50, threeW, 20,
+        autoSkinButton = new GuiButton(14, appearanceX, row2, innerW, 22,
                 autoSkinLabel());
-        skinModelButton = new GuiButton(15, contentX + 2 * (threeW + gap), bFooterTop + 50, threeW, 20,
+        skinModelButton = new GuiButton(15, appearanceX, row3, innerW, 22,
                 skinModelLabel());
         buttonList.add(presetSkinButton);
         buttonList.add(autoSkinButton);
         buttonList.add(skinModelButton);
 
-        int listBottom = bFooterTop - 6;
+        int listBottom = footerTop - 18;
         guiAccountList = new GuiAccountList(mc, listBottom);
         guiAccountList.registerScrollButtons(11, 12);
 
@@ -306,48 +334,161 @@ public class GuiAccountManager extends GuiScreen {
         RoundedUtils.drawRound(0, 0, width, HEADER_H, 0f, C_PANEL);
         drawRect(0, HEADER_H - 1, width, HEADER_H, C_BORDER);
 
-        sfBold.drawString("Account Manager", width / 2f - sfBold.getStringWidth("Account Manager") / 2f, 15f, C_TEXT, false);
+        // Compact product-style header: identity on the left, session controls on the right.
+        RoundedUtils.drawRound(contentX, 14, 24, 24, 5f, 0xFF25282D);
+        drawRect(contentX + 7, 21, contentX + 17, 31, 0xFFBFC1C4);
+        sfBold.drawString("Mindless Account Manager", contentX + 34f, 13f, C_TEXT, false);
+        sfReg.drawString("Manage accounts, sessions, and skins", contentX + 34f, 29f, C_MUTED, false);
 
         Session sess = SessionManager.get();
-        if (sess != null) {
-            sfReg.drawString("\u00a77" + sess.getUsername(), 14f, 16f, C_MUTED, false);
-        }
-        String countStr = AccountManager.accounts.size() + " accounts";
+        String countStr = AccountManager.accounts.size() + (AccountManager.accounts.size() == 1 ? " account" : " accounts");
         if (restoreButton == null) {
-            sfReg.drawString(countStr, width - sfReg.getStringWidth(countStr) - 14f, 16f, C_DIM, false);
+            sfReg.drawString(countStr, contentX + contentW - sfReg.getStringWidth(countStr), 22f, C_DIM, false);
         }
-        int sfW = Math.min(620, width - 32);
-        int sfX = width / 2 - sfW / 2;
-        RoundedUtils.drawRound(sfX, SEARCH_TOP, sfW, SEARCH_H, 5f, C_ROW);
-        drawRect(sfX, SEARCH_TOP + SEARCH_H - 1, sfX + sfW, SEARCH_TOP + SEARCH_H, C_ACCENT_DIM);
+
+        int panelTop = HEADER_H + 10;
+        int panelBottom = footerTop - 8;
+        RoundedUtils.drawRound(listPanelX, panelTop, listPanelW, panelBottom - panelTop, 7f, C_PANEL);
+        outline(listPanelX, panelTop, listPanelW, panelBottom - panelTop);
+        sfBold.drawString("Accounts", listPanelX + 14f, panelTop + 10f, C_TEXT, false);
+        sfReg.drawString("(" + filteredList.size() + ")", listPanelX + 14f + sfBold.getStringWidth("Accounts") + 5f,
+                panelTop + 10f, C_DIM, false);
+
+        int searchX = listPanelX + 14;
+        int searchW = listPanelW - 28;
+        RoundedUtils.drawRound(searchX, searchTop, searchW, SEARCH_H, 5f, C_ROW);
+        outline(searchX, searchTop, searchW, SEARCH_H);
         searchField.drawTextBox();
         if (searchField.getText().isEmpty() && !searchField.isFocused()) {
-            sfReg.drawString("Search accounts...", sfX + 9f, SEARCH_TOP + 5f, C_DIM, false);
+            sfReg.drawString("Search accounts...", searchX + 10f, searchTop + 6f, C_DIM, false);
         }
-        int footerTop = height - FOOTER_H;
-        RoundedUtils.drawRound(sfX, LIST_TOP - 3, sfW, Math.max(12, footerTop - LIST_TOP - 3), 6f, 0x780D1012);
         if (guiAccountList != null) guiAccountList.drawScreen(mx, my, pt);
         if (filteredList.isEmpty()) {
             String empty = AccountManager.accounts.isEmpty() ? "No accounts yet" : "No matching accounts";
-            sfReg.drawString(empty, width / 2f - sfReg.getStringWidth(empty) / 2f,
-                    LIST_TOP + 18f, C_DIM, false);
+            sfReg.drawString(empty, listPanelX + listPanelW / 2f - sfReg.getStringWidth(empty) / 2f,
+                    listTop + 18f, C_DIM, false);
         }
-        drawRect(0, footerTop, width, footerTop + 1, C_BORDER);
-        drawRect(0, footerTop, width, height, C_PANEL);
+
+        if (splitLayout) drawAccountDetails(sfReg, sfBold, panelTop, panelBottom);
+
+        drawFooterPanels(sfReg, sfBold);
         drawStyledButtons(mx, my, sfReg);
         if (notification != null && !notification.isExpired()) {
             String msg = notification.getMessage();
             int msgW = fontRendererObj.getStringWidth(msg);
             int pw = msgW + 16, ph = fontRendererObj.FONT_HEIGHT + 8;
             int px = width / 2 - pw / 2;
-            int py = height - FOOTER_H - ph - 6;
-            RoundedUtils.drawRound(px, py, pw, ph, 4f, 0xDD0D1012);
-            drawRect(px, py, px + pw, py + 1, C_ACCENT);
+            int py = footerTop - ph - 12;
+            RoundedUtils.drawRound(px, py, pw, ph, 4f, 0xF0181A1E);
+            outline(px, py, pw, ph);
             drawCenteredString(fontRendererObj, msg, width / 2, py + 4, C_TEXT);
         }
         if (restoreButton != null) {
             drawStyledButton(restoreButton, mx, my, sfReg, C_ROW, C_ROW_HOV, C_TEXT);
         }
+    }
+
+    private void drawAccountDetails(MindlessFontRenderer regular, MindlessFontRenderer bold,
+                                    int panelTop, int panelBottom) {
+        RoundedUtils.drawRound(detailPanelX, panelTop, detailPanelW, panelBottom - panelTop, 7f, C_PANEL);
+        outline(detailPanelX, panelTop, detailPanelW, panelBottom - panelTop);
+        bold.drawString("Account details", detailPanelX + 14f, panelTop + 10f, C_TEXT, false);
+
+        if (selectedAccount < 0 || selectedAccount >= filteredList.size()) {
+            regular.drawString("Select an account to view its details.", detailPanelX + 14f,
+                    panelTop + 38f, C_DIM, false);
+            return;
+        }
+
+        Account account = filteredList.get(selectedAccount);
+        String name = StringUtils.isBlank(account.getUsername()) ? "Unknown account" : account.getUsername();
+        ResourceLocation head = PlayerHeadCache.get(StringUtils.isBlank(account.getUsername()) ? null : account.getUsername());
+        int headX = detailPanelX + 14;
+        int headY = panelTop + 35;
+        drawHead(head, headX, headY, 44);
+        bold.drawString(name, headX + 55f, headY + 5f, C_TEXT, false);
+        regular.drawString(typeLabel(account), headX + 55f, headY + 23f, C_MUTED, false);
+
+        int dividerY = headY + 59;
+        drawRect(detailPanelX + 14, dividerY, detailPanelX + detailPanelW - 14, dividerY + 1, C_BORDER);
+        int labelX = detailPanelX + 14;
+        int valueX = detailPanelX + Math.max(102, detailPanelW / 2);
+        drawDetailRow(regular, "Status", authStatusLabel(account), labelX, valueX, dividerY + 15);
+        drawDetailRow(regular, "Session", isActive(account) ? "Active" : "Stored", labelX, valueX, dividerY + 35);
+        drawDetailRow(regular, "Type", typeLabel(account), labelX, valueX, dividerY + 55);
+        String uuid = StringUtils.isBlank(account.getUuid()) ? "Not available" : shortUuid(account.getUuid());
+        drawDetailRow(regular, "UUID", uuid, labelX, valueX, dividerY + 75);
+        drawDetailRow(regular, "Skin model", AutoSkinSettings.isSlim() ? "Slim" : "Classic",
+                labelX, valueX, dividerY + 95);
+
+        int previewTop = dividerY + 124;
+        if (previewTop + 70 < panelBottom) {
+            RoundedUtils.drawRound(detailPanelX + 14, previewTop, detailPanelW - 28,
+                    panelBottom - previewTop - 14, 6f, 0xB8121417);
+            outline(detailPanelX + 14, previewTop, detailPanelW - 28, panelBottom - previewTop - 14);
+            regular.drawString("PROFILE PREVIEW", detailPanelX + 25f, previewTop + 11f, C_DIM, false);
+            int previewSize = Math.min(74, panelBottom - previewTop - 42);
+            if (previewSize > 24) {
+                drawHead(head, detailPanelX + (detailPanelW - previewSize) / 2,
+                        previewTop + 29, previewSize);
+            }
+        }
+    }
+
+    private void drawFooterPanels(MindlessFontRenderer regular, MindlessFontRenderer bold) {
+        int gap = 10;
+        int groupW = (contentW - gap * 2) / 3;
+        String[] titles = {"Account actions", "Tools", "Appearance"};
+        String[] subtitles = {"Manage the selected account", "Import and quick actions", "Skin and model defaults"};
+        for (int i = 0; i < 3; i++) {
+            int x = contentX + i * (groupW + gap);
+            RoundedUtils.drawRound(x, footerTop, groupW, height - footerTop - 8, 7f, C_PANEL);
+            outline(x, footerTop, groupW, height - footerTop - 8);
+            bold.drawString(titles[i], x + 12f, footerTop + 9f, C_TEXT, false);
+            regular.drawString(subtitles[i], x + 12f, footerTop + 21f, C_DIM, false);
+        }
+    }
+
+    private void drawDetailRow(MindlessFontRenderer font, String label, String value,
+                               int labelX, int valueX, int y) {
+        font.drawString(label, labelX, y, C_MUTED, false);
+        font.drawString(value, valueX, y, C_TEXT, false);
+    }
+
+    private String authStatusLabel(Account account) {
+        switch (account.authStatus) {
+            case WORKING: return "Authenticating";
+            case FAILED: return "Invalid / expired";
+            case AUTHED: return "Ready";
+            default: return "Saved";
+        }
+    }
+
+    private boolean isActive(Account account) {
+        Session session = SessionManager.get();
+        return session != null && !StringUtils.isBlank(account.getUsername())
+                && account.getUsername().equals(session.getUsername());
+    }
+
+    private static String shortUuid(String uuid) {
+        if (uuid.length() <= 18) return uuid;
+        return uuid.substring(0, 8) + "..." + uuid.substring(uuid.length() - 6);
+    }
+
+    private void drawHead(ResourceLocation head, int x, int y, int size) {
+        RoundedUtils.drawRound(x, y, size, size, 4f, 0xFF17191C);
+        if (head == null) return;
+        GlStateManager.color(1f, 1f, 1f, 1f);
+        mc.getTextureManager().bindTexture(head);
+        Gui.drawScaledCustomSizeModalRect(x, y, 0, 0, 32, 32, size, size, 32f, 32f);
+        GlStateManager.color(1f, 1f, 1f, 1f);
+    }
+
+    private void outline(int x, int y, int w, int h) {
+        drawRect(x, y, x + w, y + 1, C_BORDER);
+        drawRect(x, y + h - 1, x + w, y + h, C_BORDER);
+        drawRect(x, y, x + 1, y + h, C_BORDER);
+        drawRect(x + w - 1, y, x + w, y + h, C_BORDER);
     }
 
     private void drawStyledButtons(int mx, int my, MindlessFontRenderer fr) {
@@ -581,15 +722,17 @@ public class GuiAccountManager extends GuiScreen {
         private static final int HEAD_SZ = 28;
 
         GuiAccountList(Minecraft mc, int listBottom) {
-            super(mc, GuiAccountManager.this.width, GuiAccountManager.this.height,
-                    LIST_TOP, listBottom, SLOT_H);
+            super(mc, GuiAccountManager.this.listPanelW - 20, GuiAccountManager.this.height,
+                    GuiAccountManager.this.listTop, listBottom, SLOT_H);
+            setSlotXBoundsFromLeft(GuiAccountManager.this.listPanelX + 10);
         }
 
         @Override protected int getSize()             { return filteredList.size(); }
         @Override protected boolean isSelected(int i) { return i == selectedAccount; }
-        @Override public int getListWidth()           { return Math.min(620, width - 32); }
+        @Override public int getListWidth()           { return GuiAccountManager.this.listPanelW - 28; }
         @Override protected int getContentHeight()    { return filteredList.size() * SLOT_H; }
-        @Override protected int getScrollBarX()       { return (width + getListWidth()) / 2 + 2; }
+        @Override protected int getScrollBarX()       { return GuiAccountManager.this.listPanelX
+                + GuiAccountManager.this.listPanelW - 10; }
 
         @Override
         protected void elementClicked(int idx, boolean dbl, int mx, int my) {
