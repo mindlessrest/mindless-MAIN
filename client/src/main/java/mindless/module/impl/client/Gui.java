@@ -32,10 +32,6 @@ public class Gui extends Module {
     public static ButtonSetting hideWatermark;
     public static ButtonSetting rainBowOutlines;
     public static ButtonSetting loadGuiPositions;
-    public static SliderSetting mascot;
-    public static mindless.module.setting.impl.TextSetting mascotPath;
-    public static SliderSetting mascotScale;
-    public static SliderSetting mascotOpacity;
 
     public Gui() {
         super("Gui", "The click GUI and how it looks.", category.client, 54);
@@ -51,43 +47,9 @@ public class Gui extends Module {
         this.registerSetting(hidePlayerModel = new ButtonSetting("Remove player model", false));
         this.registerSetting(hideWatermark = new ButtonSetting("Remove watermark", false));
         this.registerSetting(loadGuiPositions = new ButtonSetting("Save category positions", false));
-        // Custom is appended rather than slotted in before None, so a profile that already
-        // stores index 2 still means None.
-        this.registerSetting(mascot = new SliderSetting("Mascot", 0,
-                new String[]{"Mindless", "Cat", "None", "Custom"}));
-        this.registerSetting(new ButtonSetting("Choose mascot image", new Runnable() {
-            @Override
-            public void run() {
-                chooseMascotImage();
-            }
-        }));
-        // Holds the path so the choice survives a restart; it is the setting, the file
-        // dialog just fills it in.
-        this.registerSetting(mascotPath = new mindless.module.setting.impl.TextSetting(
-                "Mascot image", "", "No image chosen", 260));
-        this.registerSetting(mascotScale = new SliderSetting("Mascot size", "%", 100.0, 25.0, 250.0, 5.0));
-        this.registerSetting(mascotOpacity = new SliderSetting("Mascot opacity", "%", 100.0, 10.0, 100.0, 5.0));
         this.registerSetting(new DescriptionSetting("Colors"));
         this.registerSetting(enabledColor = new ColorSetting("Enabled color", 24, 154, 255));
         this.registerSetting(disabledColor = new ColorSetting("Disabled color", 192, 192, 192));
-    }
-
-    /** Pick the image the Custom mascot draws, and switch to it once one is chosen. */
-    private void chooseMascotImage() {
-        mindless.accountmanager.utils.ModernFileChooser.showOpenDialog(
-                "Select mascot image", null, "Images (*.png, *.jpg, *.jpeg)",
-                new String[]{"png", "jpg", "jpeg"},
-                new java.util.function.Consumer<java.io.File>() {
-                    @Override
-                    public void accept(java.io.File file) {
-                        mascotPath.setText(file.getAbsolutePath());
-                        // Selecting an image is the whole intent, so switch to Custom
-                        // rather than making them find the mode afterwards.
-                        mascot.setValueWithEvent(3);
-                        mindless.clickgui.ModernClickGui.invalidateCustomMascot();
-                    }
-                },
-                null);
     }
 
     @Override

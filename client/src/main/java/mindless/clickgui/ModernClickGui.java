@@ -462,9 +462,9 @@ private float aboutOpenProgress = 0f;
     }
 
     private void drawMascot() {
-        if (Gui.mascot == null) return;
+        if (mindless.module.impl.theme.ThemeManager.mascot == null) return;
 
-        int input = (int) Gui.mascot.getInput();
+        int input = (int) mindless.module.impl.theme.ThemeManager.mascot.getInput();
         if (input != 0 && input != 1 && input != 3) return;
 
         ensureUiTextures();
@@ -490,7 +490,7 @@ private float aboutOpenProgress = 0f;
         }
         if (targetTexture == null) return;
 
-        float sizePercent = Gui.mascotScale == null ? 100f : (float) Gui.mascotScale.getInput();
+        float sizePercent = mindless.module.impl.theme.ThemeManager.mascotScale == null ? 100f : (float) mindless.module.impl.theme.ThemeManager.mascotScale.getInput();
         float mascotH = panelH * 0.75f * (sizePercent / 100f);
         // A chosen image is rarely square, so it keeps its own proportions instead of being
         // stretched into the box the bundled art happens to fit.
@@ -508,7 +508,7 @@ private float aboutOpenProgress = 0f;
         mascotDrawW = mascotW;
         mascotDrawH = mascotH;
 
-        float alpha = Gui.mascotOpacity == null ? 1f : (float) (Gui.mascotOpacity.getInput() / 100.0);
+        float alpha = mindless.module.impl.theme.ThemeManager.mascotOpacity == null ? 1f : (float) (mindless.module.impl.theme.ThemeManager.mascotOpacity.getInput() / 100.0);
         drawTextureRegion(targetTexture, mx, my, mascotW, mascotH,
                 0, 0, 1, 1, 1, 1, 1f, 1f, 1f, alpha);
     }
@@ -518,8 +518,8 @@ private float aboutOpenProgress = 0f;
      */
     private boolean beginMascotDrag(int mx, int my) {
         if (mascotDrawW <= 0f || mascotDrawH <= 0f) return false;
-        if (Gui.mascot == null) return false;
-        int input = (int) Gui.mascot.getInput();
+        if (mindless.module.impl.theme.ThemeManager.mascot == null) return false;
+        int input = (int) mindless.module.impl.theme.ThemeManager.mascot.getInput();
         if (input != 0 && input != 1 && input != 3) return false;
         if (insideDashboard(mx, my)) return false;
         if (!inside(mx, my, mascotX, mascotY, mascotX + mascotDrawW, mascotY + mascotDrawH)) return false;
@@ -2482,7 +2482,7 @@ private static float corner(float radius, float w, float h) {
      * change their mind.
      */
     private ResourceLocation customMascotTexture() {
-        String path = Gui.mascotPath == null ? "" : Gui.mascotPath.getText().trim();
+        String path = mindless.module.impl.theme.ThemeManager.mascotPath == null ? "" : mindless.module.impl.theme.ThemeManager.mascotPath.getText().trim();
         if (path.isEmpty()) {
             return null;
         }

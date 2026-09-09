@@ -10,6 +10,7 @@ import mindless.module.setting.Setting;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.GroupSetting;
+import mindless.module.setting.impl.TextSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Theme;
 
@@ -66,6 +67,10 @@ public static final int CUSTOM_INDEX = THEMES.length;
     public static SliderSetting blurSize;
     public static SliderSetting rounding;
     public static ButtonSetting customizeHud;
+    public static SliderSetting mascot;
+    public static TextSetting mascotPath;
+    public static SliderSetting mascotScale;
+    public static SliderSetting mascotOpacity;
     public static ColorSetting hudArrayListColor1, hudArrayListColor2;
     public static ButtonSetting hudArrayListGradient;
     public static ColorSetting hudWatermarkColor1, hudWatermarkColor2;
@@ -106,6 +111,32 @@ private static int appliedIndex = -1;
         Collections.addAll(EDITOR, maker, customAccent, customText, customEnabled, customDisabled,
                 customGradFrom, customGradTo, customSurface, customHudGradient, copyPreset, saveApply);
         for (Setting setting : EDITOR) setting.visible = false;
+        // The mascot is part of how the client looks, so it belongs with the theme rather
+        // than in the click GUI settings.
+        GroupSetting mascotGroup = new GroupSetting("Mascot");
+        this.registerSetting(mascotGroup);
+        this.registerSetting(mascot = new SliderSetting(mascotGroup, "Mascot", 0,
+                new String[]{"Mindless", "Cat", "None", "Custom"}));
+        // A method button has no grouped constructor, so this one sits at the top level.
+        this.registerSetting(new ButtonSetting("Choose mascot image", new Runnable() {
+            @Override
+            public void run() {
+                chooseMascotImage();
+            }
+        }));
+        // Editable directly as well as through the dialog: the picker is a PowerShell window
+        // that can open behind a fullscreen game, and pasting a path has to still work when
+        // it does. Submitting the box applies it exactly as choosing a file would.
+        this.registerSetting(mascotPath = new TextSetting(mascotGroup, "Image path", "",
+                "Paste a path, or use Choose mascot image", 260, new Runnable() {
+            @Override
+            public void run() {
+                applyMascotPath();
+            }
+        }));
+        this.registerSetting(mascotScale = new SliderSetting(mascotGroup, "Mascot size", "%", 100.0, 25.0, 250.0, 5.0));
+        this.registerSetting(mascotOpacity = new SliderSetting(mascotGroup, "Mascot opacity", "%", 100.0, 10.0, 100.0, 5.0));
+
         this.registerSetting(customizeHud = new ButtonSetting("Customize HUD colors", false));
         GroupSetting hudColors = new GroupSetting("HUD Colors");
         this.registerSetting(hudColors);
@@ -154,6 +185,48 @@ private static int appliedIndex = -1;
         this.registerSetting(applyHudGradient = new ButtonSetting("Apply HUD gradient", true));
         this.registerSetting(new ButtonSetting("Apply now", ThemeManager::applyNow));
         this.canBeEnabled = false;
+    }
+
+    /** Open the picker, and take the choice if one comes back. */
+    private void chooseMascotImage() {
+        mindless.accountmanager.utils.ModernFileChooser.showOpenDialog(
+                "Select mascot image", null, "Images (*.png, *.jpg, *.jpeg)",
+                new String[]{"png", "jpg", "jpeg"},
+                new java.util.function.Consumer<java.io.File>() {
+                    @Override
+                    public void accept(java.io.File file) {
+                        mascotPath.setText(file.getAbsolutePath());
+                        applyMascotPath();
+                    }
+                },
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        // Said out loud, because the dialog can open behind a fullscreen game
+                        // and silence is indistinguishable from the button doing nothing.
+                        mindless.utility.Utils.sendMessage("&7No image chosen. The picker can open behind the game -- alt-tab to it, or paste the path into Image path.");
+                    }
+                });
+    }
+
+    /**
+     * Take whatever is in the path box.
+     *
+     * Switching to Custom here is what makes the setting do anything: choosing a file while
+     * the mode is still Mindless or Cat would otherwise look like nothing happened.
+     */
+    private void applyMascotPath() {
+        String path = mascotPath.getText().trim();
+        mindless.clickgui.ModernClickGui.invalidateCustomMascot();
+        if (path.isEmpty()) {
+            return;
+        }
+        if (!new java.io.File(path).isFile()) {
+            mindless.utility.Utils.sendMessage("&cNo file at " + path);
+            return;
+        }
+        mascot.setValueWithEvent(3);
+        mindless.utility.Utils.sendMessage("&aMascot set.");
     }
 
     private static String[] names() {
