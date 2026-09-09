@@ -79,6 +79,8 @@ private static final double AIM_FACE_INSET = 0.12;
     private boolean hasSwapped;
     private int previousSlot = -1;
     private boolean lastOutsidePolicy;
+    private BlockPos legitPathBedFoot;
+    private Vec3 legitPathDestination;
 
 
     public BedAura() {
@@ -335,8 +337,16 @@ public boolean shouldOverrideMouseOver() {
 
         if (lockedPos != null) {
             if (!isLockedTargetValid(reachSq)) {
-                boolean finishedBed = lockedTargetBed && BlockUtils.getBlock(lockedPos) == Blocks.air;
+                boolean blockFinished = BlockUtils.getBlock(lockedPos) == Blocks.air;
+                boolean finishedBed = lockedTargetBed && blockFinished;
+                BlockPos continuingBed = !finishedBed && blockFinished && isLegitMode()
+                        ? legitPathBedFoot : null;
+                Vec3 continuingDestination = continuingBed != null ? legitPathDestination : null;
                 resetMining();
+                if (continuingBed != null && continuingDestination != null) {
+                    legitPathBedFoot = continuingBed;
+                    legitPathDestination = continuingDestination;
+                }
                 if (finishedBed) retargetDelayTicks = 6;
                 return;
             }
@@ -366,6 +376,10 @@ public boolean shouldOverrideMouseOver() {
             lockedPos = best.pos;
             lockedSide = best.side;
             lockedTargetBed = BlockUtils.getBlock(best.pos) instanceof BlockBed;
+            if (isLegitMode() && best.pathDestination != null) {
+                legitPathBedFoot = best.bedFoot;
+                legitPathDestination = best.pathDestination;
+            }
             rotationAlignedTicks = 0;
         }
 
@@ -500,6 +514,8 @@ public boolean shouldOverrideMouseOver() {
         targetSide = null;
         hasSwapped = false;
         previousSlot = -1;
+        legitPathBedFoot = null;
+        legitPathDestination = null;
     }
 
     private void rebuildBedPairsCache(double searchRange) {
@@ -577,6 +593,15 @@ private BlockPos[] footHeadPair(BlockPos at) {
         float curProg = AccessorBridge.PlayerControllerMP_getCurBlockDamageMP(mc.playerController);
         BlockPos breaking = AccessorBridge.PlayerControllerMP_getCurrentBlock(mc.playerController);
 
+        if (isLegitMode() && legitPathBedFoot != null && legitPathDestination != null) {
+            Choice continuing = continueLegitPath(reachSq);
+            if (continuing != null) {
+                return continuing;
+            }
+            legitPathBedFoot = null;
+            legitPathDestination = null;
+        }
+
         List<BlockPos[]> exposed = new ArrayList<>();
         List<BlockPos[]> covered = new ArrayList<>();
         for (BlockPos[] pair : bedPairsCache) {
@@ -629,6 +654,10 @@ private BlockPos[] footHeadPair(BlockPos at) {
         }
         double timeEst = 1.0 / bestHotbar;
 
+        if (isLegitMode() && ch.pathBlocks > 0) {
+            timeEst += ch.pathBlocks * 1000.0;
+        }
+
         if (breaking != null && breaking.equals(ch.pos) && curProg > 0.02f) {
             timeEst -= curProg * 12.0;
         }
@@ -638,6 +667,9 @@ private BlockPos[] footHeadPair(BlockPos at) {
     }
 
     private List<Choice> buildCandidates(BlockPos[] pair, double reachSq) {
+        if (isLegitMode()) {
+            return buildLegitOutsideCandidates(pair, reachSq);
+        }
         if (shouldBreakFromOutside()) {
             return buildVisibleOutsideCandidates(pair, reachSq);
         }
@@ -677,6 +709,98 @@ private BlockPos[] footHeadPair(BlockPos at) {
         return out;
     }
 
+    private Choice continueLegitPath(double reachSq) {
+        BlockPos[] pair = null;
+        for (BlockPos[] cached : bedPairsCache) {
+            if (cached != null && cached.length >= 2 && legitPathBedFoot.equals(cached[0])) {
+                pair = cached;
+                break;
+            }
+        }
+        if (pair == null) {
+            return null;
+        }
+
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
+        MovingObjectPosition trace = mc.theWorld.rayTraceBlocks(
+                eye, legitPathDestination, false, true, false);
+        Choice choice = visibleTraceChoice(trace, eye, reachSq);
+        if (choice == null) {
+            return null;
+        }
+        int blocks = countPathBlocks(eye, legitPathDestination);
+        if (blocks == Integer.MAX_VALUE) {
+            return null;
+        }
+        return new Choice(choice.pos, choice.hitVec, choice.side,
+                legitPathBedFoot, legitPathDestination, blocks);
+    }
+
+    private List<Choice> buildLegitOutsideCandidates(BlockPos[] pair, double reachSq) {
+        Map<BlockPos, Choice> bestByFirstBlock = new HashMap<>();
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0f);
+        AxisAlignedBB bedBounds = BlockUtils.unionBlockBounds(pair[0], pair[1]);
+
+        double[] horizontalSamples = {0.18, 0.5, 0.82};
+        double[] verticalSamples = {0.25, 0.72};
+        for (double xPart : horizontalSamples) {
+            for (double zPart : horizontalSamples) {
+                for (double yPart : verticalSamples) {
+                    Vec3 destination = new Vec3(
+                            bedBounds.minX + (bedBounds.maxX - bedBounds.minX) * xPart,
+                            bedBounds.minY + (bedBounds.maxY - bedBounds.minY) * yPart,
+                            bedBounds.minZ + (bedBounds.maxZ - bedBounds.minZ) * zPart
+                    );
+                    MovingObjectPosition trace = mc.theWorld.rayTraceBlocks(
+                            eye, destination, false, true, false);
+                    Choice visible = visibleTraceChoice(trace, eye, reachSq);
+                    if (visible == null) {
+                        continue;
+                    }
+                    int pathBlocks = countPathBlocks(eye, destination);
+                    if (pathBlocks == Integer.MAX_VALUE) {
+                        continue;
+                    }
+                    Choice candidate = new Choice(visible.pos, visible.hitVec, visible.side,
+                            pair[0], destination, pathBlocks);
+                    Choice previous = bestByFirstBlock.get(candidate.pos);
+                    if (previous == null || candidate.pathBlocks < previous.pathBlocks
+                            || candidate.pathBlocks == previous.pathBlocks
+                            && eye.squareDistanceTo(candidate.hitVec) < eye.squareDistanceTo(previous.hitVec)) {
+                        bestByFirstBlock.put(candidate.pos, candidate);
+                    }
+                }
+            }
+        }
+        return new ArrayList<>(bestByFirstBlock.values());
+    }
+
+    private int countPathBlocks(Vec3 start, Vec3 destination) {
+        Vec3 delta = destination.subtract(start);
+        double length = delta.lengthVector();
+        if (length < 1.0E-5) {
+            return 0;
+        }
+        int steps = Math.max(1, (int) Math.ceil(length / 0.04));
+        Set<BlockPos> blocks = new HashSet<>();
+        for (int i = 1; i <= steps; i++) {
+            double progress = i / (double) steps;
+            BlockPos pos = new BlockPos(
+                    start.xCoord + delta.xCoord * progress,
+                    start.yCoord + delta.yCoord * progress,
+                    start.zCoord + delta.zCoord * progress);
+            Block block = BlockUtils.getBlock(pos);
+            if (canHitThrough(block)) {
+                continue;
+            }
+            if (block.getBlockHardness(mc.theWorld, pos) < 0.0f) {
+                return Integer.MAX_VALUE;
+            }
+            blocks.add(pos);
+        }
+        return blocks.size();
+    }
+
     /**
      * Trace toward several points across the bed rather than assuming its immediately adjacent
      * blocks are exposed. The first collision on each ray is the layer a real player can reach;
@@ -708,28 +832,36 @@ private BlockPos[] footHeadPair(BlockPos at) {
 
     private void addVisibleTraceCandidate(MovingObjectPosition trace, Vec3 eye, double reachSq,
                                           Set<BlockPos> seen, List<Choice> out) {
-        if (trace == null || trace.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
-                || trace.hitVec == null || trace.sideHit == null) {
+        Choice choice = visibleTraceChoice(trace, eye, reachSq);
+        if (choice == null || seen.contains(choice.pos)) {
             return;
         }
+        seen.add(choice.pos);
+        out.add(choice);
+    }
+
+    private Choice visibleTraceChoice(MovingObjectPosition trace, Vec3 eye, double reachSq) {
+        if (trace == null || trace.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
+                || trace.hitVec == null || trace.sideHit == null) {
+            return null;
+        }
         BlockPos pos = trace.getBlockPos();
-        if (pos == null || seen.contains(pos)) {
-            return;
+        if (pos == null) {
+            return null;
         }
         IBlockState state = mc.theWorld.getBlockState(pos);
         Block block = state.getBlock();
         if (block == Blocks.air || block.getBlockHardness(mc.theWorld, pos) < 0.0f) {
-            return;
+            return null;
         }
         AxisAlignedBB box = BlockUtils.getBlockSelectionBox(pos);
         if (box == null || eye.squareDistanceTo(RotationUtils.closestPointOnAabb(box, eye)) > reachSq + 1e-3) {
-            return;
+            return null;
         }
         if (block instanceof BlockBed && trace.sideHit == EnumFacing.DOWN) {
-            return;
+            return null;
         }
-        seen.add(pos);
-        out.add(new Choice(pos, trace.hitVec, trace.sideHit));
+        return new Choice(pos, trace.hitVec, trace.sideHit);
     }
 
     private boolean canHitThrough(Block block) {
@@ -866,11 +998,22 @@ private void removeOwnBedPair() {
         final BlockPos pos;
         final Vec3 hitVec;
         final EnumFacing side;
+        final BlockPos bedFoot;
+        final Vec3 pathDestination;
+        final int pathBlocks;
 
         Choice(BlockPos pos, Vec3 hitVec, EnumFacing side) {
+            this(pos, hitVec, side, null, null, 0);
+        }
+
+        Choice(BlockPos pos, Vec3 hitVec, EnumFacing side,
+               BlockPos bedFoot, Vec3 pathDestination, int pathBlocks) {
             this.pos = pos;
             this.hitVec = hitVec;
             this.side = side;
+            this.bedFoot = bedFoot;
+            this.pathDestination = pathDestination;
+            this.pathBlocks = pathBlocks;
         }
     }
 }
