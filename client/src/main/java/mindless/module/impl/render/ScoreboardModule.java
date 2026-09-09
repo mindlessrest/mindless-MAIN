@@ -40,6 +40,10 @@ public static MindlessFontRenderer getCustomFont() {
         return scale == null ? 1.0f : (float) scale.getInput();
     }
 
+    public static SliderSetting getScaleSetting() {
+        return scale;
+    }
+
     private static boolean isMinecraftFontSelected() {
         if (font == null) {
             return true;

@@ -189,8 +189,7 @@ public float[] renderDesignerPreview(float absoluteLeft, float absoluteTop) {
         ScaledResolution resolution = ScaledResolutionCache.get();
         boolean modern = (int) mode.getInput() == 0;
         if (modern) {
-            float s = (float) scale.getInput();
-            MindlessFontRenderer font = HUD.getHudFontRenderer();
+            MindlessFontRenderer font = sessionFont();
             MindlessFontRenderer bigFont = valueFont();
             if (font == null || bigFont == null) return null;
             float[] prev = drawModern();
@@ -302,7 +301,7 @@ private boolean isMe(String name) {
     }
 
     private float[] drawModern() {
-        MindlessFontRenderer font = HUD.getHudFontRenderer();
+        MindlessFontRenderer font = sessionFont();
         MindlessFontRenderer bigFont = valueFont();
         if (font == null || bigFont == null) return null;
 
@@ -351,16 +350,16 @@ private boolean isMe(String name) {
         float ty = top * inv + padY;
 
         int themeColor = HUD.getHudColor(0);
-        font.drawString(headerLeft, tx, ty, themeColor, false);
-        font.drawString(headerRight, tx + font.getStringWidth(headerLeft), ty, 0xFFFFFFFF, false);
+        drawFont(font, headerLeft, tx, ty, themeColor, s);
+        drawFont(font, headerRight, tx + font.getStringWidth(headerLeft), ty, 0xFFFFFFFF, s);
         ty += font.getFontHeight() + headerGap;
 
-        bigFont.drawString(timeStr, tx, ty, 0xFFFFFFFF, false);
+        drawFont(bigFont, timeStr, tx, ty, 0xFFFFFFFF, s);
         ty += bigH + timeGap;
 
         int lineColor = new Color(190, 190, 190).getRGB();
         for (String line : lines) {
-            font.drawString(line, tx, ty, lineColor, false);
+            drawFont(font, line, tx, ty, lineColor, s);
             ty += lineH;
         }
 
@@ -371,6 +370,10 @@ private boolean isMe(String name) {
 private static MindlessFontRenderer valueFont() {
         return FontManager.getHudRenderer(ModuleFont.nameOf(font),
                 Math.min(2.0f, HUD.getSelectedFontScale() * 1.6f));
+    }
+
+    private static MindlessFontRenderer sessionFont() {
+        return FontManager.getHudRenderer(ModuleFont.nameOf(font), HUD.getSelectedFontScale());
     }
 
     private java.util.List<String> activeValues() {
@@ -425,7 +428,7 @@ private static MindlessFontRenderer valueFont() {
     }
 
     private float[] measure() {
-        MindlessFontRenderer small = HUD.getHudFontRenderer();
+        MindlessFontRenderer small = sessionFont();
         MindlessFontRenderer big = valueFont();
         if (small == null || big == null) return null;
 
@@ -446,7 +449,7 @@ private static MindlessFontRenderer valueFont() {
         return new float[] { (content + PAD_X * 2.0f) * s, height * s };
     }
 private float[] draw() {
-        MindlessFontRenderer small = HUD.getHudFontRenderer();
+        MindlessFontRenderer small = sessionFont();
         MindlessFontRenderer big = valueFont();
         if (small == null || big == null) return null;
         float[] size = measure();
@@ -485,8 +488,8 @@ private float[] draw() {
         float textTop = top * inv + PAD_Y;
         String clock = clock();
 
-        font(small, "SESSION", textLeft, textTop, COL_TITLE);
-        font(small, clock, textRight - small.getStringWidth(clock), textTop, COL_CLOCK);
+        drawFont(small, "SESSION", textLeft, textTop, COL_TITLE, s);
+        drawFont(small, clock, textRight - small.getStringWidth(clock), textTop, COL_CLOCK, s);
 
         java.util.List<String> vals = activeValues();
         java.util.List<String> labels = activeLabels();
@@ -504,8 +507,8 @@ private float[] draw() {
             int c = counts.get(i);
             int nonZero = (c | -c) >> 31;
             int color = (colors.get(i) & nonZero) | (COL_ZERO & ~nonZero);
-            font(big, vals.get(i), center - big.getStringWidth(vals.get(i)) * 0.5f, valueTop, color);
-            font(small, labels.get(i), center - small.getStringWidth(labels.get(i)) * 0.5f, labelTop, COL_LABEL);
+            drawFont(big, vals.get(i), center - big.getStringWidth(vals.get(i)) * 0.5f, valueTop, color, s);
+            drawFont(small, labels.get(i), center - small.getStringWidth(labels.get(i)) * 0.5f, labelTop, COL_LABEL, s);
         }
 
         GlStateManager.popMatrix();
@@ -513,8 +516,13 @@ private float[] draw() {
         return new float[] { left, top, left + w, top + h };
     }
 
-    private static void font(MindlessFontRenderer renderer, String text, float x, float y, int color) {
-        renderer.drawString(text, Math.round(x), Math.round(y), color, false);
+    private static void drawFont(MindlessFontRenderer renderer, String text, float x, float y,
+                                 int color, float scale) {
+        renderer.drawString(text, snapScaled(x, scale), snapScaled(y, scale), color, false);
+    }
+
+    private static float snapScaled(float value, float scale) {
+        return Math.round(value * scale) / Math.max(0.01f, scale);
     }
 
     private String clock() {

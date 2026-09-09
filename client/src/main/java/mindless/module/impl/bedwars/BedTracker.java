@@ -19,8 +19,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 public class BedTracker extends BedwarsHud {
-private static final int SCAN_RADIUS = 25;
-private static final long SCAN_DELAY_MS = 6000L;
+private static final int SCAN_RADIUS = 36;
+private static final int SCAN_HEIGHT = 18;
+private static final int MAX_SCAN_ATTEMPTS = 10;
+private static final long INITIAL_SCAN_DELAY_MS = 1200L;
+private static final long RETRY_DELAY_MS = 1500L;
 private static final long SETTLE_MS = 6000L;
 
     private final SliderSetting frequency;
@@ -31,8 +34,10 @@ private static final long SETTLE_MS = 6000L;
     private final Map<UUID, Long> lastAlert = new HashMap<UUID, Long>();
     private final java.util.Set<String> urchinChecked = new java.util.HashSet<String>();
     private BlockPos bed;
+    private BlockPos scanOrigin;
     private long scanAt;
     private long settledAt;
+    private int scanAttempts;
     private boolean warnedOutOfRange;
     private int previousBedwarsStatus = -1;
 
@@ -51,8 +56,10 @@ private static final long SETTLE_MS = 6000L;
 
     private void reset() {
         bed = null;
+        scanOrigin = null;
         scanAt = 0L;
         settledAt = 0L;
+        scanAttempts = 0;
         warnedOutOfRange = false;
         lastAlert.clear();
         urchinChecked.clear();
@@ -64,13 +71,15 @@ private static final long SETTLE_MS = 6000L;
         if (!this.isEnabled() || event.message == null) return;
         String message = Utils.stripColor(event.message.getUnformattedText());
         if (HypixelLanguage.contains(message, HypixelLanguage.Key.GAME_START_ONE)) {
-            schedule(SCAN_DELAY_MS);
+            schedule(INITIAL_SCAN_DELAY_MS, true);
         }
         else if (HypixelLanguage.contains(message, HypixelLanguage.Key.RESPAWN_IN)) {
-            schedule(SCAN_DELAY_MS + 3000L);
+            // Respawning does not move the team's bed. Preserve a confirmed result and only
+            // restart discovery if the initial scan never found one.
+            if (bed == null) schedule(750L, false);
         }
         else if (HypixelLanguage.contains(message, HypixelLanguage.Key.TEAM_SWAP)) {
-            schedule(1000L);
+            schedule(750L, true);
         }
         else if (HypixelLanguage.contains(message, HypixelLanguage.Key.BED_DESTRUCTION)
                 && HypixelLanguage.contains(message, HypixelLanguage.Key.YOUR_BED)) {
@@ -99,8 +108,14 @@ private static final long SETTLE_MS = 6000L;
         }
     }
 
-    private void schedule(long delay) {
-        bed = null;
+    private void schedule(long delay, boolean resetOrigin) {
+        if (resetOrigin) {
+            bed = null;
+            scanOrigin = mc.thePlayer == null ? null : mc.thePlayer.getPosition();
+            scanAttempts = 0;
+        } else if (scanOrigin == null && mc.thePlayer != null) {
+            scanOrigin = mc.thePlayer.getPosition();
+        }
         long now = System.currentTimeMillis();
         scanAt = now + delay;
         settledAt = now + delay + SETTLE_MS;
@@ -117,17 +132,21 @@ private static final long SETTLE_MS = 6000L;
             previousBedwarsStatus = status;
             return;
         }
-        if (previousBedwarsStatus != 2) schedule(SCAN_DELAY_MS);
+        if (previousBedwarsStatus != 2) schedule(INITIAL_SCAN_DELAY_MS, true);
         previousBedwarsStatus = status;
 
         long now = System.currentTimeMillis();
         if (bed == null && scanAt > 0L && now >= scanAt) {
-            scanAt = 0L;
+            scanAttempts++;
             bed = findBed();
             if (bed != null) {
+                scanAt = 0L;
                 Utils.sendMessage("&a✓ &7Found your bed at &a"
                         + bed.getX() + "&7, &a" + bed.getY() + "&7, &a" + bed.getZ());
+            } else if (scanAttempts < MAX_SCAN_ATTEMPTS) {
+                scanAt = now + RETRY_DELAY_MS;
             } else {
+                scanAt = 0L;
                 Utils.sendMessage("&c⚠ &7Could not find your bed.");
             }
         }
@@ -180,19 +199,54 @@ private static final long SETTLE_MS = 6000L;
     }
 
     private BlockPos findBed() {
-        BlockPos centre = mc.thePlayer.getPosition();
+        BlockPos centre = scanOrigin != null ? scanOrigin : mc.thePlayer.getPosition();
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        for (int x = -SCAN_RADIUS; x <= SCAN_RADIUS; x++) {
-            for (int y = -SCAN_RADIUS; y <= SCAN_RADIUS; y++) {
-                for (int z = -SCAN_RADIUS; z <= SCAN_RADIUS; z++) {
-                    cursor.set(centre.getX() + x, centre.getY() + y, centre.getZ() + z);
-                    if (cursor.getY() < 0 || cursor.getY() > 255) continue;
-                    if (!(mc.theWorld.getBlockState(cursor).getBlock() instanceof BlockBed)) continue;
-                    return new BlockPos(cursor);
+        // Search outward in rings. Bases normally resolve in the first few rings, avoiding the
+        // old full cuboid walk (nearly 200k block lookups) and still retaining the wider fallback.
+        for (int radius = 0; radius <= SCAN_RADIUS; radius++) {
+            for (int x = -radius; x <= radius; x++) {
+                BlockPos found = findBedAtColumn(centre, cursor, x, -radius);
+                if (found != null) return found;
+                if (radius > 0) {
+                    found = findBedAtColumn(centre, cursor, x, radius);
+                    if (found != null) return found;
+                }
+            }
+            for (int z = -radius + 1; z < radius; z++) {
+                BlockPos found = findBedAtColumn(centre, cursor, -radius, z);
+                if (found != null) return found;
+                if (radius > 0) {
+                    found = findBedAtColumn(centre, cursor, radius, z);
+                    if (found != null) return found;
                 }
             }
         }
         return null;
+    }
+
+    private BlockPos findBedAtColumn(BlockPos centre, BlockPos.MutableBlockPos cursor,
+                                     int offsetX, int offsetZ) {
+        int worldX = centre.getX() + offsetX;
+        int worldZ = centre.getZ() + offsetZ;
+        if (!mc.theWorld.getChunkProvider().chunkExists(worldX >> 4, worldZ >> 4)) return null;
+        for (int distanceY = 0; distanceY <= SCAN_HEIGHT; distanceY++) {
+            BlockPos found = bedAt(centre, cursor, worldX, worldZ, distanceY);
+            if (found != null) return found;
+            if (distanceY > 0) {
+                found = bedAt(centre, cursor, worldX, worldZ, -distanceY);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private BlockPos bedAt(BlockPos centre, BlockPos.MutableBlockPos cursor,
+                           int worldX, int worldZ, int offsetY) {
+        int worldY = centre.getY() + offsetY;
+        if (worldY < 0 || worldY > 255) return null;
+        cursor.set(worldX, worldY, worldZ);
+        return mc.theWorld.getBlockState(cursor).getBlock() instanceof BlockBed
+                ? new BlockPos(cursor) : null;
     }
 
     private int distanceToBed() {

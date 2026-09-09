@@ -63,6 +63,7 @@ public class ModuleManager {
     public static AudioVisualizer audioVisualizer;
     public static PotionHUD potionHUD;
     public static SessionInfo sessionInfo;
+    public static Waila waila;
     public static Timer timer;
     public static Fly fly;
     public static WTap wTap;
@@ -243,6 +244,7 @@ public class ModuleManager {
         this.addModule(blockESP = new BlockESP());
         this.addModule(blockCounter = new BlockCounter());
         this.addModule(new BlockOverlay());
+        this.addModule(waila = new Waila());
 
         this.addModule(new BreakProgress());
         this.addModule(chams = new Chams());

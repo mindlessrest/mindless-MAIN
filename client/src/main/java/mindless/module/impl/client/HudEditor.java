@@ -500,6 +500,11 @@ private void beginResize(Element element, int handle) {
                 void reset() {
                     HUD.resetScoreboardPosition();
                 }
+
+                @Override
+                SliderSetting scaleSetting() {
+                    return mindless.module.impl.render.ScoreboardModule.getScaleSetting();
+                }
             });
 
             if (ModuleManager.spotifyMiniPlayer != null) {
@@ -607,6 +612,31 @@ private void beginResize(Element element, int handle) {
                     @Override
                     SliderSetting scaleSetting() {
                         return panel.scaleSetting();
+                    }
+                });
+            }
+
+            if (ModuleManager.waila != null) {
+                final mindless.module.impl.render.Waila waila = ModuleManager.waila;
+                elements.add(new Element("WAILA") {
+                    @Override
+                    void render() {
+                        setBounds(waila.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        setBounds(waila.renderDesignerPreview(left, top));
+                    }
+
+                    @Override
+                    void reset() {
+                        waila.resetPosition();
+                    }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return waila.scaleSetting();
                     }
                 });
             }
@@ -810,7 +840,8 @@ private void beginResize(Element element, int handle) {
                 title = "MINDLESS";
                 rows = new String[] { "Mode: Bed Wars", "Kills: 4", "Beds: 1", "Wins: 12" };
             }
-            float scale = GuiIngameState.SCOREBOARD_SCALE;
+            float scale = GuiIngameState.SCOREBOARD_SCALE
+                    * mindless.module.impl.render.ScoreboardModule.getScale();
             int contentWidth = font.getStringWidth(title);
             for (String row : rows) contentWidth = Math.max(contentWidth, font.getStringWidth(row));
             float lineHeight = font.FONT_HEIGHT * scale;
