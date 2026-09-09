@@ -68,26 +68,25 @@ static void draw_sweep_bar(DrawList& dl, Rect r, float elapsed,
     dl.pop_clip();
 }
 
+// Drawn from startX rather than centred: the percentage sits at the other end of the same
+// line, and a status that recentres itself every time the text changes reads as jittery
+// next to a number that does not move.
 static void draw_loading_status(DrawList& dl, FontAtlas& font,
-                                const std::string& status, float cx,
+                                const std::string& status, float startX,
                                 float lineTopY, Color color, float elapsed)
 {
+    dl.draw_text(status, { startX, lineTopY }, color, font);
+
     bool animated = status == "Gathering resources" || status == "Transforming layers";
     if (!animated)
-    {
-        draw_text_centered(dl, font, status, cx, lineTopY, color);
         return;
-    }
 
     int dotCount = static_cast<int>(elapsed / 0.72f) % 4;
-    std::string dots(static_cast<size_t>(dotCount), '.');
-    std::string widest = status + "...";
-    float startX = cx - font.measure_text_width(widest.c_str()) * 0.5f;
-    dl.draw_text(status, { startX, lineTopY }, color, font);
-    if (!dots.empty())
+    if (dotCount > 0)
     {
-        float dotX = startX + font.measure_text_width(status.c_str());
-        dl.draw_text(dots, { dotX, lineTopY }, color, font);
+        std::string dots(static_cast<size_t>(dotCount), '.');
+        dl.draw_text(dots, { startX + font.measure_text_width(status.c_str()), lineTopY },
+                     color, font);
     }
 }
 
@@ -838,6 +837,53 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
     draw_continue_button(dl, fn, btnR, state, input, dt, alpha);
 }
 
+// One row of the phase list. rel places the phase against the one running now: negative is
+// finished, zero is running, positive is still ahead.
+static void draw_phase_row(DrawList& dl, FontAtlas& font, const char* label,
+                           float x, float rowY, float rowH, int rel,
+                           float elapsed, float alpha, bool connector)
+{
+    const Theme& t = g_theme;
+
+    float dotCx = x + 5.5f;
+    float dotCy = rowY + rowH * 0.5f;
+
+    // A spine between the dots, so three rows read as one sequence instead of a list.
+    if (connector)
+        dl.fill_rect({ dotCx - 0.5f, dotCy + 7.0f, 1.0f, rowH - 14.0f },
+                     t.buttonBorder.with_alpha((rel < 0 ? 0.9f : 0.55f) * alpha));
+
+    if (rel < 0)
+    {
+        const float d = 7.0f;
+        dl.fill_rounded_rect({ dotCx - d * 0.5f, dotCy - d * 0.5f, d, d },
+                             t.textSecond.with_alpha(alpha), d * 0.5f);
+    }
+    else if (rel == 0)
+    {
+        // Breathing rather than spinning: another spinner beside a moving bar is noise, but
+        // a still dot on the running row reads as stalled.
+        float pulse = 0.5f + 0.5f * std::sin(elapsed * 3.4f);
+        const float ring = 12.0f;
+        dl.stroke_rounded_rect({ dotCx - ring * 0.5f, dotCy - ring * 0.5f, ring, ring },
+                               t.accent.with_alpha((0.28f + 0.34f * pulse) * alpha),
+                               ring * 0.5f, 1.0f);
+        const float core = 5.0f;
+        dl.fill_rounded_rect({ dotCx - core * 0.5f, dotCy - core * 0.5f, core, core },
+                             t.accent.with_alpha(alpha), core * 0.5f);
+    }
+    else
+    {
+        const float d = 5.0f;
+        dl.fill_rounded_rect({ dotCx - d * 0.5f, dotCy - d * 0.5f, d, d },
+                             t.textDisable.with_alpha(0.55f * alpha), d * 0.5f);
+    }
+
+    Color labelColor = rel < 0 ? t.textSecond : (rel == 0 ? t.text : t.textDisable);
+    dl.draw_text(label, { x + 20.0f, vcenter_text(font, rowY, rowH) },
+                 labelColor.with_alpha(labelColor.a * alpha), font);
+}
+
 static void draw_loading_content(DrawList& dl, AppState& state,
                                   const InputState& input, ScreenFonts fonts,
                                   const Rect& wr, float alpha, float dt)
@@ -888,21 +934,67 @@ static void draw_loading_content(DrawList& dl, AppState& state,
     dl.draw_text(state.targetPid, { barX + barW - pidW, metaY },
                  t.textDisable.with_alpha(alpha), fonts.caption);
 
-    Rect statusCard = { barX, top + 54.0f, barW, 80.0f };
+    Rect statusCard = { barX, top + 52.0f, barW, 74.0f };
     dl.fill_rounded_rect(statusCard, t.surfaceRaised.with_alpha(alpha), t.cardRadius);
     dl.stroke_rounded_rect(statusCard, t.buttonBorder.with_alpha(alpha), t.cardRadius, 1.0f);
 
-    float statusY = statusCard.y + 17.0f;
-    draw_loading_status(dl, fn, state.statusText, cx, statusY,
+    const float inset = 16.0f;
+    float lineX = statusCard.x + inset;
+    float lineW = statusCard.w - inset * 2.0f;
+
+    float statusY = statusCard.y + 16.0f;
+    draw_loading_status(dl, fn, state.statusText, lineX, statusY,
                         t.text.with_alpha(alpha), state.spinElapsed);
 
-    float barY = statusCard.bottom() - 21.0f;
-    Rect track = { statusCard.x + 16.0f, barY, statusCard.w - 32.0f, t.progressH };
-    dl.fill_rounded_rect(track, t.trackBg.with_alpha(alpha), t.progressH * 0.5f);
     float progress = clamp(state.loadProgress, 0.0f, 1.0f);
+    char pctText[8];
+    snprintf(pctText, sizeof(pctText), "%d%%", static_cast<int>(progress * 100.0f));
+    float pctW = fonts.caption.measure_text_width(pctText);
+    // Shifted onto the status line's own baseline, since the caption font sits higher.
+    dl.draw_text(pctText, { lineX + lineW - pctW,
+                            statusY + fn.ascender() - fonts.caption.ascender() },
+                 t.textSecond.with_alpha(alpha), fonts.caption);
+
+    float barY = statusCard.bottom() - 22.0f;
+    Rect track = { lineX, barY, lineW, t.progressH };
+    dl.fill_rounded_rect(track, t.trackBg.with_alpha(alpha), t.progressH * 0.5f);
     if (progress > 0.001f)
-        dl.fill_rounded_rect({ track.x, track.y, track.w * progress, track.h },
-                             t.trackFill.with_alpha(alpha), track.h * 0.5f);
+    {
+        Rect filled = { track.x, track.y, track.w * progress, track.h };
+        dl.fill_rounded_rect(filled, t.trackFill.with_alpha(alpha), track.h * 0.5f);
+
+        // A highlight running along the filled part, clipped to it, so a phase that takes a
+        // while still looks like it is working without claiming progress it has not made.
+        dl.push_clip(filled);
+        float sweepW = std::max(30.0f, track.w * 0.22f);
+        float phase  = std::fmod(state.spinElapsed, 1.9f) / 1.9f;
+        float sweepX = filled.x - sweepW + (filled.w + sweepW) * ease_in_out_cubic(phase);
+        Color edge = t.trackFill.with_alpha(0.0f);
+        Color peak = t.accentGlow.with_alpha(0.5f * alpha);
+        Rect  seg  = { sweepX, track.y, sweepW, track.h };
+        dl.fill_rounded_rect_gradient(seg, { sweepX, track.y, sweepW * 0.5f, track.h },
+                                      edge, peak, track.h * 0.5f);
+        dl.fill_rounded_rect_gradient(seg, { sweepX + sweepW * 0.5f, track.y, sweepW * 0.5f,
+                                             track.h }, peak, edge, track.h * 0.5f);
+        dl.pop_clip();
+    }
+
+    // The phases the loader actually moves through. The card says what is happening right
+    // now; this says how much of the whole there is left, which one changing line cannot.
+    static const char* kPhases[3] = { "Download", "Transform", "Launch" };
+    int current = progress < 0.46f ? 0 : (progress < 0.985f ? 1 : 2);
+
+    const float rowH = 26.0f;
+    float rowY = statusCard.bottom() + 18.0f;
+    for (int i = 0; i < 3; ++i)
+        draw_phase_row(dl, fn, kPhases[i], barX + 3.0f, rowY + rowH * i, rowH,
+                       i - current, state.spinElapsed, alpha, i < 2);
+
+    // Worth one line at the bottom: the window goes away on its own, and without saying so
+    // it looks like something still has to be clicked.
+    draw_text_centered(dl, fonts.caption, "This window closes itself once the game is ready.",
+                       cx, wr.bottom() - pad - fonts.caption.lineHeight(),
+                       t.textDisable.with_alpha(0.9f * alpha));
 }
 
 static const float kSlideTravel = 0.11f;
