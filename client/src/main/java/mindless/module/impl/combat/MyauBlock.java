@@ -51,6 +51,7 @@ public class MyauBlock extends Module {
 
     private boolean packetBlocking;
     private boolean visualBlocking;
+    private boolean legitBlocking;
     private boolean replayingAttack;
     private C02PacketUseEntity delayedAttack;
     private int stagedTicks;
@@ -266,7 +267,6 @@ public class MyauBlock extends Module {
             return;
         }
         mc.thePlayer.sendQueue.addToSendQueue(new C08PacketPlayerBlockPlacement(held));
-        mc.thePlayer.setItemInUse(held, held.getMaxItemUseDuration());
         packetBlocking = true;
         visualBlocking = true;
         ReflectionUtils.setItemInUse(true);
@@ -281,7 +281,6 @@ public class MyauBlock extends Module {
             return;
         }
         mc.thePlayer.sendQueue.addToSendQueue(new C07PacketPlayerDigging(C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
-        mc.thePlayer.stopUsingItem();
         packetBlocking = false;
         visualBlocking = keepVisual;
         ReflectionUtils.setItemInUse(keepVisual);
@@ -300,11 +299,16 @@ public class MyauBlock extends Module {
         }
         packetBlocking = true;
         visualBlocking = true;
+        legitBlocking = true;
         ReflectionUtils.setItemInUse(true);
     }
 
     private void stopLegitBlock() {
         stopPacketBlock();
+        if (legitBlocking && Utils.nullCheck()) {
+            mc.thePlayer.stopUsingItem();
+        }
+        legitBlocking = false;
         if (mc.gameSettings != null) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
         }
@@ -393,7 +397,7 @@ public class MyauBlock extends Module {
         nextAttackAt = 0L;
         releaseBlink();
         if (releaseServerBlock) {
-            if ((int) mode.getInput() == LEGIT) {
+            if (legitBlocking) {
                 stopLegitBlock();
             } else {
                 stopPacketBlock();
@@ -401,6 +405,7 @@ public class MyauBlock extends Module {
         }
         packetBlocking = false;
         visualBlocking = false;
+        legitBlocking = false;
         ReflectionUtils.setItemInUse(false);
         if (mc.gameSettings != null) {
             boolean physicalUse = Mouse.isButtonDown(1) && mc.currentScreen == null;
