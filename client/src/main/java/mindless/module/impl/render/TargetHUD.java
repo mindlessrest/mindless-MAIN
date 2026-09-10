@@ -1176,7 +1176,8 @@ private int ringColor(int ringIndex) {
 
         // Screen-space marker means screen-space sizing: turning silent rotations, changing FOV,
         // or moving a few blocks must not make the brackets pulse larger and smaller.
-        float size = 34.0f * (float) (markerSize == null ? 1.0 : markerSize.getInput());
+        float requestedSize = 30.0f * (float) (markerSize == null ? 1.0 : markerSize.getInput());
+        float size = Math.max(14.0f, Math.min(46.0f, requestedSize));
 
         int style = markerStyle == null ? MARKER_STYLE_BRACKETS : (int) markerStyle.getInput();
         float thickness = (float) (markerThickness == null ? 2.0 : markerThickness.getInput());

@@ -74,6 +74,8 @@ public class ModuleManager {
     public static Radar radar;
     public static DynamicIsland dynamicIsland;
     public static Watermark watermark;
+    public static Keystrokes keystrokes;
+    public static Nametags nametags;
     public static NoFall noFall;
     public static SexyESP sexyESP;
     public static MobESP mobESP;
@@ -260,6 +262,7 @@ public class ModuleManager {
         this.addModule(new Holdlook());
         this.addModule(dynamicIsland = new DynamicIsland());
         this.addModule(watermark = new Watermark());
+        this.addModule(keystrokes = new Keystrokes());
         this.addModule(sessionInfo = new SessionInfo());
         this.addModule(hud = new HUD());
         modulesByName.put("HUD", hud);
@@ -270,7 +273,7 @@ public class ModuleManager {
         this.addModule(new ItemESP());
         this.addModule(new ItemPhysics());
         this.addModule(mobESP = new MobESP());
-        this.addModule(new Nametags());
+        this.addModule(nametags = new Nametags());
         this.addModule(noCameraClip = new NoCameraClip());
         this.addModule(noHurtCam = new NoHurtCam());
         this.addModule(audioVisualizer = new AudioVisualizer());

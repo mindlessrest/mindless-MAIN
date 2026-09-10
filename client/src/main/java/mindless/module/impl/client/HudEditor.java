@@ -804,6 +804,32 @@ private void beginResize(Element element, int handle) {
                 });
             }
 
+            if (ModuleManager.keystrokes != null) {
+                final mindless.module.impl.render.Keystrokes keystrokes = ModuleManager.keystrokes;
+                elements.add(new Element("Keystrokes") {
+                    @Override
+                    void render() {
+                        setBounds(keystrokes.renderPreview());
+                    }
+
+                    @Override
+                    void moveTo(float left, float top) {
+                        keystrokes.moveTo(left, top);
+                        setBounds(keystrokes.renderPreview());
+                    }
+
+                    @Override
+                    void reset() {
+                        keystrokes.resetPosition();
+                    }
+
+                    @Override
+                    SliderSetting scaleSetting() {
+                        return keystrokes.scaleSetting();
+                    }
+                });
+            }
+
             if (ModuleManager.watermark != null) {
                 final Watermark watermark = ModuleManager.watermark;
                 elements.add(new Element("Watermark") {

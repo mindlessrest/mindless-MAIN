@@ -64,6 +64,7 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
     private SliderSetting healthDisplayMode;
     private ButtonSetting showHeartSymbol;
     private ButtonSetting textShadow;
+    private ButtonSetting textOutline;
     private ButtonSetting showDistance;
     private ButtonSetting showInvis;
     private ButtonSetting showArmor;
@@ -136,6 +137,7 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
         this.registerSetting(healthDisplayMode = new SliderSetting("Health display", 0, HEALTH_DISPLAY_MODES));
         this.registerSetting(showHeartSymbol = new ButtonSetting("Show Heart Symbol", true));
         this.registerSetting(textShadow = new ButtonSetting("Text Shadow", false));
+        this.registerSetting(textOutline = new ButtonSetting("Text Outline", true));
         this.registerSetting(showDistance = new ButtonSetting("Show Distance", false));
         this.registerSetting(showInvis = new ButtonSetting("Show Invis", true));
         this.registerSetting(showArmor = new ButtonSetting("Show Armor", false));
@@ -161,6 +163,7 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
         showHeartSymbol.setVisible(healthOn && (int) healthDisplayMode.getInput() == 0, this);
         boolean armorOn = showArmor.isToggled();
         armorOffset.setVisible(armorOn, this);
+        textShadow.setVisible(!textOutline.isToggled(), this);
     }
 
     @SubscribeEvent
@@ -372,7 +375,7 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
             return scaleValue;
         }
 
-        float effectiveDistance = Math.max(1.0F, distance);
+        float effectiveDistance = Math.max(1.0F, Math.min(40.0F, distance));
         float scaledValue = scaleValue * (effectiveDistance / AUTO_SCALE_THRESHOLD);
         return Math.max(scaleValue, scaledValue);
     }
@@ -460,7 +463,16 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
     }
 
     private void drawDisplayName(NametagRenderState state, MindlessFontRenderer textRenderer) {
-        textRenderer.drawString(state.displayName, -state.stringHalfWidth, 0.0f, 0xFFFFFFFF, textShadow.isToggled());
+        float x = -state.stringHalfWidth;
+        if (textOutline.isToggled()) {
+            int outline = 0xD9000000;
+            textRenderer.drawString(state.displayName, x - 0.65f, 0.0f, outline, false);
+            textRenderer.drawString(state.displayName, x + 0.65f, 0.0f, outline, false);
+            textRenderer.drawString(state.displayName, x, -0.65f, outline, false);
+            textRenderer.drawString(state.displayName, x, 0.65f, outline, false);
+        }
+        textRenderer.drawString(state.displayName, x, 0.0f, 0xFFFFFFFF,
+                !textOutline.isToggled() && textShadow.isToggled());
     }
 
     private void renderBackground(int stringWidth, float textY, int teamColor, int relationshipColor, MindlessFontRenderer fontRenderer) {
@@ -468,18 +480,18 @@ public static boolean shouldHideVanillaFor(net.minecraft.entity.EntityLivingBase
         Tessellator tessellator = Tessellator.getInstance();
         WorldRenderer worldRenderer = tessellator.getWorldRenderer();
         float alpha = (float) bgOpacity.getInput();
-        float innerLeft = -stringWidth - 3.0f;
-        float innerRight = stringWidth + 3.0f;
-        float innerTop = textY + fontRenderer.getTextTopOffset() - 3.0f;
-        float innerBottom = textY + fontRenderer.getTextBottomOffset() + 2.0f;
+        float innerLeft = -stringWidth - 5.0f;
+        float innerRight = stringWidth + 5.0f;
+        float innerTop = textY + fontRenderer.getTextTopOffset() - 4.0f;
+        float innerBottom = textY + fontRenderer.getTextBottomOffset() + 3.0f;
         boolean renderBaseFill = showRect.isToggled() && alpha > 0.01F;
 
         if (renderBaseFill) {
             worldRenderer.begin(7, DefaultVertexFormats.POSITION_COLOR);
-            worldRenderer.pos(innerLeft, innerTop, 0).color(0.0F, 0.0F, 0.0F, alpha).endVertex();
-            worldRenderer.pos(innerLeft, innerBottom, 0).color(0.0F, 0.0F, 0.0F, alpha).endVertex();
-            worldRenderer.pos(innerRight, innerBottom, 0).color(0.0F, 0.0F, 0.0F, alpha).endVertex();
-            worldRenderer.pos(innerRight, innerTop, 0).color(0.0F, 0.0F, 0.0F, alpha).endVertex();
+            worldRenderer.pos(innerLeft, innerTop, 0).color(0.035F, 0.04F, 0.05F, alpha).endVertex();
+            worldRenderer.pos(innerLeft, innerBottom, 0).color(0.02F, 0.025F, 0.03F, alpha).endVertex();
+            worldRenderer.pos(innerRight, innerBottom, 0).color(0.02F, 0.025F, 0.03F, alpha).endVertex();
+            worldRenderer.pos(innerRight, innerTop, 0).color(0.035F, 0.04F, 0.05F, alpha).endVertex();
             tessellator.draw();
         }
 

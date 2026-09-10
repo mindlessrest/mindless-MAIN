@@ -1,6 +1,7 @@
 package mindless.clickgui;
 
 import mindless.Mindless;
+import mindless.accountmanager.SkinPreview;
 import mindless.clickgui.components.impl.CategoryComponent;
 import mindless.clickgui.components.impl.ModuleComponent;
 import mindless.module.Module;
@@ -22,6 +23,7 @@ import mindless.utility.profile.ProfileModule;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.util.ChatAllowedCharacters;
 import net.minecraft.util.ResourceLocation;
@@ -199,6 +201,11 @@ private float detailContentReveal = 0f;
 private float guiOpenProgress = 0f;
 private boolean guiClosing = false;
 private float aboutOpenProgress = 0f;
+    private final SkinPreview visualPreview = new SkinPreview();
+    private int visualPreviewX;
+    private int visualPreviewY;
+    private int visualPreviewW;
+    private int visualPreviewH;
     private final Rect sliderRect = new Rect();
     private final Rect colorSB = new Rect();
     private final Rect colorHue = new Rect();
@@ -382,6 +389,7 @@ private float aboutOpenProgress = 0f;
     @Override
     public void onGuiClosed() {
         super.onGuiClosed();
+        visualPreview.endDrag();
         guiClosing = false;
         if (!viewPinned) {
             pinView();
@@ -901,7 +909,9 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
 
         measureSettingColumns();
 
-        float top = baseY + 59f, bottom = baseY + panelH - 12f;
+        boolean showVisualPreview = supportsVisualPreview();
+        if (showVisualPreview) drawVisualPreview(mx, my, contentAlpha);
+        float top = baseY + (showVisualPreview ? 198f : 59f), bottom = baseY + panelH - 12f;
         scissor(detailX + 8, top, detailX + detailW - 8, bottom, true);
         float y = top + settingScroll;
         GroupSetting currentGroup = null;
@@ -930,6 +940,68 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
     }
 
     private float settingsLeft() { return detailX + 15; }
+
+    private boolean supportsVisualPreview() {
+        return selectedModule instanceof mindless.module.impl.render.Nametags
+                || selectedModule instanceof mindless.module.impl.render.TargetHUD
+                || selectedModule instanceof mindless.module.impl.render.SexyESP
+                || selectedModule instanceof mindless.module.impl.render.Chams
+                || selectedModule instanceof mindless.module.impl.render.Wings;
+    }
+
+    private void drawVisualPreview(int mouseX, int mouseY, float alpha) {
+        float left = detailX + 15f;
+        float top = baseY + 61f;
+        float right = detailX + detailW - 15f;
+        float bottom = baseY + 190f;
+        rounded(left, top, right, bottom, 7f, withAlpha(CONTROL, (int) (220f * alpha)));
+        outline(left, top, right, bottom, 7f, withAlpha(BORDER, (int) (90f * alpha)));
+        drawText("LIVE PREVIEW", left + 9f, top + 8f, withAlpha(MUTED, (int) (255f * alpha)), .58f, true);
+        drawText("drag to rotate", right - 65f, top + 8f, withAlpha(DIM, (int) (255f * alpha)), .52f, false);
+
+        visualPreviewX = Math.round(left + 24f);
+        visualPreviewY = Math.round(top + 22f);
+        visualPreviewW = Math.max(48, Math.round(right - left - 48f));
+        visualPreviewH = Math.max(72, Math.round(bottom - top - 26f));
+        if (mc.thePlayer instanceof AbstractClientPlayer) {
+            AbstractClientPlayer player = (AbstractClientPlayer) mc.thePlayer;
+            visualPreview.draw(player.getLocationSkin(), "slim".equals(player.getSkinType()),
+                    visualPreviewX, visualPreviewY, visualPreviewW, visualPreviewH, mouseX, mouseY);
+        }
+
+        float centerX = (left + right) * .5f;
+        if (selectedModule instanceof mindless.module.impl.render.Nametags) {
+            String name = mc.thePlayer == null ? "Player" : mc.thePlayer.getName();
+            float nameWidth = textWidth(name, .62f, true);
+            float badgeLeft = centerX - nameWidth * .5f - 7f;
+            float badgeTop = top + 24f;
+            rounded(badgeLeft, badgeTop, badgeLeft + nameWidth + 14f, badgeTop + 16f,
+                    4f, withAlpha(0x101318, (int) (225f * alpha)));
+            rounded(badgeLeft, badgeTop + 3f, badgeLeft + 1.5f, badgeTop + 13f,
+                    .75f, withAlpha(ACCENT, (int) (235f * alpha)));
+            drawCentered(name, badgeLeft, badgeLeft + nameWidth + 14f, badgeTop + 4f,
+                    withAlpha(TEXT, (int) (255f * alpha)), .62f, true);
+        } else if (selectedModule instanceof mindless.module.impl.render.TargetHUD) {
+            float cy = top + 75f;
+            float radius = Math.min(28f, (right - left) * .19f);
+            segments(withAlpha(ACCENT, (int) (235f * alpha)),
+                    centerX - radius, cy - radius, centerX - radius * .35f, cy - radius,
+                    centerX + radius * .35f, cy - radius, centerX + radius, cy - radius,
+                    centerX - radius, cy + radius, centerX - radius * .35f, cy + radius,
+                    centerX + radius * .35f, cy + radius, centerX + radius, cy + radius,
+                    centerX - radius, cy - radius, centerX - radius, cy - radius * .35f,
+                    centerX - radius, cy + radius * .35f, centerX - radius, cy + radius,
+                    centerX + radius, cy - radius, centerX + radius, cy - radius * .35f,
+                    centerX + radius, cy + radius * .35f, centerX + radius, cy + radius);
+        } else {
+            float bodyLeft = centerX - 18f;
+            rounded(bodyLeft, top + 34f, bodyLeft + 36f, bottom - 13f, 8f,
+                    withAlpha(ACCENT_SOFT, (int) (105f * alpha)));
+            outline(bodyLeft, top + 34f, bodyLeft + 36f, bottom - 13f, 8f,
+                    withAlpha(ACCENT, (int) (180f * alpha)));
+        }
+        resetTextRenderState();
+    }
 
     private float settingsRight() { return detailX + detailW - 15; }
 private float controlLeft() {
@@ -1436,6 +1508,9 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         }
         if (editingSliderValue != null) finishSliderValueEdit(true);
         if (mouseButton != 0 && mouseButton != 1) return;
+        if (mouseButton == 0 && supportsVisualPreview()
+                && visualPreview.mouseClicked(mx, my, visualPreviewX, visualPreviewY,
+                visualPreviewW, visualPreviewH)) return;
         if (mouseButton == 0 && beginMascotDrag(mx, my)) return;
         if (mouseButton == 0 && inside(mx, my, baseX + 10, baseY + 8, baseX + sideW - 10, baseY + 40)) {
             draggingGui = true;
@@ -1660,6 +1735,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
 
     @Override
     public void mouseReleased(int mouseX, int mouseY, int state) {
+        visualPreview.endDrag();
         draggingSlider = null;
         colorDrag = 0;
         draggingScrollbar = 0;
