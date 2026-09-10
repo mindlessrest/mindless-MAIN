@@ -17,12 +17,16 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Mouse;
 
 public class Autoblock extends Module {
+    private static final int HURT_TIME = 1;
+    private final String[] modes = new String[]{"Normal", "Hurt time"};
+    private final SliderSetting mode;
     private final SliderSetting hurtTime;
     private boolean blocking;
     private boolean reblockPending;
 
     public Autoblock() {
-        super("Autoblock", "Allows normal sword blocking once your hurt time reaches the configured tick.", category.combat, 0);
+        super("Autoblock", "Blocks with your sword while fighting a nearby target.", category.combat, 0);
+        this.registerSetting(mode = new SliderSetting("Mode", HURT_TIME, modes));
         this.registerSetting(hurtTime = new SliderSetting("Hurt time", " tick", 3.0, 0.0, 10.0, 1.0));
         this.closetModule = true;
     }
@@ -49,6 +53,16 @@ public class Autoblock extends Module {
 
     public boolean allowsNoSlow() {
         return false;
+    }
+
+    @Override
+    public String getInfo() {
+        return modes[(int) mode.getInput()];
+    }
+
+    @Override
+    public void guiUpdate() {
+        hurtTime.setVisible((int) mode.getInput() == HURT_TIME, this);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -92,8 +106,10 @@ public class Autoblock extends Module {
     }
 
     private boolean canBlock() {
-        if (!Utils.nullCheck() || mc.currentScreen != null || mc.thePlayer.isDead
-                || !Utils.holdingSword() || mc.thePlayer.hurtTime > (int) hurtTime.getInput()) {
+        if (!Utils.nullCheck() || mc.currentScreen != null || mc.thePlayer.isDead || !Utils.holdingSword()) {
+            return false;
+        }
+        if ((int) mode.getInput() == HURT_TIME && mc.thePlayer.hurtTime > (int) hurtTime.getInput()) {
             return false;
         }
         if (ModuleManager.bedAura != null && ModuleManager.bedAura.isActivelyMining()) {
