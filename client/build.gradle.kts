@@ -81,10 +81,6 @@ val lunarShim by sourceSets.creating {
     compileClasspath += sourceSets.main.get().compileClasspath
 }
 
-val linuxAgent by sourceSets.creating {
-    java.srcDir("src/linuxAgent/java")
-}
-
 repositories {
     mavenCentral()
     maven("https://repo.spongepowered.org/maven/")
@@ -254,27 +250,6 @@ val lunarPayloadJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
     }
 }
 
-val linuxAgentJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
-    group = "build"
-    description = "Builds the Linux javaagent bootstrap JAR."
-    dependsOn(tasks.named(linuxAgent.classesTaskName))
-    archiveBaseName.set("mindless-linux-agent")
-    archiveVersion.set("")
-    archiveClassifier.set("")
-    destinationDirectory.set(layout.buildDirectory.dir("injection"))
-    from(linuxAgent.output)
-    manifest.attributes.run {
-        this["Premain-Class"] = "mindless.agent.LinuxAgent"
-        this["Agent-Class"] = "mindless.agent.LinuxAgent"
-        this["Can-Redefine-Classes"] = "true"
-        this["Can-Retransform-Classes"] = "true"
-    }
-}
-
-tasks.named("build") {
-    dependsOn(linuxAgentJar)
-}
-
 tasks.assemble.get().dependsOn(tasks.remapJar)
 
 val msaJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
@@ -382,14 +357,12 @@ val prepareInjectionBundle by tasks.registering(Sync::class) {
     group = "native"
     description = "Assembles build/injection/ with DLL, EXE, and README."
     dependsOn(buildNative)
-    dependsOn(linuxAgentJar)
     from(nativeDistDir) {
         include("MindlessNative.dll", "MindlessInjector.exe")
     }
     from(nativeDir) {
         include("README.md")
     }
-    from(linuxAgentJar)
     into(injectionBundleDir)
 }
 
