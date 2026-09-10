@@ -39,6 +39,8 @@ public class DynamicIsland extends Module {
     /** How far new content starts below its resting place, before easing up into it. */
     private static final float CONTENT_RISE = 2.6f;
     private static final float CONTENT_RATE = 11.0f;
+    /** Faster than the arrival: waiting on the old content is what feels like lag. */
+    private static final float SWAP_RATE = 26.0f;
     private static final int STATE_IDLE = 0;
     private static final int STATE_NOTIFICATION = 1;
     private static final int STATE_BREAKER = 2;
@@ -64,6 +66,11 @@ public class DynamicIsland extends Module {
     private float widthVelocity;
     private float contentFade = 1.0f;
     private float contentSlide;
+    private boolean swapping;
+    private String pendingKey = "idle";
+    private String pendingLabel = "Mindless";
+    private String pendingValue = "";
+    private int pendingState = STATE_IDLE;
     private float scaffoldProgress;
     private float breakerProgress;
     private int scaffoldPeak;
@@ -112,6 +119,11 @@ public class DynamicIsland extends Module {
         widthVelocity = 0.0f;
         contentFade = 1.0f;
         contentSlide = 0.0f;
+        swapping = false;
+        pendingKey = "idle";
+        pendingLabel = "Mindless";
+        pendingValue = "";
+        pendingState = STATE_IDLE;
         scaffoldProgress = 0.0f;
         breakerProgress = 0.0f;
         scaffoldPeak = 0;
@@ -157,8 +169,26 @@ public class DynamicIsland extends Module {
         int alpha = Math.round(255.0f * (float) (opacity.getInput() / 100.0));
         float radius = height * 0.5f * (float) (roundness.getInput() / 100.0);
         drawBackdrop(x, y, animatedWidth, height, radius, alpha);
-        contentFade = approach(contentFade, 1.0f, CONTENT_RATE, delta);
-        contentSlide = approach(contentSlide, 0.0f, CONTENT_RATE, delta);
+        if (swapping) {
+            // The old content leaves before the new arrives. Cutting straight to invisible
+            // and fading back up is what read as a flash: for a frame the island was an
+            // empty pill with nothing in it.
+            contentFade = approach(contentFade, 0.0f, SWAP_RATE, delta);
+            contentSlide = approach(contentSlide, -CONTENT_RISE, SWAP_RATE, delta);
+            if (contentFade <= 0.03f) {
+                stateKey = pendingKey;
+                stateLabel = pendingLabel;
+                stateValue = pendingValue;
+                islandState = pendingState;
+                swapping = false;
+                contentFade = 0.0f;
+                contentSlide = CONTENT_RISE;
+            }
+        }
+        else {
+            contentFade = approach(contentFade, 1.0f, CONTENT_RATE, delta);
+            contentSlide = approach(contentSlide, 0.0f, CONTENT_RATE, delta);
+        }
         drawContent(text, x, y, animatedWidth, height, uiScale, alpha,
                 contentFade, contentSlide * uiScale);
     }
@@ -201,14 +231,24 @@ public class DynamicIsland extends Module {
             scaffoldPeak = 0;
             scaffoldProgress = 0.0f;
         }
-        if (!nextKey.equals(stateKey)) {
-            stateKey = nextKey;
-            contentFade = 0.0f;
-            contentSlide = CONTENT_RISE;
+        // Compared against whatever is already on its way in, so a second toggle during a
+        // swap replaces the queued content instead of starting the animation over.
+        String showing = swapping ? pendingKey : stateKey;
+        if (!nextKey.equals(showing)) {
+            pendingKey = nextKey;
+            pendingLabel = nextLabel;
+            pendingValue = nextValue;
+            pendingState = nextState;
+            swapping = true;
+            return;
         }
-        islandState = nextState;
-        stateLabel = nextLabel;
-        stateValue = nextValue;
+        if (!swapping) {
+            // Same panel, live numbers. The block count and the break percentage move in
+            // place with no transition, because nothing about the panel has changed.
+            islandState = nextState;
+            stateLabel = nextLabel;
+            stateValue = nextValue;
+        }
     }
 
     private void drawBackdrop(float x, float y, float width, float height, float radius, int alpha) {

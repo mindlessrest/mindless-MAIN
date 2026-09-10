@@ -37,6 +37,7 @@ public class Notifications extends Module {
     private static final Set<String> SUPPRESSED_SCRIPT_CHANGES = new HashSet<>();
     private static Notifications instance;
     private long lastCheck = 0L;
+    private long lastFrameMs = 0L;
 
     public static volatile boolean pendingStartupAlert = false;
     private static final long STARTUP_SUPPRESS_MS = 4000L;
@@ -56,6 +57,12 @@ public class Notifications extends Module {
     private static final float ICON    = 18.0f;
     private static final float ICON_GAP = 9.0f;
 private static final float CLOCK_GAP = 16.0f;
+
+    /** Ease-in-out, so a card does not start and stop its fade at full speed. */
+    private static float smooth(float t) {
+        float clamped = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+        return clamped * clamped * (3.0f - 2.0f * clamped);
+    }
 
     private static final Color ON  = new Color(72, 209, 138);
     private static final Color OFF = new Color(232, 88, 88);
@@ -216,13 +223,20 @@ public static void notify(String title, String status, boolean positive) {
         int gradL = themeGrad[0];
         int gradR = themeGrad[1];
 
+        // Seconds since the last frame, capped so a stall does not teleport the stack.
+        float delta = lastFrameMs == 0L ? 1.0f / 60.0f
+                : Math.max(0.0f, Math.min(0.1f, (now - lastFrameMs) / 1000.0f));
+        lastFrameMs = now;
+
         for (Card c : cards) {
             long age = now - c.birthMs;
-            c.y += (c.targetY - c.y) * 0.28f;
+            // Eased against real time rather than per frame. A fixed fraction each frame
+            // meant the stack slid at whatever rate the game happened to be running.
+            c.y += (c.targetY - c.y) * (1.0f - (float) Math.exp(-delta * 15.0f));
             if (age < FADE) {
-                c.alpha = (float) age / FADE;
+                c.alpha = smooth((float) age / FADE);
             } else if (age > c.durationMs) {
-                c.alpha = Math.max(0.0f, 1.0f - (float)(age - c.durationMs) / FADE);
+                c.alpha = smooth(Math.max(0.0f, 1.0f - (float)(age - c.durationMs) / FADE));
             } else {
                 c.alpha = 1.0f;
             }
@@ -249,13 +263,34 @@ public static void notify(String title, String status, boolean positive) {
         float x = rightEdge - w;
         float radius = R * mindless.module.impl.theme.ThemeManager.roundingScale();
 
+        // Same surface as the Dynamic Island: the two appear together every time a module
+        // is toggled, and a black card beside a lit panel looked like two different clients.
         BlurUtils.prepareBlur(x, y, w, H);
         RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
         BlurUtils.blurEndRegion(3, 3.0f, 0.85f, x - 2.0f, y - 2.0f, w + 4.0f, H + 4.0f);
-        RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, (int)(120 * alpha)));
+        int panel = (int) (232 * alpha);
         RoundedUtils.drawGradientVertical(x, y, w, H, radius,
-                new Color(255, 255, 255, (int)(17 * alpha)),
-                new Color(255, 255, 255, (int)(3 * alpha)));
+                new Color(39, 38, 46, panel),
+                new Color(26, 25, 31, panel));
+
+        int edge = (int) (30 * alpha);
+        if (edge > 0) {
+            RoundedUtils.drawRoundOutline(x, y, w, H, radius, 0.8f,
+                    new Color(0, 0, 0, 0), new Color(255, 255, 255, edge));
+        }
+
+        int sheen = (int) (24 * alpha);
+        float sheenInset = Math.min(radius, w * 0.5f);
+        float sheenW = w - sheenInset * 2.0f;
+        if (sheen > 0 && sheenW > 2.0f) {
+            Color clear = new Color(255, 255, 255, 0);
+            Color peak = new Color(255, 255, 255, sheen);
+            float half = sheenW * 0.5f;
+            RoundedUtils.drawGradientHorizontal(x + sheenInset, y + 0.7f, half, 0.9f, 0.45f,
+                    clear, peak);
+            RoundedUtils.drawGradientHorizontal(x + sheenInset + half, y + 0.7f, half, 0.9f,
+                    0.45f, peak, clear);
+        }
 
         drawBadge(x + PAD_L, y + (H - ICON) * 0.5f, accent, c.enabled, progress, alpha);
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
