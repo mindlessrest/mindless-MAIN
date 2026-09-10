@@ -33,7 +33,12 @@ public class DynamicIsland extends Module {
     private static final float BADGE_GAP = 5.5f;
     private static final float VALUE_GAP = 7.0f;
     private static final float HEIGHT = 22.5f;
-    private static final float WIDTH_SMOOTH_TIME = 0.105f;
+    // Longer than it was: the pill resizing in a tenth of a second reads as a snap rather
+    // than a move, and the content crossfade underneath it takes about as long.
+    private static final float WIDTH_SMOOTH_TIME = 0.14f;
+    /** How far new content starts below its resting place, before easing up into it. */
+    private static final float CONTENT_RISE = 2.6f;
+    private static final float CONTENT_RATE = 11.0f;
     private static final int STATE_IDLE = 0;
     private static final int STATE_NOTIFICATION = 1;
     private static final int STATE_BREAKER = 2;
@@ -48,6 +53,7 @@ public class DynamicIsland extends Module {
     private final ButtonSetting dropShadow;
     private final SliderSetting opacity;
     private final SliderSetting scale;
+    private final SliderSetting roundness;
     private final java.util.Map<Module, Boolean> toggleStates =
             new java.util.IdentityHashMap<Module, Boolean>();
     private final java.util.List<Toggle> recentToggles = new java.util.ArrayList<Toggle>();
@@ -57,6 +63,7 @@ public class DynamicIsland extends Module {
     private float animatedWidth = -1.0f;
     private float widthVelocity;
     private float contentFade = 1.0f;
+    private float contentSlide;
     private float scaffoldProgress;
     private float breakerProgress;
     private int scaffoldPeak;
@@ -85,6 +92,11 @@ public class DynamicIsland extends Module {
         this.registerSetting(opacity = new SliderSetting(
                 styleGroup, "Opacity", "%", 88.0, 20.0, 100.0, 1.0));
         this.registerSetting(scale = new SliderSetting(styleGroup, "Scale", 1.0, 0.7, 1.6, 0.05));
+        // 100% is the full capsule it used to be. The default sits just under that: at this
+        // height a true pill reads as stubby, and shaving the corners back turns it into a
+        // squircle that holds its shape as the width animates.
+        this.registerSetting(roundness = new SliderSetting(
+                styleGroup, "Roundness", "%", 86.0, 40.0, 100.0, 1.0));
     }
 
     @Override
@@ -99,6 +111,7 @@ public class DynamicIsland extends Module {
         animatedWidth = -1.0f;
         widthVelocity = 0.0f;
         contentFade = 1.0f;
+        contentSlide = 0.0f;
         scaffoldProgress = 0.0f;
         breakerProgress = 0.0f;
         scaffoldPeak = 0;
@@ -142,10 +155,12 @@ public class DynamicIsland extends Module {
         float x = anchoredX(resolution, animatedWidth);
         float y = anchoredY(resolution, height);
         int alpha = Math.round(255.0f * (float) (opacity.getInput() / 100.0));
-        drawBackdrop(x, y, animatedWidth, height, height * 0.5f, alpha);
-        contentFade = approach(contentFade, 1.0f, 14.0f, delta);
-        drawContent(text, x, y, animatedWidth, height, uiScale,
-                Math.round(alpha * contentFade));
+        float radius = height * 0.5f * (float) (roundness.getInput() / 100.0);
+        drawBackdrop(x, y, animatedWidth, height, radius, alpha);
+        contentFade = approach(contentFade, 1.0f, CONTENT_RATE, delta);
+        contentSlide = approach(contentSlide, 0.0f, CONTENT_RATE, delta);
+        drawContent(text, x, y, animatedWidth, height, uiScale, alpha,
+                contentFade, contentSlide * uiScale);
     }
 
     private void resolveState(float delta) {
@@ -189,6 +204,7 @@ public class DynamicIsland extends Module {
         if (!nextKey.equals(stateKey)) {
             stateKey = nextKey;
             contentFade = 0.0f;
+            contentSlide = CONTENT_RISE;
         }
         islandState = nextState;
         stateLabel = nextLabel;
@@ -208,10 +224,38 @@ public class DynamicIsland extends Module {
         RoundedUtils.drawGradientVertical(x, y, width, height, radius,
                 new java.awt.Color(39, 38, 46, alpha),
                 new java.awt.Color(26, 25, 31, alpha));
+
+        // A hairline edge, so the pill still has a shape against a bright sky rather than
+        // dissolving into whatever is behind it.
+        int edge = Math.round(alpha * 0.13f);
+        if (edge > 0) {
+            RoundedUtils.drawRoundOutline(x, y, width, height, radius, 0.8f,
+                    new java.awt.Color(0, 0, 0, 0),
+                    new java.awt.Color(255, 255, 255, edge));
+        }
+
+        // And a light along the top inside edge, faded at both ends so it never runs into a
+        // corner. This is what stops a flat dark fill looking like a sticker.
+        int sheen = Math.round(alpha * 0.10f);
+        float inset = Math.min(radius, width * 0.5f);
+        float sheenW = width - inset * 2.0f;
+        if (sheen > 0 && sheenW > 2.0f) {
+            java.awt.Color clear = new java.awt.Color(255, 255, 255, 0);
+            java.awt.Color peak = new java.awt.Color(255, 255, 255, sheen);
+            float half = sheenW * 0.5f;
+            RoundedUtils.drawGradientHorizontal(x + inset, y + 0.7f, half, 0.9f, 0.45f,
+                    clear, peak);
+            RoundedUtils.drawGradientHorizontal(x + inset + half, y + 0.7f, half, 0.9f, 0.45f,
+                    peak, clear);
+        }
     }
 
     private void drawContent(MindlessFontRenderer text, float x, float y, float width,
-                             float height, float uiScale, int alpha) {
+                             float height, float uiScale, int alpha, float fade,
+                             float slide) {
+        // The mark is the one thing that never changes, so it keeps full opacity and holds
+        // still. Fading it with the rest made it blink on every module toggle.
+        int contentAlpha = Math.round(alpha * fade);
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ZERO);
@@ -225,31 +269,31 @@ public class DynamicIsland extends Module {
                 badgeY + (badge - markHeight) * 0.5f,
                 markWidth, markHeight, withAlpha(0xDCD5F3, alpha));
         float labelX = badgeX + badge + BADGE_GAP * uiScale;
-        float textY = y + (height - text.getFontHeight() * uiScale) * 0.5f;
+        float textY = y + (height - text.getFontHeight() * uiScale) * 0.5f + slide;
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
             textY -= 1.15f * uiScale;
         }
-        drawScaled(text, stateLabel, labelX, textY, uiScale, withAlpha(0xF1F1F5, alpha));
+        drawScaled(text, stateLabel, labelX, textY, uiScale, withAlpha(0xF1F1F5, contentAlpha));
         if (!stateValue.isEmpty()) {
             float valueWidth = text.getStringWidth(stateValue) * uiScale;
             float valueX = x + width - PAD_X * uiScale - valueWidth;
             int valueRgb = islandState == STATE_NOTIFICATION && "OFF".equals(stateValue)
                     ? 0xA7A6AE : 0xF1F1F5;
-            drawScaled(text, stateValue, valueX, textY, uiScale, withAlpha(valueRgb, alpha));
+            drawScaled(text, stateValue, valueX, textY, uiScale, withAlpha(valueRgb, contentAlpha));
         }
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
             float barX = labelX;
-            float barY = y + height - 4.1f * uiScale;
+            float barY = y + height - 4.1f * uiScale + slide;
             float barWidth = Math.max(10.0f * uiScale,
                     width - (labelX - x) - PAD_X * uiScale);
             float barHeight = Math.max(1.0f, 1.65f * uiScale);
             RoundedUtils.drawRound(barX, barY, barWidth, barHeight, barHeight * 0.5f,
-                    withAlpha(0xFFFFFF, Math.min(alpha, 36)));
+                    withAlpha(0xFFFFFF, Math.min(contentAlpha, 36)));
             float progress = islandState == STATE_BREAKER ? breakerProgress : scaffoldProgress;
             float fill = barWidth * Math.max(0.0f, Math.min(1.0f, progress));
             if (fill > 0.5f) {
                 RoundedUtils.drawRound(barX, barY, fill, barHeight, barHeight * 0.5f,
-                        withAlpha(accent, alpha));
+                        withAlpha(accent, contentAlpha));
             }
         }
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
