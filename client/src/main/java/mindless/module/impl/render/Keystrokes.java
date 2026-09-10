@@ -1,6 +1,7 @@
 package mindless.module.impl.render;
 
 import mindless.module.Module;
+import mindless.helper.MouseHelper;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
@@ -11,7 +12,6 @@ import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.input.Mouse;
 
 public final class Keystrokes extends Module {
     private static final float DEFAULT_X = 8.0f;
@@ -91,7 +91,11 @@ public final class Keystrokes extends Module {
 
     private void drawMouse(MindlessFontRenderer renderer, String label, float x, float y,
                            float width, float height, int button) {
-        drawBox(renderer, label, x, y, width, height, Mouse.isButtonDown(button));
+        KeyBinding binding = button == 0 ? mc.gameSettings.keyBindAttack
+                : mc.gameSettings.keyBindUseItem;
+        boolean pressed = MouseHelper.isVisuallyDown(button)
+                || binding != null && binding.isKeyDown();
+        drawBox(renderer, label, x, y, width, height, pressed);
     }
 
     private void drawBox(MindlessFontRenderer renderer, String label, float x, float y,

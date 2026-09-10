@@ -100,6 +100,11 @@ public class MouseHelper {
         if (b.size() > 100) b.removeIf(o -> o < now - 1000L);
     }
 
+    public static boolean isVisuallyDown(int button) {
+        long pulse = button == 0 ? LL : button == 1 ? LR : 0L;
+        return Mouse.isButtonDown(button) || pulse > 0L && System.currentTimeMillis() - pulse <= 90L;
+    }
+
     public static int f() {
         a.removeIf(o -> o < System.currentTimeMillis() - 1000L);
         return a.size();

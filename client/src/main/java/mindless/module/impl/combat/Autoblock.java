@@ -202,6 +202,7 @@ public class Autoblock extends Module {
         }
         int keyCode = mc.gameSettings.keyBindUseItem.getKeyCode();
         KeyBinding.setKeyBindState(keyCode, true);
+        mindless.helper.MouseHelper.aR();
         KeyBinding.onTick(keyCode);
         blocking = true;
         ReflectionUtils.setItemInUse(true);

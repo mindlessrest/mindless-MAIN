@@ -1972,6 +1972,7 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
         if (!displaceThisTick && wasDisplacingLastTick && !killAuraHasTarget) {
             int key = mc.gameSettings.keyBindAttack.getKeyCode();
             if (key != 0) {
+                mindless.helper.MouseHelper.aL();
                 KeyBinding.onTick(key);
             }
         }

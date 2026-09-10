@@ -308,6 +308,7 @@ public class KillAura extends Module {
         }
 
         for (int i = 0; i < clicks; i++) {
+            mindless.helper.MouseHelper.aL();
             KeyBinding.onTick(key);
         }
         if (clicks > 0 && target != null && targetDistance <= attackRange.getInput()) {

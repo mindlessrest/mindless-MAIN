@@ -292,6 +292,7 @@ public class MyauBlock extends Module {
         }
         int key = mc.gameSettings.keyBindUseItem.getKeyCode();
         KeyBinding.setKeyBindState(key, true);
+        mindless.helper.MouseHelper.aR();
         KeyBinding.onTick(key);
         ItemStack held = mc.thePlayer.getHeldItem();
         if (held != null) {

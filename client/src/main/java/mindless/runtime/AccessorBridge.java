@@ -250,11 +250,13 @@ public final class AccessorBridge {
         catch (Exception t) { throw wrap("Minecraft_setLeftClickCounter", t); }
     }
     public static void Minecraft_callRightClickMouse(Minecraft mc) {
+        mindless.helper.MouseHelper.aR();
         try {
             method(Minecraft.class, new String[]{"rightClickMouse", "func_147121_ag"}).invoke(mc);
         } catch (Exception t) { throw wrap("Minecraft_callRightClickMouse", t); }
     }
     public static void Minecraft_callClickMouse(Minecraft mc) {
+        mindless.helper.MouseHelper.aL();
         try {
             method(Minecraft.class, new String[]{"clickMouse", "func_147116_af"}).invoke(mc);
         } catch (Exception t) { throw wrap("Minecraft_callClickMouse", t); }
