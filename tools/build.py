@@ -311,6 +311,40 @@ def run(cmd, cwd, env=None):
     return result.returncode == 0
 
 
+def clear_relocated_cache(build_dir, source_dir):
+    """Wipe a CMake build directory that was generated somewhere else.
+
+    CMakeCache.txt records the absolute source and binary paths it was created with, and
+    CMake refuses outright when either has moved. Copying or renaming the checkout is enough
+    to hit it, and the error names two directories without saying what to do about it.
+
+    Returns True when the directory was cleared.
+    """
+    cache = build_dir / "CMakeCache.txt"
+    if not cache.is_file():
+        return False
+    try:
+        text = cache.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+    def recorded(key):
+        match = re.search("^" + key + r":[^=]*=(.*)$", text, re.M)
+        return match.group(1).strip().replace("\\", "/").rstrip("/").lower() if match else None
+
+    here = str(build_dir).replace("\\", "/").rstrip("/").lower()
+    src = str(source_dir).replace("\\", "/").rstrip("/").lower()
+    stale = [
+        recorded("CMAKE_CACHEFILE_DIR") not in (None, here),
+        recorded("CMAKE_HOME_DIRECTORY") not in (None, src),
+    ]
+    if not any(stale):
+        return False
+
+    shutil.rmtree(build_dir, ignore_errors=True)
+    info(f"{build_dir.name} was generated elsewhere, clearing it")
+    return True
+
 def configured_preset():
     """The preset the current build directory was configured with, or None if unknown."""
     if not PRESET_STAMP.is_file():
@@ -468,6 +502,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False):
 
     native_clang = clang
 
+    clear_relocated_cache(NATIVE_BUILD_DIR, NATIVE_DIR)
     NATIVE_BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
     for res_file in NATIVE_BUILD_DIR.rglob("payload.rc.res"):
@@ -540,6 +575,7 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False):
 
 def build_loader(cmake, extra_env, preset_text=None, preset_changed=True):
     section("Loader - configure")
+    clear_relocated_cache(BUILD_DIR, LOADER_DIR)
     loader_cache = BUILD_DIR / "CMakeCache.txt"
     loader_cmakelists = LOADER_DIR / "CMakeLists.txt"
     # The preset no longer votes by mtime. It is rewritten on every CI run and would force a
