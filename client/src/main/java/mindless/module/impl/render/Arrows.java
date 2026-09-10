@@ -37,8 +37,11 @@ public class Arrows extends Module {
     private static final String[] STYLES = {"2D", "3D"};
     private static final int STYLE_3D = 1;
 
-    private static final String[] LAYOUTS = {"Ring", "Screen edge"};
+    // Appended, never reordered: the slider stores its choice as an index.
+    private static final String[] LAYOUTS = {"Ring", "Screen edge", "World ring"};
     private static final int LAYOUT_RING = 0;
+    private static final int LAYOUT_EDGE = 1;
+    private static final int LAYOUT_WORLD = 2;
 
     private static final String[] COLOR_MODES = {"Team", "Distance", "Health", "Manual"};
     private static final int COLOR_TEAM = 0;
@@ -59,6 +62,8 @@ public class Arrows extends Module {
     private final SliderSetting farRadius;
     private final SliderSetting deadZone;
     private final SliderSetting edgeInset;
+    private final SliderSetting worldRadius;
+    private final SliderSetting worldHeight;
 
     private final SliderSetting colorMode;
     private final ColorSetting nearColor;
@@ -106,6 +111,8 @@ public class Arrows extends Module {
         registerSetting(farRadius = new SliderSetting(placement, "Far radius", 110, 20, 300, 5));
         registerSetting(deadZone = new SliderSetting(placement, "Dead zone", 15, 0, 120, 1));
         registerSetting(edgeInset = new SliderSetting(placement, "Edge inset", 18, 4, 80, 1));
+        registerSetting(worldRadius = new SliderSetting(placement, "World radius", " blocks", 2.5, 1.0, 10.0, 0.1));
+        registerSetting(worldHeight = new SliderSetting(placement, "World height", " blocks", 0.2, -1.0, 3.0, 0.1));
 
         GroupSetting colors = new GroupSetting("Colors");
         registerSetting(colors);
@@ -152,11 +159,17 @@ public class Arrows extends Module {
         enemyColor.setVisible(mode == COLOR_MANUAL || mode == COLOR_TEAM, this);
         neutralColor.setVisible(mode == COLOR_MANUAL, this);
 
+        boolean world = (int) layout.getInput() == LAYOUT_WORLD;
         radius.setVisible(ring, this);
         scaleRadius.setVisible(ring, this);
         farRadius.setVisible(ring && scaleRadius.isToggled(), this);
         deadZone.setVisible(ring, this);
-        edgeInset.setVisible(!ring, this);
+        edgeInset.setVisible((int) layout.getInput() == LAYOUT_EDGE, this);
+        worldRadius.setVisible(world, this);
+        worldHeight.setVisible(world, this);
+        // The world ring is already in perspective; squashing it again would double the
+        // foreshortening it gets for free.
+        style.setVisible(!world, this);
 
         filled.setVisible(PointerShapes.canFill(form), this);
         thickness.setVisible(PointerShapes.usesThickness(form, filled.isToggled()), this);
@@ -323,6 +336,38 @@ public class Arrows extends Module {
             return;
         }
 
+        // Two points on a ring that lives in the world, level with your feet, taken while the
+        // camera transform is still up. Where they land on screen is the whole trick: looking
+        // down you see the circle, at eye level it collapses onto the horizon, and it is the
+        // same ring either way. A circle drawn on the screen can only imitate that.
+        Vec3 ringPoint = null;
+        Vec3 ringAhead = null;
+        if ((int) layout.getInput() == LAYOUT_WORLD) {
+            double selfX = mc.thePlayer.lastTickPosX + (mc.thePlayer.posX - mc.thePlayer.lastTickPosX) * partialTicks;
+            double selfY = mc.thePlayer.lastTickPosY + (mc.thePlayer.posY - mc.thePlayer.lastTickPosY) * partialTicks;
+            double selfZ = mc.thePlayer.lastTickPosZ + (mc.thePlayer.posZ - mc.thePlayer.lastTickPosZ) * partialTicks;
+            double toX = (en.lastTickPosX + (en.posX - en.lastTickPosX) * partialTicks) - selfX;
+            double toZ = (en.lastTickPosZ + (en.posZ - en.lastTickPosZ) * partialTicks) - selfZ;
+            double flat = Math.sqrt(toX * toX + toZ * toZ);
+            if (flat < 1.0E-4) {
+                return;
+            }
+            toX /= flat;
+            toZ /= flat;
+            double ringR = worldRadius.getInput();
+            double ringY = selfY + worldHeight.getInput() - mc.getRenderManager().viewerPosY;
+            int scale = scaledResolution.getScaleFactor();
+            ringPoint = RenderUtils.convertTo2D(scale,
+                    selfX + toX * ringR - mc.getRenderManager().viewerPosX, ringY,
+                    selfZ + toZ * ringR - mc.getRenderManager().viewerPosZ);
+            // A second point further along the same bearing gives the marker its heading
+            // without any guessing: the screen direction between them is the ring direction
+            // already in perspective.
+            ringAhead = RenderUtils.convertTo2D(scale,
+                    selfX + toX * (ringR + 0.75) - mc.getRenderManager().viewerPosX, ringY,
+                    selfZ + toZ * (ringR + 0.75) - mc.getRenderManager().viewerPosZ);
+        }
+
         mc.entityRenderer.setupOverlayRendering();
         ScaledResolution res = scaledResolution;
 
@@ -337,6 +382,7 @@ public class Arrows extends Module {
 
         double angle1 = Math.atan2(dx, dy);
         double angle2 = Math.atan2(dy, dx) * 57.295780181884766 + 90.0;
+        boolean worldRing = (int) layout.getInput() == LAYOUT_WORLD;
         double hypotenuse = Math.hypot(dx, dy);
 
         double baseX = res.getScaledWidth() / 2.0;
@@ -361,6 +407,32 @@ public class Arrows extends Module {
             }
             renderX = baseX + placementRadius * sinAng;
             renderY = baseY + placementRadius * cosAng;
+        }
+        else if (worldRing) {
+            // Behind the camera there is nowhere honest to put it. The marker really is behind
+            // you, and pinning it to a screen edge would claim a direction this ring does not
+            // have -- turning around is what brings it back.
+            if (ringPoint == null || ringAhead == null
+                    || ringPoint.zCoord >= 1.0003684 || ringAhead.zCoord >= 1.0003684) {
+                return;
+            }
+            double headX = ringAhead.xCoord - ringPoint.xCoord;
+            double headY = ringAhead.yCoord - ringPoint.yCoord;
+            if (Math.hypot(headX, headY) < 1.0E-4) {
+                return;
+            }
+            renderX = ringPoint.xCoord;
+            renderY = ringPoint.yCoord;
+            angle2 = Math.atan2(headY, headX) * 57.295780181884766 + 90.0;
+            // The label still wants a direction from the middle of the screen, and on this
+            // layout that is wherever the marker actually landed.
+            double offX = renderX - baseX;
+            double offY = renderY - baseY;
+            placementRadius = Math.hypot(offX, offY);
+            if (placementRadius > 1.0E-4) {
+                sinAng = offX / placementRadius;
+                cosAng = offY / placementRadius;
+            }
         }
         else {
             // Screen edge: walk the direction vector out until it meets the inset rectangle, so a
@@ -390,7 +462,7 @@ public class Arrows extends Module {
 
         GlStateManager.pushMatrix();
         GlStateManager.translate(renderX, renderY, 0.0);
-        if ((int) style.getInput() == STYLE_3D) {
+        if (!worldRing && (int) style.getInput() == STYLE_3D) {
             // 3D foreshortens the pointer as though it lay on the ground: the vertical angle
             // to the target squashes it down the screen.
             //
