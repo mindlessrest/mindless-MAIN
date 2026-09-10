@@ -1944,6 +1944,10 @@ private boolean shouldStopSprint() {
         sprintStopState = false;
         return false;
     }
+    if (fwdVal() != 0 && leftVal() != 0) {
+        sprintStopState = true;
+        return true;
+    }
     float off = Math.abs(wrap180(lastSentYaw - travelYaw()));
     if (sprintStopState) {
         if (off < SPRINT_MAX_OFF - 10.0F) {
@@ -1967,20 +1971,18 @@ private void applySprintPolicy(boolean stop) {
         }
         return;
     }
-    if (sprintDwell > 0) {
-        if (sprintSuppressed) {
-            client.setSprinting(false);
-            keybinds.setPressed("sprint", false);
-        }
-        return;
-    }
-    sprintDwell = 4;
     if (stop) {
         sprintPrevVirtual = keybinds.isPressed("sprint");
         sprintSuppressed = true;
+        sprintDwell = 4;
         client.setSprinting(false);
         keybinds.setPressed("sprint", false);
     } else {
+        if (sprintDwell > 0) {
+            client.setSprinting(false);
+            keybinds.setPressed("sprint", false);
+            return;
+        }
         keybinds.setPressed("sprint",
                 sprintPrevVirtual || keybinds.isKeyDown(keybinds.getKeyCode("sprint")));
         sprintSuppressed = false;
