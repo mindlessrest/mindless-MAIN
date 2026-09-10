@@ -904,12 +904,14 @@ public class KillAura extends Module {
 
     private boolean useBuiltInAutoblock() {
         return autoBlock.isToggled()
-                && (ModuleManager.autoBlock == null || !ModuleManager.autoBlock.isOperational());
+                && (ModuleManager.autoBlock == null || !ModuleManager.autoBlock.isOperational())
+                && (ModuleManager.myauBlock == null || !ModuleManager.myauBlock.isOperational());
     }
 
     private boolean isAnyAutoblockEnabled() {
         return useBuiltInAutoblock()
-                || ModuleManager.autoBlock != null && ModuleManager.autoBlock.isOperational();
+                || ModuleManager.autoBlock != null && ModuleManager.autoBlock.isOperational()
+                || ModuleManager.myauBlock != null && ModuleManager.myauBlock.isOperational();
     }
 
     private void startBlocking() {

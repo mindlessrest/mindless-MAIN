@@ -123,7 +123,8 @@ public class LagRange extends Module {
         }
 
         Autoblock autoblock = (Autoblock) ModuleManager.getModule(Autoblock.class);
-        if (autoblock != null && autoblock.isActive()) {
+        if ((autoblock != null && autoblock.isActive())
+                || (ModuleManager.myauBlock != null && ModuleManager.myauBlock.isActive())) {
             if (isLagging) flushLag();
             return;
         }

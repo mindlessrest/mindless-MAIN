@@ -117,6 +117,7 @@ public class ModuleManager {
     public static ResourceTracker resourceTracker;
     public static EventTimers eventTimers;
     public static Autoblock autoBlock;
+    public static MyauBlock myauBlock;
     public static Backtrack backtrack;
     public static Debug debug;
     public static mindless.module.impl.other.DiscordRPC discordRPC;
@@ -139,6 +140,7 @@ public class ModuleManager {
         this.addModule(new AutoBow());
         this.addModule(autoClicker = new AutoClicker());
         this.addModule(autoBlock = new Autoblock());
+        this.addModule(myauBlock = new MyauBlock());
         this.addModule(blockIn = new BlockIn());
         this.addModule(autoBlockin = new AutoBlockin());
         this.addModule(new ClickAssist());

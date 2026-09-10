@@ -44,7 +44,7 @@ public class Autoblock extends Module {
     }
 
     public boolean isOperational() {
-        return isEnabled();
+        return isEnabled() && (ModuleManager.myauBlock == null || !ModuleManager.myauBlock.isOperational());
     }
 
     public boolean allowsNoSlow() {
@@ -53,6 +53,10 @@ public class Autoblock extends Module {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onPrePlayerInteract(PrePlayerInteractEvent event) {
+        if (!isOperational()) {
+            resetBlocking();
+            return;
+        }
         if (canBlock()) {
             if (!reblockPending) {
                 startBlocking();

@@ -144,6 +144,9 @@ public class NoSlow extends Module {
 
     /** Whether Autoblock currently has a block standing. */
     private static boolean isBlockingNow() {
+        if (ModuleManager.myauBlock != null && ModuleManager.myauBlock.isActive()) {
+            return ModuleManager.myauBlock.allowsNoSlow();
+        }
         if (ModuleManager.autoBlock == null || !ModuleManager.autoBlock.isEnabled()) {
             return false;
         }
