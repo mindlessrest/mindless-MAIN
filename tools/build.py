@@ -333,10 +333,20 @@ def update_preset(clang, lld, ninja, vcpkg, prod=False):
         PRESET_FILE.write_text(preset_contents, encoding="utf-8")
     new_text = json.dumps(data, sort_keys=True)
     if old_text != new_text:
-        cmake_cache = BUILD_DIR / "CMakeCache.txt"
-        if cmake_cache.is_file():
-            cmake_cache.unlink()
-            info("CMakeCache.txt deleted (preset changed — forcing reconfigure)")
+        # The whole build directory goes, not just CMakeCache.txt.
+        #
+        # Deleting the cache alone makes CMake regenerate build.ninja, which drops the
+        # header dependencies ninja had recorded. The precompiled header survives that with
+        # no remaining link to the toolchain headers it was built from, so once a runner
+        # image ships a newer MSVC, ninja calls the PCH up to date and clang refuses it as
+        # stale. CI regenerates the preset from the template on every run and therefore
+        # always takes this path, which left that failure waiting on a toolchain bump.
+        #
+        # The expensive caches, vcpkg_installed and the native build, live outside this
+        # directory and are untouched.
+        if BUILD_DIR.is_dir():
+            shutil.rmtree(BUILD_DIR, ignore_errors=True)
+            info("build directory cleared (preset changed, reconfiguring clean)")
 
 
 def build_obf_jar(jdk):
