@@ -44,6 +44,7 @@ public class MyauBlock extends Module {
 
     private final String[] modes = new String[]{"Vanilla", "Spoof", "Hypixel", "Blink", "Interact", "Swap", "Legit", "Fake", "Modern"};
     private final SliderSetting mode;
+    private final SliderSetting autoBlockCps;
     private final SliderSetting blockRange;
     private final ButtonSetting requirePress;
     private final ButtonSetting allowNoSlow;
@@ -54,12 +55,15 @@ public class MyauBlock extends Module {
     private C02PacketUseEntity delayedAttack;
     private int stagedTicks;
     private boolean reblockPending;
+    private boolean suppressAttacksThisTick;
+    private long nextAttackAt;
     private LagRequest outboundBlink;
     private int lastMode = -1;
 
     public MyauBlock() {
         super("MyauBlock", "OpenMyau-style staged sword autoblock.", category.combat, 0);
         this.registerSetting(mode = new SliderSetting("Mode", HYPIXEL, modes));
+        this.registerSetting(autoBlockCps = new SliderSetting("AutoBlock CPS", 8.0, 1.0, 10.0, 0.5));
         this.registerSetting(blockRange = new SliderSetting("Block range", 6.0, 3.0, 8.0, 0.1));
         this.registerSetting(requirePress = new ButtonSetting("Require press", false));
         this.registerSetting(allowNoSlow = new ButtonSetting("Allow NoSlow", true));
@@ -95,6 +99,7 @@ public class MyauBlock extends Module {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPrePlayerInteract(PrePlayerInteractEvent event) {
+        suppressAttacksThisTick = false;
         int selected = (int) mode.getInput();
         if (lastMode != selected) {
             clearState(true);
@@ -151,44 +156,55 @@ public class MyauBlock extends Module {
         if (attack.getAction() != C02PacketUseEntity.Action.ATTACK || !canBlock()) {
             return;
         }
+        if (suppressAttacksThisTick) {
+            event.setCanceled(true);
+            return;
+        }
         if (delayedAttack != null) {
             event.setCanceled(true);
             return;
         }
 
         int selected = (int) mode.getInput();
+        if (selected != VANILLA && selected != FAKE && System.currentTimeMillis() < nextAttackAt) {
+            event.setCanceled(true);
+            return;
+        }
         switch (selected) {
             case VANILLA:
             case FAKE:
                 return;
             case SPOOF:
-                stopPacketBlock();
+                stopPacketBlock(true);
                 spoofSlot(findFallbackSlot(mc.thePlayer.inventory.currentItem));
                 reblockPending = true;
+                markAttackSent();
                 return;
             case HYPIXEL:
                 event.setCanceled(true);
                 delayedAttack = attack;
                 stagedTicks = 0;
-                stopPacketBlock();
+                stopPacketBlock(true);
                 return;
             case BLINK:
                 event.setCanceled(true);
                 startBlink();
-                stopPacketBlock();
+                stopPacketBlock(true);
                 sendAttack(attack);
                 reblockPending = true;
                 return;
             case INTERACT:
-                stopPacketBlock();
+                stopPacketBlock(true);
                 sendInteract(attack);
                 reblockPending = true;
+                markAttackSent();
                 return;
             case SWAP:
-                stopPacketBlock();
+                stopPacketBlock(true);
                 int swordSlot = findSwordSlot(mc.thePlayer.inventory.currentItem);
                 spoofSlot(swordSlot == -1 ? findFallbackSlot(mc.thePlayer.inventory.currentItem) : swordSlot);
                 reblockPending = true;
+                markAttackSent();
                 return;
             case LEGIT:
                 event.setCanceled(true);
@@ -201,7 +217,7 @@ public class MyauBlock extends Module {
                 delayedAttack = attack;
                 stagedTicks = 0;
                 startBlink();
-                stopPacketBlock();
+                stopPacketBlock(true);
                 return;
             default:
         }
@@ -257,14 +273,18 @@ public class MyauBlock extends Module {
     }
 
     private void stopPacketBlock() {
+        stopPacketBlock(false);
+    }
+
+    private void stopPacketBlock(boolean keepVisual) {
         if (!packetBlocking || !Utils.nullCheck()) {
             return;
         }
         mc.thePlayer.sendQueue.addToSendQueue(new C07PacketPlayerDigging(C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
         mc.thePlayer.stopUsingItem();
         packetBlocking = false;
-        visualBlocking = false;
-        ReflectionUtils.setItemInUse(false);
+        visualBlocking = keepVisual;
+        ReflectionUtils.setItemInUse(keepVisual);
     }
 
     private void startLegitBlock() {
@@ -333,6 +353,7 @@ public class MyauBlock extends Module {
         delayedAttack = null;
         stagedTicks = 0;
         if (attack != null) {
+            suppressAttacksThisTick = true;
             sendAttack(attack);
         }
     }
@@ -341,6 +362,7 @@ public class MyauBlock extends Module {
         replayingAttack = true;
         try {
             mc.thePlayer.sendQueue.addToSendQueue(attack);
+            markAttackSent();
         } finally {
             replayingAttack = false;
         }
@@ -366,7 +388,9 @@ public class MyauBlock extends Module {
         delayedAttack = null;
         stagedTicks = 0;
         reblockPending = false;
+        suppressAttacksThisTick = false;
         replayingAttack = false;
+        nextAttackAt = 0L;
         releaseBlink();
         if (releaseServerBlock) {
             if ((int) mode.getInput() == LEGIT) {
@@ -383,5 +407,9 @@ public class MyauBlock extends Module {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), physicalUse);
             ReflectionUtils.setItemInUse(physicalUse && Utils.nullCheck() && Utils.holdingSword());
         }
+    }
+
+    private void markAttackSent() {
+        nextAttackAt = System.currentTimeMillis() + Math.max(1L, Math.round(1000.0 / autoBlockCps.getInput()));
     }
 }
