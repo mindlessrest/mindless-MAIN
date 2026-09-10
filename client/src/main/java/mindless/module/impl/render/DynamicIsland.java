@@ -28,11 +28,11 @@ public class DynamicIsland extends Module {
     private static final String LOGO_RESOURCE = "/assets/mindless/textures/gui/mindless_mark.png";
     private static final float LOGO_ASPECT = 32.0f / 22.0f;
     private static final float EDGE_MARGIN = 4.0f;
-    private static final float PAD_X = 7.0f;
+    private static final float PAD_X = 6.0f;
     private static final float BADGE_SIZE = 13.5f;
-    private static final float BADGE_GAP = 5.5f;
-    private static final float VALUE_GAP = 7.0f;
-    private static final float HEIGHT = 22.5f;
+    private static final float BADGE_GAP = 4.5f;
+    private static final float VALUE_GAP = 6.0f;
+    private static final float HEIGHT = 20.5f;
     // Longer than it was: the pill resizing in a tenth of a second reads as a snap rather
     // than a move, and the content crossfade underneath it takes about as long.
     private static final float WIDTH_SMOOTH_TIME = 0.14f;
