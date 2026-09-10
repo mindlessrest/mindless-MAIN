@@ -1,30 +1,23 @@
 package mindless.module.impl.combat;
 
-import mindless.event.PostUpdateEvent;
-import mindless.event.PreUpdateEvent;
-import mindless.event.SendPacketEvent;
+import mindless.event.PrePlayerInteractEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.ReflectionUtils;
 import mindless.utility.Utils;
+import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.network.Packet;
-import net.minecraft.network.play.client.C02PacketUseEntity;
-import net.minecraft.network.play.client.C07PacketPlayerDigging;
-import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
-import net.minecraft.util.BlockPos;
-import net.minecraft.util.EnumFacing;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import org.lwjgl.input.Mouse;
 
 public class Autoblock extends Module {
     private final SliderSetting hurtTime;
     private boolean blocking;
-    private boolean reblockPending;
 
     public Autoblock() {
-        super("Autoblock", "Cycles sword blocking after your hurt time reaches the configured tick.", category.combat, 0);
+        super("Autoblock", "Allows normal sword blocking once your hurt time reaches the configured tick.", category.combat, 0);
         this.registerSetting(hurtTime = new SliderSetting("Hurt time", " tick", 3.0, 0.0, 10.0, 1.0));
         this.closetModule = true;
     }
@@ -32,7 +25,6 @@ public class Autoblock extends Module {
     @Override
     public void onEnable() {
         blocking = false;
-        reblockPending = false;
         ReflectionUtils.setItemInUse(false);
     }
 
@@ -54,47 +46,13 @@ public class Autoblock extends Module {
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
-    public void onPreUpdate(PreUpdateEvent event) {
-        if (!canBlock()) {
-            stopBlocking();
-            return;
-        }
-        if (!blocking && !reblockPending) {
-            sendBlock();
-        }
-        syncVisual();
-    }
-
-    @SubscribeEvent(priority = EventPriority.LOWEST)
-    public void onPostUpdate(PostUpdateEvent event) {
-        if (!reblockPending) {
-            return;
-        }
+    public void onPrePlayerInteract(PrePlayerInteractEvent event) {
         if (canBlock()) {
-            sendBlock();
+            startBlocking();
         }
         else {
             stopBlocking();
         }
-    }
-
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public void onSendPacket(SendPacketEvent event) {
-        if (!blocking || !(event.getPacket() instanceof C02PacketUseEntity)) {
-            return;
-        }
-        C02PacketUseEntity packet = (C02PacketUseEntity) event.getPacket();
-        if (packet.getAction() != C02PacketUseEntity.Action.ATTACK) {
-            return;
-        }
-        if (!canBlock()) {
-            stopBlocking();
-            return;
-        }
-        send(unblockPacket());
-        blocking = false;
-        reblockPending = true;
-        ReflectionUtils.setItemInUse(false);
     }
 
     private boolean canBlock() {
@@ -112,38 +70,24 @@ public class Autoblock extends Module {
         return target != null && !target.isDead && target.getHealth() > 0.0f;
     }
 
-    private void sendBlock() {
-        if (!Utils.holdingSword()) {
+    private void startBlocking() {
+        if (blocking || !Utils.holdingSword()) {
             return;
         }
-        send(new C08PacketPlayerBlockPlacement(mc.thePlayer.getHeldItem()));
+        int keyCode = mc.gameSettings.keyBindUseItem.getKeyCode();
+        KeyBinding.setKeyBindState(keyCode, true);
+        KeyBinding.onTick(keyCode);
         blocking = true;
-        reblockPending = false;
-        syncVisual();
+        ReflectionUtils.setItemInUse(true);
     }
 
     private void stopBlocking() {
-        if (blocking && Utils.nullCheck()) {
-            send(unblockPacket());
-        }
-        blocking = false;
-        reblockPending = false;
-        ReflectionUtils.setItemInUse(false);
-    }
-
-    private void syncVisual() {
-        ReflectionUtils.setItemInUse(blocking);
-    }
-
-    private C07PacketPlayerDigging unblockPacket() {
-        return new C07PacketPlayerDigging(
-                C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN);
-    }
-
-    private void send(Packet<?> packet) {
-        if (!Utils.nullCheck()) {
+        if (!blocking || mc.gameSettings == null) {
             return;
         }
-        mc.thePlayer.sendQueue.addToSendQueue(packet);
+        boolean physicalUse = Mouse.isButtonDown(1) && mc.currentScreen == null;
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), physicalUse);
+        blocking = false;
+        ReflectionUtils.setItemInUse(physicalUse && Utils.nullCheck() && Utils.holdingSword());
     }
 }
