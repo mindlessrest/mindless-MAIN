@@ -1178,9 +1178,12 @@ private int ringColor(int ringIndex) {
 
         int style = markerStyle == null ? MARKER_STYLE_BRACKETS : (int) markerStyle.getInput();
         float thickness = (float) (markerThickness == null ? 2.0 : markerThickness.getInput());
+        // Dropped only when it is entirely off screen. The old test wanted the whole marker
+        // inside the viewport, so a target anywhere near an edge lost it completely rather
+        // than having it clipped.
         float markerExtent = size + thickness;
-        if (centerX - markerExtent < 0.0f || centerX + markerExtent > resolution.getScaledWidth()
-                || centerY - markerExtent < 0.0f || centerY + markerExtent > resolution.getScaledHeight()) {
+        if (centerX + markerExtent < 0.0f || centerX - markerExtent > resolution.getScaledWidth()
+                || centerY + markerExtent < 0.0f || centerY - markerExtent > resolution.getScaledHeight()) {
             return;
         }
         float gap = style == MARKER_STYLE_FRAME
@@ -1202,6 +1205,12 @@ private int ringColor(int ringIndex) {
         float roundness = (float) (markerSquareness == null ? 0.55 : markerSquareness.getInput());
         double exponent = 2.0 / (2.0 + roundness * 8.0);
 
+        // Unbind first. The panel drawn immediately after this one clears the program and
+        // the rings were fixed the same way, but the marker never was: it ran through
+        // whatever shader the previous HUD element had left bound, and geometry sent to a
+        // shader that was not written for it comes out as nothing at all. That is why it
+        // has never appeared, whatever the settings said.
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.disableTexture2D();
         GlStateManager.enableBlend();
         GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);

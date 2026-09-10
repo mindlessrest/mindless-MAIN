@@ -298,8 +298,15 @@ public class DynamicIsland extends Module {
         if (!stateValue.isEmpty()) {
             float valueWidth = text.getStringWidth(stateValue) * uiScale;
             float valueX = x + width - PAD_X * uiScale - valueWidth;
-            int valueRgb = islandState == STATE_NOTIFICATION && "OFF".equals(stateValue)
-                    ? 0xA7A6AE : 0xF1F1F5;
+            // On takes the theme colour, off goes quiet. The state is then readable from
+            // the corner of the eye without reading the word.
+            int valueRgb;
+            if (islandState == STATE_NOTIFICATION) {
+                valueRgb = "OFF".equals(stateValue) ? 0x8E8D96 : accent;
+            }
+            else {
+                valueRgb = 0xF1F1F5;
+            }
             drawScaled(text, stateValue, valueX, textY, uiScale, withAlpha(valueRgb, contentAlpha));
         }
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {

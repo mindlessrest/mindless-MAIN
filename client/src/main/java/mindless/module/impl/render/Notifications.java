@@ -42,26 +42,37 @@ public class Notifications extends Module {
     public static volatile boolean pendingStartupAlert = false;
     private static final long STARTUP_SUPPRESS_MS = 4000L;
     private long startupFiredAt = 0L;
-    private static final float W_MIN   = 132.0f;
-    private static final float W_MAX   = 240.0f;
-    private static final float H       = 32.0f;
-    private static final float R       = 9.0f;
+    private static final float W_MIN   = 112.0f;
+    private static final float W_MAX   = 224.0f;
+    private static final float H       = 27.0f;
+    private static final float R       = 8.0f;
     private static final float GAP     = 4.0f;
     private static final float MARGIN  = 10.0f;
     private static final int   MAX     = 4;
     private static final long  SLIDE   = 200L;
     private static final long  FADE    = 160L;
 
-    private static final float PAD_L   = 10.0f;
-    private static final float PAD_R   = 12.0f;
-    private static final float ICON    = 18.0f;
-    private static final float ICON_GAP = 9.0f;
-private static final float CLOCK_GAP = 16.0f;
+    private static final float PAD_L   = 8.0f;
+    private static final float PAD_R   = 9.0f;
+    private static final float ICON    = 15.0f;
+    private static final float ICON_GAP = 7.0f;
+private static final float CLOCK_GAP = 12.0f;
+    /** How far right a card starts before easing into place. */
+    private static final float SLIDE_IN = 20.0f;
 
     /** Ease-in-out, so a card does not start and stop its fade at full speed. */
     private static float smooth(float t) {
         float clamped = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
         return clamped * clamped * (3.0f - 2.0f * clamped);
+    }
+
+    /** Mixes a little of the accent into a panel tone, keeping the panel in charge. */
+    private static Color tint(int r, int g, int b, Color accent, float mix, int alpha) {
+        return new Color(
+                Math.round(r + (accent.getRed() - r) * mix),
+                Math.round(g + (accent.getGreen() - g) * mix),
+                Math.round(b + (accent.getBlue() - b) * mix),
+                Math.max(0, Math.min(255, alpha)));
     }
 
     private static final Color ON  = new Color(72, 209, 138);
@@ -76,6 +87,9 @@ private static final float CLOCK_GAP = 16.0f;
         float targetY;
         float y;
         float alpha;
+        /** Horizontal entrance, eased to zero. A right-anchored card arriving from the
+         *  right reads as one movement; rising from below fought the stack sliding down. */
+        float slideIn = SLIDE_IN;
 
         Card(String title, boolean enabled, long birthMs, long durationMs, float startY) {
             this(title, null, enabled, birthMs, durationMs, startY);
@@ -88,7 +102,7 @@ private static final float CLOCK_GAP = 16.0f;
             this.birthMs      = birthMs;
             this.durationMs   = durationMs;
             this.targetY      = startY;
-            this.y            = startY + 28;
+            this.y            = startY;
             this.alpha        = 0.0f;
         }
     }
@@ -232,7 +246,9 @@ public static void notify(String title, String status, boolean positive) {
             long age = now - c.birthMs;
             // Eased against real time rather than per frame. A fixed fraction each frame
             // meant the stack slid at whatever rate the game happened to be running.
-            c.y += (c.targetY - c.y) * (1.0f - (float) Math.exp(-delta * 15.0f));
+            float ease = 1.0f - (float) Math.exp(-delta * 15.0f);
+            c.y += (c.targetY - c.y) * ease;
+            c.slideIn += (0.0f - c.slideIn) * ease;
             if (age < FADE) {
                 c.alpha = smooth((float) age / FADE);
             } else if (age > c.durationMs) {
@@ -260,7 +276,7 @@ public static void notify(String title, String status, boolean positive) {
         String clock = String.format(Locale.ROOT, "%.1fs", remaining);
 
         float w = cardWidth(font, c.title, status, clock);
-        float x = rightEdge - w;
+        float x = rightEdge - w + c.slideIn;
         float radius = R * mindless.module.impl.theme.ThemeManager.roundingScale();
 
         // Same surface as the Dynamic Island: the two appear together every time a module
@@ -268,10 +284,13 @@ public static void notify(String title, String status, boolean positive) {
         BlurUtils.prepareBlur(x, y, w, H);
         RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
         BlurUtils.blurEndRegion(3, 3.0f, 0.85f, x - 2.0f, y - 2.0f, w + 4.0f, H + 4.0f);
+        // The panel takes a trace of the state colour, warm for on and cool for off, so a
+        // glance tells you which without reading a word. Well under a tenth, or it stops
+        // being a Mindless panel and starts being a green box.
         int panel = (int) (232 * alpha);
         RoundedUtils.drawGradientVertical(x, y, w, H, radius,
-                new Color(46, 45, 55, panel),
-                new Color(22, 21, 27, panel));
+                tint(46, 45, 55, accent, 0.16f, panel),
+                tint(22, 21, 27, accent, 0.07f, panel));
 
         drawBadge(x + PAD_L, y + (H - ICON) * 0.5f, accent, c.enabled, progress, alpha);
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
