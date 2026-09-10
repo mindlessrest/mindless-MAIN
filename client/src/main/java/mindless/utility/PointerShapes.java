@@ -18,13 +18,16 @@ import org.lwjgl.opengl.GL20;
  */
 public final class PointerShapes {
 
-    public static final String[] NAMES = {"Caret", "Chevron", "Triangle", "Needle", "Diamond"};
+    // Appended, never reordered: a slider stores the chosen option as its index, so
+    // inserting a shape would silently change what every saved profile points at.
+    public static final String[] NAMES = {"Caret", "Chevron", "Triangle", "Needle", "Diamond", "Dart"};
 
     public static final int CARET = 0;
     public static final int CHEVRON = 1;
     public static final int TRIANGLE = 2;
     public static final int NEEDLE = 3;
     public static final int DIAMOND = 4;
+    public static final int DART = 5;
 
     private PointerShapes() {
     }
@@ -32,13 +35,13 @@ public final class PointerShapes {
     /** True for the shapes whose outline width is meaningful. */
     public static boolean usesThickness(int shape, boolean filled) {
         if (shape == CHEVRON) return false;
-        if (shape == TRIANGLE || shape == DIAMOND) return !filled;
+        if (shape == TRIANGLE || shape == DIAMOND || shape == DART) return !filled;
         return true;
     }
 
     /** True for the shapes that can be drawn solid. */
     public static boolean canFill(int shape) {
-        return shape == TRIANGLE || shape == DIAMOND;
+        return shape == TRIANGLE || shape == DIAMOND || shape == DART;
     }
 
     public static void draw(int shape, int rgba, float thickness, boolean filled,
@@ -127,6 +130,33 @@ public final class PointerShapes {
                     GL11.glVertex2d(5.0, -2.0);
                     GL11.glVertex2d(0.0, 4.0);
                     GL11.glVertex2d(-5.0, -2.0);
+                    GL11.glEnd();
+                }
+                break;
+
+            case DART:
+                // A stubby arrowhead with a notched tail: wider than the needle and short
+                // enough to stay one clean silhouette at the sizes these sit at, which is
+                // what the long shapes lose once several of them crowd the ring.
+                if (filled) {
+                    // Two triangles rather than a fan. The notch makes the outline
+                    // concave, and a fan would bridge straight across it.
+                    GL11.glBegin(GL11.GL_TRIANGLES);
+                    GL11.glVertex2d(0.0, -8.0);
+                    GL11.glVertex2d(5.5, 4.0);
+                    GL11.glVertex2d(0.0, 1.0);
+
+                    GL11.glVertex2d(0.0, -8.0);
+                    GL11.glVertex2d(0.0, 1.0);
+                    GL11.glVertex2d(-5.5, 4.0);
+                    GL11.glEnd();
+                }
+                else {
+                    GL11.glBegin(GL11.GL_LINE_LOOP);
+                    GL11.glVertex2d(0.0, -8.0);
+                    GL11.glVertex2d(5.5, 4.0);
+                    GL11.glVertex2d(0.0, 1.0);
+                    GL11.glVertex2d(-5.5, 4.0);
                     GL11.glEnd();
                 }
                 break;

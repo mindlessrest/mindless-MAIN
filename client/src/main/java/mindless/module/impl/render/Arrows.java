@@ -390,17 +390,21 @@ public class Arrows extends Module {
 
         GlStateManager.pushMatrix();
         GlStateManager.translate(renderX, renderY, 0.0);
-        GlStateManager.rotate((float) angle2, 0.0f, 0.0f, 1.0f);
-        float form = (float) shapeScale.getInput();
-        GlStateManager.scale(form, form, 1.0f);
         if ((int) style.getInput() == STYLE_3D) {
-            // 3D reads the vertical angle to the target and foreshortens the pointer along its
-            // length, so one lying far above or below you flattens the way it would if it were
-            // pinned to the ground rather than to the screen. 2D leaves it square on.
+            // 3D foreshortens the pointer as though it lay on the ground: the vertical angle
+            // to the target squashes it down the screen.
+            //
+            // Applied before the rotation, so the squash runs down the screen for every
+            // pointer. Applied after it, as it used to be, the squash turned with each arrow
+            // and ran along its own length instead -- which is why a ring of them deformed in
+            // a different direction each, worst when looking steeply up or down.
             float squash = (float) Math.max(0.30, Math.cos(Math.toRadians(
                     Math.max(-80.0, Math.min(80.0, pitchDeltaTo(en))))));
             GlStateManager.scale(1.0f, squash, 1.0f);
         }
+        GlStateManager.rotate((float) angle2, 0.0f, 0.0f, 1.0f);
+        float form = (float) shapeScale.getInput();
+        GlStateManager.scale(form, form, 1.0f);
         PointerShapes.draw((int) shape.getInput(), rgba, (float) thickness.getInput(),
                 filled.isToggled(), getArrowFontRenderer());
         GlStateManager.popMatrix();
