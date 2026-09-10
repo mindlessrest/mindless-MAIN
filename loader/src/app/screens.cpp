@@ -848,53 +848,6 @@ static void draw_process_select_content(DrawList& dl, AppState& state,
     draw_continue_button(dl, fn, btnR, state, input, dt, alpha);
 }
 
-// One row of the phase list. rel places the phase against the one running now: negative is
-// finished, zero is running, positive is still ahead.
-static void draw_phase_row(DrawList& dl, FontAtlas& font, const char* label,
-                           float x, float rowY, float rowH, int rel,
-                           float elapsed, float alpha, bool connector)
-{
-    const Theme& t = g_theme;
-
-    float dotCx = x + 5.5f;
-    float dotCy = rowY + rowH * 0.5f;
-
-    // A spine between the dots, so three rows read as one sequence instead of a list.
-    if (connector)
-        dl.fill_rect({ dotCx - 0.5f, dotCy + 7.0f, 1.0f, rowH - 14.0f },
-                     t.buttonBorder.with_alpha((rel < 0 ? 0.9f : 0.55f) * alpha));
-
-    if (rel < 0)
-    {
-        const float d = 7.0f;
-        dl.fill_rounded_rect({ dotCx - d * 0.5f, dotCy - d * 0.5f, d, d },
-                             t.textSecond.with_alpha(alpha), d * 0.5f);
-    }
-    else if (rel == 0)
-    {
-        // Breathing rather than spinning: another spinner beside a moving bar is noise, but
-        // a still dot on the running row reads as stalled.
-        float pulse = 0.5f + 0.5f * std::sin(elapsed * 3.4f);
-        const float ring = 12.0f;
-        dl.stroke_rounded_rect({ dotCx - ring * 0.5f, dotCy - ring * 0.5f, ring, ring },
-                               t.accent.with_alpha((0.28f + 0.34f * pulse) * alpha),
-                               ring * 0.5f, 1.0f);
-        const float core = 5.0f;
-        dl.fill_rounded_rect({ dotCx - core * 0.5f, dotCy - core * 0.5f, core, core },
-                             t.accent.with_alpha(alpha), core * 0.5f);
-    }
-    else
-    {
-        const float d = 5.0f;
-        dl.fill_rounded_rect({ dotCx - d * 0.5f, dotCy - d * 0.5f, d, d },
-                             t.textDisable.with_alpha(0.55f * alpha), d * 0.5f);
-    }
-
-    Color labelColor = rel < 0 ? t.textSecond : (rel == 0 ? t.text : t.textDisable);
-    dl.draw_text(label, { x + 20.0f, vcenter_text(font, rowY, rowH) },
-                 labelColor.with_alpha(labelColor.a * alpha), font);
-}
-
 static void draw_loading_content(DrawList& dl, AppState& state,
                                   const InputState& input, ScreenFonts fonts,
                                   const Rect& wr, float alpha, float dt)
@@ -990,22 +943,46 @@ static void draw_loading_content(DrawList& dl, AppState& state,
         dl.pop_clip();
     }
 
-    // The phases the loader actually moves through. The card says what is happening right
-    // now; this says how much of the whole there is left, which one changing line cannot.
+    // The phases the loader moves through, as one connected control rather than three
+    // separate tiles: they are a single sequence, and gaps between them read as three
+    // unrelated buttons. The card says what is happening now; this says how much is left.
     static const char* kPhases[3] = { "Download", "Transform", "Launch" };
     int current = progress < 0.46f ? 0 : (progress < 0.985f ? 1 : 2);
-    float phaseY = statusCard.bottom() + 18.0f;
-    float phaseGap = 8.0f;
-    float phaseW = (barW - phaseGap * 2.0f) / 3.0f;
+
+    Rect phaseBar = { barX, statusCard.bottom() + 18.0f, barW, 30.0f };
+    dl.fill_rounded_rect(phaseBar, t.buttonBg.with_alpha(alpha), t.buttonRadius);
+    dl.stroke_rounded_rect(phaseBar, t.buttonBorder.with_alpha(alpha), t.buttonRadius, 1.0f);
+
+    float segW = phaseBar.w / 3.0f;
+
+    // Hairlines between segments, drawn before the marker so it paints over the one it
+    // has reached, and inset vertically so it covers them completely.
+    for (int i = 1; i < 3; ++i)
+        dl.fill_rect({ phaseBar.x + i * segW, phaseBar.y + 8.0f, 1.0f, phaseBar.h - 16.0f },
+                     t.buttonBorder.with_alpha(alpha));
+
+    // The marker travels between segments instead of jumping, so a phase change reads as
+    // movement along one track rather than two tiles swapping appearance.
+    state.phaseSlide.set(static_cast<float>(current));
+    state.phaseSlide.advance(dt);
+    float slide = state.phaseSlide.value();
+
+    const float markerPad = 3.0f;
+    Rect marker = { phaseBar.x + markerPad + slide * segW, phaseBar.y + markerPad,
+                    segW - markerPad * 2.0f, phaseBar.h - markerPad * 2.0f };
+    dl.fill_rounded_rect(marker, t.accent.with_alpha(t.accent.a * alpha), t.tagRadius);
+
     for (int i = 0; i < 3; ++i)
     {
-        Rect phase = { barX + i * (phaseW + phaseGap), phaseY, phaseW, 28.0f };
-        Color fill = i < current ? t.surfaceRaised : (i == current ? t.accentDim : t.buttonBg);
-        Color border = i == current ? t.accent.with_alpha(0.34f) : t.buttonBorder;
-        dl.fill_rounded_rect(phase, fill.with_alpha(alpha), t.tagRadius);
-        dl.stroke_rounded_rect(phase, border.with_alpha(alpha), t.tagRadius, 1.0f);
-        draw_text_in_box(dl, fonts.caption, kPhases[i], phase,
-                         (i <= current ? t.text : t.textDisable).with_alpha(alpha));
+        Rect seg = { phaseBar.x + i * segW, phaseBar.y, segW, phaseBar.h };
+        // How much of this segment the marker covers. The label crossfades to the dark
+        // on-accent colour as it arrives, which is what keeps it readable both against
+        // the panel and against the near-white marker -- the previous version painted a
+        // light fill and light text and the middle phase came out as a blank white box.
+        float cover = clamp(1.0f - std::fabs(slide - static_cast<float>(i)), 0.0f, 1.0f);
+        Color base  = static_cast<float>(i) < slide ? t.textSecond : t.textDisable;
+        Color label = base.lerp(t.accentText, cover);
+        draw_text_in_box(dl, fonts.caption, kPhases[i], seg, label.with_alpha(label.a * alpha));
     }
 
     // Worth one line at the bottom: the window goes away on its own, and without saying so

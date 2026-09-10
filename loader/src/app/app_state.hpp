@@ -82,6 +82,10 @@ struct AppState
     // Continue / Load button hover tween
     Tween continueHover;
 
+    // Which phase the marker on the loading screen is sitting over, as a float so it can
+    // be between two of them mid-slide.
+    Tween phaseSlide;
+
     // Back link hover tween
     Tween backHover;
     Tween retryHover;
@@ -276,6 +280,9 @@ struct AppState
         retryRequested = false;
         statusFade.reset(0.16f);
         continueHover.snap(0.0f);
+        // Snapped, not eased: a retry should open on the first phase rather than sliding back
+        // from wherever the failed attempt stopped.
+        phaseSlide.snap(0.0f);
         transition_to(Screen::Loading, 1.0f);
     }
 

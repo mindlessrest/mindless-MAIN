@@ -161,9 +161,12 @@ bool Application::init()
         state_.rememberMe = remember;
         state_.rememberCheck.snap(remember ? 1.0f : 0.0f);
 
-        if (!savedUser.empty() && !savedPass.empty() && remember)
+        // Filled in, never submitted. Signing in on its own took the choice away: there
+        // was no moment to reach the browser button, to clear Remember me, or to sign in
+        // as somebody else, because the loader had already moved past the screen.
+        if (!savedUser.empty())
         {
-            state_.sign_in();
+            state_.focus_field(savedPass.empty() ? 1 : 0);
         }
     }
 
