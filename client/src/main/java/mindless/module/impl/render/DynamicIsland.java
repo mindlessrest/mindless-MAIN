@@ -80,6 +80,8 @@ public class DynamicIsland extends Module {
     private String stateKey = "idle";
     private String stateLabel = "Mindless";
     private String stateValue = "";
+    private String previousValue = "";
+    private float valueBlend = 1.0f;
 
     public float islandPosX = -1.0f;
     public float islandPosY = -1.0f;
@@ -133,6 +135,8 @@ public class DynamicIsland extends Module {
         stateKey = "idle";
         stateLabel = "Mindless";
         stateValue = "";
+        previousValue = "";
+        valueBlend = 1.0f;
         toggleStates.clear();
         recentToggles.clear();
     }
@@ -155,6 +159,7 @@ public class DynamicIsland extends Module {
         if (text == null) return;
         float delta = frameDelta();
         resolveState(delta);
+        valueBlend = approach(valueBlend, 1.0f, 18.0f, delta);
         float uiScale = (float) scale.getInput();
         float targetWidth = stateWidth(text) * uiScale;
         float height = HEIGHT * uiScale;
@@ -179,6 +184,8 @@ public class DynamicIsland extends Module {
                 stateKey = pendingKey;
                 stateLabel = pendingLabel;
                 stateValue = pendingValue;
+                previousValue = "";
+                valueBlend = 1.0f;
                 islandState = pendingState;
                 swapping = false;
                 contentFade = 0.0f;
@@ -247,6 +254,10 @@ public class DynamicIsland extends Module {
             // place with no transition, because nothing about the panel has changed.
             islandState = nextState;
             stateLabel = nextLabel;
+            if (nextState == STATE_SCAFFOLD && !nextValue.equals(stateValue)) {
+                previousValue = stateValue;
+                valueBlend = 0.0f;
+            }
             stateValue = nextValue;
         }
     }
@@ -255,13 +266,13 @@ public class DynamicIsland extends Module {
         // Depth comes from the shadow and the gradient, never from a drawn edge. A soft
         // wide falloff lifts the panel off whatever is behind it; a line just traces it.
         if (dropShadow.isToggled()) {
-            RoundedUtils.drawRoundShadow(x, y + 1.2f, width, height, radius,
-                    3.6f, withAlpha(0x000000, Math.round(alpha * 0.40f)));
+            RoundedUtils.drawRoundShadow(x, y + 2.0f, width, height, radius,
+                    7.0f, withAlpha(0x000000, Math.round(alpha * 0.14f)));
         }
         if (blurBackdrop.isToggled()) {
             BlurUtils.prepareBlur(x, y, width, height);
             RoundedUtils.drawRound(x, y, width, height, radius, 0xFF000000);
-            BlurUtils.blurEndRegion(2, 2.2f, alpha / 255.0f, x, y, width, height);
+            BlurUtils.blurEndRegion(2, 1.8f, alpha / 255.0f * 0.72f, x, y, width, height);
         }
         // A wider tonal range than before, so the top reads as lit and the bottom as
         // shadowed on their own. That is the whole shape now: no outline, no sheen line,
@@ -296,8 +307,6 @@ public class DynamicIsland extends Module {
         }
         drawScaled(text, stateLabel, labelX, textY, uiScale, withAlpha(0xF1F1F5, contentAlpha));
         if (!stateValue.isEmpty()) {
-            float valueWidth = text.getStringWidth(stateValue) * uiScale;
-            float valueX = x + width - PAD_X * uiScale - valueWidth;
             // On takes the theme colour, off goes quiet. The state is then readable from
             // the corner of the eye without reading the word.
             int valueRgb;
@@ -307,7 +316,22 @@ public class DynamicIsland extends Module {
             else {
                 valueRgb = 0xF1F1F5;
             }
-            drawScaled(text, stateValue, valueX, textY, uiScale, withAlpha(valueRgb, contentAlpha));
+            if (islandState == STATE_SCAFFOLD && !previousValue.isEmpty() && valueBlend < 0.995f) {
+                float eased = valueBlend * valueBlend * (3.0f - 2.0f * valueBlend);
+                float oldWidth = text.getStringWidth(previousValue) * uiScale;
+                float oldX = x + width - PAD_X * uiScale - oldWidth;
+                drawScaled(text, previousValue, oldX, textY, uiScale,
+                        withAlpha(valueRgb, Math.round(contentAlpha * (1.0f - eased))));
+                float valueWidth = text.getStringWidth(stateValue) * uiScale;
+                float valueX = x + width - PAD_X * uiScale - valueWidth;
+                drawScaled(text, stateValue, valueX, textY, uiScale,
+                        withAlpha(valueRgb, Math.round(contentAlpha * eased)));
+            }
+            else {
+                float valueWidth = text.getStringWidth(stateValue) * uiScale;
+                float valueX = x + width - PAD_X * uiScale - valueWidth;
+                drawScaled(text, stateValue, valueX, textY, uiScale, withAlpha(valueRgb, contentAlpha));
+            }
         }
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
             float barX = labelX;
@@ -329,7 +353,13 @@ public class DynamicIsland extends Module {
 
     private float stateWidth(MindlessFontRenderer text) {
         float width = PAD_X * 2.0f + BADGE_SIZE + BADGE_GAP + text.getStringWidth(stateLabel);
-        if (!stateValue.isEmpty()) width += VALUE_GAP + text.getStringWidth(stateValue);
+        if (!stateValue.isEmpty()) {
+            float valueWidth = text.getStringWidth(stateValue);
+            if (islandState == STATE_SCAFFOLD) {
+                valueWidth = Math.max(valueWidth, text.getStringWidth("888"));
+            }
+            width += VALUE_GAP + valueWidth;
+        }
         return Math.max(48.0f, width);
     }
 

@@ -283,7 +283,7 @@ public static void notify(String title, String status, boolean positive) {
         // is toggled, and a black card beside a lit panel looked like two different clients.
         BlurUtils.prepareBlur(x, y, w, H);
         RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
-        BlurUtils.blurEndRegion(3, 3.0f, 0.85f, x - 2.0f, y - 2.0f, w + 4.0f, H + 4.0f);
+        BlurUtils.blurEndRegion(2, 1.8f, 0.68f, x, y, w, H);
         // The panel takes a trace of the state colour, warm for on and cool for off, so a
         // glance tells you which without reading a word. Well under a tenth, or it stops
         // being a Mindless panel and starts being a green box.

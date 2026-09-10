@@ -1161,10 +1161,12 @@ private int ringColor(int ringIndex) {
             return;
         }
         if (targetProjectionContext == null) {
+            traceStage(entity, "marker skipped: no projection context", "");
             return;
         }
 
         if (!projectTargetBounds(entity, projectedTargetBounds)) {
+            traceStage(entity, "marker skipped: projection failed", "");
             return;
         }
 
@@ -1184,6 +1186,7 @@ private int ringColor(int ringIndex) {
         float markerExtent = size + thickness;
         if (centerX + markerExtent < 0.0f || centerX - markerExtent > resolution.getScaledWidth()
                 || centerY + markerExtent < 0.0f || centerY - markerExtent > resolution.getScaledHeight()) {
+            traceStage(entity, "marker skipped: off screen", "x=" + Math.round(centerX) + " y=" + Math.round(centerY));
             return;
         }
         float gap = style == MARKER_STYLE_FRAME
@@ -1211,12 +1214,16 @@ private int ringColor(int ringIndex) {
         // shader that was not written for it comes out as nothing at all. That is why it
         // has never appeared, whatever the settings said.
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
-        GlStateManager.disableTexture2D();
-        GlStateManager.enableBlend();
-        GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GlStateManager.disableAlpha();
-        GlStateManager.shadeModel(GL11.GL_SMOOTH);
-        GlStateManager.depthMask(false);
+        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT
+                | GL11.GL_POLYGON_BIT);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glDisable(GL11.GL_ALPHA_TEST);
+        GL11.glDisable(GL11.GL_CULL_FACE);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glShadeModel(GL11.GL_SMOOTH);
+        GL11.glDepthMask(false);
 
         Tessellator tessellator = Tessellator.getInstance();
         WorldRenderer worldRenderer = tessellator.getWorldRenderer();
@@ -1260,11 +1267,10 @@ private int ringColor(int ringIndex) {
 
         tessellator.draw();
 
-        GlStateManager.depthMask(true);
-        GlStateManager.shadeModel(GL11.GL_FLAT);
-        GlStateManager.enableAlpha();
-        GlStateManager.enableTexture2D();
+        GL11.glPopAttrib();
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        traceStage(entity, "marker drawn", "x=" + Math.round(centerX) + " y=" + Math.round(centerY));
     }
 
     /** The marker colour at a position along the outline, 0 to 1. */
