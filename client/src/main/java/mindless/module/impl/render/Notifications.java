@@ -270,27 +270,8 @@ public static void notify(String title, String status, boolean positive) {
         BlurUtils.blurEndRegion(3, 3.0f, 0.85f, x - 2.0f, y - 2.0f, w + 4.0f, H + 4.0f);
         int panel = (int) (232 * alpha);
         RoundedUtils.drawGradientVertical(x, y, w, H, radius,
-                new Color(39, 38, 46, panel),
-                new Color(26, 25, 31, panel));
-
-        int edge = (int) (30 * alpha);
-        if (edge > 0) {
-            RoundedUtils.drawRoundOutline(x, y, w, H, radius, 0.8f,
-                    new Color(0, 0, 0, 0), new Color(255, 255, 255, edge));
-        }
-
-        int sheen = (int) (24 * alpha);
-        float sheenInset = Math.min(radius, w * 0.5f);
-        float sheenW = w - sheenInset * 2.0f;
-        if (sheen > 0 && sheenW > 2.0f) {
-            Color clear = new Color(255, 255, 255, 0);
-            Color peak = new Color(255, 255, 255, sheen);
-            float half = sheenW * 0.5f;
-            RoundedUtils.drawGradientHorizontal(x + sheenInset, y + 0.7f, half, 0.9f, 0.45f,
-                    clear, peak);
-            RoundedUtils.drawGradientHorizontal(x + sheenInset + half, y + 0.7f, half, 0.9f,
-                    0.45f, peak, clear);
-        }
+                new Color(46, 45, 55, panel),
+                new Color(22, 21, 27, panel));
 
         drawBadge(x + PAD_L, y + (H - ICON) * 0.5f, accent, c.enabled, progress, alpha);
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);

@@ -252,42 +252,23 @@ public class DynamicIsland extends Module {
     }
 
     private void drawBackdrop(float x, float y, float width, float height, float radius, int alpha) {
+        // Depth comes from the shadow and the gradient, never from a drawn edge. A soft
+        // wide falloff lifts the panel off whatever is behind it; a line just traces it.
         if (dropShadow.isToggled()) {
-            RoundedUtils.drawRoundShadow(x, y + 0.8f, width, height, radius,
-                    2.0f, withAlpha(0x000000, Math.round(alpha * 0.32f)));
+            RoundedUtils.drawRoundShadow(x, y + 1.2f, width, height, radius,
+                    3.6f, withAlpha(0x000000, Math.round(alpha * 0.40f)));
         }
         if (blurBackdrop.isToggled()) {
             BlurUtils.prepareBlur(x, y, width, height);
             RoundedUtils.drawRound(x, y, width, height, radius, 0xFF000000);
             BlurUtils.blurEndRegion(2, 2.2f, alpha / 255.0f, x, y, width, height);
         }
+        // A wider tonal range than before, so the top reads as lit and the bottom as
+        // shadowed on their own. That is the whole shape now: no outline, no sheen line,
+        // nothing with a hard edge anywhere on it.
         RoundedUtils.drawGradientVertical(x, y, width, height, radius,
-                new java.awt.Color(39, 38, 46, alpha),
-                new java.awt.Color(26, 25, 31, alpha));
-
-        // A hairline edge, so the pill still has a shape against a bright sky rather than
-        // dissolving into whatever is behind it.
-        int edge = Math.round(alpha * 0.13f);
-        if (edge > 0) {
-            RoundedUtils.drawRoundOutline(x, y, width, height, radius, 0.8f,
-                    new java.awt.Color(0, 0, 0, 0),
-                    new java.awt.Color(255, 255, 255, edge));
-        }
-
-        // And a light along the top inside edge, faded at both ends so it never runs into a
-        // corner. This is what stops a flat dark fill looking like a sticker.
-        int sheen = Math.round(alpha * 0.10f);
-        float inset = Math.min(radius, width * 0.5f);
-        float sheenW = width - inset * 2.0f;
-        if (sheen > 0 && sheenW > 2.0f) {
-            java.awt.Color clear = new java.awt.Color(255, 255, 255, 0);
-            java.awt.Color peak = new java.awt.Color(255, 255, 255, sheen);
-            float half = sheenW * 0.5f;
-            RoundedUtils.drawGradientHorizontal(x + inset, y + 0.7f, half, 0.9f, 0.45f,
-                    clear, peak);
-            RoundedUtils.drawGradientHorizontal(x + inset + half, y + 0.7f, half, 0.9f, 0.45f,
-                    peak, clear);
-        }
+                new java.awt.Color(46, 45, 55, alpha),
+                new java.awt.Color(22, 21, 27, alpha));
     }
 
     private void drawContent(MindlessFontRenderer text, float x, float y, float width,
