@@ -547,7 +547,11 @@ int Application::run()
             bool downloading = downloadStarted_ && !downloadDone_;
             float target = 0.0f;
 
-            if (downloading)
+            if (state_.loadFailed)
+            {
+                target = state_.loadProgress;
+            }
+            else if (downloading)
             {
                 // Preparing: 0% → 50% (slow asymptotic crawl so it never stalls visually)
                 if (state_.statusText != "Gathering resources")
