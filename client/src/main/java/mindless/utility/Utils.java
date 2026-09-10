@@ -1703,40 +1703,12 @@ public static boolean isMining() {
         return 0;
     }
 
-    /**
-     * What the hand should draw: the player's own item while Auto Tool is borrowing the slot.
-     *
-     * Gated on the module actually holding a tool now, rather than on the setting alone. The
-     * old test passed whenever the setting was on and then fell back to the current slot,
-     * so outside a swap it spoofed the held item with itself and hid nothing.
-     */
     public static ItemStack getSpoofedItem(ItemStack original) {
         AutoTool autoTool = ModuleManager.autoTool;
-        if (autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem()
-                && mc.thePlayer != null) {
-            ItemStack spoofed = mc.thePlayer.inventory.getStackInSlot(autoTool.getSpoofSlot());
-            reportSpoofedItem(original, spoofed);
-            return spoofed;
+        if (autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem()) {
+            return autoTool.getOriginalVisualItem();
         }
         return original;
-    }
-
-    private static ItemStack lastReportedSpoofSource;
-
-    /**
-     * Say once per swap what the hand was asked to draw and what it was given.
-     *
-     * Reaching this at all proves the renderer hook is live, which is the half of the
-     * question the module side cannot answer on its own.
-     */
-    private static void reportSpoofedItem(ItemStack original, ItemStack spoofed) {
-        if (spoofed == lastReportedSpoofSource) {
-            return;
-        }
-        lastReportedSpoofSource = spoofed;
-        mindless.utility.Diagnostics.log("autotool", "hand asked for "
-                + (original == null ? "nothing" : original.getDisplayName())
-                + ", drawing " + (spoofed == null ? "nothing" : spoofed.getDisplayName()));
     }
 
     public static boolean scaffoldDiagonal(boolean strict) {

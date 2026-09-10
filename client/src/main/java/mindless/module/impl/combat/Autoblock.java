@@ -12,21 +12,28 @@ import mindless.utility.Utils;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.play.client.C02PacketUseEntity;
+import net.minecraft.util.MathHelper;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Mouse;
 
 public class Autoblock extends Module {
-    private static final int HURT_TIME = 1;
-    private final String[] modes = new String[]{"Normal", "Hurt time"};
+    private static final int PREDICT = 1;
+    private final String[] modes = new String[]{"Normal", "Predict"};
     private final SliderSetting mode;
     private final SliderSetting hurtTime;
     private boolean blocking;
     private boolean reblockPending;
+    private static final int DAMAGE_SAMPLE_COUNT = 3;
+    private final long[] damageIntervals = new long[DAMAGE_SAMPLE_COUNT];
+    private int damageIntervalCount;
+    private int damageIntervalIndex;
+    private int previousHurtTime;
+    private long lastDamageTime;
 
     public Autoblock() {
         super("Autoblock", "Blocks with your sword while fighting a nearby target.", category.combat, 0);
-        this.registerSetting(mode = new SliderSetting("Mode", HURT_TIME, modes));
+        this.registerSetting(mode = new SliderSetting("Mode", PREDICT, modes));
         this.registerSetting(hurtTime = new SliderSetting("Hurt time", " tick", 3.0, 0.0, 10.0, 1.0));
         this.closetModule = true;
     }
@@ -35,12 +42,14 @@ public class Autoblock extends Module {
     public void onEnable() {
         blocking = false;
         reblockPending = false;
+        resetPrediction();
         ReflectionUtils.setItemInUse(false);
     }
 
     @Override
     public void onDisable() {
         stopBlocking();
+        resetPrediction();
     }
 
     public boolean isActive() {
@@ -62,7 +71,7 @@ public class Autoblock extends Module {
 
     @Override
     public void guiUpdate() {
-        hurtTime.setVisible((int) mode.getInput() == HURT_TIME, this);
+        hurtTime.setVisible((int) mode.getInput() == PREDICT, this);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -71,6 +80,7 @@ public class Autoblock extends Module {
             resetBlocking();
             return;
         }
+        updateDamagePrediction();
         if (canBlock()) {
             if (!reblockPending) {
                 startBlocking();
@@ -109,7 +119,8 @@ public class Autoblock extends Module {
         if (!Utils.nullCheck() || mc.currentScreen != null || mc.thePlayer.isDead || !Utils.holdingSword()) {
             return false;
         }
-        if ((int) mode.getInput() == HURT_TIME && mc.thePlayer.hurtTime > (int) hurtTime.getInput()) {
+        boolean predict = (int) mode.getInput() == PREDICT;
+        if (predict && mc.thePlayer.hurtTime > (int) hurtTime.getInput()) {
             return false;
         }
         if (ModuleManager.bedAura != null && ModuleManager.bedAura.isActivelyMining()) {
@@ -119,7 +130,70 @@ public class Autoblock extends Module {
         boolean auraAttacking = ModuleManager.killAura != null
                 && ModuleManager.killAura.isEnabled()
                 && !ModuleManager.killAura.isRequireMouseDown();
-        return target != null && (Mouse.isButtonDown(0) || auraAttacking);
+        return target != null
+                && (Mouse.isButtonDown(0) || auraAttacking)
+                && (!predict || predictsIncomingHit(target));
+    }
+
+    private boolean predictsIncomingHit(EntityPlayer target) {
+        if (mc.thePlayer.getDistanceSqToEntity(target) > 13.69 || !isFacingPlayer(target)) {
+            return false;
+        }
+        if (target.isSwingInProgress && target.swingProgressInt <= 3) {
+            return true;
+        }
+        if (damageIntervalCount < 2 || lastDamageTime == 0L) {
+            return false;
+        }
+        long total = 0L;
+        for (int i = 0; i < damageIntervalCount; i++) {
+            total += damageIntervals[i];
+        }
+        long expected = lastDamageTime + total / damageIntervalCount;
+        long earlyWindow = Math.max(75L, Math.min(175L, Utils.getPing() + 50L));
+        long now = System.currentTimeMillis();
+        return now >= expected - earlyWindow && now <= expected + 100L;
+    }
+
+    private boolean isFacingPlayer(EntityPlayer target) {
+        double x = mc.thePlayer.posX - target.posX;
+        double z = mc.thePlayer.posZ - target.posZ;
+        float yaw = (float) (Math.atan2(z, x) * 180.0 / Math.PI) - 90.0F;
+        return Math.abs(MathHelper.wrapAngleTo180_float(yaw - target.rotationYaw)) <= 70.0F;
+    }
+
+    private void updateDamagePrediction() {
+        if (!Utils.nullCheck()) {
+            resetPrediction();
+            return;
+        }
+        int currentHurtTime = mc.thePlayer.hurtTime;
+        if (currentHurtTime > previousHurtTime) {
+            long now = System.currentTimeMillis();
+            if (lastDamageTime != 0L) {
+                long interval = now - lastDamageTime;
+                if (interval >= 250L && interval <= 1500L) {
+                    damageIntervals[damageIntervalIndex] = interval;
+                    damageIntervalIndex = (damageIntervalIndex + 1) % DAMAGE_SAMPLE_COUNT;
+                    if (damageIntervalCount < DAMAGE_SAMPLE_COUNT) {
+                        damageIntervalCount++;
+                    }
+                }
+                else {
+                    damageIntervalCount = 0;
+                    damageIntervalIndex = 0;
+                }
+            }
+            lastDamageTime = now;
+        }
+        previousHurtTime = currentHurtTime;
+    }
+
+    private void resetPrediction() {
+        damageIntervalCount = 0;
+        damageIntervalIndex = 0;
+        previousHurtTime = 0;
+        lastDamageTime = 0L;
     }
 
     private void startBlocking() {

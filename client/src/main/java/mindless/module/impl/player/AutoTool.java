@@ -16,6 +16,7 @@ import mindless.utility.Utils;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -47,6 +48,7 @@ public class AutoTool extends Module {
 
     private boolean hasSwapped;
     private boolean manualOverride;
+    private ItemStack originalVisualItem;
     public int previousSlot = -1;
     private int tickCounter;
     private int leftMouseDownSinceTick = -1;
@@ -69,9 +71,9 @@ public class AutoTool extends Module {
         this.registerSetting(disableInCreative = new ButtonSetting(conditionsGroup, "Disable in creative", true));
 
         this.registerSetting(swapGroup = new GroupSetting("Swap"));
-        this.registerSetting(switchBackWhenDone = new ButtonSetting(swapGroup, "Switch back when done", true, "Swap to previous slot"));
+        this.registerSetting(switchBackWhenDone = new ButtonSetting(swapGroup, "Auto Switch Back", true, "Switch back when done", "Swap to previous slot"));
         this.registerSetting(overrideSwapBack = new ButtonSetting(swapGroup, "Override swap back", true));
-        this.registerSetting(spoofItem = new ButtonSetting(swapGroup, "Spoof item", false));
+        this.registerSetting(spoofItem = new ButtonSetting(swapGroup, "Keep Original Item", false, "Spoof item"));
 
         this.registerSetting(ignoredHeldItemsToggle = new ButtonSetting("Held item blacklist", false, "Ignore held items", "Restrict held items", "Allow while holding"));
         this.registerSetting(ignoredHeldItems = new ItemListSetting("Held items", "Items"));
@@ -100,15 +102,6 @@ public class AutoTool extends Module {
         resetState(true);
     }
 
-    /**
-     * Hands the slot back to the player.
-     *
-     * Both of these used to swallow the change outright, so a swap made while the tool was equipped
-     * did nothing until the swap-back fired -- reaching for a sword mid-mine left the tool in hand
-     * and looked like the module re-equipping it. With "Override swap back" on, the player's pick is
-     * meant to win, so let it through and stand down until the mining action ends; otherwise keep
-     * holding the tool as before.
-     */
     @SubscribeEvent
     public void onScrollSlot(PreSlotScrollEvent e) {
         if (!hasSwapped) {
@@ -137,6 +130,7 @@ public class AutoTool extends Module {
         manualOverride = true;
         hasSwapped = false;
         previousSlot = -1;
+        originalVisualItem = null;
         resetNextHover();
     }
 
@@ -151,7 +145,6 @@ public class AutoTool extends Module {
         boolean leftMouseDown = Mouse.isButtonDown(0);
         updateLeftMouseState(leftMouseDown, currentTick);
 
-        // Stay out of the way for the rest of the swing the player took the slot on.
         if (manualOverride) {
             if (leftMouseDown) {
                 return;
@@ -239,6 +232,8 @@ public class AutoTool extends Module {
 
         if (previousSlot == -1 && slot != mc.thePlayer.inventory.currentItem) {
             previousSlot = mc.thePlayer.inventory.currentItem;
+            ItemStack held = mc.thePlayer.inventory.getStackInSlot(previousSlot);
+            originalVisualItem = held == null ? null : held.copy();
         }
 
         if (!hasSwapped) {
@@ -362,6 +357,7 @@ public class AutoTool extends Module {
         }
         previousSlot = -1;
         hasSwapped = false;
+        originalVisualItem = null;
         resetNextHover();
     }
 
@@ -379,33 +375,11 @@ public class AutoTool extends Module {
         nextHoverSlot = -1;
     }
 
-    /**
-     * Whether the hand should still be showing what the player chose rather than the tool.
-     *
-     * Asked every frame by the item renderers, so it is a condition and not a flag they
-     * consume. The previous arming was a one-shot set once per client tick and cleared by
-     * the first renderer to read it, which left most frames unsuppressed at any sensible
-     * frame rate -- and it was evaluated before the swap it was meant to hide, so the tick
-     * that actually changed slots was never covered at all. Between the two, the equip
-     * animation played and the tool appeared.
-     */
     public boolean isSpoofingHeldItem() {
-        boolean active = spoofItem.isToggled() && hasSwapped && previousSlot != -1;
-        if (active != reportedSpoofActive) {
-            reportedSpoofActive = active;
-            mindless.utility.Diagnostics.log("autotool", active
-                    ? "spoof on, showing slot " + previousSlot
-                    : "spoof off (toggled=" + spoofItem.isToggled()
-                            + " swapped=" + hasSwapped + " previous=" + previousSlot + ")");
-        }
-        return active;
+        return spoofItem.isToggled() && hasSwapped && previousSlot != -1;
     }
 
-    /** Last reported spoof state, so the log records the change and not every frame. */
-    private boolean reportedSpoofActive;
-
-    /** The slot the player had selected before Auto Tool took it. */
-    public int getSpoofSlot() {
-        return previousSlot;
+    public ItemStack getOriginalVisualItem() {
+        return originalVisualItem;
     }
 }
