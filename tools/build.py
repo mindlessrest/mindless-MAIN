@@ -18,6 +18,13 @@ NATIVE_DIR  = CLIENT_DIR / "native"
 PRESET_FILE = LOADER_DIR / "CMakePresets.json"
 PRESET_TEMPLATE = LOADER_DIR / "CMakePresets.template.json"
 BUILD_DIR   = LOADER_DIR / "out" / "build" / "windows-clang"
+# Records which preset the build directory was configured with.
+#
+# CMakePresets.json cannot answer that on CI: it is gitignored, so a fresh checkout
+# regenerates it and its mtime is always newer than the restored CMakeCache. Comparing
+# against a file that travels with the build directory is what lets a warm cache be reused
+# instead of reconfigured from scratch on every run.
+PRESET_STAMP = BUILD_DIR / ".mindless-preset.json"
 OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
 # Lives beside this script rather than in the repository root: it is a cache of detected
 # compiler and JDK paths that build.py owns outright, and nothing else ever reads it.
@@ -304,6 +311,24 @@ def run(cmd, cwd, env=None):
     return result.returncode == 0
 
 
+def configured_preset():
+    """The preset the current build directory was configured with, or None if unknown."""
+    if not PRESET_STAMP.is_file():
+        return None
+    try:
+        return PRESET_STAMP.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def record_preset(text):
+    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        PRESET_STAMP.write_text(text, encoding="utf-8")
+    except OSError:
+        pass
+
+
 def update_preset(clang, lld, ninja, vcpkg, prod=False):
     source = PRESET_FILE if PRESET_FILE.is_file() else PRESET_TEMPLATE
     if not source.is_file():
@@ -311,7 +336,6 @@ def update_preset(clang, lld, ninja, vcpkg, prod=False):
         sys.exit(1)
     with open(source, "r", encoding="utf-8-sig") as f:
         data = json.load(f)
-    old_text = json.dumps(data, sort_keys=True)
     toolchain = str(vcpkg / "scripts" / "buildsystems" / "vcpkg.cmake").replace("\\", "/")
     for preset in data.get("configurePresets", []):
         if preset.get("name") == "windows-clang":
@@ -332,21 +356,23 @@ def update_preset(clang, lld, ninja, vcpkg, prod=False):
     if current_contents != preset_contents:
         PRESET_FILE.write_text(preset_contents, encoding="utf-8")
     new_text = json.dumps(data, sort_keys=True)
-    if old_text != new_text:
-        # The whole build directory goes, not just CMakeCache.txt.
-        #
-        # Deleting the cache alone makes CMake regenerate build.ninja, which drops the
-        # header dependencies ninja had recorded. The precompiled header survives that with
-        # no remaining link to the toolchain headers it was built from, so once a runner
-        # image ships a newer MSVC, ninja calls the PCH up to date and clang refuses it as
-        # stale. CI regenerates the preset from the template on every run and therefore
-        # always takes this path, which left that failure waiting on a toolchain bump.
-        #
-        # The expensive caches, vcpkg_installed and the native build, live outside this
-        # directory and are untouched.
-        if BUILD_DIR.is_dir():
-            shutil.rmtree(BUILD_DIR, ignore_errors=True)
-            info("build directory cleared (preset changed, reconfiguring clean)")
+
+    # Compared against the stamp rather than against whatever the preset file said, because
+    # on CI that file is always freshly written and would report a change every run.
+    if configured_preset() == new_text:
+        return new_text, False
+
+    # When it really has changed, the whole directory goes rather than just CMakeCache.txt.
+    # Deleting the cache alone makes CMake regenerate build.ninja, which drops the header
+    # dependencies ninja had recorded; the precompiled header then survives with no link to
+    # the toolchain headers it came from, so a runner image shipping a newer MSVC leaves
+    # ninja calling the PCH up to date while clang refuses it as stale.
+    #
+    # vcpkg_installed and the native build live outside this directory and stay cached.
+    if BUILD_DIR.is_dir():
+        shutil.rmtree(BUILD_DIR, ignore_errors=True)
+        info("build directory cleared (preset changed, reconfiguring clean)")
+    return new_text, True
 
 
 def build_obf_jar(jdk):
@@ -512,22 +538,27 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False):
     return True
 
 
-def build_loader(cmake, extra_env):
+def build_loader(cmake, extra_env, preset_text=None, preset_changed=True):
     section("Loader - configure")
     loader_cache = BUILD_DIR / "CMakeCache.txt"
     loader_cmakelists = LOADER_DIR / "CMakeLists.txt"
+    # The preset no longer votes by mtime. It is rewritten on every CI run and would force a
+    # reconfigure each time, which is what threw away a warm build directory and, with it,
+    # ninja's header dependencies.
     needs_configure = (
-        not loader_cache.is_file()
+        preset_changed
+        or not loader_cache.is_file()
         or (loader_cmakelists.is_file() and loader_cmakelists.stat().st_mtime > loader_cache.stat().st_mtime)
-        or (PRESET_FILE.is_file() and PRESET_FILE.stat().st_mtime > loader_cache.stat().st_mtime)
     )
     if needs_configure:
         if not run([str(cmake), "--preset", "windows-clang"], LOADER_DIR, extra_env):
             err("cmake configure failed")
             return False
+        if preset_text is not None:
+            record_preset(preset_text)
         ok("configured")
     else:
-        info("configure skipped (CMakeCache up to date)")
+        info("configure skipped (build directory already matches the preset)")
 
     loader_rc = BUILD_DIR / "resources_gen.rc"
     if loader_rc.is_file():
@@ -702,10 +733,10 @@ def main():
 
     if build_loader_flag and llvm and ninja and vcpkg and cmake:
         section("Updating CMakePresets.json")
-        update_preset(clang, lld, ninja, vcpkg, prod=prod_flag)
+        preset_text, preset_changed = update_preset(clang, lld, ninja, vcpkg, prod=prod_flag)
         ok("preset updated")
 
-        if not build_loader(cmake, extra_env):
+        if not build_loader(cmake, extra_env, preset_text, preset_changed):
             success = False
 
     print()
