@@ -1,13 +1,17 @@
 package mindless.module.impl.combat;
 
+import mindless.event.PostUpdateEvent;
 import mindless.event.PrePlayerInteractEvent;
+import mindless.event.SendPacketEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.utility.CombatTargeting;
 import mindless.utility.ReflectionUtils;
 import mindless.utility.Utils;
 import net.minecraft.client.settings.KeyBinding;
-import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.network.play.client.C02PacketUseEntity;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Mouse;
@@ -15,6 +19,7 @@ import org.lwjgl.input.Mouse;
 public class Autoblock extends Module {
     private final SliderSetting hurtTime;
     private boolean blocking;
+    private boolean reblockPending;
 
     public Autoblock() {
         super("Autoblock", "Allows normal sword blocking once your hurt time reaches the configured tick.", category.combat, 0);
@@ -25,6 +30,7 @@ public class Autoblock extends Module {
     @Override
     public void onEnable() {
         blocking = false;
+        reblockPending = false;
         ReflectionUtils.setItemInUse(false);
     }
 
@@ -48,10 +54,36 @@ public class Autoblock extends Module {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onPrePlayerInteract(PrePlayerInteractEvent event) {
         if (canBlock()) {
-            startBlocking();
+            if (!reblockPending) {
+                startBlocking();
+            }
         }
         else {
-            stopBlocking();
+            resetBlocking();
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onSendPacket(SendPacketEvent event) {
+        if (!blocking || !(event.getPacket() instanceof C02PacketUseEntity)) {
+            return;
+        }
+        C02PacketUseEntity packet = (C02PacketUseEntity) event.getPacket();
+        if (packet.getAction() != C02PacketUseEntity.Action.ATTACK) {
+            return;
+        }
+        stopBlocking();
+        reblockPending = true;
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onPostUpdate(PostUpdateEvent event) {
+        if (!reblockPending) {
+            return;
+        }
+        reblockPending = false;
+        if (canBlock()) {
+            startBlocking();
         }
     }
 
@@ -63,11 +95,11 @@ public class Autoblock extends Module {
         if (ModuleManager.bedAura != null && ModuleManager.bedAura.isActivelyMining()) {
             return false;
         }
-        if (ModuleManager.killAura == null || !ModuleManager.killAura.isEnabled()) {
-            return false;
-        }
-        EntityLivingBase target = KillAura.attackingEntity != null ? KillAura.attackingEntity : KillAura.target;
-        return target != null && !target.isDead && target.getHealth() > 0.0f;
+        EntityPlayer target = CombatTargeting.findTarget(16.0, true);
+        boolean auraAttacking = ModuleManager.killAura != null
+                && ModuleManager.killAura.isEnabled()
+                && !ModuleManager.killAura.isRequireMouseDown();
+        return target != null && (Mouse.isButtonDown(0) || auraAttacking);
     }
 
     private void startBlocking() {
@@ -89,5 +121,10 @@ public class Autoblock extends Module {
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), physicalUse);
         blocking = false;
         ReflectionUtils.setItemInUse(physicalUse && Utils.nullCheck() && Utils.holdingSword());
+    }
+
+    private void resetBlocking() {
+        stopBlocking();
+        reblockPending = false;
     }
 }
