@@ -2,6 +2,7 @@ package mindless.module.impl.combat;
 
 import mindless.event.ClientRotationEvent;
 import mindless.event.PrePlayerInteractEvent;
+import mindless.event.PlayerKillEvent;
 import mindless.helper.RotationHelper;
 import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
@@ -95,11 +96,6 @@ public class KillAura extends Module {
     private long nextClickTime;
     private Random rand;
     private double targetDistance = Double.MAX_VALUE;
-    private int lastAttackedEntityId = -1;
-    private long lastAttackTimeMs;
-    private long lastKillNotifyMs;
-    private float lastAttackedHealth = -1f;
-
     public KillAura() {
         super("Kill Aura", "Attacks players in range for you.", category.combat);
         this.liteModule = true;
@@ -157,7 +153,6 @@ public class KillAura extends Module {
         setTarget(null);
         clearHudTarget();
         nextClickTime = 0L;
-        lastAttackedEntityId = -1;
         monsterClassCache.clear();
         nonMonsterClassCache.clear();
         stopBlocking();
@@ -220,38 +215,6 @@ public class KillAura extends Module {
             }
         }
 
-        if (killNotification.isToggled() && lastAttackedEntityId != -1) {
-            long now = System.currentTimeMillis();
-            Entity attacked = mc.theWorld.getEntityByID(lastAttackedEntityId);
-            if (attacked instanceof EntityLivingBase) {
-                EntityLivingBase living = (EntityLivingBase) attacked;
-                float hp = living.getHealth();
-                boolean dead = hp <= 0 || living.deathTime > 0 || living.isDead;
-                if (!dead && lastAttackedHealth > 0 && hp <= 1.0f && hp < lastAttackedHealth * 0.25f) {
-                    dead = true;
-                }
-                lastAttackedHealth = hp;
-                if (dead) {
-                    if (now - lastKillNotifyMs > 2000L) {
-                        lastKillNotifyMs = now;
-                        Notifications.notify(living.getName(), "Target neutralized.", true);
-                    }
-                    lastAttackedEntityId = -1;
-                    lastAttackedHealth = -1f;
-                }
-            } else if (attacked == null && now - lastAttackTimeMs < 5000L) {
-                if (now - lastKillNotifyMs > 2000L) {
-                    lastKillNotifyMs = now;
-                    Notifications.notify("Target", "Target neutralized.", true);
-                }
-                lastAttackedEntityId = -1;
-                lastAttackedHealth = -1f;
-            } else if (attacked == null) {
-                lastAttackedEntityId = -1;
-                lastAttackedHealth = -1f;
-            }
-        }
-
         if (rotationMode.getInput() == 1 && target != null) {
             double aimRangeVal = aimRange.getInput();
             if (targetDistance <= aimRangeVal) {
@@ -311,12 +274,6 @@ public class KillAura extends Module {
             mindless.helper.MouseHelper.aL();
             KeyBinding.onTick(key);
         }
-        if (clicks > 0 && target != null && targetDistance <= attackRange.getInput()) {
-            lastAttackedEntityId = target.getEntityId();
-            lastAttackTimeMs = System.currentTimeMillis();
-            lastAttackedHealth = target.getHealth();
-        }
-
         if (useBuiltInAutoblock() && target != null && targetDistance <= swingRange.getInput() && Utils.holdingSword()) {
             startBlocking();
         }
@@ -349,8 +306,14 @@ public class KillAura extends Module {
             golems.clear();
             monsterClassCache.clear();
             nonMonsterClassCache.clear();
-            lastAttackedEntityId = -1;
             clearHudTarget();
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlayerKill(PlayerKillEvent event) {
+        if (killNotification.isToggled()) {
+            Notifications.notify(event.playerName, "Target neutralized.", true);
         }
     }
 

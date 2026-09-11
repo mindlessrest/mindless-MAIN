@@ -28,6 +28,7 @@ import mindless.utility.font.FontManager;
 import mindless.utility.ModuleUtils;
 import mindless.utility.PacketsHandler;
 import mindless.utility.PlayerRelationsManager;
+import mindless.utility.PlayerKillDetector;
 import mindless.utility.ReflectionUtils;
 import mindless.utility.profile.Profile;
 import mindless.utility.profile.ProfileManager;
@@ -87,6 +88,7 @@ public class Mindless {
         registerHandler(packetsHandler = new PacketsHandler(), false);
         registerHandler(new ModuleUtils(), false);
         registerHandler(AttackPacketTimingTracker.INSTANCE, false);
+        registerHandler(PlayerKillDetector.INSTANCE, true);
         registerHandler(lagHandler = new UnifiedLagHandler(), false);
         registerHandler(new mindless.helper.GameWinDetector(), false);
         AccountManager.init();

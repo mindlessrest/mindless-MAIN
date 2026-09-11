@@ -1,27 +1,24 @@
 package mindless.module.impl.render;
 
-import mindless.event.AttackEvent;
+import mindless.event.PlayerKillEvent;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
+import mindless.utility.sound.ResourceMp3Player;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
-import java.util.Set;
 
 /**
  * Something to look at when a player dies.
@@ -29,16 +26,13 @@ import java.util.Set;
  * Purely cosmetic, and built to stay that way: effects are pooled, drawn in one batch, and expire
  * on a timer, so a busy fight cannot turn into a slideshow. Nothing here touches the player, the
  * world or a packet.
- *
- * The trigger is deathTime crossing one, which happens on the client for anyone in render
- * distance, rather than a death message -- so it works in any gamemode and does not depend on
- * parsing chat.
  */
 public class KillEffect extends Module {
     private static final String[] MODES = new String[]{"Blood", "Lightning", "Soul"};
     private static final int MODE_BLOOD = 0;
     private static final int MODE_LIGHTNING = 1;
     private static final int MODE_SOUL = 2;
+    private static final String[] KILL_SOUNDS = new String[]{"Mommy ASMR", "Off"};
 
     private static final int MAX_EFFECTS = 6;
     private static final int PARTICLES_PER_EFFECT = 28;
@@ -46,23 +40,23 @@ public class KillEffect extends Module {
     private final SliderSetting mode;
     private final SliderSetting duration;
     private final SliderSetting size;
-    private final ButtonSetting onlyOwnKills;
+    private final SliderSetting killSound;
+    private final SliderSetting killSoundVolume;
     private final ButtonSetting useCustomColor;
     private final ColorSetting customColor;
 
     private final Random random = new Random();
     private final List<Effect> effects = new ArrayList<Effect>();
-    /** Entities already given an effect, so one death does not spawn one per frame. */
-    private final Set<Integer> handled = new HashSet<Integer>();
-    /** Entities we hit recently, for the own-kills filter. */
-    private final Set<Integer> attacked = new HashSet<Integer>();
+    private int lastEffectEntityId = -1;
+    private long lastEffectTimeMs;
 
     public KillEffect() {
         super("Kill Effect", "Plays an effect where a player dies.", category.render, 0);
         this.registerSetting(mode = new SliderSetting("Mode", MODE_BLOOD, MODES));
         this.registerSetting(duration = new SliderSetting("Duration", "s", 1.2, 0.3, 4.0, 0.1));
         this.registerSetting(size = new SliderSetting("Size", 1.0, 0.3, 3.0, 0.05));
-        this.registerSetting(onlyOwnKills = new ButtonSetting("Only your kills", false));
+        this.registerSetting(killSound = new SliderSetting("Kill Sound", 0, KILL_SOUNDS));
+        this.registerSetting(killSoundVolume = new SliderSetting("Kill Sound Volume", "%", 35.0, 0.0, 100.0, 5.0));
         this.registerSetting(useCustomColor = new ButtonSetting("Custom color", false));
         this.registerSetting(customColor = new ColorSetting("Color", 220, 40, 40, 255));
     }
@@ -77,8 +71,8 @@ public class KillEffect extends Module {
     @Override
     public void onDisable() {
         effects.clear();
-        handled.clear();
-        attacked.clear();
+        lastEffectEntityId = -1;
+        lastEffectTimeMs = 0L;
     }
 
     @Override
@@ -87,10 +81,8 @@ public class KillEffect extends Module {
     }
 
     @SubscribeEvent
-    public void onAttack(AttackEvent event) {
-        if (event.target != null) {
-            attacked.add(event.target.getEntityId());
-        }
+    public void onPlayerKill(PlayerKillEvent event) {
+        triggerEffect(event.entityId, event.x, event.y, event.z);
     }
 
     @SubscribeEvent
@@ -99,33 +91,20 @@ public class KillEffect extends Module {
             return;
         }
 
-        spawnForDeaths();
         drawEffects();
     }
 
-    /** Watch for players entering their death animation. */
-    private void spawnForDeaths() {
-        for (Entity entity : mc.theWorld.loadedEntityList) {
-            if (!(entity instanceof EntityPlayer) || entity == mc.thePlayer) {
-                continue;
-            }
-            EntityPlayer player = (EntityPlayer) entity;
-            int id = player.getEntityId();
-            if (player.deathTime <= 0 || player.deathTime > 2) {
-                if (player.deathTime == 0) {
-                    handled.remove(id);
-                }
-                continue;
-            }
-            if (!handled.add(id)) {
-                continue;
-            }
-            if (onlyOwnKills.isToggled() && !attacked.contains(id)) {
-                continue;
-            }
-            attacked.remove(id);
-            spawn(player.posX, player.posY, player.posZ);
+    private void triggerEffect(int entityId, double x, double y, double z) {
+        long now = System.currentTimeMillis();
+        if (entityId == lastEffectEntityId && now - lastEffectTimeMs < 2000L) {
+            return;
         }
+        lastEffectEntityId = entityId;
+        lastEffectTimeMs = now;
+        if ((int) killSound.getInput() == 0) {
+            ResourceMp3Player.playMommyAsmr((float) killSoundVolume.getInput() / 100.0f);
+        }
+        spawn(x, y, z);
     }
 
     private void spawn(double x, double y, double z) {
