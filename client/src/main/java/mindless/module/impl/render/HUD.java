@@ -708,7 +708,15 @@ private static int getHudInfoColor(int nameColor) {
     }
 
     private static int getHudHorizontalTextPadding() {
-        return getScaledHudPixels(2.0f);
+        int padding = getScaledHudPixels(2.0f);
+        // A rounded corner eats into the row from both ends, so two pixels put the first
+        // and last glyph inside the curve. Give the text enough room to clear it.
+        if (roundedBackground != null && roundedBackground.isToggled()) {
+            float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
+                    * mindless.module.impl.theme.ThemeManager.roundingScale();
+            padding = Math.max(padding, Math.round(radius * 0.7f));
+        }
+        return padding;
     }
 
     private static int getHudTextTopPadding() {
@@ -1059,7 +1067,10 @@ private static void radialBand(float cx, float cy, float r0, float a0, float r1,
         }
         float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
                 * mindless.module.impl.theme.ThemeManager.roundingScale();
-        return Math.max(0.0f, Math.min(radius, height * 0.34f));
+        // Half the height is a full pill. The old third of it meant a row eleven pixels
+        // tall could never round by more than three, whatever the slider was set to, so
+        // turning the corner radius up looked like it did nothing.
+        return Math.max(0.0f, Math.min(radius, height * 0.5f));
     }
 
     private static float getBackgroundStepRadius(float outerRadius) {

@@ -490,23 +490,27 @@ private int ringColor(int ringIndex) {
         double time = (System.currentTimeMillis() % 86400000L) / 2000.0 * speed;
 
         /*
-         * Keep every view as a ring around the player's vertical axis.  The old 2D mode fully
-         * bill-boarded the ring to the camera; at normal combat distance that turned it into a
-         * huge upright circle covering the player and most of the screen. 2D and Hybrid now
-         * only add a restrained camera-side lean. That exposes the far edge from a low viewing
-         * angle without changing the original around-the-player silhouette.
+         * Every view keeps the ring level and square to the world. Leaning it toward the
+         * camera did make the far edge visible from low down, but a leaning ring is a
+         * slanted ring: it stopped reading as something lying flat around the player.
+         *
+         * 2D and Hybrid give the band height instead, which buys the same thing honestly.
+         * From above it is still a circle; from the side it is a bar you can watch travel.
+         * The closer the camera gets to the ring's own plane -- where a flat ring collapses
+         * to a line -- the taller the band, so it never disappears edge on.
          */
         int view = ringView == null ? RING_VIEW_HYBRID : (int) ringView.getInput();
         float viewTilt = 0.0f;
         float viewSpin = 0.0f;
+        float viewRise = 0.0f;
         if (view != RING_VIEW_3D) {
             double horizontalDistance = Math.sqrt(x * x + z * z);
             double centerToCameraY = -(y + entityHeight * 0.5);
             float elevation = (float) Math.atan2(centerToCameraY, Math.max(0.001, horizontalDistance));
-            float readableTilt = (float) Math.toRadians(18.0)
-                    + Math.min((float) Math.toRadians(10.0), Math.abs(elevation) * 0.35f);
-            viewTilt = view == RING_VIEW_2D ? readableTilt : readableTilt * 0.52f;
-            viewSpin = (float) Math.atan2(-x, -z);
+            float edgeOn = 1.0f - Math.min(1.0f,
+                    Math.abs(elevation) / (float) Math.toRadians(40.0));
+            viewRise = baseRadius * (view == RING_VIEW_2D ? 0.34f : 0.18f)
+                    * (0.25f + 0.75f * edgeOn);
         }
 
         // A band is world space, so a ring far away thins out to nothing where a screen-space
@@ -655,7 +659,7 @@ private int ringColor(int ringIndex) {
             }
             else {
                 emitRing(worldRenderer, centerX, ringY, centerZ, radius, thickness, segments,
-                        tilt, spin, viewTilt, viewSpin, argb, Math.min(255, alpha), soft);
+                        tilt, spin, viewTilt, viewSpin, viewRise, argb, Math.min(255, alpha), soft);
             }
         }
 
@@ -706,7 +710,8 @@ private int ringColor(int ringIndex) {
      */
     private void emitRing(WorldRenderer worldRenderer, float centerX, float ringY, float centerZ,
                           float radius, float thickness, int segments, float tilt, float spin,
-                          float viewTilt, float viewSpin, int argb, int alpha, boolean soft) {
+                          float viewTilt, float viewSpin, float rise, int argb, int alpha,
+                          boolean soft) {
         float cosTilt = (float) Math.cos(tilt);
         float sinTilt = (float) Math.sin(tilt);
         float cosSpin = (float) Math.cos(spin);
@@ -739,6 +744,51 @@ private int ringColor(int ringIndex) {
                         cosViewSpin, sinViewSpin, red, green, blue, alpha, alpha);
             }
         }
+
+        if (rise > 0.0001f) {
+            for (int segment = 0; segment < segments; segment++) {
+                int next = segment + 1 == segments ? 0 : segment + 1;
+                wall(worldRenderer, segment, next, radius, centerX, ringY, centerZ, rise,
+                        cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, alpha);
+            }
+        }
+    }
+
+    /**
+     * The vertical face of the band, drawn as two quads that fade out top and bottom.
+     *
+     * Deliberately world-vertical, with no view rotation applied: it exists so a level ring
+     * is still visible from the side, and leaning it would put the slant straight back.
+     */
+    private void wall(WorldRenderer worldRenderer, int segment, int next, float radius,
+                      float centerX, float ringY, float centerZ, float rise,
+                      float cosTilt, float sinTilt, float cosSpin, float sinSpin,
+                      int red, int green, int blue, int alpha) {
+        for (int half = 0; half < 2; half++) {
+            float edge = half == 0 ? -rise : rise;
+            wallVertex(worldRenderer, segment, radius, centerX, ringY, centerZ, edge,
+                    cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, 0);
+            wallVertex(worldRenderer, next, radius, centerX, ringY, centerZ, edge,
+                    cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, 0);
+            wallVertex(worldRenderer, next, radius, centerX, ringY, centerZ, 0.0f,
+                    cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, alpha);
+            wallVertex(worldRenderer, segment, radius, centerX, ringY, centerZ, 0.0f,
+                    cosTilt, sinTilt, cosSpin, sinSpin, red, green, blue, alpha);
+        }
+    }
+
+    private void wallVertex(WorldRenderer worldRenderer, int segment, float radius,
+                            float centerX, float ringY, float centerZ, float yOffset,
+                            float cosTilt, float sinTilt, float cosSpin, float sinSpin,
+                            int red, int green, int blue, int alpha) {
+        double px = circleCos[segment] * radius;
+        double pz = circleSin[segment] * radius;
+        double tiltedY = -pz * sinTilt;
+        double tiltedZ = pz * cosTilt;
+        double styledX = px * cosSpin + tiltedZ * sinSpin;
+        double styledZ = -px * sinSpin + tiltedZ * cosSpin;
+        worldRenderer.pos(centerX + styledX, ringY + tiltedY + yOffset, centerZ + styledZ)
+                .color(red, green, blue, alpha).endVertex();
     }
 
     private void band(WorldRenderer worldRenderer, int segment, int next, float innerRadius,

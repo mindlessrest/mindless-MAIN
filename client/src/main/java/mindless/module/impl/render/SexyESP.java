@@ -97,6 +97,8 @@ public class SexyESP extends Module {
     private final ButtonSetting statsColorByFkdr;
     private final ButtonSetting itemTags;
     private final SliderSetting fontScale;
+    private final SliderSetting nameScale;
+    private final SliderSetting itemScale;
     private final ButtonSetting distanceTextScale;
     private final ButtonSetting textBorder;
     private final ButtonSetting localPlayer;
@@ -205,6 +207,10 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(tagPadding = new SliderSetting(tagGroup, "Background padding", 4.0, 0.0, 8.0, 0.5));
         registerSetting(itemTags = new ButtonSetting(tagGroup, "Held item", true));
         registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.75, 0.4, 1.0, 0.05));
+        // Font scale stays the shared base; these two size the name and the held item
+        // against it, so one can be read across the map while the other stays out of the way.
+        registerSetting(nameScale = new SliderSetting(tagGroup, "Name scale", "x", 1.0, 0.4, 2.0, 0.05));
+        registerSetting(itemScale = new SliderSetting(tagGroup, "Held item scale", "x", 1.0, 0.4, 2.0, 0.05));
         registerSetting(distanceTextScale = new ButtonSetting(tagGroup, "Distance scaling", false));
         registerSetting(textBorder = new ButtonSetting(tagGroup, "Text shadow", true,
                 "Tags.Text shadow", "Text shadow", "Tags.Black text outline", "Black text outline"));
@@ -567,14 +573,15 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         if (armorItems.isToggled() && b.height() > 32.0) drawArmorItems(living, b);
 
         double tagScale = getTagScale(b);
-        double nameHeight = espFont().getFontHeight() * tagScale;
+        double nameTagScale = tagScale * (nameScale == null ? 1.0 : nameScale.getInput());
+        double nameHeight = espFont().getFontHeight() * nameTagScale;
         double nameY = b.top - 2 - nameHeight;
         boolean statsAbove = (int) statsPosition.getInput() == 0;
 
         if (tags.isToggled()) {
             boolean ownColour = (int) nameColorMode.getInput() != NAME_TEAM;
             buildNameSegments(nameLabel(living), nameTagColor(living, healthRatio, b), ownColour);
-            drawNameTag(b.left + b.width() / 2.0, nameY, tagScale);
+            drawNameTag(b.left + b.width() / 2.0, nameY, nameTagScale);
         }
 
         if (playerStats.isToggled() && living instanceof EntityPlayer) {
@@ -589,8 +596,33 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
 
         if (itemTags.isToggled() && living.getHeldItem() != null) {
             drawTag(living.getHeldItem().getDisplayName(), b.left + b.width() / 2.0,
-                    b.bottom + 2, getTagScale(b), 0xFFFFFFFF);
+                    b.bottom + 2,
+                    tagScale * (itemScale == null ? 1.0 : itemScale.getInput()), 0xFFFFFFFF);
         }
+    }
+
+    /**
+     * Paint this module's overlay over an arbitrary screen rectangle.
+     *
+     * For the click GUI's visual preview, which used to draw its own impression of an ESP
+     * and so showed something this module never produces. Running the real painter over the
+     * preview's own body rectangle means the panel answers what the settings actually do.
+     */
+    public void drawPreview(Entity entity, float left, float top, float right, float bottom) {
+        if (entity == null || right - left < 1.0f || bottom - top < 1.0f) {
+            return;
+        }
+        Bounds preview = new Bounds();
+        preview.set(left, top, right, bottom);
+        renderEntity(entity, preview);
+        // Hand the screen back as it was found. This runs inside the click GUI, and the
+        // panels drawn after it need textures and the depth mask that the overlay state clears.
+        GlStateManager.enableTexture2D();
+        GlStateManager.depthMask(true);
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     /**

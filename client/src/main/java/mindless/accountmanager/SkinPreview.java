@@ -102,7 +102,11 @@ public final class SkinPreview {
         lastFrame = now;
 
         if (dragging) {
-            yaw = dragYaw + (mouseX - dragFromX);
+            // Negated, because the model is drawn through a mirrored transform: a positive
+            // turn about Y comes out on screen as a turn the other way, so adding the drag
+            // sent the figure away from the cursor. The inventory doll feeds its yaw the
+            // same way round, from centre minus mouse rather than mouse minus centre.
+            yaw = dragYaw - (mouseX - dragFromX);
             // Clamped so it cannot be rolled past upside down, which has no useful view in it.
             pitch = Math.max(-35.0f, Math.min(35.0f, dragPitch + (mouseY - dragFromY) * 0.5f));
         }

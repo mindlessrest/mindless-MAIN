@@ -1005,7 +1005,6 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
         float right = previewX + previewW - 12f;
 
         drawText("VISUAL PREVIEW", left, baseY + 15f, withAlpha(MUTED, full), .58f, true);
-        line(left, baseY + 32f, right, baseY + 32f, withAlpha(DIVIDER, full));
 
         // A lit floor under a dark sky. The figure has to look like it is standing somewhere,
         // or the panel reads as a flat swatch with a doll pasted on it.
@@ -1037,8 +1036,13 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
     /**
      * What the selected module actually puts on screen, drawn around the figure.
      *
-     * Modules that change the player itself rather than adding to it -- Chams and Wings --
-     * get nothing here on purpose: the figure is the preview.
+     * Player ESP runs its own painter over the figure's rectangle, so the preview shows
+     * the real overlay with the real settings rather than a drawn impression of one. The
+     * earlier stand-in put corner brackets on every module that had a preview, which is
+     * not something any of them draw.
+     *
+     * Modules that change the player itself rather than adding to it -- Chams, Wings and
+     * the target marker -- get nothing here: the figure is the preview.
      */
     private void drawPreviewOverlay(float alpha) {
         float cx = visualPreview.bodyCenterX();
@@ -1053,7 +1057,12 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
         rounded(cx - half * .8f, bottom - 1f, cx + half * .8f, bottom + 4f, 2.5f,
                 withAlpha(0x000000, (int) (120f * alpha)));
 
-        if (selectedModule instanceof mindless.module.impl.render.Nametags) {
+        if (selectedModule instanceof mindless.module.impl.render.SexyESP) {
+            ((mindless.module.impl.render.SexyESP) selectedModule)
+                    .drawPreview(mc.thePlayer, cx - half, top, cx + half, bottom);
+            resetTextRenderState();
+        }
+        else if (selectedModule instanceof mindless.module.impl.render.Nametags) {
             String name = mc.thePlayer == null ? "Player" : mc.thePlayer.getName();
             float w = textWidth(name, .62f, true);
             float x1 = cx - w * .5f - 7f;
@@ -1061,19 +1070,6 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             rounded(x1, y1, x1 + w + 14f, y1 + 15f, 4f, withAlpha(0x0B0E13, (int) (230f * alpha)));
             rounded(x1, y1 + 3f, x1 + 1.5f, y1 + 12f, .75f, withAlpha(ACCENT, full));
             drawCentered(name, x1, x1 + w + 14f, y1 + 3.5f, withAlpha(TEXT, full), .62f, true);
-        }
-        else if (selectedModule instanceof mindless.module.impl.render.TargetHUD
-                || selectedModule instanceof mindless.module.impl.render.SexyESP) {
-            // Corner brackets on the hitbox, which is what both of these draw in game.
-            float x1 = cx - half, x2 = cx + half;
-            float y1 = top - 3f, y2 = bottom + 2f;
-            float arm = Math.min(10f, (y2 - y1) * .2f);
-            int c = withAlpha(ACCENT, (int) (238f * alpha));
-            segments(c,
-                    x1, y1, x1 + arm, y1, x1, y1, x1, y1 + arm,
-                    x2, y1, x2 - arm, y1, x2, y1, x2, y1 + arm,
-                    x1, y2, x1 + arm, y2, x1, y2, x1, y2 - arm,
-                    x2, y2, x2 - arm, y2, x2, y2, x2, y2 - arm);
         }
     }
 
