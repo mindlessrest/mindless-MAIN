@@ -82,6 +82,9 @@ public static final int CUSTOM_INDEX = THEMES.length;
     public static ColorSetting colPanel, colPanelAlt, colRow, colRowHover;
     public static ColorSetting colControl, colControlHover, colBorder, colDivider;
     public static ColorSetting colDropdown, colDropdownBorder, colDropdownSelected;
+    public static ColorSetting colText, colMutedText, colDimText;
+    public static ColorSetting colEnabledModule, colDisabledModule;
+    public static ColorSetting colEnabledRow, colSelectedRow;
 private static final List<Setting> COLOURS = new ArrayList<>();
 
     private static final String[] FONT_OPTIONS = FontManager.getHudFontOptions();
@@ -164,12 +167,21 @@ private static int appliedIndex = -1;
         this.registerSetting(colDropdown = new ColorSetting(colours, "Dropdown background", 15, 18, 20, 236));
         this.registerSetting(colDropdownBorder = new ColorSetting(colours, "Dropdown border", 210, 210, 204, 52));
         this.registerSetting(colDropdownSelected = new ColorSetting(colours, "Dropdown selected", 159, 143, 210, 80));
+        this.registerSetting(colText = new ColorSetting(colours, "Primary text", 235, 234, 230));
+        this.registerSetting(colMutedText = new ColorSetting(colours, "Secondary text", 157, 158, 156));
+        this.registerSetting(colDimText = new ColorSetting(colours, "Dim text", 105, 108, 108));
+        this.registerSetting(colEnabledModule = new ColorSetting(colours, "Enabled module text", 235, 234, 230));
+        this.registerSetting(colDisabledModule = new ColorSetting(colours, "Disabled module text", 157, 158, 156));
+        this.registerSetting(colEnabledRow = new ColorSetting(colours, "Enabled module row", 235, 234, 230, 34));
+        this.registerSetting(colSelectedRow = new ColorSetting(colours, "Selected module row", 159, 143, 210, 55));
         ButtonSetting seedColours = new ButtonSetting("Seed from theme", ThemeManager::seedColours);
         this.registerSetting(seedColours);
 
         Collections.addAll(COLOURS, colours, colPanel, colPanelAlt, colRow, colRowHover,
                 colControl, colControlHover, colBorder, colDivider,
-                colDropdown, colDropdownBorder, colDropdownSelected, seedColours);
+                colDropdown, colDropdownBorder, colDropdownSelected, colText, colMutedText,
+                colDimText, colEnabledModule, colDisabledModule, colEnabledRow,
+                colSelectedRow, seedColours);
         for (Setting setting : COLOURS) setting.visible = false;
         GroupSetting appearance = new GroupSetting("Appearance");
         this.registerSetting(appearance);
@@ -484,6 +496,16 @@ public static void seedColours() {
         setRgba(colDropdown, scale(r, 1.18f), scale(g, 1.18f), scale(b, 1.18f), 240);
         setRgba(colDropdownBorder, accent.getRed(), accent.getGreen(), accent.getBlue(), 62);
         setRgba(colDropdownSelected, accent.getRed(), accent.getGreen(), accent.getBlue(), 80);
+        Color primary = text();
+        Color active = enabled();
+        Color inactive = disabled();
+        setRgba(colText, primary.getRed(), primary.getGreen(), primary.getBlue(), 255);
+        setRgba(colMutedText, inactive.getRed(), inactive.getGreen(), inactive.getBlue(), 255);
+        setRgba(colDimText, scale(inactive.getRed(), .72f), scale(inactive.getGreen(), .72f), scale(inactive.getBlue(), .72f), 255);
+        setRgba(colEnabledModule, active.getRed(), active.getGreen(), active.getBlue(), 255);
+        setRgba(colDisabledModule, inactive.getRed(), inactive.getGreen(), inactive.getBlue(), 255);
+        setRgba(colEnabledRow, active.getRed(), active.getGreen(), active.getBlue(), 34);
+        setRgba(colSelectedRow, accent.getRed(), accent.getGreen(), accent.getBlue(), 55);
     }
 
     private static int scale(int channel, float factor) {
