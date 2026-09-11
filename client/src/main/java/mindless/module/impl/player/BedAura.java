@@ -289,6 +289,17 @@ private void releaseInputControl() {
         return Math.max(0.0f, Math.min(1.0f,
                 (completed + blockProgress) / (float) pathInitialBlocks));
     }
+
+    public String getAuraToolName() {
+        if (!Utils.nullCheck()) return "Bed Breaker";
+        net.minecraft.item.ItemStack stack = mc.thePlayer.getHeldItem();
+        if (stack == null) return "Hand";
+        if (stack.getItem() instanceof net.minecraft.item.ItemShears) return "Shears";
+        if (stack.getItem() instanceof net.minecraft.item.ItemPickaxe) return "Pickaxe";
+        if (stack.getItem() instanceof net.minecraft.item.ItemAxe) return "Axe";
+        if (stack.getItem() instanceof net.minecraft.item.ItemSpade) return "Shovel";
+        return "Hand";
+    }
 public boolean shouldOverrideMouseOver() {
         return isEnabled() && miningActive && canMineBlocks()
                 && targetPos != null && targetHitVec != null && targetSide != null

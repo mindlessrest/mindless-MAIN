@@ -27,17 +27,17 @@ public class DynamicIsland extends Module {
     private static final String[] ANCHORS = {"Top centre", "Top left", "Top right", "Custom"};
     private static final String LOGO_RESOURCE = "/assets/mindless/textures/gui/mindless_mark.png";
     private static final float LOGO_ASPECT = 32.0f / 22.0f;
-    private static final float EDGE_MARGIN = 4.0f;
-    private static final float PAD_X = 6.0f;
-    private static final float BADGE_SIZE = 13.5f;
-    private static final float BADGE_GAP = 4.5f;
-    private static final float VALUE_GAP = 6.0f;
-    private static final float HEIGHT = 20.5f;
+    private static final float EDGE_MARGIN = 3.0f;
+    private static final float PAD_X = 5.0f;
+    private static final float BADGE_SIZE = 11.5f;
+    private static final float BADGE_GAP = 3.5f;
+    private static final float VALUE_GAP = 5.0f;
+    private static final float HEIGHT = 17.5f;
     // Longer than it was: the pill resizing in a tenth of a second reads as a snap rather
     // than a move, and the content crossfade underneath it takes about as long.
     private static final float WIDTH_SMOOTH_TIME = 0.14f;
     /** How far new content starts below its resting place, before easing up into it. */
-    private static final float CONTENT_RISE = 2.6f;
+    private static final float CONTENT_RISE = 2.2f;
     private static final float CONTENT_RATE = 11.0f;
     /** Faster than the arrival: waiting on the old content is what feels like lag. */
     private static final float SWAP_RATE = 26.0f;
@@ -159,7 +159,7 @@ public class DynamicIsland extends Module {
         if (text == null) return;
         float delta = frameDelta();
         resolveState(delta);
-        valueBlend = approach(valueBlend, 1.0f, 18.0f, delta);
+        valueBlend = approach(valueBlend, 1.0f, 10.5f, delta);
         float uiScale = (float) scale.getInput();
         float targetWidth = stateWidth(text) * uiScale;
         float height = HEIGHT * uiScale;
@@ -213,12 +213,12 @@ public class DynamicIsland extends Module {
             nextKey = "notification:" + toggle.name + ':' + toggle.enabled;
         } else if (ModuleManager.bedAura != null && ModuleManager.bedAura.isBreakingRoute()) {
             nextState = STATE_BREAKER;
-            nextLabel = "Bed Breaker";
+            nextLabel = ModuleManager.bedAura.getAuraToolName();
             float target = Math.max(0.0f, Math.min(1.0f,
                     ModuleManager.bedAura.getAuraTotalProgress()));
             breakerProgress = approach(breakerProgress, target, 12.0f, delta);
-            nextValue = Math.round(target * 100.0f) + "%";
-            nextKey = "breaker";
+            nextValue = Math.round(breakerProgress * 100.0f) + "%";
+            nextKey = "breaker:" + nextLabel;
         } else if (ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled()) {
             nextState = STATE_SCAFFOLD;
             nextLabel = "Blocks";
@@ -295,7 +295,7 @@ public class DynamicIsland extends Module {
         float badgeX = x + PAD_X * uiScale;
         float badgeY = y + (height - badge) * 0.5f;
         int accent = ThemeManager.getWatermarkColor(0.0) & 0xFFFFFF;
-        float markHeight = 9.2f * uiScale;
+        float markHeight = 7.8f * uiScale;
         float markWidth = markHeight * LOGO_ASPECT;
         drawLogo(badgeX + (badge - markWidth) * 0.5f,
                 badgeY + (badge - markHeight) * 0.5f,
@@ -320,11 +320,13 @@ public class DynamicIsland extends Module {
                 float eased = valueBlend * valueBlend * (3.0f - 2.0f * valueBlend);
                 float oldWidth = text.getStringWidth(previousValue) * uiScale;
                 float oldX = x + width - PAD_X * uiScale - oldWidth;
-                drawScaled(text, previousValue, oldX, textY, uiScale,
+                drawScaled(text, previousValue, oldX,
+                        textY - 1.8f * uiScale * eased, uiScale,
                         withAlpha(valueRgb, Math.round(contentAlpha * (1.0f - eased))));
                 float valueWidth = text.getStringWidth(stateValue) * uiScale;
                 float valueX = x + width - PAD_X * uiScale - valueWidth;
-                drawScaled(text, stateValue, valueX, textY, uiScale,
+                drawScaled(text, stateValue, valueX,
+                        textY + 1.8f * uiScale * (1.0f - eased), uiScale,
                         withAlpha(valueRgb, Math.round(contentAlpha * eased)));
             }
             else {
@@ -360,7 +362,7 @@ public class DynamicIsland extends Module {
             }
             width += VALUE_GAP + valueWidth;
         }
-        return Math.max(48.0f, width);
+        return Math.max(42.0f, width);
     }
 
     private int scaffoldBlockCount() {

@@ -9,10 +9,18 @@ import java.util.IdentityHashMap;
 import java.util.Set;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 public final class GuiNewChatState {
     public static final long MINDLESS_MESSAGE_ANIMATION_MS = 320L;
     private static final float BASE_PANEL_RADIUS = 8.0f;
+    private static final Map<String, net.minecraft.util.ResourceLocation> playerSkinCache =
+            new LinkedHashMap<String, net.minecraft.util.ResourceLocation>(128, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, net.minecraft.util.ResourceLocation> eldest) {
+                    return size() > 256;
+                }
+            };
 
     public static float panelRadius() {
         return BASE_PANEL_RADIUS * mindless.module.impl.theme.ThemeManager.roundingScale();
@@ -176,20 +184,32 @@ public static String senderOf(net.minecraft.util.IChatComponent component) {
         }
 
         String sender = name;
-        if (sender == null || sender.isEmpty() || resolvePlayer(sender) == null) {
-            sender = senderFromText(formattedLine);
-        }
         net.minecraft.client.network.NetworkPlayerInfo info = resolvePlayer(sender);
         if (info == null) {
-            // Not a player line. Server announcements produce username-shaped tokens, so drawing
-            // a fallback head on a miss put heads on every one of them.
-            return;
+            String guessed = senderFromText(formattedLine);
+            net.minecraft.client.network.NetworkPlayerInfo guessedInfo = resolvePlayer(guessed);
+            if (guessed != null && !guessed.isEmpty()) {
+                sender = guessed;
+            }
+            if (guessedInfo != null) {
+                info = guessedInfo;
+            }
         }
 
-        net.minecraft.util.ResourceLocation skin = info.getLocationSkin();
-        if (skin == null) {
-            skin = net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkinLegacy();
+        net.minecraft.util.ResourceLocation skin = null;
+        if (info != null && info.getGameProfile() != null) {
+            sender = info.getGameProfile().getName();
+            skin = info.getLocationSkin();
+            if (skin == null) {
+                skin = net.minecraft.client.resources.DefaultPlayerSkin.getDefaultSkinLegacy();
+            }
+            if (sender != null && !sender.isEmpty()) {
+                playerSkinCache.put(sender.toLowerCase(java.util.Locale.ROOT), skin);
+            }
+        } else if (sender != null && !sender.isEmpty()) {
+            skin = playerSkinCache.get(sender.toLowerCase(java.util.Locale.ROOT));
         }
+        if (skin == null) return;
 
         // Own state, not inherited. The chat panel behind this is drawn with texturing off, so a
         // bind alone had nothing to sample and the head never appeared.
