@@ -24,6 +24,7 @@ import net.minecraft.client.renderer.EntityRenderer;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.*;
 import net.minecraftforge.client.event.MouseEvent;
@@ -61,6 +62,7 @@ public class BedAura extends Module {
 
     private static final int MS_PER_TICK = 50;
     private static final double BED_FIND_EXTRA_BLOCKS = 1.0;
+    private static final ItemStack BED_DISPLAY_STACK = new ItemStack(Items.bed);
 private static final double AIM_FACE_INSET = 0.12;
     private final List<BlockPos[]> bedPairsCache = new ArrayList<>();
     private int scanCooldown;
@@ -287,6 +289,9 @@ private void releaseInputControl() {
 
     public float getAuraTotalProgress() {
         float blockProgress = Math.max(0.0f, Math.min(1.0f, getAuraBreakProgress()));
+        if (isAuraTargetBed()) {
+            return blockProgress;
+        }
         if (pathDestination == null || pathInitialBlocks <= 0 || !Utils.nullCheck()) {
             return blockProgress;
         }
@@ -299,6 +304,7 @@ private void releaseInputControl() {
 
     public String getAuraToolName() {
         if (!Utils.nullCheck()) return "Bed Breaker";
+        if (isAuraTargetBed()) return "Bed";
         net.minecraft.item.ItemStack stack = mc.thePlayer.getHeldItem();
         if (stack == null) return "Hand";
         if (stack.getItem() instanceof net.minecraft.item.ItemShears) return "Shears";
@@ -309,7 +315,13 @@ private void releaseInputControl() {
     }
 
     public ItemStack getAuraToolStack() {
+        if (isAuraTargetBed()) return BED_DISPLAY_STACK;
         return Utils.nullCheck() ? mc.thePlayer.getHeldItem() : null;
+    }
+
+    public boolean isAuraTargetBed() {
+        return Utils.nullCheck() && targetPos != null
+                && BlockUtils.getBlock(targetPos) instanceof BlockBed;
     }
 
     public boolean isSpoofingHeldItem() {
