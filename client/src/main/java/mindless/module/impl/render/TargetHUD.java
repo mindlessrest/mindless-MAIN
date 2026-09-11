@@ -149,8 +149,12 @@ private static final int[] DEFAULT_RING_COLORS = {
     private Timer fadeTimer;
     private Timer healthBarTimer = null;
     private EntityLivingBase target;
-    /** Set only while the click GUI is painting its preview copy of the panel. */
-    private boolean previewPanel;
+    /**
+     * The figure's rectangle, standing in for a projected target while previewing.
+     *
+     * Non-null is what marks a preview pass; nothing else needs a flag of its own.
+     */
+    private float[] previewBounds;
     private double lastHealth;
     private float lastHealthBar;
     private long popInStart = -1;
@@ -914,7 +918,17 @@ private int ringColor(int ringIndex) {
     }
 
     private boolean projectTargetBounds(EntityLivingBase entity, float[] output) {
-        if (entity == null || output == null || output.length < 4 || targetProjectionContext == null) {
+        if (output == null || output.length < 4) {
+            return false;
+        }
+        // The preview has no world to project from, so the figure's own rectangle stands in
+        // for the target. Everything downstream -- Target Top, Target Left, all of them --
+        // then places the panel against the figure exactly as it would against a player.
+        if (previewBounds != null) {
+            System.arraycopy(previewBounds, 0, output, 0, 4);
+            return true;
+        }
+        if (entity == null || targetProjectionContext == null) {
             return false;
         }
 
@@ -1012,9 +1026,7 @@ private int ringColor(int ringIndex) {
         float desiredX = (scaledResolution.getScaledWidth() / 2 - targetStrWithPadding / 2) + posX;
         float desiredY = (scaledResolution.getScaledHeight() / 2 + 15) + posY;
 
-        // The preview pins the panel where it was asked to go. There is no target on screen
-        // for it to anchor itself to, so the anchoring modes have nothing to work from.
-        int posMode = positionMode != null && !previewPanel ? (int) positionMode.getInput() : 0;
+        int posMode = positionMode != null ? (int) positionMode.getInput() : 0;
         if (posMode > 0 && target != null) {
             float sw = scaledResolution.getScaledWidth();
             float sh = scaledResolution.getScaledHeight();
@@ -2170,14 +2182,28 @@ private static final float[][] HEAD_UVS = {
      * straight to them, so they are put back afterwards: looking at the panel in the click
      * GUI must not move it in game. The same goes for the live target.
      */
-    public void drawPreviewPanel(float left, float top) {
-        if (mc.thePlayer == null || mc.fontRendererObj == null) {
+    /**
+     * The real panel, against the figure, at whatever size the column can hold.
+     *
+     * The figure's rectangle is handed to the projection, so Target Top puts the panel
+     * above the figure and Target Left puts it beside it, the same as against a player.
+     * It is then scaled to fit the stage: a name of any length makes this panel wider than
+     * the whole preview column, and a clipped panel tells you nothing about where it sits.
+     *
+     * posX, posY and the position tween belong to the live panel, so all three are put back
+     * afterwards. Looking at the panel in the click GUI must not move it in game.
+     */
+    public void drawPreviewPanel(float[] figure, float stageLeft, float stageRight) {
+        if (mc.thePlayer == null || mc.fontRendererObj == null || figure == null) {
             return;
         }
         int savedX = posX;
         int savedY = posY;
         EntityLivingBase savedTarget = target;
-        previewPanel = true;
+        float savedTweenX = tweenedX;
+        float savedTweenY = tweenedY;
+        int savedTweenId = tweenTargetId;
+        previewBounds = figure;
         try {
             target = mc.thePlayer;
             ScaledResolution resolution = new ScaledResolution(mc);
@@ -2185,18 +2211,47 @@ private static final float[][] HEAD_UVS = {
                     + " " + Utils.getHealthStr(mc.thePlayer, true);
             int headSize = mc.fontRendererObj.FONT_HEIGHT + 18;
             int contentWidth = mc.fontRendererObj.getStringWidth(info) + 8 + headSize + 10;
-            // renderDesignerPreview adds the screen-centre origin back, so this takes it off.
-            renderDesignerPreview(
-                    left + 8f - (resolution.getScaledWidth() / 2f - contentWidth / 2f),
-                    top + 8f - (resolution.getScaledHeight() / 2f + 15f));
+            float panelWidth = contentWidth + 16f;
+            float room = Math.max(1.0f, stageRight - stageLeft - 6.0f);
+            float fit = Math.min(1.0f, room / Math.max(1.0f, panelWidth));
+            float pivotX = (figure[0] + figure[2]) * 0.5f;
+            float pivotY = (figure[1] + figure[3]) * 0.5f;
+
+            // Snap rather than glide: the tween belongs to the live panel chasing a moving
+            // target, and borrowing it here would slide the preview in from wherever that
+            // panel happens to be.
+            tweenTargetId = Integer.MIN_VALUE;
+
+            GlStateManager.pushMatrix();
+            GlStateManager.translate(pivotX, pivotY, 0.0f);
+            GlStateManager.scale(fit, fit, 1.0f);
+            GlStateManager.translate(-pivotX, -pivotY, 0.0f);
+            int posMode = positionMode == null ? 0 : (int) positionMode.getInput();
+            if (posMode == 0) {
+                // Screen mode has nothing to sit against, so the preview parks it under the
+                // figure instead of at whatever corner the HUD offsets point to.
+                float left = pivotX - panelWidth * 0.5f;
+                float top = figure[3] + 12.0f;
+                renderDesignerPreview(
+                        left + 8f - (resolution.getScaledWidth() / 2f - contentWidth / 2f),
+                        top + 8f - (resolution.getScaledHeight() / 2f + 15f));
+            }
+            else {
+                // The anchoring takes over entirely, so the offsets it starts from are moot.
+                renderDesignerPreview(0.0f, 0.0f);
+            }
+            GlStateManager.popMatrix();
         }
         catch (Exception ignored) {
         }
         finally {
-            previewPanel = false;
+            previewBounds = null;
             posX = savedX;
             posY = savedY;
             target = savedTarget;
+            tweenedX = savedTweenX;
+            tweenedY = savedTweenY;
+            tweenTargetId = savedTweenId;
         }
     }
 

@@ -1016,10 +1016,13 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
                 ground, sky, ground, sky);
         outline(left, stageTop, right, stageBottom, 7f, withAlpha(BORDER, (int) (70f * alpha)));
 
-        visualPreviewX = Math.round(left + 5f);
-        visualPreviewY = Math.round(stageTop + 13f);
-        visualPreviewW = Math.max(48, Math.round(right - left - 10f));
-        visualPreviewH = Math.max(72, Math.round(stageBottom - stageTop - 28f));
+        // Zoomed out on purpose. Anything anchored above or below the figure -- the target
+        // panel, a nametag -- needs somewhere to go, and a figure filling the stage leaves
+        // it nowhere.
+        visualPreviewX = Math.round(left + 14f);
+        visualPreviewY = Math.round(stageTop + 34f);
+        visualPreviewW = Math.max(48, Math.round(right - left - 28f));
+        visualPreviewH = Math.max(72, Math.round(stageBottom - stageTop - 78f));
 
         if (mc.thePlayer instanceof AbstractClientPlayer) {
             AbstractClientPlayer player = (AbstractClientPlayer) mc.thePlayer;
@@ -1076,7 +1079,8 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             // what turns the figure's height into a scale the ring geometry can use.
             hud.drawPreviewRings(cx, bottom, (bottom - top) / 2.0f);
             hud.drawPreviewMarker(cx, (top + bottom) * .5f);
-            hud.drawPreviewPanel(previewX + 14f, bottom + 14f);
+            hud.drawPreviewPanel(new float[] { cx - half, top, cx + half, bottom },
+                    previewX + 12f, previewX + previewW - 12f);
             resetTextRenderState();
         }
         else if (selectedModule instanceof mindless.module.impl.render.Nametags) {
