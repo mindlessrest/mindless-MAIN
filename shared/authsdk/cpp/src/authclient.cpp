@@ -123,6 +123,7 @@ struct AuthClient::Impl {
         bool needs_nonce   = true;
         bool is_software   = false;
         bool is_multipart  = false;
+        long timeout_secs  = REQUEST_TIMEOUT_SECS;
         std::string file_path;       // for multipart upload
         std::string form_name;       // form field name for file
         std::vector<std::pair<std::string, std::string>> form_fields;
@@ -143,7 +144,7 @@ struct AuthClient::Impl {
 
         curl_easy_setopt(curl.handle, CURLOPT_URL, opts.url.c_str());
         curl_easy_setopt(curl.handle, CURLOPT_CONNECTTIMEOUT, CONNECT_TIMEOUT_SECS);
-        curl_easy_setopt(curl.handle, CURLOPT_TIMEOUT, REQUEST_TIMEOUT_SECS);
+        curl_easy_setopt(curl.handle, CURLOPT_TIMEOUT, opts.timeout_secs);
         curl_easy_setopt(curl.handle, CURLOPT_WRITEFUNCTION, writeCallback);
         curl_easy_setopt(curl.handle, CURLOPT_WRITEDATA, &response_body);
         curl_easy_setopt(curl.handle, CURLOPT_HEADERFUNCTION, headerCallback);
@@ -286,6 +287,7 @@ struct AuthClient::Impl {
         opts.needs_auth = true;
         opts.needs_nonce = true;
         opts.is_software = true;
+        opts.timeout_secs = 180;
         return request(opts);
     }
 
