@@ -6,6 +6,7 @@ import mindless.module.impl.theme.ThemeManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
@@ -344,13 +345,26 @@ public class DynamicIsland extends Module {
             float valueX = x + width - PAD_X * uiScale - valueWidth;
             if (islandState == STATE_SCAFFOLD && blockValueSwapping) {
                 float blend = smoothStep(blockValueBlend);
-                drawScaled(text, stateValue, valueX, textY, uiScale,
-                        withAlpha(valueRgb, Math.round(contentAlpha * (1.0f - blend))));
                 String incoming = Integer.toString(pendingBlockCount);
                 float incomingWidth = text.getStringWidth(incoming) * uiScale;
                 float incomingX = x + width - PAD_X * uiScale - incomingWidth;
-                drawScaled(text, incoming, incomingX, textY, uiScale,
-                        withAlpha(valueRgb, Math.round(contentAlpha * blend)));
+                float right = x + width - PAD_X * uiScale + 1.0f;
+                float left = right - Math.max(valueWidth, incomingWidth) - 2.0f;
+                float boundary = left + (right - left) * blend;
+                float clipY = textY - 1.0f;
+                float clipHeight = text.getFontHeight() * uiScale + 2.0f;
+                if (boundary < right - 0.01f) {
+                    RenderUtils.scissorPushGui(boundary, clipY, right - boundary, clipHeight);
+                    drawScaled(text, stateValue, valueX, textY, uiScale,
+                            withAlpha(valueRgb, contentAlpha));
+                    RenderUtils.scissorPop();
+                }
+                if (boundary > left + 0.01f) {
+                    RenderUtils.scissorPushGui(left, clipY, boundary - left, clipHeight);
+                    drawScaled(text, incoming, incomingX, textY, uiScale,
+                            withAlpha(valueRgb, contentAlpha));
+                    RenderUtils.scissorPop();
+                }
             } else {
                 drawScaled(text, stateValue, valueX, textY, uiScale,
                         withAlpha(valueRgb, contentAlpha));
@@ -400,7 +414,7 @@ public class DynamicIsland extends Module {
 
     private void updateBlockValueTransition(float delta) {
         if (blockValueSwapping) {
-            blockValueBlend = approach(blockValueBlend, 1.0f, 13.0f, delta);
+            blockValueBlend = approach(blockValueBlend, 1.0f, 28.0f, delta);
             if (blockValueBlend >= 0.985f) {
                 displayedBlockCount = pendingBlockCount;
                 blockValueSwapping = false;
