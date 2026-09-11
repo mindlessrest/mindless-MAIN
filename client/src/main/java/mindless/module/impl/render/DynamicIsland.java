@@ -205,6 +205,8 @@ public class DynamicIsland extends Module {
         String nextLabel = "Mindless";
         String nextValue = "";
         String nextKey = "idle";
+        ItemStack islandBlock = ModuleManager.blockCounter == null
+                ? null : ModuleManager.blockCounter.islandBlock();
         Toggle toggle = latestToggle(System.currentTimeMillis());
         if (toggle != null) {
             nextState = STATE_NOTIFICATION;
@@ -219,10 +221,12 @@ public class DynamicIsland extends Module {
             breakerProgress = approach(breakerProgress, target, 12.0f, delta);
             nextValue = Math.round(breakerProgress * 100.0f) + "%";
             nextKey = "breaker:" + nextLabel;
-        } else if (ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled()) {
+        } else if (islandBlock != null
+                || ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled()) {
             nextState = STATE_SCAFFOLD;
             nextLabel = "Blocks";
-            int blocks = scaffoldBlockCount();
+            int blocks = ModuleManager.blockCounter == null
+                    ? scaffoldBlockCount() : ModuleManager.blockCounter.islandCount();
             nextValue = Integer.toString(blocks);
             nextKey = "scaffold";
             if (scaffoldPeak == 0) {

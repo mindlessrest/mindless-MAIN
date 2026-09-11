@@ -42,21 +42,21 @@ public class Notifications extends Module {
     public static volatile boolean pendingStartupAlert = false;
     private static final long STARTUP_SUPPRESS_MS = 4000L;
     private long startupFiredAt = 0L;
-    private static final float W_MIN   = 112.0f;
+    private static final float W_MIN   = 108.0f;
     private static final float W_MAX   = 224.0f;
-    private static final float H       = 27.0f;
-    private static final float R       = 8.0f;
-    private static final float GAP     = 4.0f;
+    private static final float H       = 25.0f;
+    private static final float R       = 7.0f;
+    private static final float GAP     = 3.5f;
     private static final float MARGIN  = 10.0f;
     private static final int   MAX     = 4;
     private static final long  SLIDE   = 200L;
     private static final long  FADE    = 160L;
 
-    private static final float PAD_L   = 8.0f;
-    private static final float PAD_R   = 9.0f;
-    private static final float ICON    = 15.0f;
-    private static final float ICON_GAP = 7.0f;
-private static final float CLOCK_GAP = 12.0f;
+    private static final float PAD_L   = 7.0f;
+    private static final float PAD_R   = 8.0f;
+    private static final float ICON    = 14.0f;
+    private static final float ICON_GAP = 6.0f;
+private static final float CLOCK_GAP = 10.0f;
     /** How far right a card starts before easing into place. */
     private static final float SLIDE_IN = 20.0f;
 
@@ -64,15 +64,6 @@ private static final float CLOCK_GAP = 12.0f;
     private static float smooth(float t) {
         float clamped = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
         return clamped * clamped * (3.0f - 2.0f * clamped);
-    }
-
-    /** Mixes a little of the accent into a panel tone, keeping the panel in charge. */
-    private static Color tint(int r, int g, int b, Color accent, float mix, int alpha) {
-        return new Color(
-                Math.round(r + (accent.getRed() - r) * mix),
-                Math.round(g + (accent.getGreen() - g) * mix),
-                Math.round(b + (accent.getBlue() - b) * mix),
-                Math.max(0, Math.min(255, alpha)));
     }
 
     private static final Color ON  = new Color(72, 209, 138);
@@ -269,7 +260,7 @@ public static void notify(String title, String status, boolean positive) {
         long age = now - c.birthMs;
         float progress = c.durationMs <= 0L
                 ? 0.0f : Math.max(0.0f, Math.min(1.0f, 1.0f - (float) age / c.durationMs));
-        float remaining = Math.max(0.0f, (c.durationMs - age) / 1000.0f);
+        float remaining = Math.max(0.1f, (c.durationMs - age) / 1000.0f);
 
         Color accent = c.enabled ? ON : OFF;
         String status = c.customStatus != null ? c.customStatus : (c.enabled ? "Enabled" : "Disabled");
@@ -284,13 +275,8 @@ public static void notify(String title, String status, boolean positive) {
         BlurUtils.prepareBlur(x, y, w, H);
         RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
         BlurUtils.blurEndRegion(2, 1.8f, 0.68f, x, y, w, H);
-        // The panel takes a trace of the state colour, warm for on and cool for off, so a
-        // glance tells you which without reading a word. Well under a tenth, or it stops
-        // being a Mindless panel and starts being a green box.
-        int panel = (int) (232 * alpha);
-        RoundedUtils.drawGradientVertical(x, y, w, H, radius,
-                tint(46, 45, 55, accent, 0.16f, panel),
-                tint(22, 21, 27, accent, 0.07f, panel));
+        int panel = (int) (238 * alpha);
+        RoundedUtils.drawRound(x, y, w, H, radius, new Color(25, 24, 30, panel));
 
         drawBadge(x + PAD_L, y + (H - ICON) * 0.5f, accent, c.enabled, progress, alpha);
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
