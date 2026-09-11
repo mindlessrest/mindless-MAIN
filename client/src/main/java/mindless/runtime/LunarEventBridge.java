@@ -22,6 +22,9 @@ import net.minecraftforge.fml.common.eventhandler.EventBus;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import mindless.utility.RenderUtils;
 import org.lwjgl.input.Mouse;
+import org.lwjgl.BufferUtils;
+
+import java.nio.FloatBuffer;
 public final class LunarEventBridge {
     private static final boolean DIRECT_LUNAR = Boolean.parseBoolean(
             System.getProperty("mindless.embeddedForge", "false"));
@@ -102,28 +105,44 @@ public final class LunarEventBridge {
      * whatever a module last told it and skip the next enable as redundant.
      */
     private static final class GlSnapshot {
+        private static final FloatBuffer COLOR = BufferUtils.createFloatBuffer(16);
         private final boolean blend;
         private final boolean depth;
         private final boolean alpha;
+        private final boolean lighting;
         private final int alphaFunc;
         private final float alphaRef;
+        private final float red;
+        private final float green;
+        private final float blue;
+        private final float opacity;
 
-        private GlSnapshot(boolean blend, boolean depth, boolean alpha,
-                           int alphaFunc, float alphaRef) {
+        private GlSnapshot(boolean blend, boolean depth, boolean alpha, boolean lighting,
+                           int alphaFunc, float alphaRef, float red, float green,
+                           float blue, float opacity) {
             this.blend = blend;
             this.depth = depth;
             this.alpha = alpha;
+            this.lighting = lighting;
             this.alphaFunc = alphaFunc;
             this.alphaRef = alphaRef;
+            this.red = red;
+            this.green = green;
+            this.blue = blue;
+            this.opacity = opacity;
         }
 
         static GlSnapshot take() {
+            COLOR.clear();
+            org.lwjgl.opengl.GL11.glGetFloat(org.lwjgl.opengl.GL11.GL_CURRENT_COLOR, COLOR);
             return new GlSnapshot(
                     org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_BLEND),
                     org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_DEPTH_TEST),
                     org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_ALPHA_TEST),
+                    org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_LIGHTING),
                     org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_ALPHA_TEST_FUNC),
-                    org.lwjgl.opengl.GL11.glGetFloat(org.lwjgl.opengl.GL11.GL_ALPHA_TEST_REF));
+                    org.lwjgl.opengl.GL11.glGetFloat(org.lwjgl.opengl.GL11.GL_ALPHA_TEST_REF),
+                    COLOR.get(0), COLOR.get(1), COLOR.get(2), COLOR.get(3));
         }
 
         void restore() {
@@ -146,6 +165,13 @@ public final class LunarEventBridge {
             else {
                 net.minecraft.client.renderer.GlStateManager.disableAlpha();
             }
+            if (lighting) {
+                net.minecraft.client.renderer.GlStateManager.enableLighting();
+            }
+            else {
+                net.minecraft.client.renderer.GlStateManager.disableLighting();
+            }
+            net.minecraft.client.renderer.GlStateManager.color(red, green, blue, opacity);
         }
     }
 

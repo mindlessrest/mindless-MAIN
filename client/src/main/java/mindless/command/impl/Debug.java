@@ -140,14 +140,6 @@ public class Debug extends Command {
         args.add("disk=true");
         args.add("dumponexit=true");
         args.add("filename=" + activeFilePath);
-        if (alloc) {
-            // Neither profile nor default records thrown exceptions, so a path that throws and
-            // swallows hundreds a second shows up only as an unattributed count in
-            // ExceptionStatistics. With these on, the recording names the throw site.
-            args.add("jdk.JavaExceptionThrow#enabled=true");
-            args.add("jdk.JavaExceptionThrow#stackTrace=true");
-        }
-
         invokeDiagnosticCommand("jfrStart", args.toArray(new String[0]));
     }
 

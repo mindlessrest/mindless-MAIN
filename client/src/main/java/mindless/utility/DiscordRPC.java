@@ -60,7 +60,9 @@ private volatile RpcLink connectingPipe;
      * diagnostics log is the one place a connection problem here can actually be read back.
      */
     private static void note(String message) {
-        System.out.println("[discord rpc] " + message);
+        if (!mindless.runtime.LunarEventBridge.isDirectLunar()) {
+            System.out.println("[discord rpc] " + message);
+        }
         mindless.utility.Diagnostics.log("rpc", message);
     }
 
@@ -161,7 +163,10 @@ private void pump() {
                 }
 
                 dropDeadConnections();
-                if (!reconnectSuspended && now >= nextConnectAt) {
+                if (connections.isEmpty() && nextConnectAt == Long.MAX_VALUE) {
+                    nextConnectAt = now;
+                }
+                if (connections.isEmpty() && !reconnectSuspended && now >= nextConnectAt) {
                     int before = connections.size();
                     findPipes();
                     int after = connections.size();
@@ -171,7 +176,7 @@ private void pump() {
 
                     if (after > 0) {
                         consecutiveReconnectFailures = 0;
-                        nextConnectAt = now + RECONNECT_INTERVAL_MS;
+                        nextConnectAt = Long.MAX_VALUE;
                     }
                     else {
                         consecutiveReconnectFailures++;
@@ -396,7 +401,6 @@ private static String escape(String s) {
             Thread.sleep(millis);
         }
         catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
         }
     }
 private static final class PipeConnection implements RpcLink {

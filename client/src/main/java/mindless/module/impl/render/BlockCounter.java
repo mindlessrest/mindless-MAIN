@@ -245,10 +245,7 @@ public class BlockCounter extends Module {
      * with its own visibility.
      */
     public ItemStack islandBlock() {
-        // Deliberately not gated on isEnabled. The island has its own toggle, and requiring the
-        // panel to be switched on as well meant turning the panel off silently took the chip with
-        // it -- two switches for one thing, one of them invisible.
-        if (!Utils.nullCheck() || !shouldShow()) return null;
+        if (!isEnabled() || !Utils.nullCheck() || !shouldShow()) return null;
         ItemStack held = mc.thePlayer.inventory.getCurrentItem();
         if (held != null && held.getItem() instanceof ItemBlock && held.stackSize > 0) {
             return held;

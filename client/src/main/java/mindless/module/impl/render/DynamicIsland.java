@@ -224,7 +224,7 @@ public class DynamicIsland extends Module {
             nextIcon = ModuleManager.bedAura.getAuraToolStack();
             nextKey = "breaker:" + nextLabel;
         } else if (islandBlock != null
-                || ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled()) {
+                || ModuleManager.scaffold != null && ModuleManager.scaffold.isActivelyScaffolding()) {
             nextState = STATE_SCAFFOLD;
             nextLabel = "Blocks";
             int blocks = ModuleManager.blockCounter == null
@@ -472,6 +472,11 @@ public class DynamicIsland extends Module {
         if (modules != null) {
             synchronized (modules) {
                 for (int i = 0; i < modules.size(); i++) trackToggle(modules.get(i), now);
+            }
+        }
+        if (mindless.Mindless.scriptManager != null) {
+            for (Module module : mindless.Mindless.scriptManager.scripts.values()) {
+                trackToggle(module, now);
             }
         }
         for (int i = recentToggles.size() - 1; i >= 0; i--) {

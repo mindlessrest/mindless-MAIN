@@ -366,7 +366,9 @@ public static void always(String category, String message) {
         }
 
         write(line);
-        System.err.println("[mindless] " + line);
+        if (!mindless.runtime.LunarEventBridge.isDirectLunar()) {
+            System.err.println("[mindless] " + line);
+        }
         if (toChat()) {
             try {
                 Utils.sendMessage("&8[&cdiag&8] &7" + message);

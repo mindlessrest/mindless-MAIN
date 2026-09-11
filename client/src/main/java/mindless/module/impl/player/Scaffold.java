@@ -161,9 +161,15 @@ public class Scaffold extends Module {
         queuedTarget = null;
         queuedHit = null;
         pendingPlacementFace = null;
+        placementDelayTicks = 0;
+        hasPlacementRotation = false;
         towerPhase = 0;
         towerCycleCount = 0;
         keepYState = 0;
+        keepYRecoveryPlacement = false;
+        tellyRotationActive = false;
+        remainingStackBlocks = -1;
+        previousHotbarSlot = -1;
     }
 
     @SubscribeEvent

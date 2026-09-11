@@ -107,12 +107,18 @@ private static final float CLOCK_GAP = 10.0f;
     }
 
     @Override public void onEnable()  {
+        lastCheck = 0L;
+        lastFrameMs = 0L;
+        startupFiredAt = 0L;
         moduleStates.clear();
         cards.clear();
         synchronized (SUPPRESSED_SCRIPT_CHANGES) { SUPPRESSED_SCRIPT_CHANGES.clear(); }
         for (Module m : ModuleManager.modules) moduleStates.put(m, m.isEnabled());
     }
     @Override public void onDisable() {
+        lastCheck = 0L;
+        lastFrameMs = 0L;
+        startupFiredAt = 0L;
         moduleStates.clear();
         cards.clear();
         synchronized (SUPPRESSED_SCRIPT_CHANGES) { SUPPRESSED_SCRIPT_CHANGES.clear(); }
@@ -120,7 +126,7 @@ private static final float CLOCK_GAP = 10.0f;
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent e) {
-        if (e.phase != TickEvent.Phase.END || !Utils.nullCheck()) return;
+        if (e.phase != TickEvent.Phase.END) return;
         long now = System.currentTimeMillis();
         if (now - lastCheck < 50L) return;
         lastCheck = now;
@@ -151,7 +157,7 @@ private static final float CLOCK_GAP = 10.0f;
             return;
         }
         if (cur != prev) {
-            boolean suppressed = startupFiredAt == 0 || now - startupFiredAt < STARTUP_SUPPRESS_MS;
+            boolean suppressed = startupFiredAt != 0L && now - startupFiredAt < STARTUP_SUPPRESS_MS;
             boolean scriptChange;
             synchronized (SUPPRESSED_SCRIPT_CHANGES) {
                 scriptChange = !isScriptModule(module) && SUPPRESSED_SCRIPT_CHANGES.remove(name);
@@ -193,12 +199,22 @@ public static void suppressScriptChange(String moduleName) {
 public static void notifyScript(String title, boolean enabled) {
         Notifications notifications = instance;
         if (notifications == null || !notifications.isEnabled() || title == null || title.isEmpty()) return;
+        if (!net.minecraft.client.Minecraft.getMinecraft().isCallingFromMinecraftThread()) {
+            net.minecraft.client.Minecraft.getMinecraft().addScheduledTask(
+                    () -> notifyScript(title, enabled));
+            return;
+        }
         long now = System.currentTimeMillis();
         notifications.push(title, enabled, (long) (notifications.duration.getInput() * 1000.0), now);
     }
 public static void notify(String title, String status, boolean positive) {
         Notifications notifications = instance;
         if (notifications == null || !notifications.isEnabled() || title == null || title.isEmpty()) return;
+        if (!net.minecraft.client.Minecraft.getMinecraft().isCallingFromMinecraftThread()) {
+            net.minecraft.client.Minecraft.getMinecraft().addScheduledTask(
+                    () -> notify(title, status, positive));
+            return;
+        }
         long now = System.currentTimeMillis();
         long dur = (long) (notifications.duration.getInput() * 1000.0);
         if (notifications.cards.size() >= MAX) notifications.cards.remove(0);
