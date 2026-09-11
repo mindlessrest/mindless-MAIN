@@ -24,6 +24,7 @@ import net.minecraft.client.renderer.EntityRenderer;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.init.Blocks;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.*;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
@@ -54,6 +55,7 @@ public class BedAura extends Module {
     private final ButtonSetting autoTool;
     private final ButtonSetting switchBackWhenDone;
     private final ButtonSetting overrideSwapBack;
+    private final ButtonSetting spoofItem;
     private final ButtonSetting renderOutline;
     private final ColorSetting outlineColor;
 
@@ -78,6 +80,7 @@ private static final double AIM_FACE_INSET = 0.12;
     private int hotbarProgrammaticDepth;
     private boolean hasSwapped;
     private int previousSlot = -1;
+    private ItemStack originalVisualItem;
     private boolean lastOutsidePolicy;
     private BlockPos pathBedFoot;
     private Vec3 pathDestination;
@@ -103,6 +106,7 @@ private static final double AIM_FACE_INSET = 0.12;
         this.registerSetting(autoTool = new ButtonSetting(swapGroup, "Auto tool", true));
         this.registerSetting(switchBackWhenDone = new ButtonSetting(swapGroup, "Switch back when done", true, "Swap to previous slot"));
         this.registerSetting(overrideSwapBack = new ButtonSetting(swapGroup, "Override swap back", true));
+        this.registerSetting(spoofItem = new ButtonSetting(swapGroup, "Keep Original Item", false, "Spoof item"));
         this.registerSetting(renderOutline = new ButtonSetting("Render block outline", true));
         this.registerSetting(outlineColor = new ColorSetting("Outline color", 255, 64, 64, 229));
     }
@@ -112,6 +116,7 @@ private static final double AIM_FACE_INSET = 0.12;
         breakFromOutside.setVisible(!isLegitMode(), this);
         switchBackWhenDone.setVisible(autoTool.isToggled(), this);
         overrideSwapBack.setVisible(autoTool.isToggled(), this);
+        spoofItem.setVisible(autoTool.isToggled(), this);
         outlineColor.setVisible(renderOutline.isToggled(), this);
     }
 
@@ -191,6 +196,7 @@ private static final double AIM_FACE_INSET = 0.12;
         if (hasSwapped && overrideSwapBack.isToggled() && Utils.nullCheck()) {
             int slot = Integer.compare(e.slot, 0);
             previousSlot = Math.floorMod(mc.thePlayer.inventory.currentItem - slot, InventoryPlayer.getHotbarSize());
+            originalVisualItem = copyStack(previousSlot);
         }
         e.setCanceled(true);
     }
@@ -202,6 +208,7 @@ private static final double AIM_FACE_INSET = 0.12;
         }
         if (hasSwapped && overrideSwapBack.isToggled()) {
             previousSlot = e.slot;
+            originalVisualItem = copyStack(previousSlot);
         }
         e.setCanceled(true);
     }
@@ -299,6 +306,18 @@ private void releaseInputControl() {
         if (stack.getItem() instanceof net.minecraft.item.ItemAxe) return "Axe";
         if (stack.getItem() instanceof net.minecraft.item.ItemSpade) return "Shovel";
         return "Hand";
+    }
+
+    public ItemStack getAuraToolStack() {
+        return Utils.nullCheck() ? mc.thePlayer.getHeldItem() : null;
+    }
+
+    public boolean isSpoofingHeldItem() {
+        return spoofItem.isToggled() && hasSwapped && previousSlot != -1;
+    }
+
+    public ItemStack getOriginalVisualItem() {
+        return originalVisualItem;
     }
 public boolean shouldOverrideMouseOver() {
         return isEnabled() && miningActive && canMineBlocks()
@@ -551,6 +570,7 @@ public boolean shouldOverrideMouseOver() {
         targetSide = null;
         hasSwapped = false;
         previousSlot = -1;
+        originalVisualItem = null;
         pathBedFoot = null;
         pathDestination = null;
         pathInitialBlocks = 0;
@@ -975,6 +995,7 @@ private BlockPos[] footHeadPair(BlockPos at) {
         }
         if (previousSlot == -1 && slot != mc.thePlayer.inventory.currentItem) {
             previousSlot = mc.thePlayer.inventory.currentItem;
+            originalVisualItem = copyStack(previousSlot);
         }
         if (slot != mc.thePlayer.inventory.currentItem) {
             setSlot(slot);
@@ -994,6 +1015,7 @@ private BlockPos[] footHeadPair(BlockPos at) {
         }
         hasSwapped = false;
         previousSlot = -1;
+        originalVisualItem = null;
     }
 
     private void setSlot(int slot) {
@@ -1008,6 +1030,11 @@ private BlockPos[] footHeadPair(BlockPos at) {
         } finally {
             hotbarProgrammaticDepth--;
         }
+    }
+
+    private ItemStack copyStack(int slot) {
+        ItemStack stack = mc.thePlayer.inventory.getStackInSlot(slot);
+        return stack == null ? null : stack.copy();
     }
 
     private boolean canMineBlocks() {

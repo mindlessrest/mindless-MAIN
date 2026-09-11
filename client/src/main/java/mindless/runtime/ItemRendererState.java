@@ -25,6 +25,10 @@ public final class ItemRendererState {
     public static void setCancelReset(boolean value) { cancelReset = value; }
 
     public static boolean isHeldItemSpoofActive() {
+        mindless.module.impl.player.BedAura bedAura = mindless.module.ModuleManager.bedAura;
+        if (bedAura != null && bedAura.isEnabled() && bedAura.isSpoofingHeldItem()) {
+            return true;
+        }
         mindless.module.impl.player.AutoTool autoTool = mindless.module.ModuleManager.autoTool;
         return autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem();
     }

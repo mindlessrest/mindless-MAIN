@@ -12,6 +12,7 @@ import mindless.module.ModuleManager;
 import mindless.module.impl.client.Settings;
 import mindless.module.impl.combat.AutoClicker;
 import mindless.module.impl.player.AutoTool;
+import mindless.module.impl.player.BedAura;
 import mindless.module.impl.player.Freecam;
 import mindless.module.impl.world.AntiBot;
 import mindless.module.setting.impl.SliderSetting;
@@ -1704,6 +1705,10 @@ public static boolean isMining() {
     }
 
     public static ItemStack getSpoofedItem(ItemStack original) {
+        BedAura bedAura = ModuleManager.bedAura;
+        if (bedAura != null && bedAura.isEnabled() && bedAura.isSpoofingHeldItem()) {
+            return bedAura.getOriginalVisualItem();
+        }
         AutoTool autoTool = ModuleManager.autoTool;
         if (autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem()) {
             return autoTool.getOriginalVisualItem();

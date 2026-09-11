@@ -214,18 +214,14 @@ public class DynamicIsland extends Module {
         ItemStack islandBlock = ModuleManager.blockCounter == null
                 ? null : ModuleManager.blockCounter.islandBlock();
         Toggle toggle = latestToggle(System.currentTimeMillis());
-        if (toggle != null) {
-            nextState = STATE_NOTIFICATION;
-            nextLabel = toggle.name;
-            nextValue = toggle.enabled ? "ON" : "OFF";
-            nextKey = "notification:" + toggle.name + ':' + toggle.enabled;
-        } else if (ModuleManager.bedAura != null && ModuleManager.bedAura.isBreakingRoute()) {
+        if (ModuleManager.bedAura != null && ModuleManager.bedAura.isBreakingRoute()) {
             nextState = STATE_BREAKER;
             nextLabel = ModuleManager.bedAura.getAuraToolName();
             float target = Math.max(0.0f, Math.min(1.0f,
                     ModuleManager.bedAura.getAuraTotalProgress()));
             breakerProgress = approach(breakerProgress, target, 12.0f, delta);
             nextValue = Math.round(breakerProgress * 100.0f) + "%";
+            nextIcon = ModuleManager.bedAura.getAuraToolStack();
             nextKey = "breaker:" + nextLabel;
         } else if (islandBlock != null
                 || ModuleManager.scaffold != null && ModuleManager.scaffold.isEnabled()) {
@@ -251,6 +247,11 @@ public class DynamicIsland extends Module {
                 float target = blocks / (float) Math.max(1, scaffoldPeak);
                 scaffoldProgress = approach(scaffoldProgress, target, 9.0f, delta);
             }
+        } else if (toggle != null) {
+            nextState = STATE_NOTIFICATION;
+            nextLabel = toggle.name;
+            nextValue = toggle.enabled ? "ON" : "OFF";
+            nextKey = "notification:" + toggle.name + ':' + toggle.enabled;
         } else {
             breakerProgress = 0.0f;
             scaffoldPeak = 0;
@@ -314,7 +315,7 @@ public class DynamicIsland extends Module {
         int accent = ThemeManager.getWatermarkColor(0.0) & 0xFFFFFF;
         float markHeight = 7.8f * uiScale;
         float markWidth = markHeight * LOGO_ASPECT;
-        if (islandState == STATE_SCAFFOLD && stateIcon != null) {
+        if ((islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) && stateIcon != null) {
             drawItemIcon(stateIcon, badgeX, badgeY, badge, contentAlpha);
         } else {
             drawLogo(badgeX + (badge - markWidth) * 0.5f,
