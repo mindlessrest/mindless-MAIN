@@ -81,7 +81,6 @@ public class Mindless {
         Runtime.getRuntime().addShutdownHook(new Thread(Mindless::saveOnShutdown));
 
         registerHandler(this, true);
-        registerHandler(new DebugHelper(), false);
         registerHandler(new MouseHelper(), false);
         registerHandler(RotationHelper.get(), false);
         registerHandler(new PingHelper(), false);

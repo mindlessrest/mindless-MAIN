@@ -119,7 +119,6 @@ public class ModuleManager {
     public static EventTimers eventTimers;
     public static Autoblock autoBlock;
     public static Backtrack backtrack;
-    public static Debug debug;
     public static mindless.module.impl.other.DiscordRPC discordRPC;
     public static mindless.script.Manager scriptManager;
 
@@ -195,7 +194,6 @@ public class ModuleManager {
         this.addModule(new FakeChat());
         this.addModule(new LatencyAlerts());
         this.addModule(nameHider = new NameHider());
-        this.addModule(debug = new Debug());
         this.addModule(new ViewPackets());
 
         this.addModule(new AntiAFK());
