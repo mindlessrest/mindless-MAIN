@@ -270,13 +270,17 @@ public static void notify(String title, String status, boolean positive) {
         float x = rightEdge - w + c.slideIn;
         float radius = R * mindless.module.impl.theme.ThemeManager.roundingScale();
 
+        RoundedUtils.drawRoundShadow(x, y + 1.5f, w, H, radius,
+                6.0f, new Color(0, 0, 0, (int) (34 * alpha)).getRGB());
         // Same surface as the Dynamic Island: the two appear together every time a module
         // is toggled, and a black card beside a lit panel looked like two different clients.
         BlurUtils.prepareBlur(x, y, w, H);
         RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
-        BlurUtils.blurEndRegion(2, 1.8f, 0.68f, x, y, w, H);
-        int panel = (int) (238 * alpha);
-        RoundedUtils.drawRound(x, y, w, H, radius, new Color(25, 24, 30, panel));
+        BlurUtils.blurEndRegion(2, 1.8f, 0.72f, x, y, w, H);
+        int panel = (int) (232 * alpha);
+        RoundedUtils.drawGradientVertical(x, y, w, H, radius,
+                new Color(46, 45, 55, panel),
+                new Color(22, 21, 27, panel));
 
         drawBadge(x + PAD_L, y + (H - ICON) * 0.5f, accent, c.enabled, progress, alpha);
         net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
@@ -289,12 +293,12 @@ public static void notify(String title, String status, boolean positive) {
         float textX = Math.round(x + PAD_L + ICON + ICON_GAP);
         float textY = Math.round(y + (H - block) * 0.5f);
 
-        font.drawString(c.title, textX, textY, new Color(236, 236, 242, a).getRGB(), false);
+        font.drawString(c.title, textX, textY, new Color(241, 241, 245, a).getRGB(), false);
         font.drawString(status, textX, Math.round(textY + fontH + 1.0f),
                 new Color(accent.getRed(), accent.getGreen(), accent.getBlue(),
                         (int)(200 * alpha)).getRGB(), false);
         font.drawString(clock, Math.round(x + w - PAD_R - font.getStringWidth(clock)), textY,
-                new Color(150, 150, 162, (int)(170 * alpha)).getRGB(), false);
+                new Color(142, 141, 150, (int)(165 * alpha)).getRGB(), false);
     }
 private void drawBadge(float x, float y, Color accent, boolean enabled, float progress, float alpha) {
         float cx = x + ICON * 0.5f;

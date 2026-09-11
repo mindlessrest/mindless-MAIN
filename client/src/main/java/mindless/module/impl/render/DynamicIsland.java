@@ -71,6 +71,7 @@ public class DynamicIsland extends Module {
     private String pendingLabel = "Mindless";
     private String pendingValue = "";
     private int pendingState = STATE_IDLE;
+    private ItemStack pendingIcon;
     private float scaffoldProgress;
     private float breakerProgress;
     private int scaffoldPeak;
@@ -80,8 +81,8 @@ public class DynamicIsland extends Module {
     private String stateKey = "idle";
     private String stateLabel = "Mindless";
     private String stateValue = "";
-    private String previousValue = "";
-    private float valueBlend = 1.0f;
+    private ItemStack stateIcon;
+    private float displayedBlockCount = Float.NaN;
 
     public float islandPosX = -1.0f;
     public float islandPosY = -1.0f;
@@ -126,6 +127,7 @@ public class DynamicIsland extends Module {
         pendingLabel = "Mindless";
         pendingValue = "";
         pendingState = STATE_IDLE;
+        pendingIcon = null;
         scaffoldProgress = 0.0f;
         breakerProgress = 0.0f;
         scaffoldPeak = 0;
@@ -135,8 +137,8 @@ public class DynamicIsland extends Module {
         stateKey = "idle";
         stateLabel = "Mindless";
         stateValue = "";
-        previousValue = "";
-        valueBlend = 1.0f;
+        stateIcon = null;
+        displayedBlockCount = Float.NaN;
         toggleStates.clear();
         recentToggles.clear();
     }
@@ -159,7 +161,6 @@ public class DynamicIsland extends Module {
         if (text == null) return;
         float delta = frameDelta();
         resolveState(delta);
-        valueBlend = approach(valueBlend, 1.0f, 10.5f, delta);
         float uiScale = (float) scale.getInput();
         float targetWidth = stateWidth(text) * uiScale;
         float height = HEIGHT * uiScale;
@@ -184,9 +185,8 @@ public class DynamicIsland extends Module {
                 stateKey = pendingKey;
                 stateLabel = pendingLabel;
                 stateValue = pendingValue;
-                previousValue = "";
-                valueBlend = 1.0f;
                 islandState = pendingState;
+                stateIcon = pendingIcon;
                 swapping = false;
                 contentFade = 0.0f;
                 contentSlide = CONTENT_RISE;
@@ -205,6 +205,7 @@ public class DynamicIsland extends Module {
         String nextLabel = "Mindless";
         String nextValue = "";
         String nextKey = "idle";
+        ItemStack nextIcon = null;
         ItemStack islandBlock = ModuleManager.blockCounter == null
                 ? null : ModuleManager.blockCounter.islandBlock();
         Toggle toggle = latestToggle(System.currentTimeMillis());
@@ -227,8 +228,15 @@ public class DynamicIsland extends Module {
             nextLabel = "Blocks";
             int blocks = ModuleManager.blockCounter == null
                     ? scaffoldBlockCount() : ModuleManager.blockCounter.islandCount();
-            nextValue = Integer.toString(blocks);
-            nextKey = "scaffold";
+            if (Float.isNaN(displayedBlockCount)) {
+                displayedBlockCount = blocks;
+            } else {
+                displayedBlockCount = approach(displayedBlockCount, blocks, 9.0f, delta);
+                if (Math.abs(displayedBlockCount - blocks) < 0.02f) displayedBlockCount = blocks;
+            }
+            nextValue = Integer.toString(Math.round(displayedBlockCount));
+            nextIcon = islandBlock;
+            nextKey = "scaffold:" + blockKey(islandBlock);
             if (scaffoldPeak == 0) {
                 scaffoldPeak = Math.max(1, blocks);
                 scaffoldProgress = blocks / (float) scaffoldPeak;
@@ -241,6 +249,7 @@ public class DynamicIsland extends Module {
             breakerProgress = 0.0f;
             scaffoldPeak = 0;
             scaffoldProgress = 0.0f;
+            displayedBlockCount = Float.NaN;
         }
         // Compared against whatever is already on its way in, so a second toggle during a
         // swap replaces the queued content instead of starting the animation over.
@@ -250,6 +259,7 @@ public class DynamicIsland extends Module {
             pendingLabel = nextLabel;
             pendingValue = nextValue;
             pendingState = nextState;
+            pendingIcon = nextIcon;
             swapping = true;
             return;
         }
@@ -258,11 +268,8 @@ public class DynamicIsland extends Module {
             // place with no transition, because nothing about the panel has changed.
             islandState = nextState;
             stateLabel = nextLabel;
-            if (nextState == STATE_SCAFFOLD && !nextValue.equals(stateValue)) {
-                previousValue = stateValue;
-                valueBlend = 0.0f;
-            }
             stateValue = nextValue;
+            stateIcon = nextIcon;
         }
     }
 
@@ -301,9 +308,13 @@ public class DynamicIsland extends Module {
         int accent = ThemeManager.getWatermarkColor(0.0) & 0xFFFFFF;
         float markHeight = 7.8f * uiScale;
         float markWidth = markHeight * LOGO_ASPECT;
-        drawLogo(badgeX + (badge - markWidth) * 0.5f,
-                badgeY + (badge - markHeight) * 0.5f,
-                markWidth, markHeight, withAlpha(0xDCD5F3, alpha));
+        if (islandState == STATE_SCAFFOLD && stateIcon != null) {
+            drawItemIcon(stateIcon, badgeX, badgeY, badge, contentAlpha);
+        } else {
+            drawLogo(badgeX + (badge - markWidth) * 0.5f,
+                    badgeY + (badge - markHeight) * 0.5f,
+                    markWidth, markHeight, withAlpha(0xDCD5F3, alpha));
+        }
         float labelX = badgeX + badge + BADGE_GAP * uiScale;
         float textY = y + (height - text.getFontHeight() * uiScale) * 0.5f + slide;
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
@@ -320,24 +331,9 @@ public class DynamicIsland extends Module {
             else {
                 valueRgb = 0xF1F1F5;
             }
-            if (islandState == STATE_SCAFFOLD && !previousValue.isEmpty() && valueBlend < 0.995f) {
-                float eased = valueBlend * valueBlend * (3.0f - 2.0f * valueBlend);
-                float oldWidth = text.getStringWidth(previousValue) * uiScale;
-                float oldX = x + width - PAD_X * uiScale - oldWidth;
-                drawScaled(text, previousValue, oldX,
-                        textY - 1.8f * uiScale * eased, uiScale,
-                        withAlpha(valueRgb, Math.round(contentAlpha * (1.0f - eased))));
-                float valueWidth = text.getStringWidth(stateValue) * uiScale;
-                float valueX = x + width - PAD_X * uiScale - valueWidth;
-                drawScaled(text, stateValue, valueX,
-                        textY + 1.8f * uiScale * (1.0f - eased), uiScale,
-                        withAlpha(valueRgb, Math.round(contentAlpha * eased)));
-            }
-            else {
-                float valueWidth = text.getStringWidth(stateValue) * uiScale;
-                float valueX = x + width - PAD_X * uiScale - valueWidth;
-                drawScaled(text, stateValue, valueX, textY, uiScale, withAlpha(valueRgb, contentAlpha));
-            }
+            float valueWidth = text.getStringWidth(stateValue) * uiScale;
+            float valueX = x + width - PAD_X * uiScale - valueWidth;
+            drawScaled(text, stateValue, valueX, textY, uiScale, withAlpha(valueRgb, contentAlpha));
         }
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
             float barX = labelX;
@@ -351,7 +347,7 @@ public class DynamicIsland extends Module {
             float fill = barWidth * Math.max(0.0f, Math.min(1.0f, progress));
             if (fill > 0.5f) {
                 RoundedUtils.drawRound(barX, barY, fill, barHeight, barHeight * 0.5f,
-                        withAlpha(accent, contentAlpha));
+                        withAlpha(0xF1F1F5, contentAlpha));
             }
         }
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -379,6 +375,32 @@ public class DynamicIsland extends Module {
             }
         }
         return count;
+    }
+
+    private static String blockKey(ItemStack stack) {
+        if (stack == null || stack.getItem() == null) return "none";
+        return net.minecraft.item.Item.getIdFromItem(stack.getItem()) + ":" + stack.getMetadata();
+    }
+
+    private void drawItemIcon(ItemStack stack, float x, float y, float size, int alpha) {
+        if (stack == null || alpha <= 0) return;
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        float iconScale = size / 16.0f;
+        float oldZ = mc.getRenderItem().zLevel;
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(x, y, 0.0f);
+        GlStateManager.scale(iconScale, iconScale, 1.0f);
+        GlStateManager.enableDepth();
+        net.minecraft.client.renderer.RenderHelper.enableGUIStandardItemLighting();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, alpha / 255.0f);
+        mc.getRenderItem().zLevel = 0.0f;
+        mc.getRenderItem().renderItemAndEffectIntoGUI(stack, 0, 0);
+        mc.getRenderItem().zLevel = oldZ;
+        net.minecraft.client.renderer.RenderHelper.disableStandardItemLighting();
+        GlStateManager.disableDepth();
+        GlStateManager.popMatrix();
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private void pollToggles(long now) {
