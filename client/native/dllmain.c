@@ -120,7 +120,20 @@ static jclass load_class_via_loader(JNIEnv *env, jobject class_loader,
         jmethodID load_class, const char *dotted_name);
 
 void vape_log(const wchar_t *format, ...) {
+#ifdef MINDLESS_DEBUG_LOGS
+    wchar_t message[1024];
+    wchar_t line[1152];
+    va_list arguments;
+    va_start(arguments, format);
+    _vsnwprintf_s(message, sizeof(message) / sizeof(message[0]),
+            _TRUNCATE, format, arguments);
+    va_end(arguments);
+    _snwprintf_s(line, sizeof(line) / sizeof(line[0]), _TRUNCATE,
+            L"[MindlessNative] %ls\n", message);
+    OutputDebugStringW(line);
+#else
     (void)format;
+#endif
 }
 
 void vape_log_pending_exception(JNIEnv *env, const wchar_t *context) {

@@ -26,6 +26,7 @@ BUILD_DIR   = LOADER_DIR / "out" / "build" / "windows-clang"
 # instead of reconfigured from scratch on every run.
 PRESET_STAMP = BUILD_DIR / ".mindless-preset.json"
 OUTPUT_EXE  = ROOT / "MindlessLoader.exe"
+DEV_OUTPUT_EXE = ROOT / "dev.exe"
 # Lives beside this script rather than in the repository root: it is a cache of detected
 # compiler and JDK paths that build.py owns outright, and nothing else ever reads it.
 TOOL_CACHE_FILE = Path(__file__).resolve().parent / ".build_tools_cache.json"
@@ -573,7 +574,8 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False):
     return True
 
 
-def build_loader(cmake, extra_env, preset_text=None, preset_changed=True):
+def build_loader(cmake, extra_env, preset_text=None, preset_changed=True,
+                 target="MindlessLoader", output=OUTPUT_EXE):
     section("Loader - configure")
     clear_relocated_cache(BUILD_DIR, LOADER_DIR)
     loader_cache = BUILD_DIR / "CMakeCache.txt"
@@ -602,31 +604,32 @@ def build_loader(cmake, extra_env, preset_text=None, preset_changed=True):
     loader_res = BUILD_DIR / "resources_gen.res"
     if loader_res.is_file():
         loader_res.unlink()
-    loader_exe_build = BUILD_DIR / "Release" / "MindlessLoader.exe"
+    executable_name = "dev.exe" if target == "MindlessDev" else "MindlessLoader.exe"
+    loader_exe_build = BUILD_DIR / "Release" / executable_name
     if loader_exe_build.is_file():
         loader_exe_build.unlink()
 
     section("Loader - build")
-    cmd = [str(cmake), "--build", str(BUILD_DIR), "--config", "Release",
+    cmd = [str(cmake), "--build", str(BUILD_DIR), "--config", "Release", "--target", target,
            "--parallel", str(CPU_COUNT)]
     if not run(cmd, LOADER_DIR, extra_env):
         err("cmake build failed")
         return False
     ok("build complete")
 
-    built = LOADER_DIR / "MindlessLoader.exe"
+    built = LOADER_DIR / executable_name
     if built.is_file():
-        shutil.copy2(str(built), str(OUTPUT_EXE))
-        ok(f"EXE -> {OUTPUT_EXE}")
+        shutil.copy2(str(built), str(output))
+        ok(f"EXE -> {output}")
         return True
 
-    alt = BUILD_DIR / "Release" / "MindlessLoader.exe"
+    alt = BUILD_DIR / "Release" / executable_name
     if alt.is_file():
-        shutil.copy2(str(alt), str(OUTPUT_EXE))
-        ok(f"EXE -> {OUTPUT_EXE}")
+        shutil.copy2(str(alt), str(output))
+        ok(f"EXE -> {output}")
         return True
 
-    err("MindlessLoader.exe not found after build")
+    err(f"{executable_name} not found after build")
     return False
 
 
@@ -635,13 +638,19 @@ def main():
     print(f"{BOLD}  Mindless United - build{RESET}")
     print(f"{BOLD}{'='*50}{RESET}")
 
-    known_flags = {"--loader", "--client", "--all", "--no-cache", "--prod"}
-    has_target = any(a in {"--loader", "--client", "--all"} for a in sys.argv[1:])
+    known_flags = {"--loader", "--client", "--all", "--no-cache", "--prod", "--dev"}
+    has_target = any(a in {"--loader", "--client", "--all", "--dev"} for a in sys.argv[1:])
     default_all = len(sys.argv) == 1 or (not has_target)
-    build_loader_flag = "--loader" in sys.argv or "--all" in sys.argv or default_all
-    build_client_flag = "--client" in sys.argv or "--all" in sys.argv or default_all
+    dev_flag = "--dev" in sys.argv
+    build_loader_flag = "--loader" in sys.argv or "--all" in sys.argv or dev_flag or default_all
+    build_client_flag = "--client" in sys.argv or "--all" in sys.argv or dev_flag or default_all
     no_cache_flag = "--no-cache" in sys.argv
     prod_flag = "--prod" in sys.argv
+    if dev_flag and prod_flag:
+        err("--dev and --prod cannot be used together")
+        sys.exit(1)
+    if dev_flag:
+        os.environ["MINDLESS_DEBUG_LOGS"] = "1"
 
     section("Detecting tools")
 
@@ -772,7 +781,10 @@ def main():
         preset_text, preset_changed = update_preset(clang, lld, ninja, vcpkg, prod=prod_flag)
         ok("preset updated")
 
-        if not build_loader(cmake, extra_env, preset_text, preset_changed):
+        loader_target = "MindlessDev" if dev_flag else "MindlessLoader"
+        loader_output = DEV_OUTPUT_EXE if dev_flag else OUTPUT_EXE
+        if not build_loader(cmake, extra_env, preset_text, preset_changed,
+                            loader_target, loader_output):
             success = False
 
     print()
@@ -783,9 +795,10 @@ def main():
             if FORGE_JAR_OBF.is_file():
                 print(f" JAR obfuscation applied", end="")
             print()
-        if OUTPUT_EXE.is_file():
-            size_mb = OUTPUT_EXE.stat().st_size / (1024 * 1024)
-            print(f"  {GREEN}MindlessLoader.exe{RESET}  {size_mb:.1f} MB  ->  {OUTPUT_EXE}")
+        final_output = DEV_OUTPUT_EXE if dev_flag else OUTPUT_EXE
+        if final_output.is_file():
+            size_mb = final_output.stat().st_size / (1024 * 1024)
+            print(f"  {GREEN}{final_output.name}{RESET}  {size_mb:.1f} MB  ->  {final_output}")
     else:
         print(f"{BOLD}{RED}Build failed.{RESET}")
         sys.exit(1)

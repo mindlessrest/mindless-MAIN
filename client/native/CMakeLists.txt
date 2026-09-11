@@ -17,6 +17,7 @@ if(MSVC)
 endif()
 
 option(MINDLESS_PRODUCTION "Disable diagnostic logging in production builds" OFF)
+option(MINDLESS_DEBUG_LOGS "Write native diagnostics to OutputDebugString" OFF)
 
 # ---------------------------------------------------------------------------
 # Locate the JDK headers (jni.h / jvmti.h).
@@ -122,6 +123,12 @@ target_include_directories(MindlessNative PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}"
     ${JNI_INCLUDE_DIRS})
 target_link_libraries(MindlessNative PRIVATE user32 advapi32)
+if(NOT MINDLESS_PRODUCTION)
+    target_compile_definitions(MindlessNative PRIVATE _NONPROD=1)
+endif()
+if(MINDLESS_DEBUG_LOGS)
+    target_compile_definitions(MindlessNative PRIVATE MINDLESS_DEBUG_LOGS=1)
+endif()
 if(MSVC)
     target_compile_options(MindlessNative PRIVATE /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS /O2 /Oi /Gy)
 endif()

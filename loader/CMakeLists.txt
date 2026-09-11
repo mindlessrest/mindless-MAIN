@@ -128,6 +128,32 @@ add_custom_target(MindlessResources DEPENDS "${RES_FILE}")
 add_executable(MindlessLoader WIN32 ${SOURCES})
 add_dependencies(MindlessLoader MindlessResources)
 
+add_executable(MindlessDev
+    src/dev_main.cpp
+    src/injection/injection_session.cpp
+    src/injection/manual_map.cpp
+)
+target_include_directories(MindlessDev PRIVATE src ${CMAKE_SOURCE_DIR}/..)
+target_compile_definitions(MindlessDev PRIVATE
+    _NONPROD=1
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
+    UNICODE
+    _UNICODE
+    _CRT_SECURE_NO_WARNINGS
+)
+target_link_libraries(MindlessDev PRIVATE advapi32.lib)
+set_target_properties(MindlessDev PROPERTIES
+    OUTPUT_NAME "dev"
+    LINK_FLAGS "/INCREMENTAL:NO"
+)
+add_custom_command(TARGET MindlessDev POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:MindlessDev>"
+        "${CMAKE_SOURCE_DIR}/../dev.exe"
+    COMMENT "Deploying developer loader"
+)
+
 option(MINDLESS_PRODUCTION "Build without development-only behavior" OFF)
 option(MINDLESS_PRIVATE_PDB "Emit a private PDB for post-build protection" OFF)
 if (NOT MINDLESS_PRODUCTION)
