@@ -694,9 +694,12 @@ private int ringColor(int ringIndex) {
         tessellator.draw();
 
         if (mindless.utility.Diagnostics.isEnabled()) {
+            // No fade in the line. Diagnostics drops a line it has already written, and a value
+            // that changes every frame made every line unique, so this alone wrote twenty-one
+            // thousand lines into the log in one session.
             mindless.utility.Diagnostics.log("rings", RING_STYLES[Math.max(0, Math.min(RING_STYLES.length - 1, style))]
-                    + ": " + drawn + "/" + count + " rings, radius " + String.format("%.2f", (double) baseRadius)
-                    + ", fade " + String.format("%.2f", (double) fade));
+                    + ": " + drawn + "/" + count + " rings, radius "
+                    + String.format("%.1f", (double) baseRadius));
         }
 
         GlStateManager.shadeModel(GL11.GL_FLAT);

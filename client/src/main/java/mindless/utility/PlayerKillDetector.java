@@ -30,8 +30,18 @@ public final class PlayerKillDetector {
 
     private static final int HEALTH_WATCHER_ID = 6;
     private static final long KILL_CREDIT_WINDOW_MS = 7000L;
-    private static final long DESTROY_ATTACK_WINDOW_MS = 1800L;
-    private static final long DESTROY_DAMAGE_WINDOW_MS = 900L;
+    /*
+     * How stale the last attack and the last hurt may be when the server removes a player and
+     * we still call it our kill.
+     *
+     * These were under two seconds and under one, which is fine for a melee finish but wrong
+     * for the way most Bedwars kills actually end: you knock someone off, they fall, and the
+     * server removes them several seconds after your last hit landed. No death status and no
+     * health update arrive for a void death, so the removal is the only signal there is -- and
+     * it was arriving outside both windows, which is why the effect only fired now and then.
+     */
+    private static final long DESTROY_ATTACK_WINDOW_MS = 5000L;
+    private static final long DESTROY_DAMAGE_WINDOW_MS = 3500L;
     private static final long DEDUPLICATION_WINDOW_MS = 3000L;
 
     private final Map<Integer, TrackedPlayer> tracked = new HashMap<Integer, TrackedPlayer>();

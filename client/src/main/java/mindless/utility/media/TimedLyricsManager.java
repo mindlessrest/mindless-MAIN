@@ -150,6 +150,15 @@ final class TimedLyricsManager {
             currentLyrics = cached;
             return;
         }
+        // Nobody having lyrics for a track is an answer too, and it is already in the cache.
+        // Falling through on it sent the whole five-endpoint fan-out again on the very next
+        // poll, and the poll behind this runs every 50ms: one silent track kept three lyrics
+        // providers busy for as long as it played. Two minutes of it cost 379 TLS handshakes
+        // and twelve hundred socket reads, each handshake spawning a thread of its own.
+        if (cached != null) {
+            currentLyrics = cached;
+            return;
+        }
 
         if (trackChanged || !currentLyrics.isAvailable()) {
             currentLyrics = TimedLyrics.loading();
