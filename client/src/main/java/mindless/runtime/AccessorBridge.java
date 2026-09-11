@@ -23,6 +23,8 @@ import net.minecraft.item.ItemFood;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.S14PacketEntity;
+import net.minecraft.network.play.server.S19PacketEntityStatus;
+import net.minecraft.network.play.client.C02PacketUseEntity;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.IChatComponent;
 import net.minecraft.util.MouseHelper;
@@ -295,6 +297,14 @@ public final class AccessorBridge {
                     new String[]{"syncCurrentPlayItem", "func_78750_j"}).invoke(c);
         } catch (Exception t) { throw wrap("PlayerControllerMP_callSyncCurrentPlayItem", t); }
     }
+    public static int PlayerControllerMP_getCurrentPlayerItem(PlayerControllerMP c) {
+        try { return field(PlayerControllerMP.class, "currentPlayerItem", "field_78777_l").getInt(c); }
+        catch (Exception t) { throw wrap("PlayerControllerMP_getCurrentPlayerItem", t); }
+    }
+    public static void PlayerControllerMP_setCurrentPlayerItem(PlayerControllerMP c, int slot) {
+        try { field(PlayerControllerMP.class, "currentPlayerItem", "field_78777_l").setInt(c, slot); }
+        catch (Exception t) { throw wrap("PlayerControllerMP_setCurrentPlayerItem", t); }
+    }
     public static float ItemRenderer_getEquippedProgress(Object renderer) {
         try { return field(renderer.getClass().getName().contains("ItemRenderer")
                 ? renderer.getClass() : Class.forName("net.minecraft.client.renderer.ItemRenderer"),
@@ -360,6 +370,14 @@ public final class AccessorBridge {
     public static byte S14PacketEntity_getDeltaZ(S14PacketEntity p) {
         try { return field(S14PacketEntity.class, "posZ", "field_149070_d").getByte(p); }
         catch (Exception t) { throw wrap("S14PacketEntity_getDeltaZ", t); }
+    }
+    public static int S19PacketEntityStatus_getEntityId(S19PacketEntityStatus p) {
+        try { return field(S19PacketEntityStatus.class, "entityId", "field_149164_a", "field_149079_a").getInt(p); }
+        catch (Exception t) { throw wrap("S19PacketEntityStatus_getEntityId", t); }
+    }
+    public static int C02PacketUseEntity_getEntityId(C02PacketUseEntity p) {
+        try { return field(C02PacketUseEntity.class, "entityId", "field_149567_a").getInt(p); }
+        catch (Exception t) { throw wrap("C02PacketUseEntity_getEntityId", t); }
     }
     public static int MouseHelper_getDeltaX(MouseHelper m) {
         try { return field(MouseHelper.class, "deltaX", "field_74377_a").getInt(m); }

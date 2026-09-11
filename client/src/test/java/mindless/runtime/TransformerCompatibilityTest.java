@@ -83,6 +83,65 @@ public class TransformerCompatibilityTest {
                     "net/minecraft/client/renderer/tileentity/TileEntityEnderChestRenderer"));
 
     @Test
+    public void worldExitInvalidatesDelayedPacketSession() throws Exception {
+        assertWorldExitInvalidatesDelayedPacketSession("minecraft-srg.jar", "forge-srg.jar",
+                "func_71353_a");
+        assertWorldExitInvalidatesDelayedPacketSession("minecraft-mapped.jar", "forge-mapped.jar",
+                "loadWorld");
+    }
+
+    private void assertWorldExitInvalidatesDelayedPacketSession(
+            String minecraftJarName, String forgeJarName, String loadWorldMethodName
+    ) throws Exception {
+        Path minecraftPath = findEssentialLoomJar(minecraftJarName);
+        Path forgePath = findEssentialLoomJar(forgeJarName);
+        try (JarFile minecraft = new JarFile(minecraftPath.toFile());
+             JarFile forge = new JarFile(forgePath.toFile())) {
+            MindlessTransformerManager manager = new MindlessTransformerManager(
+                    new SrgFirstClassProvider(
+                            TransformerCompatibilityTest.class.getClassLoader(), minecraft, forge));
+            byte[] original = readClass("net/minecraft/client/Minecraft", minecraft, forge);
+            Assert.assertNotNull("Minecraft is missing from " + minecraftJarName, original);
+            byte[] transformed = manager.transform("net/minecraft/client/Minecraft", original);
+            Assert.assertNotNull("Minecraft transformer returned null for " + minecraftJarName,
+                    transformed);
+
+            ClassNode node = new ClassNode();
+            new ClassReader(transformed).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            MethodNode loadWorld = null;
+            for (MethodNode method : node.methods) {
+                if (loadWorldMethodName.equals(method.name)
+                        && "(Lnet/minecraft/client/multiplayer/WorldClient;Ljava/lang/String;)V"
+                        .equals(method.desc)) {
+                    loadWorld = method;
+                    break;
+                }
+            }
+            Assert.assertNotNull("Transformed " + minecraftJarName + " is missing loadWorld", loadWorld);
+
+            boolean invalidatesPacketSession = false;
+            boolean resetsBacktrack = false;
+            for (AbstractInsnNode instruction : loadWorld.instructions.toArray()) {
+                if (!(instruction instanceof MethodInsnNode)) continue;
+                MethodInsnNode invoke = (MethodInsnNode) instruction;
+                if ("mindless/lag/service/PacketDelayService".equals(invoke.owner)
+                        && "onClientWorldUnload".equals(invoke.name) && "()V".equals(invoke.desc)) {
+                    invalidatesPacketSession = true;
+                }
+                if ("mindless/module/impl/network/Backtrack".equals(invoke.owner)
+                        && "onWorldUnload".equals(invoke.name) && "()V".equals(invoke.desc)) {
+                    resetsBacktrack = true;
+                }
+            }
+            Assert.assertTrue("World exit does not invalidate the delayed-packet session in "
+                    + minecraftJarName, invalidatesPacketSession);
+            Assert.assertTrue("World exit does not reset Backtrack in " + minecraftJarName,
+                    resetsBacktrack);
+            manager.assertNoTransformFailures();
+        }
+    }
+
+    @Test
     public void everyAvailableSrgTargetIsRetransformCompatible() throws Exception {
         Path minecraftSrg = findEssentialLoomJar("minecraft-srg.jar");
         Path forgeSrg = findEssentialLoomJar("forge-srg.jar");
@@ -221,6 +280,12 @@ public class TransformerCompatibilityTest {
         if (transformedCount == 0) failures.add("No registered MCP target was transformed");
         Assert.assertTrue(buildFailureMessage(failures, minecraftMcp, forgeMcp),
                 failures.isEmpty());
+    }
+
+    @Test
+    public void guiContainerIsRetransformCompatibleInBothRuntimeNamespaces() throws Exception {
+        assertGuiContainerTransforms("minecraft-srg.jar", "forge-srg.jar");
+        assertGuiContainerTransforms("minecraft-mapped.jar", "forge-mapped.jar");
     }
 
     @Test
@@ -700,6 +765,54 @@ public class TransformerCompatibilityTest {
         return node;
     }
 
+    private static void assertGuiContainerTransforms(String minecraftJarName, String forgeJarName)
+            throws Exception {
+        Path minecraftPath = findEssentialLoomJar(minecraftJarName);
+        Path forgePath = findEssentialLoomJar(forgeJarName);
+        try (JarFile minecraft = new JarFile(minecraftPath.toFile());
+             JarFile forge = new JarFile(forgePath.toFile())) {
+            MindlessTransformerManager manager = new MindlessTransformerManager(
+                    new SrgFirstClassProvider(
+                            TransformerCompatibilityTest.class.getClassLoader(), minecraft, forge));
+            byte[] original = readClass("net/minecraft/client/gui/inventory/GuiContainer",
+                    minecraft, forge);
+            Assert.assertNotNull("GuiContainer is missing", original);
+
+            byte[] transformed = manager.transform(
+                    "net/minecraft/client/gui/inventory/GuiContainer", original);
+            Assert.assertNotNull("GuiContainer transformer returned null", transformed);
+            Assert.assertFalse("GuiContainer transformer returned unchanged bytecode",
+                    Arrays.equals(original, transformed));
+            Assert.assertNull("GuiContainer changed retransformation schema",
+                    MindlessTransformerManager.findRetransformSchemaChange(original, transformed));
+            Assert.assertNull("GuiContainer contains a dangling self method reference",
+                    manager.findDanglingSelfMethodReference(transformed));
+            ClassNode node = new ClassNode();
+            new ClassReader(transformed).accept(node,
+                    ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            Assert.assertTrue("GuiContainer is missing the Instant Shop hook",
+                    hasMethodCall(node, "mindless/module/impl/bedwars/InstantShop", "tryPurchase",
+                            "(Lnet/minecraft/client/gui/inventory/GuiContainer;"
+                                    + "Lnet/minecraft/inventory/Slot;III)Z"));
+            Assert.assertTrue("GuiContainer is missing the Resource Deposit hook",
+                    hasMethodCall(node, "mindless/module/impl/bedwars/ResourceDeposit",
+                            "onManualInventoryInteraction", "()V"));
+            manager.assertNoTransformFailures();
+        }
+    }
+
+    private static boolean hasMethodCall(ClassNode node, String owner, String name, String desc) {
+        for (MethodNode method : node.methods) {
+            for (AbstractInsnNode instruction : method.instructions.toArray()) {
+                if (!(instruction instanceof MethodInsnNode)) continue;
+                MethodInsnNode invocation = (MethodInsnNode) instruction;
+                if (owner.equals(invocation.owner) && name.equals(invocation.name)
+                        && desc.equals(invocation.desc)) return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean hasField(ClassNode node, String name, String desc) {
         for (FieldNode field : node.fields) {
             if (name.equals(field.name) && desc.equals(field.desc)) return true;
@@ -938,5 +1051,64 @@ private static final class SrgFirstClassProvider implements IClassProvider {
             message.append("\n - ").append(failure);
         }
         return message.toString();
+    }
+
+    @Test
+    public void auraHooksExistInBothRuntimeNamespacesWithoutSchemaChanges() throws Exception {
+        for (String namespace : new String[]{"srg", "mapped"}) {
+            Path game = findEssentialLoomJar("minecraft-" + namespace + ".jar");
+            Path forgePath = findEssentialLoomJar("forge-" + namespace + ".jar");
+            try (JarFile minecraft = new JarFile(game.toFile()); JarFile forge = new JarFile(forgePath.toFile())) {
+                MindlessTransformerManager manager = new MindlessTransformerManager(new SrgFirstClassProvider(
+                        getClass().getClassLoader(), minecraft, forge));
+                String[][] targets = {
+                    {"net/minecraft/client/Minecraft", "shouldSuppressClicks", "onWorldChange", "beforePlayerInteraction"},
+                    {"net/minecraft/client/entity/EntityPlayerSP", "afterMotionResolved", "getSlowed"},
+                    {"net/minecraft/client/multiplayer/PlayerControllerMP", "shouldSuppressStopUse", "shouldSuppressClicks"},
+                    {"net/minecraft/network/NetworkManager", "recordAccepted", "observeHealth"},
+                    {"net/minecraft/client/renderer/ItemRenderer", "shouldRenderForcedSwordBlock"},
+                    {"net/minecraft/client/renderer/entity/RenderPlayer", "shouldForceBlockAnimation"}
+                };
+                for (String[] target : targets) {
+                    byte[] original = readClass(target[0], minecraft, forge);
+                    byte[] transformed = manager.transform(target[0], original);
+                    Assert.assertNotNull(target[0] + " " + namespace, transformed);
+                    Assert.assertNull(target[0], MindlessTransformerManager.findRetransformSchemaChange(original, transformed));
+                    Assert.assertNull(target[0], manager.findDanglingSelfMethodReference(transformed));
+                    ClassNode node = new ClassNode();
+                    new ClassReader(transformed).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+                    for (int i = 1; i < target.length; i++) {
+                        int calls = 0;
+                        int auraCalls = 0;
+                        int bedCalls = 0;
+                        for (MethodNode m : node.methods) for (AbstractInsnNode instruction : m.instructions.toArray()) {
+                            if (instruction instanceof MethodInsnNode && target[i].equals(((MethodInsnNode)instruction).name)) {
+                                calls++;
+                                String owner = ((MethodInsnNode) instruction).owner;
+                                if (owner.equals("mindless/module/impl/combat/KillAura")) auraCalls++;
+                                if (owner.equals("mindless/module/impl/player/BedAura")) bedCalls++;
+                            }
+                        }
+                        Assert.assertTrue(target[0] + " " + namespace + " missing " + target[i], calls > 0);
+                        if ("afterMotionResolved".equals(target[i])) {
+                            Assert.assertEquals(0, auraCalls);
+                            Assert.assertEquals(1, bedCalls);
+                            Assert.assertEquals(1, calls);
+                        }
+                    }
+                    if (target[0].equals("net/minecraft/network/NetworkManager")) {
+                        int hookedOverloads = 0;
+                        for (MethodNode m : node.methods) {
+                            if (!m.desc.startsWith("(Lnet/minecraft/network/Packet;") || !m.desc.endsWith(")V")) continue;
+                            boolean hooked = false;
+                            for (AbstractInsnNode instruction : m.instructions.toArray())
+                                if (instruction instanceof MethodInsnNode && "recordAccepted".equals(((MethodInsnNode)instruction).name)) hooked = true;
+                            if (hooked) hookedOverloads++;
+                        }
+                        Assert.assertEquals("send overloads " + namespace, 2, hookedOverloads);
+                    }
+                }
+            }
+        }
     }
 }

@@ -5,13 +5,12 @@ import mindless.clickgui.components.Component;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.Gui;
-import mindless.module.impl.render.HUD;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
-import net.minecraft.client.Minecraft;
+import mindless.utility.font.ModuleFont;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
@@ -106,7 +105,10 @@ public class SliderComponent extends Component {
         float labelY = (float) ((this.moduleComponent.categoryComponent.getY() + this.o + 3) * 2);
 
         MindlessFontRenderer settingRenderer = Gui.getClickGuiSettingFontRenderer();
-        if (this.sliderSetting.isString) {
+        if (shouldPreviewFontSlider()) {
+            drawFontPreview(labelX, labelY, valueText, suffix);
+        }
+        else if (this.sliderSetting.isString) {
             settingRenderer.drawString(this.sliderSetting.getName(), labelX, labelY,
                     0xFFE7EAF0, true);
             String selectorText = "<  " + valueText + "  >";
@@ -115,9 +117,6 @@ public class SliderComponent extends Component {
             float selectorTextY = (trackTop + 0.3f) * 2.0f;
             settingRenderer.drawString(selectorText, selectorTextX, selectorTextY,
                     0xFF8FC5FF, false);
-        }
-        else if (shouldPreviewFontSlider()) {
-            drawFontPreview(labelX, labelY, valueText, suffix);
         }
         else {
             settingRenderer.drawString(
@@ -304,13 +303,11 @@ private static double roundToInterval(double value, int places) {
     }
 
     private boolean shouldPreviewFontSlider() {
-        return this.sliderSetting.isString
-            && ((this.moduleComponent.mod instanceof HUD && this.sliderSetting == HUD.font)
-            || (this.moduleComponent.mod instanceof Gui && this.sliderSetting == Gui.font));
+        return this.sliderSetting.isString && FontManager.areFontOptions(this.sliderSetting.getOptions());
     }
 
     private boolean shouldCommitOnRelease() {
-        return this.moduleComponent.mod instanceof Gui && this.sliderSetting == Gui.guiScale;
+        return mindless.module.impl.theme.ThemeManager.isGuiScaleSetting(this.sliderSetting);
     }
 
     private double getRenderedInputValue() {
@@ -318,13 +315,16 @@ private static double roundToInterval(double value, int places) {
     }
 
     private void drawFontPreview(float labelX, float labelY, String valueText, String suffix) {
-        String prefix = this.sliderSetting.getName() + ": ";
-        Minecraft mc = Minecraft.getMinecraft();
-        mc.fontRendererObj.drawStringWithShadow(prefix, labelX, labelY, -1);
-        MindlessFontRenderer previewRenderer = FontManager.getClickGuiSettingRenderer(valueText);
-        float valueX = labelX + mc.fontRendererObj.getStringWidth(prefix);
-        float valueY = labelY - (previewRenderer.getFontHeight() - mc.fontRendererObj.FONT_HEIGHT) / 2.0f;
-        previewRenderer.drawString(valueText + suffix, valueX, valueY, 0xFFFFFF, true);
+        MindlessFontRenderer settingRenderer = Gui.getClickGuiSettingFontRenderer();
+        settingRenderer.drawString(this.sliderSetting.getName(), labelX, labelY, 0xFFE7EAF0, true);
+        String family = "Default".equals(valueText) ? ModuleFont.nameOf(this.sliderSetting) : valueText;
+        MindlessFontRenderer previewRenderer = FontManager.getClickGuiSettingRenderer(family);
+        String selectorText = "<  " + valueText + suffix + "  >";
+        float centerX = this.moduleComponent.categoryComponent.getX() + 4
+                + this.moduleComponent.categoryComponent.getWidth() / 2.0f;
+        float valueX = centerX - previewRenderer.getStringWidth(selectorText) / 2.0f;
+        float valueY = (this.moduleComponent.categoryComponent.getY() + this.o + 11.3f) * 2.0f;
+        previewRenderer.drawString(selectorText, valueX, valueY, 0xFF8FC5FF, false);
     }
 
     @Override

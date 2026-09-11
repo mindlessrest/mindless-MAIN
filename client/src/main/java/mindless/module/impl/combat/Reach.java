@@ -115,7 +115,7 @@ public class Reach extends Module {
             for (int zz10 = 0; zz10 < zz8.size(); ++zz10) {
                 Entity zz11 = (Entity) zz8.get(zz10);
                 if (zz11.canBeCollidedWith()) {
-                    float ex = (float) ((double) zz11.getCollisionBorderSize() * HitBox.getExpand(zz11));
+                    float ex = zz11.getCollisionBorderSize();
                     AxisAlignedBB zz13 = zz11.getEntityBoundingBox().expand(ex, ex, ex);
                     zz13 = zz13.expand(expand, expand, expand);
                     MovingObjectPosition zz14 = zz13.calculateIntercept(zz3, zz5);

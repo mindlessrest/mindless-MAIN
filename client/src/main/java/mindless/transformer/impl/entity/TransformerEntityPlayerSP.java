@@ -23,6 +23,11 @@ import net.minecraftforge.common.MinecraftForge;
 
 @CTransformer(EntityPlayerSP.class)
 public abstract class TransformerEntityPlayerSP {
+    @CInline
+    @net.lenni0451.classtransform.annotations.injection.CModifyConstant(method = "onLivingUpdate", floatValue = 0.2F)
+    private float auraItemSlowdown(float original) {
+        return mindless.module.impl.movement.NoSlow.getSlowed();
+    }
     @CShadow public int sprintingTicksLeft;
     @CShadow protected int sprintToggleTimer;
     @CShadow public float prevTimeInPortal;
@@ -47,6 +52,7 @@ public abstract class TransformerEntityPlayerSP {
     @CInline
     @CInject(method = "onUpdate", target = @CTarget("HEAD"))
     private void onUpdatePre(InjectionCallback ci) {
+        if (mindless.utility.Utils.isLocalPlayerSubUpdate()) return;
         EntityPlayerSP self = (EntityPlayerSP) (Object) this;
         if (self.worldObj != null
                 && self.worldObj.isBlockLoaded(new BlockPos(self.posX, 0.0, self.posZ))) {
@@ -59,6 +65,7 @@ public abstract class TransformerEntityPlayerSP {
     @CInline
     @CInject(method = "onUpdate", target = @CTarget("RETURN"))
     private void onUpdatePost(InjectionCallback ci) {
+        if (mindless.utility.Utils.isLocalPlayerSubUpdate()) return;
         EntityPlayerSP self = (EntityPlayerSP) (Object) this;
         if (self.worldObj != null
                 && self.worldObj.isBlockLoaded(new BlockPos(self.posX, 0.0, self.posZ))) {
@@ -82,6 +89,7 @@ public abstract class TransformerEntityPlayerSP {
         );
 
         MinecraftForge.EVENT_BUS.post(preMotionEvent);
+        if (mindless.module.ModuleManager.bedAura != null) mindless.module.ModuleManager.bedAura.afterMotionResolved(preMotionEvent);
 
         RotationUtils.serverRotations = new float[]{preMotionEvent.getYaw(), preMotionEvent.getPitch()};
 
@@ -125,21 +133,21 @@ public abstract class TransformerEntityPlayerSP {
 
             if (self.isRiding()) {
                 this.sendQueue.addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(
-                        preMotionEvent.getYaw(), preMotionEvent.getPitch(), self.onGround));
+                        preMotionEvent.getYaw(), preMotionEvent.getPitch(), preMotionEvent.isOnGround()));
             } else {
                 if (flag2 && flag3) {
                     this.sendQueue.addToSendQueue(new C03PacketPlayer.C06PacketPlayerPosLook(
                             preMotionEvent.getPosX(), preMotionEvent.getPosY(), preMotionEvent.getPosZ(),
-                            preMotionEvent.getYaw(), preMotionEvent.getPitch(), self.onGround));
+                            preMotionEvent.getYaw(), preMotionEvent.getPitch(), preMotionEvent.isOnGround()));
                 } else if (flag2) {
                     this.sendQueue.addToSendQueue(new C03PacketPlayer.C04PacketPlayerPosition(
                             preMotionEvent.getPosX(), preMotionEvent.getPosY(), preMotionEvent.getPosZ(),
-                            self.onGround));
+                            preMotionEvent.isOnGround()));
                 } else if (flag3) {
                     this.sendQueue.addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(
-                            preMotionEvent.getYaw(), preMotionEvent.getPitch(), self.onGround));
+                            preMotionEvent.getYaw(), preMotionEvent.getPitch(), preMotionEvent.isOnGround()));
                 } else {
-                    this.sendQueue.addToSendQueue(new C03PacketPlayer(self.onGround));
+                    this.sendQueue.addToSendQueue(new C03PacketPlayer(preMotionEvent.isOnGround()));
                 }
             }
 

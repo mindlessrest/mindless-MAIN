@@ -25,13 +25,12 @@ public abstract class TransformerEntityLivingBase {
 
     @CShadow
     protected abstract float getJumpUpwardsMotion();
-@CInline
-    @CInject(method = "jump", target = @CTarget("HEAD"), cancellable = true)
-    private void injectJump(InjectionCallback ci) {
+    @net.lenni0451.classtransform.annotations.injection.COverride
+    public void jump() {
         EntityLivingBase self = (EntityLivingBase) (Object) this;
+        boolean localPlayer = self == net.minecraft.client.Minecraft.getMinecraft().thePlayer;
         JumpEvent event = new JumpEvent(self, getJumpUpwardsMotion(), self.rotationYaw, self.isSprinting());
-        MinecraftForge.EVENT_BUS.post(event);
-        ci.setCancelled(true);
+        if (localPlayer) MinecraftForge.EVENT_BUS.post(event);
         if (event.isCanceled()) return;
 
         self.motionY = event.getMotionY();

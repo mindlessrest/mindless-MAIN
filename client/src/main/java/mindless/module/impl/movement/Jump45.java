@@ -81,7 +81,7 @@ public class Jump45 extends Module {
             return;
         }
 
-        event.setYaw(takeoffYaw);
+        event.requestYaw(mindless.rotation.RotationSource.JUMP_45, takeoffYaw);
     }
 
     @SubscribeEvent

@@ -18,7 +18,8 @@ public static boolean shouldSafeWalk(Entity entity) {
         if (entity != mc.thePlayer || !entity.onGround) {
             return sneaking;
         }
-        boolean safeWalk = SafeWalk.canSafeWalk();
+        boolean safeWalk = SafeWalk.canSafeWalk()
+                || ModuleManager.scaffold != null && ModuleManager.scaffold.wantsSafeWalk();
         enable(safeWalk);
         return sneaking || safeWalk;
     }

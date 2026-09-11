@@ -9,6 +9,7 @@ import net.lenni0451.classtransform.annotations.CTransformer;
 import net.lenni0451.classtransform.annotations.injection.CInject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
+import org.lwjgl.input.Mouse;
 
 @CTransformer(GuiScreen.class)
 public abstract class TransformerGuiScreen {
@@ -22,6 +23,14 @@ public abstract class TransformerGuiScreen {
             mc.ingameGUI.getChatGUI().addToSentMessages(msg);
             Mindless.commandManager.executeCommand(msg);
             ci.setCancelled(true);
+        }
+    }
+
+    @CInline
+    @CInject(method = "handleMouseInput", target = @CTarget("HEAD"))
+    private void mindless$resourceDepositMouseWheel(InjectionCallback callbackInfo) {
+        if (ModuleManager.resourceDeposit != null) {
+            ModuleManager.resourceDeposit.onMouseWheel(Mouse.getEventDWheel());
         }
     }
 }

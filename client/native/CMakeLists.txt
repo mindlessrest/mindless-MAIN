@@ -123,14 +123,20 @@ target_include_directories(MindlessNative PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}"
     ${JNI_INCLUDE_DIRS})
 target_link_libraries(MindlessNative PRIVATE user32 advapi32)
-if(NOT MINDLESS_PRODUCTION)
+if(MINDLESS_PRODUCTION)
+    target_compile_definitions(MindlessNative PRIVATE MINDLESS_PRODUCTION=1)
+else()
     target_compile_definitions(MindlessNative PRIVATE _NONPROD=1)
 endif()
 if(MINDLESS_DEBUG_LOGS)
     target_compile_definitions(MindlessNative PRIVATE MINDLESS_DEBUG_LOGS=1)
 endif()
 if(MSVC)
-    target_compile_options(MindlessNative PRIVATE /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS /O2 /Oi /Gy)
+    target_compile_options(MindlessNative PRIVATE
+        /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS
+        $<$<NOT:$<CONFIG:Debug>>:/O2>
+        $<$<NOT:$<CONFIG:Debug>>:/Oi>
+        $<$<NOT:$<CONFIG:Debug>>:/Gy>)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -142,7 +148,26 @@ set_target_properties(MindlessInjector PROPERTIES
     C_STANDARD 11)
 target_link_libraries(MindlessInjector PRIVATE user32 advapi32)
 if(MSVC)
-    target_compile_options(MindlessInjector PRIVATE /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS /O2 /Oi /Gy)
+    target_compile_options(MindlessInjector PRIVATE
+        /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS
+        $<$<NOT:$<CONFIG:Debug>>:/O2>
+        $<$<NOT:$<CONFIG:Debug>>:/Oi>
+        $<$<NOT:$<CONFIG:Debug>>:/Gy>)
+endif()
+
+if(NOT MINDLESS_PRODUCTION)
+    add_executable(MindlessTestLoader injector.c)
+    set_target_properties(MindlessTestLoader PROPERTIES
+        OUTPUT_NAME "MindlessTestLoader"
+        C_STANDARD 11)
+    target_link_libraries(MindlessTestLoader PRIVATE user32 advapi32)
+    if(MSVC)
+        target_compile_options(MindlessTestLoader PRIVATE
+            /W3 /permissive- /D_CRT_SECURE_NO_WARNINGS
+            $<$<NOT:$<CONFIG:Debug>>:/O2>
+            $<$<NOT:$<CONFIG:Debug>>:/Oi>
+            $<$<NOT:$<CONFIG:Debug>>:/Gy>)
+    endif()
 endif()
 
 message(STATUS "mindless_native Forge payload: ${MINDLESS_FORGE_PAYLOAD_JAR}")

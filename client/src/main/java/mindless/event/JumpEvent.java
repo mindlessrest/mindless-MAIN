@@ -6,6 +6,7 @@ import net.minecraftforge.fml.common.eventhandler.Event;
 
 @Cancelable
 public class JumpEvent extends Event {
+    public JumpEvent() { this(null, 0, 0, false); }
     public EntityLivingBase entity;
     private float motionY, yaw;
     private boolean applySprint;

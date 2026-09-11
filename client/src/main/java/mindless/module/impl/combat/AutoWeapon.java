@@ -65,6 +65,10 @@ public class AutoWeapon extends Module {
 
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent event) {
+        if (ModuleManager.killAura != null && ModuleManager.killAura.hasCombatCandidate()) {
+            restoreSilent();
+            return;
+        }
         if (!Utils.nullCheck() || mc.currentScreen != null) {
             restoreSilent();
             return;
@@ -111,6 +115,35 @@ public class AutoWeapon extends Module {
                     new C09PacketHeldItemChange(mc.thePlayer.inventory.currentItem));
         }
         silentSlot = -1;
+    }
+
+    public int auraWeaponSlot(KillAura aura) {
+        if (!isEnabled() || !Utils.nullCheck()) return -1;
+        int best = -1;
+        double damage = -1;
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = mc.thePlayer.inventory.getStackInSlot(slot);
+            if (stack != null && counts(stack) && aura.qualifies(stack) && damageOf(stack) > damage) {
+                best = slot;
+                damage = damageOf(stack);
+            }
+        }
+        return best;
+    }
+
+    public int prepareAura(KillAura aura) {
+        int best = auraWeaponSlot(aura);
+        int original = mc.thePlayer.inventory.currentItem;
+        if (best < 0 || best == original || System.currentTimeMillis() - lastSwitchAt < switchDelay.getInput()) return -1;
+        lastSwitchAt = System.currentTimeMillis();
+        mc.thePlayer.inventory.currentItem = best;
+        mindless.runtime.AccessorBridge.PlayerControllerMP_callSyncCurrentPlayItem(mc.playerController);
+        return silent.isToggled() ? original : -1;
+    }
+
+    public void finishAura(int slot) {
+        mc.thePlayer.inventory.currentItem = slot;
+        mindless.runtime.AccessorBridge.PlayerControllerMP_callSyncCurrentPlayItem(mc.playerController);
     }
 
     /** The hotbar slot holding the hardest-hitting eligible item, or -1. */

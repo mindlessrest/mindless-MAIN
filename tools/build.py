@@ -40,6 +40,8 @@ FORGE_MAPPING   = CLIENT_DIR / "build" / "mappings" / "forge.json"
 LUNAR_MAPPING   = CLIENT_DIR / "build" / "mappings" / "lunar.json"
 NATIVE_BUILD_DIR = CLIENT_DIR / "native_build"
 NATIVE_DLL_OUT   = NATIVE_BUILD_DIR / "dist" / "MindlessNative.dll"
+NATIVE_TEST_LOADER_OUT = NATIVE_BUILD_DIR / "dist" / "MindlessTestLoader.exe"
+INJECTION_DIR = CLIENT_DIR / "build" / "injection"
 
 LOADER_RUNTIME   = LOADER_DIR / "assets" / "runtime" / "MindlessNative.dll"
 OBF_JAR          = ROOT / "tools" / "obf" / "build" / "libs" / "mindless-obf.jar"
@@ -477,7 +479,7 @@ def build_client(jdk17):
     return True
 
 
-def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False):
+def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False, include_test_loader=False):
     section("MindlessNative.dll - build")
 
     if prod:
@@ -571,6 +573,24 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False):
     shutil.copy2(str(NATIVE_DLL_OUT), str(LOADER_RUNTIME))
     ok(f"MindlessNative.dll -> {LOADER_RUNTIME}")
 
+    if include_test_loader:
+        if not NATIVE_TEST_LOADER_OUT.is_file():
+            err(f"MindlessTestLoader.exe not found at {NATIVE_TEST_LOADER_OUT}")
+            return False
+        INJECTION_DIR.mkdir(parents=True, exist_ok=True)
+        bundle_files = [
+            (NATIVE_DLL_OUT, INJECTION_DIR / "MindlessNative.dll"),
+            (NATIVE_TEST_LOADER_OUT, INJECTION_DIR / "MindlessTestLoader.exe"),
+            (FORGE_JAR, INJECTION_DIR / FORGE_JAR.name),
+            (NATIVE_DIR / "README.md", INJECTION_DIR / "README.md"),
+        ]
+        for source, destination in bundle_files:
+            if not source.is_file():
+                err(f"Test loader bundle input missing: {source}")
+                return False
+            shutil.copy2(str(source), str(destination))
+        ok(f"Test loader bundle -> {INJECTION_DIR}")
+
     return True
 
 
@@ -638,7 +658,7 @@ def main():
     print(f"{BOLD}  Mindless United - build{RESET}")
     print(f"{BOLD}{'='*50}{RESET}")
 
-    known_flags = {"--loader", "--client", "--all", "--no-cache", "--prod", "--dev"}
+    known_flags = {"--loader", "--client", "--all", "--no-cache", "--prod", "--dev", "--test-loader"}
     has_target = any(a in {"--loader", "--client", "--all", "--dev"} for a in sys.argv[1:])
     default_all = len(sys.argv) == 1 or (not has_target)
     dev_flag = "--dev" in sys.argv
@@ -646,6 +666,11 @@ def main():
     build_client_flag = "--client" in sys.argv or "--all" in sys.argv or dev_flag or default_all
     no_cache_flag = "--no-cache" in sys.argv
     prod_flag = "--prod" in sys.argv
+    test_loader_flag = "--test-loader" in sys.argv
+
+    if prod_flag and test_loader_flag:
+        err("--test-loader cannot be combined with --prod")
+        sys.exit(1)
     if dev_flag and prod_flag:
         err("--dev and --prod cannot be used together")
         sys.exit(1)
@@ -770,7 +795,8 @@ def main():
                 sys.exit(1)
 
         if jdk_any and llvm and cmake and ninja:
-            if not build_native_dll(cmake, clang, lld, ninja, jdk_any, prod=prod_flag):
+            if not build_native_dll(cmake, clang, lld, ninja, jdk_any, prod=prod_flag,
+                                    include_test_loader=test_loader_flag):
                 print(f"\n{BOLD}{RED}Build failed.{RESET}")
                 sys.exit(1)
         else:

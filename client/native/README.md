@@ -61,16 +61,19 @@ Artifacts are written to `build/native/dist/`.
    OptiFine**. Forge-enabled Lunar profiles remain supported too. Vanilla,
    Fabric and other loaders are not supported. Injecting on the main menu is
    recommended.
-2. Run:
+2. For a local development build, run:
 
    ```powershell
-   .\build\injection\MindlessInjector.exe
+   .\build\injection\MindlessTestLoader.exe
    ```
 
    You get a live list of `java.exe` / `javaw.exe` windows. Pick the
    Minecraft one with Up/Down and press Enter.
 
-   Non-interactive: `MindlessInjector.exe <pid> MindlessNative.dll`
+   Non-interactive: `MindlessTestLoader.exe <pid> MindlessNative.dll`
+
+   The test loader and its development DLL bypass the production loader session.
+   Production DLL builds still require authentication from `MindlessLoader.exe`.
 
 3. On success the injector prints `Loaded ...`; the DLL writes its progress
    log to `mindless-native.log` next to the DLL. Inside the game you should

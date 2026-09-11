@@ -8,8 +8,10 @@ import mindless.event.ClientRotationEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.event.SendPacketEvent;
 import mindless.module.Module;
+import mindless.placement.PlacementCoordinator;
+import mindless.placement.PlacementLease;
+import mindless.placement.PlacementRuntime;
 import mindless.module.setting.impl.ButtonSetting;
-import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.script.ScriptDefaults.client;
 import mindless.script.ScriptDefaults.inventory;
@@ -98,10 +100,10 @@ public class BedDefender extends Module {
     private int aimDelayRemaining;
     private int sneakTicksRemaining;
     private final Map<String, Integer> hotbarSlotCache = new HashMap<String, Integer>();
+    private PlacementLease placementLease;
 
     public BedDefender() {
         super("Bed Defender", "Builds a defence around the bed.", category.bedwars);
-        this.registerSetting(new DescriptionSetting("Layouts by §bwinnie"));
 
         loadDefenses();
 
@@ -213,10 +215,14 @@ public class BedDefender extends Module {
 
     @Override
     public void onDisable() {
+        PlacementCoordinator.get().cancel(this);
         if (sneakingForPlacement) {
-            keybinds.setPressed("sneak", false);
+            if (placementLease != null) {
+                placementLease.claimInput(PlacementRuntime.input(mc.gameSettings.keyBindSneak), false);
+            }
             sneakingForPlacement = false;
         }
+        releasePlacement();
         previewTarget = null;
         pendingPlacement = false;
         debug("disabled");
@@ -229,8 +235,7 @@ public class BedDefender extends Module {
         }
         float[] rotations = solveRotations();
         if (rotations != null) {
-            event.setYaw(rotations[0]);
-            event.setPitch(rotations[1]);
+            event.requestRotation(mindless.rotation.RotationSource.BED_DEFENDER, rotations[0], rotations[1]);
         }
     }
 
@@ -406,8 +411,11 @@ public class BedDefender extends Module {
             this.disable();
             return null;
         }
+        if (!activatePlacement()) {
+            return null;
+        }
         if (inventory.getSlot() != wanted) {
-            inventory.setSlot(wanted);
+            placementLease.claimHotbar(PlacementRuntime.hotbar(), wanted);
             swapDelayRemaining = (int) swapDelay.getInput();
         }
 
@@ -418,7 +426,7 @@ public class BedDefender extends Module {
         // Standing on a bed and placing into it breaks it, so crouch first and give the server a
         // few ticks to see the crouch before the placement goes out.
         if (!keybinds.isPressed("sneak") && hitName.equals("bed")) {
-            keybinds.setPressed("sneak", true);
+            placementLease.claimInput(PlacementRuntime.input(mc.gameSettings.keyBindSneak), true);
             sneakingForPlacement = true;
             sneakTicksRemaining = (int) sneakHold.getInput();
             return new float[]{HOLD, HOLD};
@@ -451,7 +459,9 @@ public class BedDefender extends Module {
                 sneakTicksRemaining--;
             }
             else {
-                keybinds.setPressed("sneak", false);
+                if (placementLease != null) {
+                    placementLease.claimInput(PlacementRuntime.input(mc.gameSettings.keyBindSneak), false);
+                }
                 sneakingForPlacement = false;
             }
         }
@@ -460,7 +470,13 @@ public class BedDefender extends Module {
             return;
         }
         pendingPlacement = false;
-        if (client.placeBlock(placementSupport, placementFace, hitVector)) {
+        if (isPlacementActive() && placementLease.tryControllerAction(Utils.getBaseClientTick(),
+                new PlacementLease.ControllerAction() {
+                    @Override
+                    public boolean run() {
+                        return client.placeBlock(placementSupport, placementFace, hitVector);
+                    }
+                })) {
             client.swing();
             stepIndex++;
         }
@@ -602,6 +618,29 @@ public class BedDefender extends Module {
             }
         }
         return -1;
+    }
+
+    private boolean activatePlacement() {
+        if (isPlacementActive()) {
+            return true;
+        }
+        long tick = Utils.getBaseClientTick();
+        PlacementCoordinator.get().announce(this, PlacementCoordinator.Priority.BED_DEFENDER,
+                mc.thePlayer, mc.theWorld, tick + 1L);
+        placementLease = PlacementCoordinator.get().acquire(this, PlacementCoordinator.Priority.BED_DEFENDER,
+                mc.thePlayer, mc.theWorld, tick);
+        return placementLease != null;
+    }
+
+    private boolean isPlacementActive() {
+        return placementLease != null && placementLease.isActive();
+    }
+
+    private void releasePlacement() {
+        if (placementLease != null) {
+            placementLease.release();
+            placementLease = null;
+        }
     }
 
     /**

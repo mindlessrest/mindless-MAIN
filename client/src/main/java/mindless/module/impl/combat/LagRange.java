@@ -4,9 +4,9 @@ import mindless.Mindless;
 import mindless.event.AttackEvent;
 import mindless.event.GameTickEvent;
 import mindless.event.PrePlayerInteractEvent;
+import mindless.lag.api.DelayLease;
+import mindless.lag.api.DelayRequest;
 import mindless.lag.api.EnumLagDirection;
-import mindless.lag.api.LagRequest;
-import mindless.lag.timeout.ModuleBackedTimeout;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
@@ -53,7 +53,7 @@ public class LagRange extends Module {
     private int hitMarkedEntityId;
     private boolean lastSprintState;
     private boolean lastBlockingState;
-    private LagRequest outboundLag;
+    private DelayLease outboundLag;
 
     private Vec3 indicatorInterpFrom;
     private Vec3 indicatorInterpTo;
@@ -99,7 +99,7 @@ public class LagRange extends Module {
         if (!isLagging) {
             return null;
         }
-        return mindless.Mindless.lagHandler.getLastReleasedServerPosition();
+        return mindless.Mindless.packetDelayService.getLastReleasedServerPosition();
     }
 
     public net.minecraft.entity.player.EntityPlayer getLagRangeTarget() {
@@ -123,8 +123,7 @@ public class LagRange extends Module {
         }
 
         Autoblock autoblock = (Autoblock) ModuleManager.getModule(Autoblock.class);
-        if ((autoblock != null && autoblock.isActive())
-                || (ModuleManager.myauBlock != null && ModuleManager.myauBlock.isActive())) {
+        if (autoblock != null && autoblock.isActive()) {
             if (isLagging) flushLag();
             return;
         }
@@ -176,7 +175,7 @@ public class LagRange extends Module {
                 }
                 lastSelfHurtTime = hurtTime;
 
-                Mindless.lagHandler.releaseExpiredPackets(EnumLagDirection.OUTBOUND, (long) maximumDelay.getInput());
+                if (outboundLag != null) outboundLag.releaseExpired(EnumLagDirection.OUTBOUND);
 
                 if (holdingWeapon.isToggled() && !Utils.holdingWeapon()) {
                     flushLag();
@@ -288,7 +287,7 @@ public class LagRange extends Module {
         if (!realPositionIndicator.isToggled()) return;
         if (mc.gameSettings.thirdPersonView == 0 && !showInFirstPerson.isToggled()) return;
 
-        Vec3 delayedPos = Mindless.lagHandler.getLastReleasedServerPosition();
+        Vec3 delayedPos = Mindless.packetDelayService.getLastReleasedServerPosition();
         if (delayedPos == null) {
             clearIndicatorInterp();
             return;
@@ -352,15 +351,15 @@ public class LagRange extends Module {
     }
 
     private void startLag() {
-        outboundLag = new LagRequest(EnumLagDirection.ONLY_OUTBOUND, new ModuleBackedTimeout(this));
-        Mindless.lagHandler.requestLag(outboundLag);
+        outboundLag = Mindless.packetDelayService.acquire(DelayRequest.perPacketMillis(
+                "Lag Range", EnumLagDirection.ONLY_OUTBOUND, (long) maximumDelay.getInput()));
         isLagging = true;
     }
 
     private void flushLag() {
         if (!isLagging) return;
         if (outboundLag != null) {
-            outboundLag.getTimeout().forceTimeOut();
+            outboundLag.release();
             outboundLag = null;
         }
         isLagging = false;

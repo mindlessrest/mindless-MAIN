@@ -2,6 +2,7 @@ package mindless.module.impl.player;
 
 import mindless.event.PreUpdateEvent;
 import mindless.module.Module;
+import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
@@ -56,6 +57,10 @@ public class InvClicker extends Module {
             return;
         }
         if (!Mouse.isButtonDown(0)) {
+            return;
+        }
+        if (ModuleManager.resourceDeposit != null
+                && ModuleManager.resourceDeposit.shouldYieldChestAutomation()) {
             return;
         }
         if (requireShift.isToggled()

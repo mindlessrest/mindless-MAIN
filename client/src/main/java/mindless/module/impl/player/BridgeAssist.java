@@ -177,7 +177,7 @@ public class BridgeAssist extends Module {
     public void onClientRotation(ClientRotationEvent e) {
         if (!prePlace.isToggled()) return;
         if (!Utils.nullCheck() || mc.currentScreen != null || mc.thePlayer.capabilities.isFlying) return;
-        if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
+        if (ModuleManager.bedAura != null && ModuleManager.bedAura.controlsInteractions()) {
             return;
         }
 
@@ -186,17 +186,16 @@ public class BridgeAssist extends Module {
         if (lookingDown.isToggled() && mc.thePlayer.rotationPitch < 70f) return;
         if (notMovingForward.isToggled() && mc.thePlayer.movementInput.moveForward > 0f) return;
 
-        float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
+        float basePitch = e.getBasePitch() != null ? e.getBasePitch() : RotationUtils.serverRotations[1];
         double reach = mc.playerController.getBlockReachDistance();
 
         TargetResult target = findTarget(basePitch, reach);
         if (target == null) return;
 
-        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
+        float baseYaw = e.getBaseYaw() != null ? e.getBaseYaw() : RotationUtils.serverRotations[0];
         float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, target.yaw, target.pitch, 15, 20f);
 
-        e.setYaw(sm[0]);
-        e.setPitch(sm[1]);
+        e.requestRotation(mindless.rotation.RotationSource.BRIDGE_ASSIST, sm[0], sm[1]);
     }
 
     private void pressSneak(PrePlayerInputEvent e, boolean resetDelay) {

@@ -139,6 +139,9 @@ dependencies {
     }
 
     testImplementation("junit:junit:4.13.2")
+    testRuntimeOnly("org.spongepowered:mixin:0.7.11-SNAPSHOT") {
+        isTransitive = false
+    }
     testImplementation("net.lenni0451.classtransform:core:1.15.1")
     testImplementation("net.lenni0451.classtransform:additionalclassprovider:1.15.1")
 }
@@ -358,7 +361,7 @@ val prepareInjectionBundle by tasks.registering(Sync::class) {
     description = "Assembles build/injection/ with DLL, EXE, and README."
     dependsOn(buildNative)
     from(nativeDistDir) {
-        include("MindlessNative.dll", "MindlessInjector.exe")
+        include("MindlessNative.dll", "MindlessInjector.exe", "MindlessTestLoader.exe")
     }
     from(nativeDir) {
         include("README.md")

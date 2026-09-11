@@ -12,7 +12,7 @@ import mindless.helper.DebugHelper;
 import mindless.helper.MouseHelper;
 import mindless.helper.PingHelper;
 import mindless.helper.RotationHelper;
-import mindless.lag.handler.UnifiedLagHandler;
+import mindless.lag.service.PacketDelayService;
 import mindless.runtime.LunarEventBridge;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
@@ -64,7 +64,7 @@ public class Mindless {
     public static PlayerRelationsManager playerRelationsManager;
     public static Profile currentProfile;
     public static PacketsHandler packetsHandler;
-    public static UnifiedLagHandler lagHandler;
+    public static PacketDelayService packetDelayService;
 
     private static boolean firstLoad;
 
@@ -89,7 +89,8 @@ public class Mindless {
         registerHandler(new ModuleUtils(), false);
         registerHandler(AttackPacketTimingTracker.INSTANCE, false);
         registerHandler(PlayerKillDetector.INSTANCE, true);
-        registerHandler(lagHandler = new UnifiedLagHandler(), false);
+        registerHandler(packetDelayService = new PacketDelayService(), false);
+        registerHandler(new mindless.placement.PlacementLifecycle(), false);
         registerHandler(new mindless.helper.GameWinDetector(), false);
         AccountManager.init();
         registerHandler(new Events(), false);
@@ -193,13 +194,16 @@ public class Mindless {
 
     @SubscribeEvent
     public void onPostSetSlider(PostSetSliderEvent e) {
-        applyKillAuraRangeConstraints();
+        if (ModuleManager.killAura != null) ModuleManager.killAura.settingsEdited();
         clickGui.onSliderChange();
     }
 
     @SubscribeEvent
     public void onEntityJoinWorld(EntityJoinWorldEvent e) {
         if (e.entity == mc.thePlayer) {
+            if (packetDelayService != null) {
+                packetDelayService.activate();
+            }
             if (!firstLoad) {
                 firstLoad = true;
                 scriptManager.loadScripts();
@@ -269,34 +273,7 @@ private static void saveOnShutdown() {
     }
 
     private boolean applyKillAuraRangeConstraints() {
-        if (ModuleManager.killAura == null) {
-            return false;
-        }
-
-        SliderSetting attackRange = ModuleManager.killAura.getAttackRangeSetting();
-        SliderSetting swingRange = ModuleManager.killAura.getSwingRangeSetting();
-        SliderSetting aimRange = ModuleManager.killAura.getAimRangeSetting();
-        if (attackRange == null || swingRange == null || aimRange == null) {
-            return false;
-        }
-
-        boolean changed = false;
-        double attack = attackRange.getInput();
-        double swing = swingRange.getInput();
-        double aim = aimRange.getInput();
-
-        if (swing < attack) {
-            swingRange.setValue(attack);
-            swing = swingRange.getInput();
-            changed = true;
-        }
-
-        if (aim < swing) {
-            aimRange.setValue(swing);
-            changed = true;
-        }
-
-        return changed;
+        return ModuleManager.killAura != null && ModuleManager.killAura.normalizeSettings();
     }
 private static final java.util.List<Object[]> EVENT_HANDLERS = new java.util.ArrayList<Object[]>();
     private static volatile boolean unloaded = false;
@@ -318,6 +295,10 @@ public static synchronized void uninject() {
             return;
         }
         unloaded = true;
+
+        if (packetDelayService != null) {
+            packetDelayService.invalidate();
+        }
 
         try {
             if (mc.currentScreen instanceof ClickGui) {
@@ -417,6 +398,10 @@ public static synchronized void reinject() {
             mindless.runtime.TransformerHooks.retransformNative();
         } catch (Throwable t) {
             markNativeLog("Retransform classes failed: " + t);
+        }
+
+        if (packetDelayService != null) {
+            packetDelayService.activate();
         }
 
         for (Object[] entry : EVENT_HANDLERS) {

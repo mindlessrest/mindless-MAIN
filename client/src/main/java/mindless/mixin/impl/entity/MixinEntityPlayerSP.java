@@ -159,6 +159,7 @@ public abstract class MixinEntityPlayerSP extends AbstractClientPlayer {
         );
 
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(preMotionEvent);
+        if (mindless.module.ModuleManager.bedAura != null) mindless.module.ModuleManager.bedAura.afterMotionResolved(preMotionEvent);
 
         RotationUtils.serverRotations = new float[] { preMotionEvent.getYaw(), preMotionEvent.getPitch() };
 

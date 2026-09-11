@@ -2,9 +2,9 @@ package mindless.module.impl.player;
 
 import mindless.Mindless;
 import mindless.event.GameTickEvent;
+import mindless.lag.api.DelayLease;
+import mindless.lag.api.DelayRequest;
 import mindless.lag.api.EnumLagDirection;
-import mindless.lag.api.LagRequest;
-import mindless.lag.timeout.ModuleBackedTimeout;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.SliderSetting;
@@ -20,7 +20,7 @@ public class FakeLag extends Module {
     private final SliderSetting packetDelaySlider;
     private int appliedMode = -1;
     private long appliedDelayMs = -1;
-    private LagRequest activeLagRequest;
+    private DelayLease activeLease;
 
     public FakeLag() {
         super("Fake Lag", "Adds delay to the packets you send.", category.combat);
@@ -38,14 +38,14 @@ public class FakeLag extends Module {
         int m = (int) mode.getInput();
         long d = (long) packetDelaySlider.getInput();
         if (m != appliedMode || d != appliedDelayMs) {
-            appliedMode = m; appliedDelayMs = d; rebindLagRequest();
+            appliedMode = m; appliedDelayMs = d; rebindLease();
         }
     }
 
-    private void rebindLagRequest() {
-        if (activeLagRequest != null) activeLagRequest.getTimeout().forceTimeOut();
-        activeLagRequest = new LagRequest(lagDirectionsForMode(), new ModuleBackedTimeout(this));
-        Mindless.lagHandler.requestLag(activeLagRequest);
+    private void rebindLease() {
+        if (activeLease != null) activeLease.release();
+        activeLease = Mindless.packetDelayService.acquire(DelayRequest.perPacketMillis(
+                "Fake Lag", lagDirectionsForMode(), appliedDelayMs));
     }
 
     private Set<EnumLagDirection> lagDirectionsForMode() {
@@ -62,12 +62,12 @@ public class FakeLag extends Module {
         if (ModuleManager.blink != null && ModuleManager.blink.isEnabled()) { Utils.sendMessage("&cCannot use fake lag with blink!"); this.disable(); return; }
         appliedMode = (int) mode.getInput();
         appliedDelayMs = (long) packetDelaySlider.getInput();
-        rebindLagRequest();
+        rebindLease();
     }
 
     @Override
     public void onDisable() {
-        if (activeLagRequest != null) { activeLagRequest.getTimeout().forceTimeOut(); activeLagRequest = null; }
+        if (activeLease != null) { activeLease.release(); activeLease = null; }
         appliedMode = -1; appliedDelayMs = -1;
     }
 
@@ -75,11 +75,7 @@ public class FakeLag extends Module {
     public void onGameTick(GameTickEvent e) {
         if (!isEnabled()) return;
         if (!Utils.nullCheck() || mc.theWorld == null) { this.disable(); return; }
-        long delayMs = (long) packetDelaySlider.getInput();
-        if (delayMs <= 0) return;
-        Set<EnumLagDirection> directions = lagDirectionsForMode();
-        if (directions.contains(EnumLagDirection.INBOUND)) Mindless.lagHandler.releaseExpiredPackets(EnumLagDirection.INBOUND, delayMs);
-        if (directions.contains(EnumLagDirection.OUTBOUND)) Mindless.lagHandler.releaseExpiredPackets(EnumLagDirection.OUTBOUND, delayMs);
+        Mindless.packetDelayService.drainExpired();
     }
 
     @SubscribeEvent
@@ -87,4 +83,5 @@ public class FakeLag extends Module {
         if (e.phase != TickEvent.Phase.END) return;
         if (mc.theWorld == null && isEnabled()) this.disable();
     }
+
 }

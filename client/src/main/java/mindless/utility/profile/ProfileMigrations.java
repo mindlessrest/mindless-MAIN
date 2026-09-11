@@ -37,7 +37,7 @@ import java.nio.file.StandardCopyOption;
 public final class ProfileMigrations {
 
     /** Bump when a migration is added below. */
-    public static final int CURRENT_VERSION = 2;
+    public static final int CURRENT_VERSION = 4;
 
     private static final String VERSION_KEY = "configVersion";
 
@@ -118,8 +118,175 @@ public final class ProfileMigrations {
             case 1:
                 mergeScaffoldModules(profile);
                 break;
+            case 2:
+                addSilentBedBreakerDefaults(profile);
+                break;
+            case 3:
+                migrateKillAura(profile);
+                break;
             default:
                 break;
+        }
+    }
+
+    private static void migrateKillAura(JsonObject profile) {
+        JsonElement modulesElement = profile.get("modules");
+        if (modulesElement == null || !modulesElement.isJsonArray()) {
+            return;
+        }
+        for (JsonElement element : modulesElement.getAsJsonArray()) {
+            if (element == null || !element.isJsonObject()) {
+                continue;
+            }
+            JsonObject module = element.getAsJsonObject();
+            JsonElement name = module.get("name");
+            if (name == null || !name.isJsonPrimitive() || !"Kill Aura".equalsIgnoreCase(name.getAsString())) {
+                continue;
+            }
+
+            Integer oldAps = integerValue(module, "Target CPS");
+            if (!module.has("Min APS")) {
+                module.addProperty("Min APS", oldAps == null ? 14 : clamp(oldAps, 1, 20));
+            }
+            if (!module.has("Max APS")) {
+                module.addProperty("Max APS", oldAps == null ? 14 : clamp(oldAps, 1, 20));
+            }
+
+            copyNumber(module, "Range (attack)", "Range (attack)");
+            copyNumber(module, "Range (swing)", "Range (swing)");
+            copyNumber(module, "FOV", "FOV");
+            copyNumber(module, "Switch delay", "Switch delay");
+            copyNumber(module, "Rotation mode", "Rotation mode");
+            copyBoolean(module, "Hit through walls", "Aim through blocks");
+            copyBoolean(module, "Require mouse down", "Require mouse down");
+            copyBoolean(module, "Weapon only", "Weapon only");
+            copyBoolean(module, "Inventory check", "Disable in inventory");
+
+            Integer sort = integerValue(module, "Sort mode");
+            if (sort == null) {
+                sort = integerValue(module, "Sort");
+            }
+            if (sort != null && (sort == 4 || sort < 0 || sort > 3)) {
+                module.addProperty("Sort mode", sort == 4 ? 1 : clamp(sort, 0, 3));
+            }
+            else if (!module.has("Sort mode") && sort != null) {
+                module.addProperty("Sort mode", sort);
+            }
+            if (!module.has("Auto block mode")) {
+                Boolean oldAutoBlock = booleanValue(module, "Auto block");
+                if (oldAutoBlock != null) {
+                    module.addProperty("Auto block mode", oldAutoBlock ? 7 : 0);
+                }
+            }
+            return;
+        }
+    }
+
+    private static void copyNumber(JsonObject module, String destination, String source) {
+        if (module.has(destination) || !module.has(source)) {
+            return;
+        }
+        JsonElement value = module.get(source);
+        if (value != null && value.isJsonPrimitive()) {
+            try {
+                double number = value.getAsDouble();
+                if (!Double.isNaN(number) && !Double.isInfinite(number)) {
+                    module.add(destination, value);
+                }
+            }
+            catch (Exception ignored) {
+            }
+        }
+    }
+
+    private static void copyBoolean(JsonObject module, String destination, String source) {
+        if (module.has(destination) || !module.has(source)) {
+            return;
+        }
+        Boolean value = booleanValue(module, source);
+        if (value != null) {
+            module.addProperty(destination, value);
+        }
+    }
+
+    private static Integer integerValue(JsonObject module, String key) {
+        JsonElement value = module.get(key);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+            return null;
+        }
+        try {
+            double number = value.getAsDouble();
+            if (Double.isNaN(number) || Double.isInfinite(number)) {
+                return null;
+            }
+            return (int) Math.floor(number);
+        }
+        catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static Boolean booleanValue(JsonObject module, String key) {
+        JsonElement value = module.get(key);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) {
+            return null;
+        }
+        try {
+            String text = value.getAsString();
+            if ("true".equalsIgnoreCase(text)) {
+                return true;
+            }
+            if ("false".equalsIgnoreCase(text)) {
+                return false;
+            }
+        }
+        catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private static int clamp(int value, int minimum, int maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
+    }
+
+    private static void addSilentBedBreakerDefaults(JsonObject profile) {
+        JsonElement modulesElement = profile.get("modules");
+        if (modulesElement == null || !modulesElement.isJsonArray()) {
+            return;
+        }
+        for (JsonElement element : modulesElement.getAsJsonArray()) {
+            if (element == null || !element.isJsonObject()) {
+                continue;
+            }
+            JsonObject module = element.getAsJsonObject();
+            JsonElement name = module.get("name");
+            if (name == null || !name.isJsonPrimitive() || !"Bed Breaker".equalsIgnoreCase(name.getAsString())) {
+                continue;
+            }
+            addDefault(module, "Silent.Range", 5.5D);
+            addDefault(module, "Silent.Speed", 33D);
+            addDefault(module, "Silent.Ground spoof", true);
+            addDefault(module, "Silent.Ignore velocity", 0);
+            addDefault(module, "Silent.Surroundings", true);
+            addDefault(module, "Silent.Tool check", true);
+            addDefault(module, "Silent.Whitelist", true);
+            addDefault(module, "Silent.Swing", true);
+            addDefault(module, "Silent.Move fix", 1);
+            addDefault(module, "Silent.Show target", 1);
+            addDefault(module, "Silent.Show progress", 1);
+            return;
+        }
+    }
+
+    private static void addDefault(JsonObject module, String key, boolean value) {
+        if (!module.has(key)) {
+            module.addProperty(key, value);
+        }
+    }
+
+    private static void addDefault(JsonObject module, String key, Number value) {
+        if (!module.has(key)) {
+            module.addProperty(key, value);
         }
     }
 

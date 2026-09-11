@@ -78,6 +78,7 @@ private enum Category {
     private final SliderSetting backgroundAlpha;
     private final ButtonSetting stackLayout;
     private final ButtonSetting outline;
+    private final SliderSetting outlineThickness;
     private final ButtonSetting showName;
     private final SliderSetting nameStyle;
     private final ColorSetting nameColor;
@@ -100,7 +101,7 @@ private static final double STACK_RADIUS_SQ = 9.0D;
     private RenderUtils.ProjectionContext projectionContext;
 
     public ItemESP() {
-        super("Item ESP", "Shows dropped items, grouped by type.", category.render);
+        super("Resource ESP", "Shows dropped BedWars resources and utility items.", category.render);
         this.liteModule = true;
 
         GroupSetting items = new GroupSetting("Items");
@@ -123,6 +124,7 @@ private static final double STACK_RADIUS_SQ = 9.0D;
         registerSetting(showDistance = new ButtonSetting(card, "Show distance", false));
         registerSetting(distanceColor = new ColorSetting(card, "Distance color", 204, 204, 204));
         registerSetting(outline = new ButtonSetting(card, "Outline", true));
+        registerSetting(outlineThickness = new SliderSetting(card, "Outline thickness", 1.0, 0.5, 5.0, 0.25));
         registerSetting(iconScale = new SliderSetting(card, "Icon scale", "x", 1.0, 0.0, 2.0, 0.05));
         registerSetting(backgroundAlpha = new SliderSetting(card, "Background alpha", 170, 0, 255, 5));
 
@@ -139,6 +141,7 @@ private static final double STACK_RADIUS_SQ = 9.0D;
 
         iconScale.setVisible(icon, this);
         outline.setVisible(chrome, this);
+        outlineThickness.setVisible(chrome && outline.isToggled(), this);
         backgroundAlpha.setVisible(chrome, this);
 
         boolean count = showCount.isToggled();
@@ -324,6 +327,7 @@ private final List<Card> cardPool = new ArrayList<Card>();
         float fontHeight = text.getFontHeight();
         int alpha = chrome ? (int) backgroundAlpha.getInput() : 0;
         boolean drawOutline = chrome && outline.isToggled();
+        float outlineWidth = (float) outlineThickness.getInput();
         boolean drawCount = labels && showCount.isToggled();
         boolean drawName = labels && showName.isToggled();
         boolean drawDistance = labels && showDistance.isToggled();
@@ -356,7 +360,7 @@ private final List<Card> cardPool = new ArrayList<Card>();
                         (alpha << 24) | 0x121214);
             }
             if (drawOutline) {
-                RoundedUtils.drawRoundOutline(left, top, width, height, 3f, 1f,
+                RoundedUtils.drawRoundOutline(left, top, width, height, 3f, outlineWidth,
                         new java.awt.Color(0, 0, 0, 0),
                         new java.awt.Color((card.category.color >> 16) & 0xFF,
                                 (card.category.color >> 8) & 0xFF, card.category.color & 0xFF, 200));

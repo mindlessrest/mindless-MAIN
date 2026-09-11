@@ -5,6 +5,7 @@ import mindless.event.PlayerMoveEvent;
 import mindless.event.StepHeightEvent;
 import mindless.event.StrafeEvent;
 import mindless.module.ModuleManager;
+import mindless.module.impl.network.Backtrack;
 import mindless.module.impl.player.SafeWalk;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
@@ -102,5 +103,18 @@ public abstract class MixinEntity {
         if (((Object) this) instanceof EntityPlayerSP) {
             MinecraftForge.EVENT_BUS.post(new PlayerMoveEvent(x, y, z));
         }
+    }
+
+    @Inject(method = "applyEntityCollision", at = @At("HEAD"), cancellable = true)
+    private void suppressStaleBacktrackCollision(Entity entityIn, CallbackInfo ci) {
+        Backtrack backtrack = ModuleManager.backtrack;
+        EntityPlayerSP player = Minecraft.getMinecraft().thePlayer;
+        if (backtrack == null || !backtrack.isEnabled() || player == null || entityIn == null) return;
+        Entity self = (Entity) (Object) this;
+        if (entityIn == player) {
+            if (backtrack.isEntityCollisionStale(self.getEntityId(), self.posX, self.posZ)) ci.cancel();
+            return;
+        }
+        if (self == player && backtrack.isEntityCollisionStale(entityIn.getEntityId(), entityIn.posX, entityIn.posZ)) ci.cancel();
     }
 }

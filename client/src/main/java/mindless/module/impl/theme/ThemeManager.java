@@ -15,6 +15,7 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Theme;
 
 import java.awt.Color;
+import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -64,6 +65,7 @@ public static final int CUSTOM_INDEX = THEMES.length;
     public static ButtonSetting applyOnSelect, applyText, applyToggleColors, applyHudGradient;
     public static ButtonSetting applySurfaces;
     public static SliderSetting font;
+    public static SliderSetting guiScale;
     public static SliderSetting blurSize;
     public static SliderSetting rounding;
     public static ButtonSetting customizeHud;
@@ -171,6 +173,7 @@ private static int appliedIndex = -1;
         for (Setting setting : COLOURS) setting.visible = false;
         GroupSetting appearance = new GroupSetting("Appearance");
         this.registerSetting(appearance);
+        this.registerSetting(guiScale = new SliderSetting(appearance, "GUI scale", "x", 1.0, 0.5, 2.0, 0.01));
         this.registerSetting(font = new SliderSetting(appearance, "Font", defaultFontIndex(), FONT_OPTIONS));
         this.registerSetting(blurSize = new SliderSetting(appearance, "Blur size", "%", 0, 0, 100, 1));
         this.registerSetting(rounding = new SliderSetting(appearance, "Rounding", "%", 100, 0, 200, 5));
@@ -335,11 +338,34 @@ private static void syncAppearance() {
             }
         }
     }
-private static int defaultFontIndex() {
+    private static int defaultFontIndex() {
         for (int i = 0; i < FONT_OPTIONS.length; i++) {
             if (!"Minecraft".equalsIgnoreCase(FONT_OPTIONS[i])) return i;
         }
         return 0;
+    }
+
+    /** The scale shared by every Click GUI layout and render pass. */
+    public static float getGuiScale() {
+        return guiScale == null ? 1.0F : (float) Math.max(0.5D, Math.min(2.0D, guiScale.getInput()));
+    }
+
+    public static boolean isGuiScaleSetting(SliderSetting setting) {
+        return setting != null && setting == guiScale;
+    }
+
+    /** Keeps profiles created before GUI scale moved to Theme Manager looking the same. */
+    public static void migrateLegacyGuiScale(JsonObject legacyGui, JsonObject savedTheme) {
+        if (guiScale == null || legacyGui == null
+                || (savedTheme != null && savedTheme.has(guiScale.getProfileKey()))
+                || !legacyGui.has("Gui scale")) {
+            return;
+        }
+        try {
+            guiScale.setValue(legacyGui.get("Gui scale").getAsDouble());
+        }
+        catch (Exception ignored) {
+        }
     }
 
     public static boolean isHudCustomized() {

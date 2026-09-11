@@ -323,6 +323,14 @@ public class InvManager extends Module {
             return;
         }
 
+        if (mc.currentScreen instanceof GuiChest
+                && ModuleManager.resourceDeposit != null
+                && ModuleManager.resourceDeposit.shouldYieldChestAutomation()) {
+            closeGui = false;
+            closeSession();
+            return;
+        }
+
         if (closeChest.isToggled() && closeGui) {
             closeGui = false;
             closeSession();

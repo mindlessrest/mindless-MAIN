@@ -1,6 +1,7 @@
 package mindless.utility;
 
 import mindless.Mindless;
+import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.C07PacketPlayerDigging;
 import net.minecraft.util.BlockPos;
@@ -33,6 +34,14 @@ public class PacketUtils implements IMinecraftInstance {
         }
         skipSendEvent.add(packet);
         Mindless.mc.thePlayer.sendQueue.addToSendQueue(packet);
+    }
+
+    public static void sendPacketNoEvent(NetworkManager networkManager, Packet packet) {
+        if (networkManager == null || packet == null || isClientboundPacket(packet)) {
+            return;
+        }
+        skipSendEvent.add(packet);
+        networkManager.sendPacket(packet);
     }
 
     /**

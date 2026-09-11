@@ -1,37 +1,38 @@
 package mindless.module.impl.network;
 
-import net.minecraft.client.renderer.GlStateManager;
-import mindless.event.ReceivePacketEvent;
-import mindless.runtime.AccessorBridge;
+import mindless.Mindless;
+import mindless.event.DispatchPacketEvent;
+import mindless.lag.api.BacktrackControlSnapshot;
+import mindless.lag.api.BacktrackPacketPolicy;
+import mindless.lag.api.BacktrackPoseSnapshot;
+import mindless.lag.api.DelayLease;
+import mindless.lag.api.DelayRequest;
+import mindless.lag.api.EnumLagDirection;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.render.TargetHUD;
-import mindless.module.impl.world.AntiBot;
 import mindless.module.impl.world.TargetFilter;
+import mindless.runtime.AccessorBridge;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.RenderUtils;
-import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
+import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.network.Packet;
-import net.minecraft.network.play.INetHandlerPlayClient;
-import net.minecraft.network.play.server.*;
+import net.minecraft.network.play.client.C02PacketUseEntity;
 import net.minecraft.util.Vec3;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class Backtrack extends Module {
     private final SliderSetting minDistance;
     private final SliderSetting maxDistance;
     private final SliderSetting minDelay;
     private final SliderSetting maxDelay;
+    private final SliderSetting attackWindow;
     private final SliderSetting maxHurtTime;
     private final SliderSetting cooldown;
     private final ButtonSetting disableAdventure;
@@ -39,21 +40,17 @@ public class Backtrack extends Module {
     private final ButtonSetting weaponOnly;
     private final ButtonSetting showServerPosition;
     private final ColorSetting positionColor;
+    private final BacktrackPacketPolicy policy = new BacktrackPacketPolicy();
 
-    private final Queue<TimedPacket> packetQueue = new ConcurrentLinkedQueue<>();
-    private Vec3 targetPos = null;
-    private EntityPlayer target = null;
-    private int currentDelay = 0;
-    private long lastDeactivationTime = 0;
-    private boolean wasActive = false;
-    private static final long POSITION_INTERP_MS = 80L;
-    private static final double POS_EPS = 1.0e-6;
-    private static final double MOVEMENT_DISTANCE_EPS = 0.001D;
+    private DelayLease lease;
+    private volatile EntityPlayer target;
+    private volatile EntityPlayer pendingAttackTarget;
+    private volatile long acceptedAttackAtNanos = Long.MIN_VALUE;
+    private volatile long cooldownUntilNanos;
+    private boolean wasWindowActive;
     private Vec3 positionInterpFrom;
     private Vec3 positionInterpTo;
-    private long positionInterpStartMs;
-    private Vec3 lastTargetSnapshot = null;
-    private boolean delayingPackets = false;
+    private long positionInterpStartNanos;
 
     public Backtrack() {
         super("Backtrack", "Holds packets so you hit where they were.", category.combat);
@@ -63,6 +60,7 @@ public class Backtrack extends Module {
         this.registerSetting(minDistance = new SliderSetting("Distance (min)", 0.0, 0.0, 3.0, 0.1));
         this.registerSetting(maxDistance = new SliderSetting("Distance (max)", 4.0, 1.0, 6.0, 0.1));
         this.registerSetting(cooldown = new SliderSetting("Cooldown", "ms", 0.0, 0.0, 2000.0, 50.0));
+        this.registerSetting(attackWindow = new SliderSetting("Attack window", "ms", 1000.0, 100.0, 5000.0, 50.0));
         this.registerSetting(maxHurtTime = new SliderSetting("Max hurt time", "ms", 500.0, 0.0, 500.0, 10.0));
         this.registerSetting(disableAdventure = new ButtonSetting("Disable adventure", true));
         this.registerSetting(flushOnDamage = new ButtonSetting("Flush on damage", true));
@@ -79,304 +77,261 @@ public class Backtrack extends Module {
 
     @Override
     public void onEnable() {
-        packetQueue.clear();
-        targetPos = null;
-        target = null;
-        currentDelay = 0;
-        lastDeactivationTime = 0;
-        wasActive = false;
+        if (Mindless.packetDelayService == null) return;
+        Mindless.packetDelayService.activate();
+        resetRuntimeState();
+        ensureLease();
     }
 
     @Override
     public void onDisable() {
-        if (mc.isSingleplayer()) resetWithoutProcessingPackets();
-        else releaseAll();
-        target = null;
-        targetPos = null;
-        currentDelay = 0;
-        clearPositionInterp();
+        resetRuntimeState();
+    }
+
+    @Override
+    public void onProfileLoad() {
+        resetRuntimeState();
+    }
+
+    public void onWorldUnload() {
+        resetRuntimeState();
     }
 
     @Override
     public void onUpdate() {
-        if (mc.isSingleplayer()) { resetWithoutProcessingPackets(); return; }
-        if (mc.thePlayer == null || mc.theWorld == null) { releaseAll(); return; }
-        if (weaponOnly.isToggled() && !Utils.holdingWeapon()) { releaseAll(); return; }
-        if (disableAdventure.isToggled() && mc.playerController.getCurrentGameType().isAdventure()) { releaseAll(); return; }
-        if (flushOnDamage.isToggled() && mc.thePlayer.hurtTime > 0) { releaseAll(); return; }
+        long now = System.nanoTime();
+        boolean active = policy.isWindowActive(now);
+        if (wasWindowActive && !active && cooldown.getInput() > 0.0D) {
+            cooldownUntilNanos = now + DelayRequest.millisToNanos((long) cooldown.getInput());
+        }
+        wasWindowActive = active;
 
-        if (targetPos != null && target != null) {
-            double distance = RotationUtils.distanceFromEyeToClosestOnAABB(target, targetPos);
-            if (distance > maxDistance.getInput() || distance < minDistance.getInput()) {
-                if (wasActive) {
-                    releaseAll();
-                    lastDeactivationTime = System.currentTimeMillis();
-        wasActive = false;
-        lastTargetSnapshot = null;
-        delayingPackets = false;
-        clearPositionInterp();
-                }
-            }
+        if (!isRuntimeReady()) {
+            invalidateLease();
+            policy.setControl(BacktrackControlSnapshot.disabled());
+            return;
+        }
+        if (weaponOnly.isToggled() && !Utils.holdingWeapon()) {
+            invalidateLease();
+            policy.setControl(BacktrackControlSnapshot.disabled());
+            return;
+        }
+        if (disableAdventure.isToggled() && mc.playerController != null
+                && mc.playerController.getCurrentGameType().isAdventure()) {
+            invalidateLease();
+            policy.setControl(BacktrackControlSnapshot.disabled());
+            return;
+        }
+        if (flushOnDamage.isToggled() && mc.thePlayer.hurtTime > 0) {
+            releaseClaims();
+            acceptedAttackAtNanos = Long.MIN_VALUE;
+            policy.setControl(BacktrackControlSnapshot.disabled());
+            return;
         }
 
-        processDelayedPackets();
+        EntityPlayer currentTarget = target;
+        if (!isEligibleTarget(currentTarget)) {
+            releaseClaims();
+            policy.setControl(BacktrackControlSnapshot.disabled());
+            return;
+        }
 
-        if (packetQueue.isEmpty() && target != null) targetPos = target.getPositionVector();
-        wasActive = currentDelay > 0 && !packetQueue.isEmpty();
+        ensureLease();
+
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0F);
+        Vec3 displayed = currentTarget.getPositionVector();
+        long minDelayNanos = DelayRequest.millisToNanos((long) Math.min(minDelay.getInput(), maxDelay.getInput()));
+        long maxDelayNanos = DelayRequest.millisToNanos((long) Math.max(minDelay.getInput(), maxDelay.getInput()));
+        long attackWindowNanos = DelayRequest.millisToNanos((long) attackWindow.getInput());
+        BacktrackControlSnapshot next = BacktrackControlSnapshot.builder()
+                .enabled(true)
+                .targetEligible(true)
+                .flushOnDamage(flushOnDamage.isToggled())
+                .localEntityId(mc.thePlayer.getEntityId())
+                .targetEntityId(currentTarget.getEntityId())
+                .attackAtNanos(acceptedAttackAtNanos)
+                .attackWindowNanos(attackWindowNanos)
+                .cooldownUntilNanos(cooldownUntilNanos)
+                .minDelayNanos(minDelayNanos)
+                .maxDelayNanos(maxDelayNanos)
+                .eye(eye.xCoord, eye.yCoord, eye.zCoord)
+                .displayed(displayed.xCoord, displayed.yCoord, displayed.zCoord)
+                .size(currentTarget.width, currentTarget.height)
+                .distance(minDistance.getInput(), maxDistance.getInput())
+                .thresholds(0.025D, 0.01D)
+                .build();
+        policy.setControl(next);
     }
 
     @SubscribeEvent
-    public void onRenderWorld(RenderWorldLastEvent event) {
-        if (mc.isSingleplayer() || !showServerPosition.isToggled()) return;
-        if (target == null || targetPos == null || target.isDead || currentDelay <= 0) return;
-
-        long nowMs = System.currentTimeMillis();
-        if (positionInterpTo == null) {
-            positionInterpFrom = targetPos;
-            positionInterpTo = targetPos;
-            positionInterpStartMs = nowMs;
-        } else if (positionChanged(targetPos, positionInterpTo)) {
-            double elapsedProgress = Math.min(1.0D,
-                    (nowMs - positionInterpStartMs) / (double) POSITION_INTERP_MS);
-            positionInterpFrom = lerpVec3(positionInterpFrom, positionInterpTo, elapsedProgress);
-            positionInterpTo = targetPos;
-            positionInterpStartMs = nowMs;
+    public void onAttackEntity(AttackEntityEvent event) {
+        if (!isEnabled() || mc.isSingleplayer() || !isRuntimeReady()) return;
+        if (event.entityPlayer != mc.thePlayer || !(event.target instanceof EntityPlayer)) return;
+        EntityPlayer attacked = (EntityPlayer) event.target;
+        if (isEligibleTarget(attacked)) {
+            if (target != attacked) releaseClaims();
+            target = attacked;
+            pendingAttackTarget = attacked;
         }
-
-        double progress = Math.min(1.0D,
-                (nowMs - positionInterpStartMs) / (double) POSITION_INTERP_MS);
-        Vec3 drawPos = lerpVec3(positionInterpFrom, positionInterpTo, progress);
-
-        int color = positionColor.getColor();
-        TargetHUD targetHUD = ModuleManager.targetHUD;
-        if (targetHUD != null && targetHUD.isEspActiveFor(target))
-            color = targetHUD.getCurrentEspColor(positionColor.getAlpha()).getRGB();
-
-        RenderUtils.drawPlayerBoundingBox(drawPos, color);
     }
 
     @SubscribeEvent
-    public void onAttackEntity(AttackEntityEvent e) {
-        if (mc.isSingleplayer()) return;
-        if (weaponOnly.isToggled() && !Utils.holdingWeapon()) return;
-        if (disableAdventure.isToggled() && mc.playerController.getCurrentGameType().isAdventure()) return;
-        if (cooldown.getInput() > 0 && lastDeactivationTime > 0 && System.currentTimeMillis() - lastDeactivationTime < cooldown.getInput()) return;
-        if (!(e.target instanceof EntityPlayer)) return;
-
-        EntityPlayer attacked = (EntityPlayer) e.target;
-        if (TargetFilter.shouldFilter(attacked)) return;
-
-        double distance = mc.thePlayer.getDistanceToEntity(attacked);
-        if (distance > maxDistance.getInput() || distance < minDistance.getInput()) return;
-        if (maxHurtTime.getInput() < 500 && attacked.hurtTime * 50 > maxHurtTime.getInput()) return;
-
-        if (target == null || attacked != target) {
-            releaseAll();
-            targetPos = attacked.getPositionVector();
+    public void onDispatchPacket(DispatchPacketEvent event) {
+        if (!isEnabled() || !(event.getPacket() instanceof C02PacketUseEntity)) return;
+        C02PacketUseEntity packet = (C02PacketUseEntity) event.getPacket();
+        if (packet.getAction() != C02PacketUseEntity.Action.ATTACK) return;
+        BacktrackControlSnapshot current = policy.getControl();
+        int dispatchedEntityId = AccessorBridge.C02PacketUseEntity_getEntityId(packet);
+        EntityPlayer pending = pendingAttackTarget;
+        boolean hasPendingMetadata = pending != null;
+        if (hasPendingMetadata && pending.getEntityId() != dispatchedEntityId) return;
+        if (!hasPendingMetadata && (!current.isEnabled() || !current.isTargetEligible()
+                || current.getTargetEntityId() != dispatchedEntityId)) return;
+        EntityPlayer dispatchedTarget = target;
+        if (dispatchedTarget == null && mc.isCallingFromMinecraftThread()
+                && mc.theWorld != null && mc.theWorld.getEntityByID(dispatchedEntityId) instanceof EntityPlayer) {
+            dispatchedTarget = (EntityPlayer) mc.theWorld.getEntityByID(dispatchedEntityId);
         }
-        target = attacked;
-        double dMin = Math.min(minDelay.getInput(), maxDelay.getInput());
-        double dMax = Math.max(minDelay.getInput(), maxDelay.getInput());
-        currentDelay = (int) (dMin + Math.random() * (dMax - dMin));
-    }
-
-    @SubscribeEvent
-    public void onReceivePacket(ReceivePacketEvent e) {
-        if (mc.isSingleplayer() || !Utils.nullCheck()) return;
-        if (mc.thePlayer.ticksExisted < 20) { packetQueue.clear(); return; }
-        if (weaponOnly.isToggled() && !Utils.holdingWeapon()) { releaseAll(); return; }
-        if (disableAdventure.isToggled() && mc.playerController.getCurrentGameType().isAdventure()) { releaseAll(); return; }
-        if (flushOnDamage.isToggled() && mc.thePlayer.hurtTime > 0) { releaseAll(); return; }
-        if (target == null) { releaseAll(); return; }
-
-        Packet packet = e.getPacket();
-        if (packet instanceof S08PacketPlayerPosLook || packet instanceof S40PacketDisconnect) {
-            releaseAll(); target = null; targetPos = null; return;
-        }
-        if (packet instanceof S13PacketDestroyEntities) {
-            for (int id : ((S13PacketDestroyEntities) packet).getEntityIDs()) {
-                if (target != null && id == target.getEntityId()) {
-                    target = null; targetPos = null; releaseAll(); return;
-                }
-            }
-        }
-
-        if (currentDelay <= 0) return;
-
-        Vec3 nextTargetSnapshot = null;
-        if (packet instanceof S14PacketEntity) {
-            S14PacketEntity mp = (S14PacketEntity) packet;
-            if (AccessorBridge.S14PacketEntity_getEntityId(mp) == target.getEntityId()) {
-                Vec3 base = targetPos != null ? targetPos : target.getPositionVector();
-                nextTargetSnapshot = base.addVector(
-                        mp.func_149062_c() / 32.0D,
-                        mp.func_149061_d() / 32.0D,
-                        mp.func_149064_e() / 32.0D
-                );
-            }
-        }
-        if (packet instanceof S18PacketEntityTeleport) {
-            S18PacketEntityTeleport tp = (S18PacketEntityTeleport) packet;
-            if (tp.getEntityId() == target.getEntityId()) {
-                nextTargetSnapshot = new Vec3(
-                        tp.getX() / 32.0D,
-                        tp.getY() / 32.0D,
-                        tp.getZ() / 32.0D
-                );
-            }
-        }
-
-        if (nextTargetSnapshot == null) return;
-
-        delayingPackets = isMovingAway(lastTargetSnapshot, nextTargetSnapshot);
-        targetPos = nextTargetSnapshot;
-        lastTargetSnapshot = nextTargetSnapshot;
-
-        if (delayingPackets) {
-            packetQueue.add(new TimedPacket(packet, System.currentTimeMillis()));
-            e.setCanceled(true);
-        } else if (!packetQueue.isEmpty()) {
-            while (!packetQueue.isEmpty()) {
-                TimedPacket tp = packetQueue.poll();
-                if (tp != null) processPacket(tp.packet);
-            }
-        }
-    }
-
-    private void processDelayedPackets() {
-        while (!packetQueue.isEmpty()) {
-            TimedPacket tp = packetQueue.peek();
-            if (tp == null) break;
-            if (System.currentTimeMillis() - tp.timestamp >= currentDelay) {
-                packetQueue.poll();
-                processPacket(tp.packet);
-            } else break;
-        }
-    }
-
-    private void releaseAll() {
-        while (!packetQueue.isEmpty()) {
-            TimedPacket tp = packetQueue.poll();
-            if (tp != null) processPacket(tp.packet);
-        }
-        currentDelay = 0;
-        lastTargetSnapshot = null;
-        delayingPackets = false;
-        clearPositionInterp();
-    }
-
-    private boolean isMovingAway(Vec3 previousSnapshot, Vec3 newSnapshot) {
-        if (previousSnapshot == null || newSnapshot == null || target == null) return false;
-        double prevDist = RotationUtils.distanceFromEyeToClosestOnAABB(target, previousSnapshot);
-        double newDist  = RotationUtils.distanceFromEyeToClosestOnAABB(target, newSnapshot);
-        return newDist > prevDist + MOVEMENT_DISTANCE_EPS;
-    }
-
-    private void resetWithoutProcessingPackets() {
-        packetQueue.clear(); target = null; targetPos = null;
-        currentDelay = 0; lastDeactivationTime = 0; wasActive = false;
-        clearPositionInterp();
-    }
-
-    private void clearPositionInterp() {
-        positionInterpFrom = null;
-        positionInterpTo = null;
-        positionInterpStartMs = 0L;
-    }
-
-    private static boolean positionChanged(Vec3 a, Vec3 b) {
-        return Math.abs(a.xCoord - b.xCoord) > POS_EPS
-                || Math.abs(a.yCoord - b.yCoord) > POS_EPS
-                || Math.abs(a.zCoord - b.zCoord) > POS_EPS;
-    }
-
-    private static Vec3 lerpVec3(Vec3 from, Vec3 to, double t) {
-        if (t <= 0.0D) return from;
-        if (t >= 1.0D) return to;
-        return new Vec3(
-                from.xCoord + (to.xCoord - from.xCoord) * t,
-                from.yCoord + (to.yCoord - from.yCoord) * t,
-                from.zCoord + (to.zCoord - from.zCoord) * t
-        );
-    }
-
-    @SuppressWarnings("unchecked")
-    private void processPacket(Object packet) {
-        if (packet == null) return;
-        try {
-            if (packet instanceof Packet && mc.getNetHandler() != null)
-                ((Packet<INetHandlerPlayClient>) packet).processPacket(mc.getNetHandler());
-        } catch (Exception ignored) {}
-    }
-
-    public boolean isRenderingServerPositionFor(EntityLivingBase entity) {
-        return !mc.isSingleplayer() && showServerPosition.isToggled() && target == entity && targetPos != null && !target.isDead && currentDelay > 0;
-    }
-
-    public Vec3 getBacktrackPosition() {
-        if (target == null || targetPos == null || target.isDead || currentDelay <= 0) {
-            return null;
-        }
-        return targetPos;
-    }
-
-    public EntityPlayer getBacktrackTarget() {
-        if (target == null || target.isDead || currentDelay <= 0) {
-            return null;
-        }
-        return target;
+        if (dispatchedTarget == null || dispatchedTarget.getEntityId() != dispatchedEntityId) return;
+        if (pendingAttackTarget != null && pendingAttackTarget.getEntityId() != dispatchedEntityId) return;
+        if (target != dispatchedTarget) releaseClaims();
+        target = dispatchedTarget;
+        pendingAttackTarget = null;
+        acceptedAttackAtNanos = System.nanoTime();
     }
 
     @SubscribeEvent
     public void onRenderWorldLast(RenderWorldLastEvent event) {
-        if (!showServerPosition.isToggled() || target == null || targetPos == null || currentDelay <= 0 || packetQueue.isEmpty()) return;
-        if (mc.isSingleplayer()) return;
-
-        float partialTicks = event.partialTicks;
-        double x = targetPos.xCoord - mc.getRenderManager().viewerPosX;
-        double y = targetPos.yCoord - mc.getRenderManager().viewerPosY;
-        double z = targetPos.zCoord - mc.getRenderManager().viewerPosZ;
-
-        float halfWidth = target.width / 2.0f;
-        float height = target.height;
-
+        if (Mindless.packetDelayService == null || mc.isSingleplayer() || !showServerPosition.isToggled() || target == null) return;
+        if (Mindless.packetDelayService.getPendingCount(EnumLagDirection.INBOUND) <= 0) return;
+        BacktrackPoseSnapshot snapshot = policy.getPoseSnapshot(System.nanoTime());
+        if (!snapshot.isActive() || !snapshot.hasShadowPosition()) return;
+        Vec3 drawPosition = interpolatedPosition(snapshot, System.nanoTime());
         int color = positionColor.getColor();
-        float r = ((color >> 16) & 0xFF) / 255.0f;
-        float g = ((color >> 8) & 0xFF) / 255.0f;
-        float b = (color & 0xFF) / 255.0f;
-        float a = ((color >> 24) & 0xFF) / 255.0f;
+        TargetHUD targetHUD = ModuleManager.targetHUD;
+        if (targetHUD != null && targetHUD.isEspActiveFor(target)) {
+            color = targetHUD.getCurrentEspColor(positionColor.getAlpha()).getRGB();
+        }
+        RenderUtils.drawPlayerBoundingBox(drawPosition, color);
+    }
 
-        net.minecraft.util.AxisAlignedBB bb = new net.minecraft.util.AxisAlignedBB(
-                x - halfWidth, y, z - halfWidth,
-                x + halfWidth, y + height, z + halfWidth
-        );
+    public boolean isRenderingServerPositionFor(EntityLivingBase entity) {
+        if (Mindless.packetDelayService == null || mc.isSingleplayer() || !showServerPosition.isToggled() || entity != target) return false;
+        if (Mindless.packetDelayService.getPendingCount(EnumLagDirection.INBOUND) <= 0) return false;
+        return policy.getPoseSnapshot(System.nanoTime()).isActive();
+    }
 
-        org.lwjgl.opengl.GL11.glPushMatrix();
-        GlStateManager.enableBlend();
-        GlStateManager.blendFunc(org.lwjgl.opengl.GL11.GL_SRC_ALPHA, org.lwjgl.opengl.GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GlStateManager.disableTexture2D();
-        GlStateManager.disableDepth();
-        GlStateManager.depthMask(false);
-        org.lwjgl.opengl.GL11.glLineWidth(1.5f);
-        RenderUtils.drawBoundingBox(bb, r, g, b, a);
-        GlStateManager.enableDepth();
-        GlStateManager.depthMask(true);
-        GlStateManager.enableTexture2D();
-        GlStateManager.disableBlend();
-        org.lwjgl.opengl.GL11.glPopMatrix();
+    public Vec3 getBacktrackPosition() {
+        if (Mindless.packetDelayService == null || mc.isSingleplayer() || target == null
+                || Mindless.packetDelayService.getPendingCount(EnumLagDirection.INBOUND) <= 0) return null;
+        BacktrackPoseSnapshot snapshot = policy.getPoseSnapshot(System.nanoTime());
+        if (!snapshot.isActive()) return null;
+        return new Vec3(snapshot.getShadowX(), snapshot.getShadowY(), snapshot.getShadowZ());
+    }
+
+    public EntityPlayer getBacktrackTarget() {
+        return getBacktrackPosition() == null ? null : target;
+    }
+
+    public boolean isEntityCollisionStale(int entityId, double x, double z) {
+        if (!isEnabled() || target == null || entityId != target.getEntityId()) return false;
+        return policy.isEntityCollisionStale(entityId, x, z);
     }
 
     @Override
     public String getInfo() {
-        if (currentDelay > 0 && !packetQueue.isEmpty()) return currentDelay + "ms";
+        long selected = policy.getSelectedWindowDelayNanos();
+        if (selected > 0L && Mindless.packetDelayService != null
+                && Mindless.packetDelayService.getPendingCount(EnumLagDirection.INBOUND) > 0) {
+            return (selected / 1000000L) + "ms";
+        }
         int lo = (int) Math.min(minDelay.getInput(), maxDelay.getInput());
         int hi = (int) Math.max(minDelay.getInput(), maxDelay.getInput());
         return lo == hi ? lo + "ms" : lo + "-" + hi + "ms";
     }
 
-    private static class TimedPacket {
-        final Object packet;
-        final long timestamp;
-        TimedPacket(Object packet, long timestamp) { this.packet = packet; this.timestamp = timestamp; }
+    private boolean isRuntimeReady() {
+        return !mc.isSingleplayer() && Utils.nullCheck() && mc.thePlayer instanceof EntityPlayerSP
+                && mc.theWorld != null && Mindless.packetDelayService != null;
+    }
+
+    private boolean isEligibleTarget(EntityPlayer candidate) {
+        if (candidate == null || candidate == mc.thePlayer || candidate.isDead) return false;
+        if (TargetFilter.shouldFilter(candidate)) return false;
+        double distance = mc.thePlayer.getDistanceToEntity(candidate);
+        if (distance < minDistance.getInput() || distance > maxDistance.getInput()) return false;
+        return maxHurtTime.getInput() >= 500.0D || candidate.hurtTime * 50.0D <= maxHurtTime.getInput();
+    }
+
+    private void releaseClaims() {
+        policy.releaseWindow();
+        if (lease != null) lease.releaseClaims();
+    }
+
+    private void invalidateLease() {
+        policy.releaseWindow();
+        if (lease != null) {
+            lease.release();
+            lease = null;
+        }
+    }
+
+    private void ensureLease() {
+        if (lease == null && Mindless.packetDelayService != null) {
+            lease = Mindless.packetDelayService.acquire(DelayRequest.fixedWindow(
+                    "Backtrack", EnumLagDirection.ONLY_INBOUND, policy, policy::chooseWindowDelayNanos));
+        }
+    }
+
+    private void resetRuntimeState() {
+        policy.setControl(BacktrackControlSnapshot.disabled());
+        invalidateLease();
+        target = null;
+        pendingAttackTarget = null;
+        acceptedAttackAtNanos = Long.MIN_VALUE;
+        cooldownUntilNanos = 0L;
+        wasWindowActive = false;
+        clearPositionInterp();
+    }
+
+    private Vec3 interpolatedPosition(BacktrackPoseSnapshot snapshot, long nowNanos) {
+        Vec3 next = new Vec3(snapshot.getShadowX(), snapshot.getShadowY(), snapshot.getShadowZ());
+        if (positionInterpTo == null) {
+            positionInterpFrom = next;
+            positionInterpTo = next;
+            positionInterpStartNanos = nowNanos;
+            return next;
+        }
+        if (!samePosition(positionInterpTo, next)) {
+            double progress = Math.min(1.0D, Math.max(0.0D,
+                    (nowNanos - positionInterpStartNanos) / 80000000.0D));
+            positionInterpFrom = lerp(positionInterpFrom, positionInterpTo, progress);
+            positionInterpTo = next;
+            positionInterpStartNanos = nowNanos;
+        }
+        double progress = Math.min(1.0D, Math.max(0.0D,
+                (nowNanos - positionInterpStartNanos) / 80000000.0D));
+        return lerp(positionInterpFrom, positionInterpTo, progress);
+    }
+
+    private void clearPositionInterp() {
+        positionInterpFrom = null;
+        positionInterpTo = null;
+        positionInterpStartNanos = 0L;
+    }
+
+    private static boolean samePosition(Vec3 left, Vec3 right) {
+        return Math.abs(left.xCoord - right.xCoord) <= 1.0e-6D
+                && Math.abs(left.yCoord - right.yCoord) <= 1.0e-6D
+                && Math.abs(left.zCoord - right.zCoord) <= 1.0e-6D;
+    }
+
+    private static Vec3 lerp(Vec3 from, Vec3 to, double progress) {
+        if (progress <= 0.0D) return from;
+        if (progress >= 1.0D) return to;
+        return new Vec3(
+                from.xCoord + (to.xCoord - from.xCoord) * progress,
+                from.yCoord + (to.yCoord - from.yCoord) * progress,
+                from.zCoord + (to.zCoord - from.zCoord) * progress);
     }
 }

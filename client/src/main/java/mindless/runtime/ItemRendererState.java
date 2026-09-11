@@ -38,9 +38,9 @@ public final class ItemRendererState {
     }
 
     public static boolean isForceSwordBlockAnimationActive() {
-        return forceSwordBlockAnimationActive;
+        return forceSwordBlockAnimationActive || mindless.module.ModuleManager.killAura != null && mindless.module.ModuleManager.killAura.shouldRenderBlocking();
     }
-public static boolean isRenderItemInUse() { return forceSwordBlockAnimationActive; }
+public static boolean isRenderItemInUse() { return forceSwordBlockAnimationActive || mindless.module.ModuleManager.killAura != null && mindless.module.ModuleManager.killAura.shouldRenderBlocking(); }
     public static void setRenderItemInUse(boolean value) { forceSwordBlockAnimationActive = value; }
 public static void rememberOriginalRenderedItem(ItemStack item) {
         originalRenderedItem.set(item);
@@ -52,7 +52,7 @@ public static void rememberOriginalRenderedItem(ItemStack item) {
         return item;
     }
 public static boolean shouldRenderForcedSwordBlock(ItemStack stack) {
-        if (!forceSwordBlockAnimationActive) return false;
+        if (!isForceSwordBlockAnimationActive()) return false;
         Minecraft mc = Minecraft.getMinecraft();
         EntityPlayerSP player = mc == null ? null : mc.thePlayer;
         ItemStack held = player == null ? null : player.getHeldItem();
@@ -61,7 +61,7 @@ public static boolean shouldRenderForcedSwordBlock(ItemStack stack) {
     }
 
     public static ItemStack getForcedSwordRenderItem() {
-        if (!forceSwordBlockAnimationActive) return null;
+        if (!isForceSwordBlockAnimationActive()) return null;
         Minecraft mc = Minecraft.getMinecraft();
         ItemStack held = mc == null || mc.thePlayer == null
                 ? null : mc.thePlayer.getHeldItem();

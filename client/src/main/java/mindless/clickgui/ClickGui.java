@@ -361,8 +361,8 @@ public class ClickGui extends GuiScreen {
     }
 
     /**
-     * Refreshes the ClickGui for the newly loaded profile's Gui scale. Call after
-     * all module settings (including Gui.guiScale) are loaded. Recomputes the
+     * Refreshes the ClickGui for the newly loaded profile's Theme Manager GUI scale. Call after
+     * all module settings (including ThemeManager.guiScale) are loaded. Recomputes the
      * ClickGui layout using the profile's configured internal scale.
      */
     public void refreshAfterProfileLoad() {
@@ -669,7 +669,7 @@ public class ClickGui extends GuiScreen {
         this.pendingScaleRefresh = true;
     }
 
-    private void refreshLayoutForConfiguredScale() {
+    protected void refreshLayoutForConfiguredScale() {
         refreshScaledResolution();
         for (CategoryComponent categoryComponent : categories) {
             categoryComponent.setScreenSize(this.width, this.height);
@@ -721,6 +721,6 @@ public class ClickGui extends GuiScreen {
     }
 
     private double getConfiguredGuiScale() {
-        return Gui.getClickGuiScale();
+        return mindless.module.impl.theme.ThemeManager.getGuiScale();
     }
 }

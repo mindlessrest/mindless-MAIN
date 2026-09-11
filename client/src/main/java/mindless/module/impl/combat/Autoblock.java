@@ -6,8 +6,8 @@ import mindless.event.RightClickMouseEvent;
 import mindless.event.SendPacketEvent;
 import mindless.event.UseItemEvent;
 import mindless.lag.api.EnumLagDirection;
-import mindless.lag.api.LagRequest;
-import mindless.lag.timeout.ModuleBackedTimeout;
+import mindless.lag.api.DelayRequest;
+import mindless.lag.api.DelayLease;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.world.AntiBot;
@@ -61,7 +61,7 @@ public class Autoblock extends Module {
     private int lastSelfHurtTime;
     private boolean isLagging;
     private int lagStartTick = -1;
-    private LagRequest outboundLag;
+    private DelayLease outboundLag;
     private int tickCounter;
     private boolean hypixelWindowConsumed;
 
@@ -113,7 +113,11 @@ public class Autoblock extends Module {
     }
 
     public boolean isOperational() {
-        return isEnabled() && (ModuleManager.myauBlock == null || !ModuleManager.myauBlock.isOperational());
+        return isEnabled() && (ModuleManager.killAura == null || !ModuleManager.killAura.ownsAutoBlock());
+    }
+
+    public void yieldToAura() {
+        if (isBlocking || isLagging || manualBlock) resetState(true);
     }
 
     public boolean allowsNoSlow() {
@@ -368,8 +372,11 @@ public class Autoblock extends Module {
         int lagReferenceTick = blockStartTick >= 0 ? blockStartTick : currentTick;
         int lagMaxTicks = msToTicks(lagMaxDuration.getInput());
         if (lagMaxTicks > 0 && currentTick - lagReferenceTick >= lagMaxTicks) return;
-        outboundLag = new LagRequest(EnumLagDirection.ONLY_OUTBOUND, new ModuleBackedTimeout(this));
-        Mindless.lagHandler.requestLag(outboundLag);
+        if (Mindless.packetDelayService == null || !Mindless.packetDelayService.isValid()
+                || Mindless.packetDelayService.hasOtherOutboundOwner("Autoblock")) return;
+        outboundLag = Mindless.packetDelayService.acquire(DelayRequest.perPacketMillis(
+                "Autoblock", java.util.EnumSet.of(EnumLagDirection.OUTBOUND),
+                Math.max(1L, (long) lagMaxDuration.getInput())));
         isLagging = true;
         lagStartTick = lagReferenceTick;
         syncBlockAnimation();
@@ -378,7 +385,7 @@ public class Autoblock extends Module {
     private void releaseLag() {
         if (!isLagging) return;
         if (outboundLag != null) {
-            outboundLag.getTimeout().forceTimeOut();
+            outboundLag.release();
             outboundLag = null;
         }
         isLagging = false;

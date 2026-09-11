@@ -6,7 +6,10 @@ public final class EnvironmentGuard {
     private EnvironmentGuard() {}
 
     public static boolean check() {
-        if (!Boolean.getBoolean("mindless.production")) return true;
+        if (!Boolean.getBoolean("mindless.production")
+                && Boolean.getBoolean("mindless.development")) {
+            return true;
+        }
         String token = System.getProperty("mindless.auth.token");
         String apiUrl = System.getProperty("mindless.auth.apiUrl");
         String hwid = System.getProperty("mindless.auth.hwid");

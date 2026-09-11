@@ -4,6 +4,7 @@ import net.minecraft.entity.Entity;
 import net.minecraftforge.fml.common.eventhandler.Event;
 
 public class AntiCheatFlagEvent extends Event {
+    public AntiCheatFlagEvent() { this(null, null); }
     public String flag;
     public Entity entity;
 

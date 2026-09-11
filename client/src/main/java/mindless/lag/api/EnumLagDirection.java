@@ -1,48 +1,14 @@
 package mindless.lag.api;
 
-import mindless.utility.IMinecraftInstance;
-import mindless.utility.Utils;
-import net.minecraft.network.Packet;
-import net.minecraft.network.ThreadQuickExitException;
-import net.minecraft.network.play.INetHandlerPlayClient;
-import org.jetbrains.annotations.NotNull;
-
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Set;
-import java.util.function.Consumer;
 
-@SuppressWarnings({"LambdaBodyCanBeCodeBlock", "unchecked"})
-public enum EnumLagDirection implements IMinecraftInstance {
-    INBOUND(
-            packet -> {
-                try {
-                    ((Packet<INetHandlerPlayClient>) packet).processPacket(mc.getNetHandler());
-                } catch (final @NotNull ThreadQuickExitException ignored) {
-                } catch (final @NotNull Exception e) {
-                    Utils.sendDebugMessage("error while handling packet: " + packet.getClass().getSimpleName());
-                }
-            }
-    ),
-    OUTBOUND(
-            packet -> {
-                mc.getNetHandler().addToSendQueue(packet);
-            }
-    );
+public enum EnumLagDirection {
+    INBOUND,
+    OUTBOUND;
 
-    public static final @NotNull Set<EnumLagDirection> ONLY_INBOUND = EnumSet.of(INBOUND);
-    public static final @NotNull Set<EnumLagDirection> ONLY_OUTBOUND = EnumSet.of(OUTBOUND);
-    public static final @NotNull Set<EnumLagDirection> BIDIRECTIONAL = EnumSet.allOf(EnumLagDirection.class);
-
-    private final @NotNull Consumer<Packet<?>> channel;
-
-    EnumLagDirection(
-            final @NotNull Consumer<Packet<?>> channel
-    ) {
-        this.channel = channel;
-    }
-
-    public void passThroughChannel(final @NotNull Packet<?> packet) {
-        channel.accept(packet);
-    }
-
+    public static final Set<EnumLagDirection> ONLY_INBOUND = Collections.unmodifiableSet(EnumSet.of(INBOUND));
+    public static final Set<EnumLagDirection> ONLY_OUTBOUND = Collections.unmodifiableSet(EnumSet.of(OUTBOUND));
+    public static final Set<EnumLagDirection> BIDIRECTIONAL = Collections.unmodifiableSet(EnumSet.allOf(EnumLagDirection.class));
 }

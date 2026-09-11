@@ -10,7 +10,9 @@ import mindless.module.ModuleManager;
 import mindless.module.impl.client.Gui;
 import mindless.module.impl.client.Relationships;
 import mindless.module.impl.client.Settings;
+import mindless.module.impl.theme.ThemeManager;
 import mindless.module.impl.minigames.BedWars;
+import mindless.module.impl.combat.KillAura;
 import mindless.module.impl.player.FastPlace;
 import mindless.module.impl.player.HideWindow;
 import mindless.module.impl.render.BlockCounter;
@@ -82,8 +84,23 @@ private long dirtySince;
             }
         }
         if (getProfileFiles().isEmpty()) {
-            saveProfile(new Profile(DEFAULT_PROFILE_NAME, 0));
+            saveFreshDefaultProfile();
         }
+    }
+
+    private void saveFreshDefaultProfile() {
+        String serialized = serializeProfile(new Profile(DEFAULT_PROFILE_NAME, 0));
+        if (serialized == null) return;
+        JsonObject profile = new com.google.gson.JsonParser().parse(serialized).getAsJsonObject();
+        for (JsonElement element : profile.getAsJsonArray("modules")) {
+            JsonObject module = element.getAsJsonObject();
+            if ("Kill Aura".equals(module.get("name").getAsString())) {
+                module.addProperty("enabled", true);
+                module.addProperty("keybind", 0);
+                module.addProperty("hidden", false);
+            }
+        }
+        writeProfileFile(DEFAULT_PROFILE_NAME, new GsonBuilder().setPrettyPrinting().create().toJson(profile));
     }
 
     public void saveProfile(Profile profile) {
@@ -509,6 +526,10 @@ public void loadProfile(String name) {
                 }
             }
 
+            if (ModuleManager.killAura != null) {
+                ModuleManager.killAura.resetForProfileLoad();
+            }
+
             for (Module module : loadableModules) {
                 RequestedModuleState requestedState = requestedModuleStates.get(module);
                 if (requestedState == null) {
@@ -528,6 +549,9 @@ public void loadProfile(String name) {
                     applyModuleSettings(module, loadedModuleData.get(module));
                 }
             }
+            ThemeManager.migrateLegacyGuiScale(
+                    loadedModuleData.get(Module.getModule(Gui.class)),
+                    loadedModuleData.get(ModuleManager.themeManager));
 
             for (Module module : loadableModules) {
                 RequestedModuleState requestedState = requestedModuleStates.get(module);
@@ -631,6 +655,10 @@ public void loadProfile(String name) {
         }
     }
 private static void applyModuleSettings(Module module, JsonObject moduleInformation) {
+        if (module instanceof KillAura) {
+            ((KillAura) module).loadSettings(moduleInformation);
+            return;
+        }
         for (Setting setting : module.getSettings()) {
             try {
                 if (moduleInformation != null && hasSavedValue(setting, moduleInformation)) {
@@ -643,6 +671,9 @@ private static void applyModuleSettings(Module module, JsonObject moduleInformat
             catch (Exception e) {
                 e.printStackTrace();
             }
+        }
+        if (module instanceof KillAura) {
+            ((KillAura) module).normalizeSettings();
         }
     }
 
@@ -929,7 +960,7 @@ private JsonObject readProfileJson(File file, String profileName) {
 
         List<File> profileFiles = getProfileFiles();
         if (profileFiles.isEmpty()) {
-            saveProfile(new Profile(DEFAULT_PROFILE_NAME, 0));
+            saveFreshDefaultProfile();
             profileFiles = getProfileFiles();
         }
 

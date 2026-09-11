@@ -95,10 +95,7 @@ public class TransformerEntityRenderer {
             ModuleManager.bedAura.modifyMouseOverFromGetMouseOver(partialTicks);
             return;
         }
-        if (ModuleManager.killAura != null && ModuleManager.killAura.shouldOverrideMouseOver()) {
-            ModuleManager.killAura.modifyMouseOverFromGetMouseOver(partialTicks);
-            return;
-        }
+
         if (ModuleManager.piercing != null && ModuleManager.piercing.shouldOverrideMouseOver()) {
             ModuleManager.piercing.modifyMouseOverFromGetMouseOver(partialTicks);
         }

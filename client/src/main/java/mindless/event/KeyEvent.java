@@ -5,6 +5,7 @@ import net.minecraftforge.fml.common.eventhandler.Event;
 
 @Cancelable
 public class KeyEvent extends Event {
+    public KeyEvent() { this(null, 0, false, false); }
     public String keyName;
     public int keyCode;
     public boolean state;

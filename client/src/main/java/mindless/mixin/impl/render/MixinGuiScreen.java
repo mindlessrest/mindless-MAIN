@@ -2,10 +2,12 @@ package mindless.mixin.impl.render;
 
 import mindless.Mindless;
 import mindless.event.KeyPressEvent;
+import mindless.module.ModuleManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraftforge.common.MinecraftForge;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -38,6 +40,13 @@ public abstract class MixinGuiScreen {
 
         if (event.isCanceled()) {
             callbackInfo.cancel();
+        }
+    }
+
+    @Inject(method = "handleMouseInput", at = @At("HEAD"))
+    private void mindless$resourceDepositMouseWheel(CallbackInfo callbackInfo) {
+        if (ModuleManager.resourceDeposit != null) {
+            ModuleManager.resourceDeposit.onMouseWheel(Mouse.getEventDWheel());
         }
     }
 }

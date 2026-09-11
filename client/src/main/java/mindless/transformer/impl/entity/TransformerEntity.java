@@ -15,6 +15,7 @@ import net.lenni0451.classtransform.annotations.injection.CInject;
 import net.lenni0451.classtransform.annotations.injection.COverride;
 import net.lenni0451.classtransform.annotations.injection.CRedirect;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.Vec3;
@@ -65,5 +66,19 @@ public abstract class TransformerEntity {
             target = @CTarget(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;isSneaking()Z", optional = true))
     private boolean redirectSafeWalkSneak(Entity instance) {
         return SafeWalkState.shouldSafeWalk(instance);
+    }
+
+    @CInline
+    @CInject(method = "applyEntityCollision", target = @CTarget("HEAD"), cancellable = true)
+    private void suppressStaleBacktrackCollision(Entity entityIn, InjectionCallback ci) {
+        mindless.module.impl.network.Backtrack backtrack = mindless.module.ModuleManager.backtrack;
+        EntityPlayerSP player = Minecraft.getMinecraft().thePlayer;
+        if (backtrack == null || !backtrack.isEnabled() || player == null || entityIn == null) return;
+        Entity self = (Entity) (Object) this;
+        if (entityIn == player) {
+            if (backtrack.isEntityCollisionStale(self.getEntityId(), self.posX, self.posZ)) ci.setCancelled(true);
+            return;
+        }
+        if (self == player && backtrack.isEntityCollisionStale(entityIn.getEntityId(), entityIn.posX, entityIn.posZ)) ci.setCancelled(true);
     }
 }

@@ -1,5 +1,7 @@
 package mindless.event;
 
+import mindless.rotation.RotationArbiter;
+import mindless.rotation.RotationSource;
 import mindless.script.model.PlayerState;
 import net.minecraftforge.fml.common.eventhandler.Event;
 
@@ -17,6 +19,7 @@ public class PreMotionEvent extends Event {
     private static boolean setRenderYaw;
     private boolean isSprinting;
     private boolean isSneaking;
+    private final RotationArbiter rotations = new RotationArbiter();
     public static boolean setRotations;
     public static float preMotionYaw;
 
@@ -44,11 +47,25 @@ public class PreMotionEvent extends Event {
     }
 
     public float getYaw() {
-        return yaw;
+        Float resolved = rotations.resolveYaw(yaw);
+        return resolved == null ? yaw : resolved;
     }
 
     public float getPitch() {
-        return pitch;
+        Float resolved = rotations.resolvePitch(pitch);
+        return resolved == null ? pitch : resolved;
+    }
+
+    public RotationSource getYawSource() {
+        return rotations.getYawSource();
+    }
+
+    public RotationSource getPitchSource() {
+        return rotations.getPitchSource();
+    }
+
+    public boolean hasRotationRequest() {
+        return rotations.hasRequest();
     }
 
     public boolean isOnGround() {
@@ -68,23 +85,46 @@ public class PreMotionEvent extends Event {
     }
 
     public void setYaw(float yaw) {
-        this.yaw = yaw;
+        requestYaw(RotationSource.LEGACY, yaw);
+    }
+
+    public boolean requestYaw(RotationSource source, float yaw) {
+        boolean accepted = rotations.request(source, yaw, null);
+        if (!accepted) {
+            return false;
+        }
         this.setRenderYaw = true;
         setRotations = true;
-        preMotionYaw = yaw;
+        preMotionYaw = getYaw();
+        return true;
     }
 
     public void setRotations(float yaw, float pitch) {
-        this.yaw = yaw;
-        this.pitch = pitch;
+        requestRotation(RotationSource.LEGACY, yaw, pitch);
+    }
+
+    public boolean requestRotation(RotationSource source, float yaw, float pitch) {
+        boolean accepted = rotations.request(source, yaw, pitch);
+        if (!accepted) {
+            return false;
+        }
         this.setRenderYaw = true;
         setRotations = true;
-        preMotionYaw = yaw;
+        preMotionYaw = getYaw();
+        return true;
     }
 
     public void setPitch(float pitch) {
-        this.pitch = pitch;
+        requestPitch(RotationSource.LEGACY, pitch);
+    }
+
+    public boolean requestPitch(RotationSource source, float pitch) {
+        boolean accepted = rotations.request(source, null, pitch);
+        if (!accepted) {
+            return false;
+        }
         setRotations = true;
+        return true;
     }
 
     public void setOnGround(boolean onGround) {
@@ -116,6 +156,6 @@ public class PreMotionEvent extends Event {
     }
 
     public boolean isEquals(PlayerState e) {
-        return e.x == this.posX && e.y == this.posY && e.z == this.posZ && e.yaw == this.yaw && e.pitch == this.pitch && e.onGround == this.onGround && e.isSprinting == this.isSprinting && e.isSneaking == this.isSneaking;
+        return e.x == this.posX && e.y == this.posY && e.z == this.posZ && e.yaw == getYaw() && e.pitch == getPitch() && e.onGround == this.onGround && e.isSprinting == this.isSprinting && e.isSneaking == this.isSneaking;
     }
 }

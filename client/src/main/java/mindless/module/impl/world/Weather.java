@@ -129,10 +129,6 @@ public class Weather extends Module {
 
         Module saturationModule = mindless.module.ModuleManager.getModule("Saturation");
         if (saturationModule != null && saturationModule.isEnabled()) saturationModule.disable();
-        if (mindless.module.ModuleManager.ambience != null
-                && mindless.module.ModuleManager.ambience.isEnabled()) {
-            mindless.module.ModuleManager.ambience.disable();
-        }
         if (!isEnabled()) enable();
     }
 

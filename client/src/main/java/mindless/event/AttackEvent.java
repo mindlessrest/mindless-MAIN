@@ -7,6 +7,7 @@ import net.minecraftforge.fml.common.eventhandler.Event;
 
 @Cancelable
 public class AttackEvent extends Event {
+    public AttackEvent() { this(null, null, false); }
     public Entity target;
     public EntityPlayer attacker;
     public boolean swing;

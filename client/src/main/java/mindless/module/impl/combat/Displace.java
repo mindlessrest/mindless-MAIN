@@ -11,9 +11,9 @@ import mindless.event.PrePlayerInteractEvent;
 import mindless.event.RightClickMouseEvent;
 import mindless.event.SendPacketEvent;
 import mindless.helper.RotationHelper;
+import mindless.lag.api.DelayLease;
+import mindless.lag.api.DelayRequest;
 import mindless.lag.api.EnumLagDirection;
-import mindless.lag.api.LagRequest;
-import mindless.lag.timeout.ModuleBackedTimeout;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
@@ -116,7 +116,7 @@ private final BlockPos.MutableBlockPos voidMinCorner = new BlockPos.MutableBlock
     private final BlockPos.MutableBlockPos voidMaxCorner = new BlockPos.MutableBlockPos();
     private final BlockPos.MutableBlockPos voidScanPos = new BlockPos.MutableBlockPos();
 
-    private LagRequest outboundBlink;
+    private DelayLease outboundBlink;
     private VoidDebugScan latestVoidDebugScan;
     private VoidDebugScan frozenVoidDebugScan;
     private long frozenVoidDebugExpiresAtMs;
@@ -874,7 +874,7 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
 
     private void releaseBlink() {
         if (outboundBlink != null) {
-            outboundBlink.getTimeout().forceTimeOut();
+            outboundBlink.release();
             outboundBlink = null;
         }
     }
@@ -924,8 +924,9 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
             return;
         }
 
-        outboundBlink = new LagRequest(EnumLagDirection.ONLY_OUTBOUND, new ModuleBackedTimeout(this));
-        Mindless.lagHandler.requestLag(outboundBlink);
+        outboundBlink = Mindless.packetDelayService.acquire(DelayRequest.fixedWindow(
+                "Displace", EnumLagDirection.ONLY_OUTBOUND,
+                mindless.lag.api.InboundClaimPolicy.ALWAYS, Long.MAX_VALUE));
     }
 
     private void releaseUseForOverrideAttack() {
@@ -1022,8 +1023,8 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
             return;
         }
 
-        float baseYaw = event.yaw != null ? event.yaw : RotationUtils.serverRotations[0];
-        float basePitch = event.pitch != null ? event.pitch : RotationUtils.serverRotations[1];
+        float baseYaw = event.getBaseYaw() != null ? event.getBaseYaw() : RotationUtils.serverRotations[0];
+        float basePitch = event.getBasePitch() != null ? event.getBasePitch() : RotationUtils.serverRotations[1];
         float[] targetRotations = getOverrideTargetRotations(overrideTarget, baseYaw, basePitch);
         if (targetRotations == null) {
             resetOverrideAttackState();
@@ -1041,13 +1042,13 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
         updateDisplaceSide(overrideTargetYaw, overrideFlickYaw);
 
         if (overrideAttackState == OverrideAttackState.FLICKING_AWAY) {
-            event.yaw = overrideFlickYaw;
+            event.requestYaw(mindless.rotation.RotationSource.DISPLACE, overrideFlickYaw);
             displaceThisTick = true;
         } else {
-            event.yaw = overrideTargetYaw;
+            event.requestYaw(mindless.rotation.RotationSource.DISPLACE, overrideTargetYaw);
             displaceThisTick = false;
         }
-        event.pitch = overrideTargetPitch;
+        event.requestPitch(mindless.rotation.RotationSource.DISPLACE, overrideTargetPitch);
         active = true;
         showArrow(overrideTarget, overrideFlickYaw);
         RotationHelper.get().forceMovementFix = true;
@@ -1786,8 +1787,9 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
             return;
         }
 
-        outboundBlink = new LagRequest(EnumLagDirection.ONLY_OUTBOUND, new ModuleBackedTimeout(this));
-        Mindless.lagHandler.requestLag(outboundBlink);
+        outboundBlink = Mindless.packetDelayService.acquire(DelayRequest.fixedWindow(
+                "Displace", EnumLagDirection.ONLY_OUTBOUND,
+                mindless.lag.api.InboundClaimPolicy.ALWAYS, Long.MAX_VALUE));
         releaseBlinkNextGameTick = true;
     }
 
@@ -1907,7 +1909,7 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
             return;
         }
 
-        float playerYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
+        float playerYaw = e.getBaseYaw() != null ? e.getBaseYaw() : RotationUtils.serverRotations[0];
         float displaceYaw;
         boolean voidOpportunity;
         if (isVoidMode()) {
@@ -1981,7 +1983,7 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
 
         if (!displaceThisTick) return;
 
-        e.yaw = displaceYaw;
+        e.requestYaw(mindless.rotation.RotationSource.DISPLACE, displaceYaw);
         RotationHelper.get().setServerRelativeMovementInputs(true);
     }
 }

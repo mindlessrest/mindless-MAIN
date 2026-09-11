@@ -1,5 +1,7 @@
 package mindless.event;
 
+import mindless.rotation.RotationArbiter;
+import mindless.rotation.RotationSource;
 import net.minecraftforge.fml.common.eventhandler.Event;
 
 public class ClientRotationEvent extends Event {
@@ -7,20 +9,57 @@ public class ClientRotationEvent extends Event {
         this(null, null);
     }
 
-    public Float yaw;
-    public Float pitch;
-    public boolean scriptRotations;
+    private final Float baseYaw;
+    private final Float basePitch;
+    private final RotationArbiter rotations;
 
     public ClientRotationEvent(Float yaw, Float pitch) {
-        this.yaw = yaw;
-        this.pitch = pitch;
+        this(yaw, pitch, new RotationArbiter());
     }
 
-    public void setYaw(Float yaw) {
-        this.yaw = yaw;
+    public ClientRotationEvent(Float yaw, Float pitch, RotationArbiter rotations) {
+        this.baseYaw = yaw;
+        this.basePitch = pitch;
+        this.rotations = rotations;
     }
 
-    public void setPitch(Float pitch) {
-        this.pitch = pitch;
+    public Float getBaseYaw() {
+        return baseYaw;
+    }
+
+    public Float getBasePitch() {
+        return basePitch;
+    }
+
+    public Float getYaw() {
+        return rotations.resolveYaw(baseYaw);
+    }
+
+    public Float getPitch() {
+        return rotations.resolvePitch(basePitch);
+    }
+
+    public boolean requestRotation(RotationSource source, Float yaw, Float pitch) {
+        return rotations.request(source, yaw, pitch);
+    }
+
+    public boolean requestYaw(RotationSource source, float yaw) {
+        return rotations.request(source, yaw, null);
+    }
+
+    public boolean requestPitch(RotationSource source, float pitch) {
+        return rotations.request(source, null, pitch);
+    }
+
+    public boolean hasRotationRequest() {
+        return rotations.hasRequest();
+    }
+
+    public RotationSource getYawSource() {
+        return rotations.getYawSource();
+    }
+
+    public RotationSource getPitchSource() {
+        return rotations.getPitchSource();
     }
 }

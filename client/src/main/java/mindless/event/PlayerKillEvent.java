@@ -11,6 +11,10 @@ public class PlayerKillEvent extends Event {
     public final double z;
     public final EntityPlayer player;
 
+    public PlayerKillEvent() {
+        this(null, -1, "", 0.0, 0.0, 0.0);
+    }
+
     public PlayerKillEvent(EntityPlayer player, int entityId, String playerName,
                            double x, double y, double z) {
         this.player = player;

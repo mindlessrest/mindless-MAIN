@@ -84,7 +84,7 @@ public class AimAssist extends Module {
     }
 
     public net.minecraft.entity.Entity getAimAssistTarget() {
-        if (!Utils.nullCheck() || ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
+        if (!Utils.nullCheck() || ModuleManager.bedAura != null && ModuleManager.bedAura.controlsInteractions()) {
             return null;
         }
         if (ModuleManager.killAura != null && ModuleManager.killAura.isEnabled() && KillAura.target != null) {
@@ -98,7 +98,7 @@ public class AimAssist extends Module {
 
     @SubscribeEvent(priority = EventPriority.NORMAL)
     public void onClientRotation(ClientRotationEvent e) {
-        if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
+        if (ModuleManager.bedAura != null && ModuleManager.bedAura.controlsInteractions()) {
             return;
         }
         if (ModuleManager.killAura != null && ModuleManager.killAura.isEnabled() && KillAura.target != null) return;
@@ -122,10 +122,10 @@ public class AimAssist extends Module {
         int aimAxisMode = (int) aimAxis.getInput();
         if (aimAxisMode != 1) {
             RotationHelper.get().setServerRelativeMovementInputs(true);
-            e.yaw = rot[0];
+            e.requestYaw(mindless.rotation.RotationSource.AIM_ASSIST, rot[0]);
         }
         if (aimAxisMode != 2) {
-            e.pitch = rot[1];
+            e.requestPitch(mindless.rotation.RotationSource.AIM_ASSIST, rot[1]);
         }
     }
 
@@ -151,9 +151,11 @@ public class AimAssist extends Module {
         if (rot == null) return;
         int aimAxisMode = (int) aimAxis.getInput();
         if (aimAxisMode != 1) {
+            RotationHelper.get().request(mindless.rotation.RotationSource.AIM_ASSIST, rot[0], null);
             mc.thePlayer.rotationYaw = rot[0];
         }
         if (aimAxisMode != 2) {
+            RotationHelper.get().request(mindless.rotation.RotationSource.AIM_ASSIST, null, rot[1]);
             mc.thePlayer.rotationPitch = rot[1];
         }
     }

@@ -113,13 +113,9 @@ public class ScriptEvents {
         if (rotations == null || rotations.length == 0 || rotations.length > 2) {
             return;
         }
-        if (rotations[0] != null) {
-            e.yaw = rotations[0];
-            e.scriptRotations = true;
-        }
+        if (rotations[0] != null) e.requestYaw(mindless.rotation.RotationSource.SCRIPT, rotations[0]);
         if (rotations.length == 2 && rotations[1] != null) {
-            e.pitch = rotations[1];
-            e.scriptRotations = true;
+            e.requestPitch(mindless.rotation.RotationSource.SCRIPT, rotations[1]);
         }
     }
 
@@ -220,9 +216,11 @@ public class ScriptEvents {
             return;
         }
         if (e.getYaw() != playerState.yaw) {
-            e.setYaw(playerState.yaw);
+            e.requestYaw(mindless.rotation.RotationSource.SCRIPT, playerState.yaw);
         }
-        e.setPitch(playerState.pitch);
+        if (e.getPitch() != playerState.pitch) {
+            e.requestPitch(mindless.rotation.RotationSource.SCRIPT, playerState.pitch);
+        }
         e.setPosX(playerState.x);
         e.setPosY(playerState.y);
         e.setPosZ(playerState.z);

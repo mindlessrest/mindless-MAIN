@@ -2,9 +2,9 @@ package mindless.module.impl.player;
 
 import mindless.Mindless;
 import mindless.event.PreUpdateEvent;
+import mindless.lag.api.DelayLease;
+import mindless.lag.api.DelayRequest;
 import mindless.lag.api.EnumLagDirection;
-import mindless.lag.api.LagRequest;
-import mindless.lag.timeout.ModuleBackedTimeout;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
@@ -33,6 +33,8 @@ public class Blink extends Module {
     private final int color = new Color(0, 255, 0, 120).getRGB();
     private int blinkTicks;
     private long enableTime;
+    private DelayLease delayLease;
+    private int appliedMode = -1;
 
     public Blink() {
         super("Blink", "Holds packets, then releases them at once.", category.player);
@@ -56,7 +58,14 @@ public class Blink extends Module {
         pos = new Vec3(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ);
         blinkTicks = 0;
         enableTime = System.currentTimeMillis();
-        Mindless.lagHandler.requestLag(new LagRequest(lagDirectionsForMode(), new ModuleBackedTimeout(this)));
+        rebindLease();
+    }
+
+    private void rebindLease() {
+        if (delayLease != null) delayLease.release();
+        appliedMode = (int) mode.getInput();
+        delayLease = Mindless.packetDelayService.acquire(DelayRequest.fixedWindow(
+                "Blink", lagDirectionsForMode(), mindless.lag.api.InboundClaimPolicy.ALWAYS, Long.MAX_VALUE));
     }
 
     private Set<EnumLagDirection> lagDirectionsForMode() {
@@ -73,19 +82,30 @@ public class Blink extends Module {
     }
 
     @Override
+    public void onDisable() {
+        if (delayLease != null) {
+            delayLease.release();
+            delayLease = null;
+        }
+        appliedMode = -1;
+    }
+
+    @Override
     public String getInfo() { return String.valueOf(blinkTicks); }
 
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent e) {
         ++blinkTicks;
+        if (delayLease == null || appliedMode != (int) mode.getInput()) rebindLease();
         if (maxDuration.isToggled() && System.currentTimeMillis() - enableTime >= (int) disableAfterMs.getInput()) {
             this.disable(); return;
         }
         int releaseInterval = (int) releasePacketEvery.getInput();
         if (releaseInterval <= 0 || blinkTicks % releaseInterval != 0) return;
         Set<EnumLagDirection> directions = lagDirectionsForMode();
-        if (directions.contains(EnumLagDirection.INBOUND)) Mindless.lagHandler.releaseNextPacket(EnumLagDirection.INBOUND);
-        if (directions.contains(EnumLagDirection.OUTBOUND)) Mindless.lagHandler.releaseNextPacket(EnumLagDirection.OUTBOUND);
+        if (delayLease == null) return;
+        if (directions.contains(EnumLagDirection.INBOUND)) delayLease.releaseNext(EnumLagDirection.INBOUND);
+        if (directions.contains(EnumLagDirection.OUTBOUND)) delayLease.releaseNext(EnumLagDirection.OUTBOUND);
     }
 
     @SubscribeEvent

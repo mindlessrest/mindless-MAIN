@@ -2,10 +2,11 @@ package mindless.module.impl.combat;
 
 import mindless.Mindless;
 import mindless.event.GameTickEvent;
-import mindless.event.ReceivePacketEvent;
+import mindless.lag.api.DelayLease;
+import mindless.lag.api.DelayRequest;
 import mindless.lag.api.EnumLagDirection;
-import mindless.lag.api.LagRequest;
-import mindless.lag.timeout.ModuleBackedTimeout;
+import mindless.lag.api.InboundClaimPolicy;
+import mindless.lag.api.SessionEpoch;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.player.Blink;
@@ -16,14 +17,13 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.CombatTargeting;
 import mindless.utility.Utils;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.Packet;
 import net.minecraft.network.play.server.S08PacketPlayerPosLook;
 import net.minecraft.network.play.server.S12PacketEntityVelocity;
-import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Mouse;
 
 public class KnockbackDelay extends Module {
-
     private final SliderSetting distanceToTarget;
     private final SliderSetting chance;
     private final SliderSetting maximumDelay;
@@ -32,8 +32,8 @@ public class KnockbackDelay extends Module {
     private final ButtonSetting requireLeftMouse;
     private final ButtonSetting onlyWhitelistedItem;
     private final ItemListSetting whitelistedItems;
-
-    private LagRequest inboundLagRequest;
+    private final KnockbackClaimPolicy packetPolicy = new KnockbackClaimPolicy();
+    private DelayLease inboundLease;
 
     public KnockbackDelay() {
         super("Knockback Delay", "Delays the knockback you take.", category.combat);
@@ -65,12 +65,19 @@ public class KnockbackDelay extends Module {
             disable();
             return;
         }
-        inboundLagRequest = null;
+        packetPolicy.reset();
+        inboundLease = Mindless.packetDelayService.acquire(DelayRequest.fixedWindow(
+                "Knockback Delay", EnumLagDirection.ONLY_INBOUND, packetPolicy,
+                packetPolicy::chooseDelayNanos));
     }
 
     @Override
     public void onDisable() {
-        flushInboundLagAndClear();
+        packetPolicy.reset();
+        if (inboundLease != null) {
+            inboundLease.release();
+            inboundLease = null;
+        }
     }
 
     @Override
@@ -78,110 +85,104 @@ public class KnockbackDelay extends Module {
         return (int) maximumDelay.getInput() + "ms";
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public void onReceivePacketHigh(ReceivePacketEvent e) {
-        if (!isEnabled() || e.isCanceled()) {
-            return;
-        }
-
-        if (e.getPacket() instanceof S08PacketPlayerPosLook) {
-            flushInboundLagAndClear();
-            return;
-        }
-
-        if (!(e.getPacket() instanceof S12PacketEntityVelocity)) {
-            return;
-        }
-
-        if (!Utils.nullCheck() || mc.thePlayer == null || mc.theWorld == null) {
-            return;
-        }
-
-        S12PacketEntityVelocity packet = (S12PacketEntityVelocity) e.getPacket();
-        if (packet.getEntityID() != mc.thePlayer.getEntityId()) {
-            return;
-        }
-
-        if (conditionsFailureReason() != null) {
-            return;
-        }
-
-        if (chance.getInput() < 100.0 && Math.random() * 100.0 >= chance.getInput()) {
-            return;
-        }
-
-        if (isInboundSessionActive()) {
-            return;
-        }
-
-        inboundLagRequest = new LagRequest(EnumLagDirection.ONLY_INBOUND, new ModuleBackedTimeout(this));
-        Mindless.lagHandler.requestLag(inboundLagRequest);
-    }
-
-    @SubscribeEvent(priority = EventPriority.LOWEST)
-    public void onGameTick(GameTickEvent e) {
-        if (!isEnabled()) {
-            return;
-        }
-
+    @SubscribeEvent
+    public void onGameTick(GameTickEvent event) {
+        if (!isEnabled()) return;
         if (!Utils.nullCheck() || mc.thePlayer == null || mc.theWorld == null || mc.thePlayer.isDead) {
-            flushInboundLagAndClear();
+            packetPolicy.reset();
+            if (inboundLease != null) inboundLease.releaseClaims();
             return;
         }
-
-        if (!isInboundSessionActive()) {
-            return;
-        }
-
-        if (conditionsFailureReason() != null) {
-            flushInboundLagAndClear();
-            return;
-        }
-
-        Mindless.lagHandler.releaseExpiredPackets(EnumLagDirection.INBOUND, (long) maximumDelay.getInput());
-    }
-
-    private boolean isInboundSessionActive() {
-        return inboundLagRequest != null && !inboundLagRequest.getTimeout().isTimedOut();
-    }
-
-    private void flushInboundLagAndClear() {
-        if (inboundLagRequest != null) {
-            inboundLagRequest.getTimeout().forceTimeOut();
-            inboundLagRequest = null;
-        }
+        boolean eligible = conditionsFailureReason() == null;
+        packetPolicy.configure(
+                eligible,
+                mc.thePlayer.getEntityId(),
+                (long) maximumDelay.getInput(),
+                chance.getInput());
+        if (!eligible && inboundLease != null) inboundLease.releaseClaims();
+        packetPolicy.expire(System.nanoTime());
+        Mindless.packetDelayService.drainExpired();
     }
 
     private String conditionsFailureReason() {
         double maxSq = distanceToTarget.getInput() * distanceToTarget.getInput();
-        if (CombatTargeting.findTarget(maxSq) == null) {
-            return "no target in range";
-        }
-
-        if (inAir.isToggled() && mc.thePlayer.onGround) {
-            return "not in air";
-        }
-
-        if (lookingAtPlayer.isToggled() && CombatTargeting.getMouseOverTarget(maxSq) == null) {
-            return "not looking at player";
-        }
-
-        if (requireLeftMouse.isToggled() && !Mouse.isButtonDown(0)) {
-            return "LMB not held";
-        }
-
+        if (CombatTargeting.findTarget(maxSq) == null) return "no target in range";
+        if (inAir.isToggled() && mc.thePlayer.onGround) return "not in air";
+        if (lookingAtPlayer.isToggled() && CombatTargeting.getMouseOverTarget(maxSq) == null) return "not looking at player";
+        if (requireLeftMouse.isToggled() && !Mouse.isButtonDown(0)) return "LMB not held";
         if (onlyWhitelistedItem.isToggled()) {
             ItemStack held = mc.thePlayer.getHeldItem();
-            if (held == null || !whitelistedItems.matches(held)) {
-                return "held item not whitelisted";
-            }
+            if (held == null || !whitelistedItems.matches(held)) return "held item not whitelisted";
         }
-
         return null;
     }
 
     private static boolean blinksInbound() {
         Blink blink = ModuleManager.blink;
         return blink != null && blink.isEnabled() && blink.delaysInboundPackets();
+    }
+
+    private final class KnockbackClaimPolicy implements InboundClaimPolicy {
+        private volatile boolean eligible;
+        private volatile int localEntityId;
+        private volatile long delayNanos;
+        private volatile double chancePercent;
+        private volatile boolean holding;
+        private volatile long deadlineNanos;
+        private volatile long selectedDelayNanos;
+        private volatile boolean delaySelected;
+        private volatile SessionEpoch stateEpoch = new SessionEpoch(0L, 0L);
+
+        private void configure(boolean nextEligible, int nextLocalEntityId, long nextDelayMs, double nextChance) {
+            eligible = nextEligible;
+            localEntityId = nextLocalEntityId;
+            delayNanos = DelayRequest.millisToNanos(nextDelayMs);
+            chancePercent = nextChance;
+            if (!eligible && holding) reset();
+        }
+
+        private void expire(long nowNanos) {
+            if (holding && nowNanos >= deadlineNanos) reset();
+        }
+
+        private void reset() {
+            holding = false;
+            deadlineNanos = 0L;
+            selectedDelayNanos = 0L;
+            delaySelected = false;
+        }
+
+        private long chooseDelayNanos() {
+            return delaySelected ? selectedDelayNanos : delayNanos;
+        }
+
+        @Override
+        public Decision decide(Packet<?> packet, SessionEpoch epoch, long nowNanos) {
+            if (epoch != null && !stateEpoch.isSameSession(epoch)) {
+                stateEpoch = epoch;
+                reset();
+            }
+            if (packet instanceof S08PacketPlayerPosLook) {
+                reset();
+                return Decision.RELEASE_AND_PASS;
+            }
+            expire(nowNanos);
+            if (holding) return Decision.CLAIM;
+            if (!eligible || !(packet instanceof S12PacketEntityVelocity)) return Decision.PASS;
+            S12PacketEntityVelocity velocity = (S12PacketEntityVelocity) packet;
+            if (velocity.getEntityID() != localEntityId || chancePercent <= 0.0D
+                    || chancePercent < 100.0D && Math.random() * 100.0D >= chancePercent) return Decision.PASS;
+            selectedDelayNanos = delayNanos;
+            delaySelected = true;
+            deadlineNanos = safeAdd(nowNanos, selectedDelayNanos);
+            holding = selectedDelayNanos > 0L;
+            return holding ? Decision.CLAIM : Decision.PASS;
+        }
+    }
+
+    private static long safeAdd(long left, long right) {
+        if (right <= 0L) return left;
+        if (left > Long.MAX_VALUE - right) return Long.MAX_VALUE;
+        return left + right;
     }
 }

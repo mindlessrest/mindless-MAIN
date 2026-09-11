@@ -58,6 +58,25 @@ private static final float NAMETAG_ATLAS_BOOST = 2.5f;
         return HUD_FONT_OPTIONS.clone();
     }
 
+    public static boolean areFontOptions(String[] options) {
+        if (options == null || options.length == 0) {
+            return false;
+        }
+
+        boolean containsFont = false;
+        for (String option : options) {
+            if ("Default".equals(option)) {
+                continue;
+            }
+            if (!isMinecraftFont(option) && !BUNDLED_FONT_MAP.containsKey(option)) {
+                return false;
+            }
+            containsFont = true;
+        }
+
+        return containsFont;
+    }
+
     public static MindlessFontRenderer getHudRenderer(String family, float scale) {
         float safeScale = snapFontScale(Math.max(0.5f, Math.min(2.0f, scale)));
         return getRenderer(family, DEFAULT_HUD_FONT_SIZE * safeScale);

@@ -1,8 +1,11 @@
 package mindless.module.impl.player;
 
 import mindless.event.ClientRotationEvent;
+import mindless.event.GameTickEvent;
 import mindless.event.PreAttackEvent;
 import mindless.event.PrePlayerInteractEvent;
+import mindless.event.PreMotionEvent;
+import mindless.helper.RotationHelper;
 import mindless.event.PreSlotScrollEvent;
 import mindless.event.SlotUpdateEvent;
 import mindless.runtime.AccessorBridge;
@@ -10,9 +13,12 @@ import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.combat.KillAura;
 import mindless.module.impl.render.BlockOverlay;
+import mindless.rotation.RotationSource;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.GroupSetting;
+import mindless.module.setting.impl.ProfiledButtonSetting;
+import mindless.module.setting.impl.ProfiledSliderSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.BlockUtils;
 import mindless.utility.OwnBedTracker;
@@ -33,6 +39,7 @@ import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Mouse;
 
 import java.util.*;
@@ -48,7 +55,6 @@ public class BedAura extends Module {
     private final SliderSetting aimSpeed;
     private final SliderSetting breakDelay;
     private final SliderSetting breakSpeed;
-    private final ButtonSetting breakNearBlock;
     private final ButtonSetting breakFromOutside;
     private final ButtonSetting whitelistOwnBed;
     private final ButtonSetting prioritizeKillAura;
@@ -59,6 +65,17 @@ public class BedAura extends Module {
     private final ButtonSetting spoofItem;
     private final ButtonSetting renderOutline;
     private final ColorSetting outlineColor;
+    private final GroupSetting silentGroup;
+    private final ProfiledSliderSetting silentRange;
+    private final ProfiledSliderSetting silentSpeed;
+    private final ProfiledButtonSetting silentSurroundings;
+    private final ProfiledButtonSetting silentToolCheck;
+    private final ProfiledButtonSetting silentWhitelist;
+    private final ProfiledButtonSetting silentSwing;
+    private final ProfiledSliderSetting silentMoveFix;
+    private final ProfiledSliderSetting silentShowTarget;
+    private final ProfiledSliderSetting silentShowProgress;
+    private final SilentBedBreaker silent;
 
     private static final int MS_PER_TICK = 50;
     private static final double BED_FIND_EXTRA_BLOCKS = 1.0;
@@ -75,18 +92,21 @@ private static final double AIM_FACE_INSET = 0.12;
     private EnumFacing lockedSide;
 
     private boolean miningActive;
+    private boolean rotationPending;
     private boolean controlsInput;
     private int rotationAlignedTicks;
     private int retargetDelayTicks;
     private boolean lockedTargetBed;
     private int hotbarProgrammaticDepth;
     private boolean hasSwapped;
+    private int swappedSlot = -1;
     private int previousSlot = -1;
     private ItemStack originalVisualItem;
     private boolean lastOutsidePolicy;
     private BlockPos pathBedFoot;
     private Vec3 pathDestination;
     private int pathInitialBlocks;
+    private int activeMode = -1;
 
 
     public BedAura() {
@@ -98,7 +118,6 @@ private static final double AIM_FACE_INSET = 0.12;
         this.registerSetting(range = new SliderSetting("Range", " block", 4.5, 2.0, 6.0, 0.1));
         this.registerSetting(rate = new SliderSetting("Rate", "ms", 250.0, 50.0, 2000.0, 50.0));
         this.registerSetting(aimSpeed = new SliderSetting("Aim speed", 14, 1, 30, 1));
-        this.registerSetting(breakNearBlock = new ButtonSetting("Break near block", true));
         // Defaulted on so behaviour is unchanged for anyone already using it: the old default
         // of off produced this same path, it was only named backwards.
         this.registerSetting(breakFromOutside = new ButtonSetting("Break from outside", true));
@@ -111,15 +130,55 @@ private static final double AIM_FACE_INSET = 0.12;
         this.registerSetting(spoofItem = new ButtonSetting(swapGroup, "Keep Original Item", false, "Spoof item"));
         this.registerSetting(renderOutline = new ButtonSetting("Render block outline", true));
         this.registerSetting(outlineColor = new ColorSetting("Outline color", 255, 64, 64, 229));
+        this.registerSetting(silentGroup = new GroupSetting("Silent"));
+        this.registerSetting(silentRange = new ProfiledSliderSetting(silentGroup, "Range", " block", 4.5, 2.0, 4.5, 0.1, "Silent.Range") {
+            @Override
+            public void loadProfile(com.google.gson.JsonObject data) {
+                super.loadProfile(data);
+                setValue(Double.isFinite(getInput()) ? getInput() : 4.5);
+            }
+        });
+        this.registerSetting(silentSpeed = new ProfiledSliderSetting(silentGroup, "Speed", "%", 33.0, 0.0, 100.0, 1.0, "Silent.Speed"));
+        this.registerSetting(silentSurroundings = new ProfiledButtonSetting(silentGroup, "Surroundings", true, "Silent.Surroundings"));
+        this.registerSetting(silentToolCheck = new ProfiledButtonSetting(silentGroup, "Tool check", true, "Silent.Tool check"));
+        this.registerSetting(silentWhitelist = new ProfiledButtonSetting(silentGroup, "Whitelist", true, "Silent.Whitelist"));
+        this.registerSetting(silentSwing = new ProfiledButtonSetting(silentGroup, "Swing", true, "Silent.Swing"));
+        this.registerSetting(silentMoveFix = new ProfiledSliderSetting(silentGroup, "Move fix", 1, new String[]{"None", "Silent", "Strict"}, "Silent.Move fix"));
+        this.registerSetting(silentShowTarget = new ProfiledSliderSetting(silentGroup, "Show target", 1, new String[]{"None", "Default", "HUD"}, "Silent.Show target"));
+        this.registerSetting(silentShowProgress = new ProfiledSliderSetting(silentGroup, "Show progress", 1, new String[]{"None", "Default", "HUD"}, "Silent.Show progress"));
+        silent = new SilentBedBreaker(this, silentRange, silentSpeed,
+                silentSurroundings, silentToolCheck, silentWhitelist, silentSwing, silentMoveFix,
+                silentShowTarget, silentShowProgress);
     }
 
     @Override
     public void guiUpdate() {
-        breakFromOutside.setVisible(!isLegitMode(), this);
-        switchBackWhenDone.setVisible(autoTool.isToggled(), this);
-        overrideSwapBack.setVisible(autoTool.isToggled(), this);
-        spoofItem.setVisible(autoTool.isToggled(), this);
-        outlineColor.setVisible(renderOutline.isToggled(), this);
+        boolean legit = isLegitMode();
+        breakSpeed.setVisible(legit, this);
+        breakDelay.setVisible(legit, this);
+        fov.setVisible(legit, this);
+        range.setVisible(legit, this);
+        rate.setVisible(legit, this);
+        aimSpeed.setVisible(legit, this);
+        breakFromOutside.setVisible(false, this);
+        whitelistOwnBed.setVisible(legit, this);
+        swapGroup.setVisible(legit, this);
+        autoTool.setVisible(legit, this);
+        switchBackWhenDone.setVisible(legit && autoTool.isToggled(), this);
+        overrideSwapBack.setVisible(legit && autoTool.isToggled(), this);
+        spoofItem.setVisible(legit && autoTool.isToggled(), this);
+        renderOutline.setVisible(legit, this);
+        outlineColor.setVisible(legit && renderOutline.isToggled(), this);
+        silentGroup.setVisible(!legit, this);
+        silentRange.setVisible(!legit, this);
+        silentSpeed.setVisible(!legit, this);
+        silentSurroundings.setVisible(!legit, this);
+        silentToolCheck.setVisible(!legit, this);
+        silentWhitelist.setVisible(!legit, this);
+        silentSwing.setVisible(!legit, this);
+        silentMoveFix.setVisible(!legit, this);
+        silentShowTarget.setVisible(!legit, this);
+        silentShowProgress.setVisible(!legit, this);
     }
 
     @Override
@@ -137,23 +196,63 @@ private static final double AIM_FACE_INSET = 0.12;
 
     @Override
     public void onDisable() {
+        silent.cleanup();
         resetMining();
+        activeMode = -1;
         bedPairsCache.clear();
         scanCooldown = 0;
         retargetDelayTicks = 0;
+    }
+
+    public void onWorldChange() {
+        silent.cleanup();
+        resetMining();
+        activeMode = -1;
     }
 
     @Override
     public void onUpdate() {
         if (Utils.nullCheck()) {
             OwnBedTracker.tick();
+            int selectedMode = (int) mode.getInput();
+            if (activeMode != -1 && activeMode != selectedMode) {
+                silent.cleanup();
+                resetMining();
+            }
+            activeMode = selectedMode;
+            if (!isLegitMode()) {
+                if (controlsInput) releaseInputControl();
+                return;
+            }
             applyMiningKeyState();
         }
     }
 
     @SubscribeEvent
+    public void onGameTick(GameTickEvent event) {
+        prepareSilentTick();
+    }
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.START) prepareSilentTick();
+    }
+
+    private void prepareSilentTick() {
+        if (!isEnabled() || !Utils.nullCheck()) return;
+        int selectedMode = (int) mode.getInput();
+        if (activeMode != -1 && activeMode != selectedMode) {
+            silent.cleanup();
+            resetMining();
+        }
+        activeMode = selectedMode;
+        if (!isLegitMode()) silent.prepareTick();
+    }
+
+    @SubscribeEvent
     public void onWorldJoin(EntityJoinWorldEvent e) {
         if (e.entity == mc.thePlayer) {
+            silent.cleanup();
             resetSpawnTracking();
         }
     }
@@ -197,8 +296,11 @@ private static final double AIM_FACE_INSET = 0.12;
         }
         if (hasSwapped && overrideSwapBack.isToggled() && Utils.nullCheck()) {
             int slot = Integer.compare(e.slot, 0);
-            previousSlot = Math.floorMod(mc.thePlayer.inventory.currentItem - slot, InventoryPlayer.getHotbarSize());
+            previousSlot = Math.floorMod((previousSlot >= 0 ? previousSlot : mc.thePlayer.inventory.currentItem) - slot, InventoryPlayer.getHotbarSize());
             originalVisualItem = copyStack(previousSlot);
+        }
+        if (!isLegitMode() && Utils.nullCheck()) {
+            silent.scrollIntendedSlot(e.slot);
         }
         e.setCanceled(true);
     }
@@ -212,15 +314,21 @@ private static final double AIM_FACE_INSET = 0.12;
             previousSlot = e.slot;
             originalVisualItem = copyStack(previousSlot);
         }
+        if (!isLegitMode()) silent.recordIntendedSlot(e.slot);
         e.setCanceled(true);
     }
 
     private boolean shouldSuppressManualMouse() {
-        return miningActive && isEnabled() && Utils.nullCheck() && mc.currentScreen == null && canMineBlocks() && !shouldYieldToKillAura();
+        return isEnabled() && Utils.nullCheck() && mc.currentScreen == null && canMineBlocks() && !shouldYieldToKillAura()
+                && (isLegitMode() ? isActivelyMining() : silent.controlsInteractions());
     }
 
     public void applyMiningKeyState() {
-        if (!canMineBlocks() || shouldYieldToKillAura()) {
+        if (!isLegitMode()) {
+            if (controlsInput) releaseInputControl();
+            return;
+        }
+        if (!canMineBlocks() || shouldYieldToKillAura() || miningActive && !hasMiningRotation()) {
             if (miningActive) {
                 resetMining();
             }
@@ -246,14 +354,16 @@ private void releaseInputControl() {
     }
 
     public BlockPos getAuraTargetPos() {
-        return miningActive && canMineBlocks() ? targetPos : null;
+        return isLegitMode() ? miningActive && canMineBlocks() ? targetPos : null : silent.target();
     }
 
     public boolean isActivelyMining() {
-        return miningActive && isEnabled() && Utils.nullCheck() && mc.currentScreen == null && canMineBlocks() && !shouldYieldToKillAura();
+        return isLegitMode() ? miningActive && isEnabled() && Utils.nullCheck() && mc.currentScreen == null && canMineBlocks() && !shouldYieldToKillAura() && hasMiningRotation()
+                : silent.isDigging();
     }
 
     public boolean isBreakingRoute() {
+        if (!isLegitMode()) return isEnabled() && silent.controlsInteractions();
         return isEnabled() && Utils.nullCheck() && mc.currentScreen == null
                 && canMineBlocks() && !shouldYieldToKillAura()
                 && (pathDestination != null || miningActive);
@@ -264,7 +374,24 @@ private void releaseInputControl() {
     }
 
     public boolean shouldOverrideFastMine() {
-        return isActivelyMining();
+        return isLegitMode() && isActivelyMining();
+    }
+
+    public boolean shouldSuppressControllerMining() {
+        return !isLegitMode() && isEnabled() && silent.controlsInteractions();
+    }
+
+    public boolean controlsInteractions() {
+        return isLegitMode() ? isActivelyMining() : silent.controlsInteractions();
+    }
+
+    public boolean shouldYieldInteractionTo(RotationSource source) {
+        return !isLegitMode() && controlsInteractions() && source != null
+                && source.getPriority() > RotationSource.BED_AURA.getPriority();
+    }
+
+    public boolean usesControllerMining() {
+        return isLegitMode() && isActivelyMining();
     }
 
     public float getBreakSpeedMultiplier() {
@@ -277,6 +404,7 @@ private void releaseInputControl() {
     }
 
     public float getAuraBreakProgress() {
+        if (!isLegitMode()) return silent.progress();
         if (!canMineBlocks() || !miningActive || mc.playerController == null) {
             return 0f;
         }
@@ -288,6 +416,7 @@ private void releaseInputControl() {
     }
 
     public float getAuraTotalProgress() {
+        if (!isLegitMode()) return silent.progress();
         float blockProgress = Math.max(0.0f, Math.min(1.0f, getAuraBreakProgress()));
         if (isAuraTargetBed()) {
             return blockProgress;
@@ -300,6 +429,14 @@ private void releaseInputControl() {
         int completed = Math.max(0, pathInitialBlocks - remaining);
         return Math.max(0.0f, Math.min(1.0f,
                 (completed + blockProgress) / (float) pathInitialBlocks));
+    }
+
+    public boolean shouldShowAuraProgress() {
+        return isLegitMode() || silent.showsProgress();
+    }
+
+    public int getAuraProgressColor() {
+        return isLegitMode() ? -1 : silent.progressColor();
     }
 
     public String getAuraToolName() {
@@ -320,8 +457,9 @@ private void releaseInputControl() {
     }
 
     public boolean isAuraTargetBed() {
-        return Utils.nullCheck() && targetPos != null
-                && BlockUtils.getBlock(targetPos) instanceof BlockBed;
+        BlockPos position = isLegitMode() ? targetPos : silent.target();
+        return Utils.nullCheck() && position != null
+                && BlockUtils.getBlock(position) instanceof BlockBed;
     }
 
     public boolean isSpoofingHeldItem() {
@@ -332,7 +470,7 @@ private void releaseInputControl() {
         return originalVisualItem;
     }
 public boolean shouldOverrideMouseOver() {
-        return isEnabled() && miningActive && canMineBlocks()
+        return isLegitMode() && isActivelyMining() && canMineBlocks()
                 && targetPos != null && targetHitVec != null && targetSide != null
                 && Utils.nullCheck() && !shouldYieldToKillAura();
     }
@@ -345,8 +483,9 @@ public boolean shouldOverrideMouseOver() {
             return;
         }
 
-        EnumFacing side = lockedSide != null ? lockedSide : targetSide;
-        MovingObjectPosition mop = new MovingObjectPosition(targetHitVec, side, targetPos);
+        MovingObjectPosition mop = RotationUtils.rayCastBlock(range.getInput(),
+                RotationHelper.get().getServerYaw(), RotationHelper.get().getServerPitch());
+        if (mop == null || !targetPos.equals(mop.getBlockPos())) return;
         mc.objectMouseOver = mop;
         mc.pointedEntity = null;
 
@@ -356,15 +495,16 @@ public boolean shouldOverrideMouseOver() {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onClientRotation(ClientRotationEvent e) {
+        rotationPending = false;
+        if (!isLegitMode()) {
+            silent.requestRotation(e);
+            return;
+        }
         if (!isEnabled() || !Utils.nullCheck() || mc.currentScreen != null || !canMineBlocks()) {
             resetMining();
             return;
         }
         if (shouldYieldToKillAura()) {
-            resetMining();
-            return;
-        }
-        if (e.scriptRotations) {
             resetMining();
             return;
         }
@@ -451,10 +591,8 @@ public boolean shouldOverrideMouseOver() {
             rotationAlignedTicks = 0;
         }
 
-        updateAutoTool(BlockUtils.getBlock(targetPos));
-
-        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
-        float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
+        float baseYaw = e.getBaseYaw() != null ? e.getBaseYaw() : RotationUtils.serverRotations[0];
+        float basePitch = e.getBasePitch() != null ? e.getBasePitch() : RotationUtils.serverRotations[1];
         float[] targetRotations = RotationUtils.getRotationsToPoint(
                 targetHitVec.xCoord, targetHitVec.yCoord, targetHitVec.zCoord,
                 baseYaw, basePitch
@@ -471,22 +609,48 @@ public boolean shouldOverrideMouseOver() {
         float[] fixed = RotationUtils.fixRotation(r[0], r[1],
                 RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
 
-        // Measured against what is actually sent rather than the value before snapping,
-        // otherwise mining is gated on a rotation the server never sees.
-        float yawError = Math.abs(MathHelper.wrapAngleTo180_float(targetRotations[0] - fixed[0]));
-        float pitchError = Math.abs(targetRotations[1] - fixed[1]);
-        if (!miningActive) {
-            if (yawError <= 4.0F && pitchError <= 4.0F) {
-                rotationAlignedTicks++;
-            } else {
-                rotationAlignedTicks = 0;
-            }
-            miningActive = rotationAlignedTicks >= 2;
-        }
-        e.setYaw(fixed[0]);
-        e.setPitch(fixed[1]);
+        rotationPending = true;
+        e.requestRotation(mindless.rotation.RotationSource.BED_AURA, fixed[0], fixed[1]);
     }
 
+    public void afterMotionResolved(PreMotionEvent event) {
+        if (!isLegitMode()) {
+            silent.actionTick(event);
+            return;
+        }
+        boolean aligned = isEnabled() && Utils.nullCheck() && mc.currentScreen == null
+                && canMineBlocks() && !shouldYieldToKillAura() && rotationPending
+                && event.getYawSource() == RotationSource.BED_AURA
+                && event.getPitchSource() == RotationSource.BED_AURA
+                && hitsMiningTarget(event.getYaw(), event.getPitch());
+        if (!aligned && miningActive) {
+            resetMining();
+            return;
+        }
+        rotationPending = false;
+        rotationAlignedTicks = aligned ? Math.min(2, rotationAlignedTicks + 1) : 0;
+        miningActive = rotationAlignedTicks >= 2;
+        if (miningActive) updateAutoTool(BlockUtils.getBlock(targetPos));
+        if (!aligned && controlsInput) releaseInputControl();
+    }
+
+    private boolean hasMiningRotation() {
+        RotationHelper helper = RotationHelper.get();
+        return helper.getServerYawSource() == RotationSource.BED_AURA
+                && helper.getServerPitchSource() == RotationSource.BED_AURA
+                && helper.getServerYaw() != null && helper.getServerPitch() != null
+                && hitsMiningTarget(helper.getServerYaw(), helper.getServerPitch());
+    }
+
+    private boolean hitsMiningTarget(float yaw, float pitch) {
+        if (targetPos == null || targetHitVec == null || !Utils.nullCheck()) return false;
+        float[] desired = RotationUtils.getRotationsToPoint(targetHitVec.xCoord, targetHitVec.yCoord,
+                targetHitVec.zCoord, yaw, pitch);
+        if (Math.abs(MathHelper.wrapAngleTo180_float(desired[0] - yaw)) > 4.0F
+                || Math.abs(desired[1] - pitch) > 4.0F) return false;
+        MovingObjectPosition hit = RotationUtils.rayCastBlock(range.getInput(), yaw, pitch);
+        return hit != null && targetPos.equals(hit.getBlockPos());
+    }
 
     private boolean isLockedTargetValid(double reachSq) {
         IBlockState st = mc.theWorld.getBlockState(lockedPos);
@@ -552,6 +716,14 @@ public boolean shouldOverrideMouseOver() {
 
     @SubscribeEvent
     public void onRenderWorldLast(RenderWorldLastEvent e) {
+        if (!isLegitMode()) {
+            BlockPos silentTarget = silent.target();
+            int color = silent.targetColor();
+            if (isEnabled() && silentTarget != null && color != 0 && Utils.nullCheck()) {
+                BlockOverlay.renderBlockOutline(silentTarget, color, color, 2.0f, true);
+            }
+            return;
+        }
         if (!isEnabled() || !renderOutline.isToggled() || !miningActive || targetPos == null || !Utils.nullCheck() || !canMineBlocks()) {
             return;
         }
@@ -566,11 +738,13 @@ public boolean shouldOverrideMouseOver() {
 
     private void resetMining() {
         miningActive = false;
+        rotationPending = false;
         rotationAlignedTicks = 0;
         lockedPos = null;
         lockedSide = null;
         lockedTargetBed = false;
-        if (switchBackWhenDone.isToggled() && previousSlot != -1 && Utils.nullCheck()) {
+        if (switchBackWhenDone.isToggled() && previousSlot != -1 && Utils.nullCheck()
+                && mc.thePlayer.inventory.currentItem == swappedSlot) {
             setSlot(previousSlot);
         }
         if (controlsInput) {
@@ -581,6 +755,7 @@ public boolean shouldOverrideMouseOver() {
         targetHitVec = null;
         targetSide = null;
         hasSwapped = false;
+        swappedSlot = -1;
         previousSlot = -1;
         originalVisualItem = null;
         pathBedFoot = null;
@@ -846,6 +1021,12 @@ private BlockPos[] footHeadPair(BlockPos at) {
         return new ArrayList<>(bestByFirstBlock.values());
     }
 
+    List<BlockPos> reachableBedRoute(BlockPos[] pair, double reach) {
+        List<BlockPos> positions = new ArrayList<>();
+        for (Choice choice : buildLegitOutsideCandidates(pair, reach * reach)) positions.add(choice.pos);
+        return positions;
+    }
+
     private int countPathBlocks(Vec3 start, Vec3 destination) {
         Vec3 delta = destination.subtract(start);
         double length = delta.lengthVector();
@@ -1022,10 +1203,12 @@ private BlockPos[] footHeadPair(BlockPos at) {
         if (!hasSwapped) {
             return;
         }
-        if (switchBackWhenDone.isToggled() && previousSlot != -1) {
+        if (switchBackWhenDone.isToggled() && previousSlot != -1
+                && mc.thePlayer.inventory.currentItem == swappedSlot) {
             setSlot(previousSlot);
         }
         hasSwapped = false;
+        swappedSlot = -1;
         previousSlot = -1;
         originalVisualItem = null;
     }
@@ -1037,6 +1220,7 @@ private BlockPos[] footHeadPair(BlockPos at) {
         hotbarProgrammaticDepth++;
         try {
             mc.thePlayer.inventory.currentItem = slot;
+            swappedSlot = slot;
             hasSwapped = true;
             AccessorBridge.PlayerControllerMP_callSyncCurrentPlayItem(mc.playerController);
         } finally {
@@ -1055,7 +1239,7 @@ private BlockPos[] footHeadPair(BlockPos at) {
                 && !mc.thePlayer.isSpectator();
     }
 
-    private boolean shouldYieldToKillAura() {
+    boolean shouldYieldToKillAura() {
         if (!prioritizeKillAura.isToggled()) {
             return false;
         }

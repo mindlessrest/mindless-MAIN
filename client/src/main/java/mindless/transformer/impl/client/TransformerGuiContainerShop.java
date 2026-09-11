@@ -1,6 +1,7 @@
 package mindless.transformer.impl.client;
 
 import mindless.module.ModuleManager;
+import mindless.module.impl.bedwars.InstantShop;
 import mindless.module.impl.minigames.ShopHelper;
 import net.lenni0451.classtransform.InjectionCallback;
 import net.lenni0451.classtransform.annotations.CInline;
@@ -40,10 +41,25 @@ public abstract class TransformerGuiContainerShop {
     @CInject(method = "handleMouseClick", target = @CTarget("HEAD"), cancellable = true)
     private void shopClick(Slot slot, int slotId, int clickedButton, int clickType,
                            InjectionCallback ci) {
+        notifyResourceDepositManualInput();
         ShopHelper helper = ModuleManager.shopHelper;
+        InstantShop instantShop = ModuleManager.instantShop;
+        GuiContainer self = (GuiContainer) (Object) this;
+        if (instantShop != null && instantShop.isEnabled()
+                && helper != null && helper.isEnabled()
+                && helper.decideClick(self, slot, clickType, clickedButton) == ShopHelper.CLICK_CANCEL) {
+            ci.setCancelled(true);
+            return;
+        }
+
+        if (instantShop != null && instantShop.isEnabled()
+                && instantShop.tryPurchase(self, slot, slotId, clickedButton, clickType)) {
+            ci.setCancelled(true);
+            return;
+        }
+
         if (helper == null || !helper.isEnabled()) return;
 
-        GuiContainer self = (GuiContainer) (Object) this;
         int decision = helper.decideClick(self, slot, clickType, clickedButton);
         if (decision == ShopHelper.CLICK_ALLOW) return;
 
@@ -53,5 +69,12 @@ public abstract class TransformerGuiContainerShop {
         Minecraft mc = Minecraft.getMinecraft();
         mc.playerController.windowClick(self.inventorySlots.windowId, slotId,
                 0, 0, mc.thePlayer);
+    }
+
+    @CInline
+    private static void notifyResourceDepositManualInput() {
+        if (ModuleManager.resourceDeposit != null) {
+            ModuleManager.resourceDeposit.onManualInventoryInteraction();
+        }
     }
 }

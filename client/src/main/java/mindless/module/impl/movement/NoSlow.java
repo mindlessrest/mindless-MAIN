@@ -74,6 +74,7 @@ public class NoSlow extends Module {
 
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent e) {
+        if (ModuleManager.killAura != null && ModuleManager.killAura.ownsAutoBlock()) return;
         if ((int) swordMode.getInput() == ITEM_MODE_NONE && Utils.holdingSword()) {
             return;
         }
@@ -105,6 +106,7 @@ public class NoSlow extends Module {
      * return something sane rather than throwing.
      */
     public static float getSlowed() {
+        if (ModuleManager.killAura != null && ModuleManager.killAura.allowsAuraNoSlow()) return 1.0f;
         net.minecraft.item.ItemStack held = mc.thePlayer == null ? null : mc.thePlayer.getHeldItem();
         if (held == null || ModuleManager.noSlow == null || !ModuleManager.noSlow.isEnabled()) {
             return 0.2f;
@@ -144,9 +146,7 @@ public class NoSlow extends Module {
 
     /** Whether Autoblock currently has a block standing. */
     private static boolean isBlockingNow() {
-        if (ModuleManager.myauBlock != null && ModuleManager.myauBlock.isActive()) {
-            return ModuleManager.myauBlock.allowsNoSlow();
-        }
+        if (ModuleManager.killAura != null && ModuleManager.killAura.ownsAutoBlock()) return ModuleManager.killAura.isBlockingSword();
         if (ModuleManager.autoBlock == null || !ModuleManager.autoBlock.isEnabled()) {
             return false;
         }

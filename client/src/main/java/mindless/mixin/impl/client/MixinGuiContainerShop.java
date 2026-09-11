@@ -1,6 +1,7 @@
 package mindless.mixin.impl.client;
 
 import mindless.module.ModuleManager;
+import mindless.module.impl.bedwars.InstantShop;
 import mindless.module.impl.minigames.ShopHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
@@ -41,10 +42,25 @@ public abstract class MixinGuiContainerShop {
     @Inject(method = "handleMouseClick", at = @At("HEAD"), cancellable = true)
     private void mindless$shopClick(Slot slot, int slotId, int clickedButton, int clickType,
                                     CallbackInfo ci) {
+        notifyResourceDepositManualInput();
         ShopHelper helper = ModuleManager.shopHelper;
+        InstantShop instantShop = ModuleManager.instantShop;
+        GuiContainer self = (GuiContainer) (Object) this;
+        if (instantShop != null && instantShop.isEnabled()
+                && helper != null && helper.isEnabled()
+                && helper.decideClick(self, slot, clickType, clickedButton) == ShopHelper.CLICK_CANCEL) {
+            ci.cancel();
+            return;
+        }
+
+        if (instantShop != null && instantShop.isEnabled()
+                && instantShop.tryPurchase(self, slot, slotId, clickedButton, clickType)) {
+            ci.cancel();
+            return;
+        }
+
         if (helper == null || !helper.isEnabled()) return;
 
-        GuiContainer self = (GuiContainer) (Object) this;
         int decision = helper.decideClick(self, slot, clickType, clickedButton);
         if (decision == ShopHelper.CLICK_ALLOW) return;
 
@@ -54,5 +70,11 @@ public abstract class MixinGuiContainerShop {
         Minecraft mc = Minecraft.getMinecraft();
         mc.playerController.windowClick(self.inventorySlots.windowId, slotId,
                 0, 0, mc.thePlayer);
+    }
+
+    private static void notifyResourceDepositManualInput() {
+        if (ModuleManager.resourceDeposit != null) {
+            ModuleManager.resourceDeposit.onManualInventoryInteraction();
+        }
     }
 }

@@ -2,6 +2,7 @@ package mindless.module.impl.player;
 
 import mindless.event.ClientRotationEvent;
 import mindless.event.PreUpdateEvent;
+import mindless.rotation.RotationSource;
 import mindless.helper.RotationHelper;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
@@ -9,6 +10,9 @@ import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ItemListSetting;
 import mindless.module.setting.impl.KeySetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.placement.PlacementCoordinator;
+import mindless.placement.PlacementLease;
+import mindless.placement.PlacementRuntime;
 import mindless.utility.*;
 import mindless.utility.Timer;
 import net.minecraft.block.*;
@@ -58,8 +62,7 @@ public class AutoBlockin extends Module {
     private final ItemListSetting ignoredBlocks;
 
     private boolean placing;
-    private boolean slotWasSwapped;
-    private int prevSlot = -1;
+    private PlacementLease placementLease;
     private int plannedSlot = -1;
     private boolean placeQueued;
 
@@ -104,6 +107,7 @@ public class AutoBlockin extends Module {
 
     @Override
     public void onDisable() {
+        PlacementCoordinator.get().cancel(this);
         disablePlacing();
         placeQueued = false;
         fillCount = 0;
@@ -121,23 +125,19 @@ public class AutoBlockin extends Module {
 
     @SubscribeEvent
     public void onClientRotation(ClientRotationEvent e) {
-        if (!Utils.nullCheck()) {
+        if (!canPlace()) {
+            disablePlacing();
             return;
         }
-        if (disableInCreative.isToggled() && mc.thePlayer.capabilities.isCreativeMode) {
-            return;
-        }
-        if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
-            return;
-        }
+        placeQueued = false;
 
         runTargetSelection();
 
         if (mc.currentScreen != null) disablePlacing();
-        if (!placing || targetHitPos == null) return;
+        if (!isPlacementActive() || targetHitPos == null) return;
 
-        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
-        float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
+        float baseYaw = e.getBaseYaw() != null ? e.getBaseYaw() : RotationUtils.serverRotations[0];
+        float basePitch = e.getBasePitch() != null ? e.getBasePitch() : RotationUtils.serverRotations[1];
         float[] sm = RotationUtils.smoothRotation(baseYaw, basePitch, aimYaw, aimPitch,
                 (int) speed.getInput(), (float) randomization.getInput());
         double r = REACH;
@@ -148,8 +148,8 @@ public class AutoBlockin extends Module {
             EnumFacing side = mop.sideHit;
             if (hitBlock.equals(targetHitPos) && side == targetSide) {
                 double tol = rotationTol.getInput();
-                if (Math.abs(sm[0] - RotationUtils.serverRotations[0]) <= tol
-                        && Math.abs(sm[1] - RotationUtils.serverRotations[1]) <= tol) {
+                if (Math.abs(MathHelper.wrapAngleTo180_float(sm[0] - baseYaw)) <= tol
+                        && Math.abs(sm[1] - basePitch) <= tol) {
                     hitAt = hitBlock;
                     hitSide = side;
                     placeAt = mop.hitVec;
@@ -158,14 +158,37 @@ public class AutoBlockin extends Module {
             }
         }
 
-        e.setYaw(sm[0]);
-        e.setPitch(sm[1]);
+        e.requestRotation(mindless.rotation.RotationSource.AUTO_BLOCKIN, sm[0], sm[1]);
+    }
+
+    private MovingObjectPosition validatedPlacementHit() {
+        mindless.runtime.SentPlayerState.Snapshot sent = mindless.runtime.SentPlayerState.snapshot();
+        if (sent == null || hitAt == null || hitSide == null || BlockUtils.replaceable(hitAt)
+                || mc.theWorld.getBlockState(hitAt).getBlock().getMaterial().isLiquid()
+                || !BlockUtils.replaceable(hitAt.offset(hitSide))) return null;
+        Vec3 eyes = new Vec3(sent.x, sent.y + mc.thePlayer.getEyeHeight(), sent.z);
+        Vec3 look = Utils.getLookVec(sent.yaw, sent.pitch);
+        MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(eyes,
+                eyes.addVector(look.xCoord * REACH, look.yCoord * REACH, look.zCoord * REACH), false, false, false);
+        return hit != null && hit.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
+                && hitAt.equals(hit.getBlockPos()) && hitSide == hit.sideHit ? hit : null;
+    }
+
+    private boolean canPlace() {
+        return Utils.nullCheck() && mc.currentScreen == null
+                && isActivationPressed()
+                && (!disableInCreative.isToggled() || !mc.thePlayer.capabilities.isCreativeMode)
+                && (ModuleManager.bedAura == null || !ModuleManager.bedAura.controlsInteractions());
+    }
+
+    private boolean isActivationPressed() {
+        return activationKey.getKey() == 0 || activationKey.isPressed();
     }
 
     private void runTargetSelection() {
         clearAim();
 
-        if (!activationKey.isPressed() || mc.currentScreen != null) {
+        if (!isActivationPressed() || mc.currentScreen != null) {
             disablePlacing();
             circleProgress = 0f;
             return;
@@ -188,23 +211,38 @@ public class AutoBlockin extends Module {
         if (lastTargetAdjacent) plannedSlot = (strongSlot != -1 ? strongSlot : weakSlot);
         else plannedSlot = (weakSlot != -1 ? weakSlot : strongSlot);
 
-        if (!placing) enablePlacing();
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindAttack.getKeyCode(), false);
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
+        if (!isPlacementActive()) enablePlacing();
+        if (!isPlacementActive()) return;
+        placementLease.claimInput(PlacementRuntime.input(mc.gameSettings.keyBindAttack), false);
+        placementLease.claimInput(PlacementRuntime.input(mc.gameSettings.keyBindUseItem), false);
         equipPlannedSlot();
     }
 
 
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent e) {
-        if (!Utils.nullCheck()) return;
+        if (!canPlace()) {
+            disablePlacing();
+            return;
+        }
 
         if (placeQueued) {
             placeQueued = false;
-            if (hitAt != null && hitSide != null && placeAt != null) {
+            if (hitAt != null && hitSide != null && placeAt != null
+                    && mc.thePlayer.inventory.currentItem == plannedSlot
+                    && mindless.runtime.AccessorBridge.PlayerControllerMP_getCurrentPlayerItem(mc.playerController) == plannedSlot
+                    && mc.thePlayer.getHeldItem() != null && mc.thePlayer.getHeldItem().getItem() instanceof ItemBlock) {
                 BlockPos placementPos = hitAt.offset(hitSide);
+                final MovingObjectPosition hit = validatedPlacementHit();
 
-                if (!isNearBed(placementPos) && mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, mc.thePlayer.getHeldItem(), hitAt, hitSide, placeAt)) {
+                if (hit != null && !isNearBed(placementPos) && isPlacementActive()
+                        && placementLease.tryControllerAction(Utils.getBaseClientTick(), new PlacementLease.ControllerAction() {
+                    @Override
+                    public boolean run() {
+                        return mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld,
+                                mc.thePlayer.getHeldItem(), hitAt, hitSide, hit.hitVec);
+                    }
+                })) {
                     mc.thePlayer.swingItem();
                 }
             }
@@ -213,7 +251,7 @@ public class AutoBlockin extends Module {
         fillCount = 0;
         fillTargetCount = 0;
 
-        if (activationKey.isPressed() && mc.currentScreen == null) {
+        if (isActivationPressed() && mc.currentScreen == null) {
             BlockPos feet = new BlockPos(
                     MathHelper.floor_double(mc.thePlayer.posX),
                     MathHelper.floor_double(mc.thePlayer.posY),
@@ -302,16 +340,22 @@ public class AutoBlockin extends Module {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onMouse(MouseEvent e) {
-        if (placing && e.button > -1) {
+        if (isPlacementActive() && e.button > -1) {
             e.setCanceled(true);
         }
     }
 
     private void enablePlacing() {
-        if (placing) return;
+        if (isPlacementActive()) return;
+        if (placing) disablePlacing();
+        long tick = Utils.getBaseClientTick();
+        PlacementCoordinator.get().announce(this, PlacementCoordinator.Priority.AUTO_BLOCK_IN,
+                mc.thePlayer, mc.theWorld, tick + 1L);
+        PlacementLease lease = PlacementCoordinator.get().acquire(
+                this, PlacementCoordinator.Priority.AUTO_BLOCK_IN, mc.thePlayer, mc.theWorld, tick);
+        if (lease == null) return;
+        placementLease = lease;
         placing = true;
-        slotWasSwapped = false;
-        prevSlot = mc.thePlayer.inventory.currentItem;
     }
 
     private int updateProgressAlpha(boolean shouldShow) {
@@ -458,21 +502,16 @@ public class AutoBlockin extends Module {
     }
 
     private void disablePlacing() {
-        if (!placing) return;
-
-        if (slotWasSwapped && prevSlot != -1 && prevSlot != mc.thePlayer.inventory.currentItem) {
-            mc.thePlayer.inventory.currentItem = prevSlot;
-        }
-
+        placeQueued = false;
+        hitAt = null;
+        hitSide = null;
+        placeAt = null;
+        clearAim();
+        RotationHelper.get().release(RotationSource.AUTO_BLOCKIN);
+        PlacementCoordinator.get().cancel(this);
         placing = false;
-        slotWasSwapped = false;
-        prevSlot = -1;
+        releasePlacement();
         plannedSlot = -1;
-
-        if (mc.currentScreen == null) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindAttack.getKeyCode(), Mouse.isButtonDown(0));
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), Mouse.isButtonDown(1));
-        }
     }
 
     private void clearAim() {
@@ -481,10 +520,19 @@ public class AutoBlockin extends Module {
     }
 
     private void equipPlannedSlot() {
-        int cur = mc.thePlayer.inventory.currentItem;
-        if (plannedSlot != -1 && plannedSlot != cur) {
-            mc.thePlayer.inventory.currentItem = plannedSlot;
-            slotWasSwapped = true;
+        if (plannedSlot != -1 && placementLease != null) {
+            placementLease.claimHotbar(PlacementRuntime.hotbar(), plannedSlot);
+        }
+    }
+
+    private boolean isPlacementActive() {
+        return placing && placementLease != null && placementLease.isActive();
+    }
+
+    private void releasePlacement() {
+        if (placementLease != null) {
+            placementLease.release();
+            placementLease = null;
         }
     }
 

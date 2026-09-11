@@ -11,6 +11,7 @@
     "entity.MixinEntityLivingBase",
     "entity.MixinEntityLivingBaseAnimations",
     "network.MixinNetworkManager",
+    "network.MixinPacketThreadUtil",
     "entity.MixinEntityPlayer",
     "render.MixinRendererLivingEntity",
     "render.MixinActiveRenderInfo",

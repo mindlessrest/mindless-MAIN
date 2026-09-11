@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class MixinGuiContainer {
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void mindless$cancelManagedInventoryMouseClick(int mouseX, int mouseY, int mouseButton, CallbackInfo callbackInfo) {
+        notifyResourceDepositManualInput();
         if (shouldCancelManualInventoryInput()) {
             callbackInfo.cancel();
         }
@@ -19,6 +20,7 @@ public class MixinGuiContainer {
 
     @Inject(method = "mouseClickMove", at = @At("HEAD"), cancellable = true)
     private void mindless$cancelManagedInventoryMouseDrag(int mouseX, int mouseY, int clickedMouseButton, long timeSinceLastClick, CallbackInfo callbackInfo) {
+        notifyResourceDepositManualInput();
         if (shouldCancelManualInventoryInput()) {
             callbackInfo.cancel();
         }
@@ -26,6 +28,7 @@ public class MixinGuiContainer {
 
     @Inject(method = "mouseReleased", at = @At("HEAD"), cancellable = true)
     private void mindless$cancelManagedInventoryMouseRelease(int mouseX, int mouseY, int state, CallbackInfo callbackInfo) {
+        notifyResourceDepositManualInput();
         if (shouldCancelManualInventoryInput()) {
             callbackInfo.cancel();
         }
@@ -33,6 +36,7 @@ public class MixinGuiContainer {
 
     @Inject(method = "handleMouseClick", at = @At("HEAD"), cancellable = true)
     private void mindless$cancelManagedInventoryWindowClick(Slot slotIn, int slotId, int clickedButton, int clickType, CallbackInfo callbackInfo) {
+        notifyResourceDepositManualInput();
         if (shouldCancelManualInventoryInput()) {
             callbackInfo.cancel();
         }
@@ -40,5 +44,11 @@ public class MixinGuiContainer {
 
     private static boolean shouldCancelManualInventoryInput() {
         return ModuleManager.invManager != null && ModuleManager.invManager.shouldCancelManualInventoryInput();
+    }
+
+    private static void notifyResourceDepositManualInput() {
+        if (ModuleManager.resourceDeposit != null) {
+            ModuleManager.resourceDeposit.onManualInventoryInteraction();
+        }
     }
 }

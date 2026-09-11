@@ -2,8 +2,6 @@ package mindless.module.impl.render;
 
 import mindless.module.Module;
 import mindless.module.ModuleManager;
-import mindless.module.impl.combat.AntiKnockback;
-import mindless.module.impl.combat.Velocity;
 import mindless.module.impl.client.HudEditor;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
@@ -346,15 +344,14 @@ private static final int[][] OUTLINE_OFFSETS = {
         double lastOutlineLeft = 0.0;
         double lastOutlineRight = 0.0;
         double lastBackgroundBottom = 0.0;
-        boolean removeVelocity = ModuleManager.antiKnockback.isEnabled();
         if (drawBackground.isToggled()) {
-            drawArrayListBackground(collectRowWidths(hudFont, removeVelocity),
+            drawArrayListBackground(collectRowWidths(hudFont),
                     posY, horizontalTextPadding, rowHeight);
         }
 
         try {
             for (Module module : ModuleManager.organizedModules) {
-                if (!module.isEnabled() || module == this || shouldSkipModule(module, removeVelocity)) {
+                if (!module.isEnabled() || module == this || shouldSkipModule(module)) {
                     continue;
                 }
 
@@ -459,9 +456,8 @@ private static final int[][] OUTLINE_OFFSETS = {
     public static float[] renderDesignerPreview() {
         MindlessFontRenderer font = getHudFontRenderer();
         java.util.List<String> lines = new java.util.ArrayList<>();
-        boolean removeVelocity = ModuleManager.antiKnockback != null && ModuleManager.antiKnockback.isEnabled();
         for (Module module : ModuleManager.organizedModules) {
-            if (module.isEnabled() && !(module instanceof HUD) && !shouldSkipModule(module, removeVelocity)) {
+            if (module.isEnabled() && !(module instanceof HUD) && !shouldSkipModule(module)) {
                 lines.add(getHudRenderText(module));
             }
         }
@@ -504,10 +500,8 @@ public static final class PickerRow {
 public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY) {
         MindlessFontRenderer font = getHudFontRenderer();
         java.util.List<Module> shown = new java.util.ArrayList<Module>();
-        boolean removeVelocity = ModuleManager.antiKnockback != null && ModuleManager.antiKnockback.isEnabled();
         for (Module module : ModuleManager.organizedModules) {
             if (!module.isEnabled() || module instanceof HUD) continue;
-            if (module instanceof mindless.module.impl.combat.Velocity && removeVelocity) continue;
             shown.add(module);
         }
 
@@ -555,11 +549,9 @@ public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY)
 
     private static int getDesignerPreviewWidth(MindlessFontRenderer font) {
         int width = 0;
-        boolean removeVelocity = ModuleManager.antiKnockback != null
-                && ModuleManager.antiKnockback.isEnabled();
         for (Module module : ModuleManager.organizedModules) {
             if (module.isEnabled() && !(module instanceof HUD)
-                    && !shouldSkipModule(module, removeVelocity)) {
+                    && !shouldSkipModule(module)) {
                 width = Math.max(width, font.getStringWidth(getHudRenderText(module)));
             }
         }
@@ -570,14 +562,11 @@ public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY)
         return width;
     }
 
-    private static boolean shouldSkipModule(Module module, boolean removeVelocity) {
-        if (module.isHidden()) {
-            return true;
-        }
-        return module instanceof Velocity && removeVelocity;
+    private static boolean shouldSkipModule(Module module) {
+        return module.isHidden();
     }
 
-    private static boolean isLastVisibleModule(Module currentModule, boolean removeVelocity) {
+    private static boolean isLastVisibleModule(Module currentModule) {
         boolean foundCurrent = false;
 
         for (Module module : ModuleManager.organizedModules) {
@@ -588,7 +577,7 @@ public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY)
                 continue;
             }
 
-            if (module.isEnabled() && !(module instanceof HUD) && !shouldSkipModule(module, removeVelocity)) {
+            if (module.isEnabled() && !(module instanceof HUD) && !shouldSkipModule(module)) {
                 return false;
             }
         }
@@ -602,7 +591,7 @@ public static java.util.List<PickerRow> renderHidePicker(int mouseX, int mouseY)
     }
 
     public static String getHudText(Module module) {
-        String moduleName = module instanceof AntiKnockback ? "Velocity" : module.getNameInHud();
+        String moduleName = module.getNameInHud();
         if (lowercase != null && lowercase.isToggled()) {
             moduleName = moduleName.toLowerCase();
         }
@@ -743,10 +732,10 @@ private static int getHudInfoColor(int nameColor) {
     private static int getBackgroundMode() {
         return backgroundMode == null ? 0 : (int) backgroundMode.getInput();
     }
-private static int[] collectRowWidths(MindlessFontRenderer hudFont, boolean removeVelocity) {
+private static int[] collectRowWidths(MindlessFontRenderer hudFont) {
         java.util.List<Integer> widths = new java.util.ArrayList<Integer>();
         for (Module module : ModuleManager.organizedModules) {
-            if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module, removeVelocity)) {
+            if (!module.isEnabled() || module instanceof HUD || shouldSkipModule(module)) {
                 continue;
             }
             widths.add(hudFont.getStringWidth(getHudRenderText(module)));

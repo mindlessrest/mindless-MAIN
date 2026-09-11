@@ -2,7 +2,6 @@ package mindless.utility;
 
 import mindless.event.*;
 import mindless.module.impl.combat.KillAura;
-import mindless.module.impl.combat.Velocity;
 import mindless.module.impl.movement.LongJump;
 import mindless.module.impl.render.HUD;
 import net.minecraft.block.Block;
@@ -78,8 +77,6 @@ public class ModuleUtils implements IMinecraftInstance {
             S27PacketExplosion s27 = (S27PacketExplosion) e.getPacket();
             if (threwFireball) {
                 if ((mc.thePlayer.getPosition().distanceSq(s27.getX(), s27.getY(), s27.getZ()) <= MAX_EXPLOSION_DIST_SQ)) {
-                    ModuleManager.velocity.disable = false;
-                    ModuleManager.antiKnockback.disable = false;
                     threwFireball = false;
                 }
             }
@@ -139,15 +136,11 @@ public class ModuleUtils implements IMinecraftInstance {
 
         if (fireballTime > 0 && (System.currentTimeMillis() - fireballTime) > FIREBALL_TIMEOUT / 3) {
             threwFireballLow = false;
-            ModuleManager.velocity.disable = false;
-            ModuleManager.antiKnockback.disable = false;
         }
 
         if (fireballTime > 0 && (System.currentTimeMillis() - fireballTime) > FIREBALL_TIMEOUT) {
             threwFireball = threwFireballLow = false;
             fireballTime = 0;
-            ModuleManager.velocity.disable = false;
-            ModuleManager.antiKnockback.disable = false;
         }
 
         if (isBreaking && ++isBreakingTick >= 1) {
@@ -201,7 +194,7 @@ public class ModuleUtils implements IMinecraftInstance {
 
 
         if (ModuleManager.speed.didMove) {
-            if ((!ModuleUtils.damage || Velocity.vertical.getInput() == 0) && !mc.thePlayer.isCollidedHorizontally) {
+            if (!ModuleUtils.damage && !mc.thePlayer.isCollidedHorizontally) {
                 if (!(block instanceof BlockAir) || (blockBelow instanceof BlockAir && blockBelow2 instanceof BlockAir)) {
                     resetLowhop();
                 }
@@ -217,7 +210,7 @@ public class ModuleUtils implements IMinecraftInstance {
         if (ModuleManager.speed.setRotation) {
             if (KillAura.target == null) {
                 float yaw = mc.thePlayer.rotationYaw - 55;
-                e.setYaw(yaw);
+                e.requestYaw(mindless.rotation.RotationSource.SPEED, yaw);
             }
             if (mc.thePlayer.onGround) {
                 ModuleManager.speed.setRotation = false;
@@ -257,7 +250,7 @@ public class ModuleUtils implements IMinecraftInstance {
         if (!Utils.nullCheck()) {
             return;
         }
-        if (ModuleManager.killAura.rotationMode.getInput() == 0 && KillAura.target != null) {
+        if (ModuleManager.killAura.isSilentRotation() && KillAura.target != null) {
             mc.thePlayer.prevRenderArmYaw = mc.thePlayer.rotationYaw;
             mc.thePlayer.renderArmYaw = mc.thePlayer.rotationYaw;
         }

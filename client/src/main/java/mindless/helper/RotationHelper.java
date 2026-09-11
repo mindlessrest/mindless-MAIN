@@ -3,6 +3,8 @@ package mindless.helper;
 import mindless.event.*;
 import mindless.module.ModuleManager;
 import mindless.module.impl.client.Settings;
+import mindless.rotation.RotationSource;
+import mindless.rotation.RotationArbiter;
 import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
 import net.minecraft.client.Minecraft;
@@ -20,6 +22,9 @@ public class RotationHelper {
 
     private Float serverYaw = null;
     private Float serverPitch = null;
+    private RotationSource serverYawSource;
+    private RotationSource serverPitchSource;
+    private final RotationArbiter pendingRequests = new RotationArbiter();
 
     private boolean setRotations = false;
 
@@ -40,8 +45,8 @@ public static float unwrapYaw(float yaw, float prevYaw) {
     }
 public float[] getRotationsToTarget(Entity target, ClientRotationEvent e, float smoothingFactor) {
         if (target == null || mc.thePlayer == null) return null;
-        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
-        float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
+        float baseYaw = e.getBaseYaw() != null ? e.getBaseYaw() : RotationUtils.serverRotations[0];
+        float basePitch = e.getBasePitch() != null ? e.getBasePitch() : RotationUtils.serverRotations[1];
         float[] rot = RotationUtils.getRotations(target, baseYaw, basePitch);
         if (rot == null) return null;
         float factor = Math.max(1f, smoothingFactor);
@@ -76,8 +81,8 @@ public float[] getRotationsToTarget(Entity target, ClientRotationEvent e, int sp
 
     public float[] getRotationsToTarget(Entity target, ClientRotationEvent e, int speed, double horizontalMultipoint, double verticalMultipoint, float randomizationPercent, boolean useBackupPoints, double range, boolean allowThroughBlocks, boolean allowThroughEntities, boolean ignoreOpenFenceGates) {
         if (target == null || mc.thePlayer == null) return null;
-        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
-        float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
+        float baseYaw = e.getBaseYaw() != null ? e.getBaseYaw() : RotationUtils.serverRotations[0];
+        float basePitch = e.getBasePitch() != null ? e.getBasePitch() : RotationUtils.serverRotations[1];
         float[] rot = useBackupPoints
                 ? RotationUtils.getRotationsWithBackup(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)
                 : RotationUtils.getRotations(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch);
@@ -87,8 +92,8 @@ public float[] getRotationsToTarget(Entity target, ClientRotationEvent e, int sp
 
     public float[] getHumanizedRotationsToTarget(Entity target, ClientRotationEvent e, int speed, double horizontalMultipoint, double verticalMultipoint, float randomizationPercent, boolean useBackupPoints, double range, boolean allowThroughBlocks, boolean allowThroughEntities, boolean ignoreOpenFenceGates) {
         if (target == null || mc.thePlayer == null) return null;
-        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
-        float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
+        float baseYaw = e.getBaseYaw() != null ? e.getBaseYaw() : RotationUtils.serverRotations[0];
+        float basePitch = e.getBasePitch() != null ? e.getBasePitch() : RotationUtils.serverRotations[1];
         float[] rot = useBackupPoints
                 ? RotationUtils.getRotationsWithBackup(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch, range, allowThroughBlocks, allowThroughEntities, ignoreOpenFenceGates)
                 : RotationUtils.getRotations(target, horizontalMultipoint, verticalMultipoint, baseYaw, basePitch);
@@ -138,19 +143,23 @@ public void updateServerRotations() {
             return;
         }
         rotationsUpdatedThisTick = true;
+        forceMovementFix = false;
 
-        ClientRotationEvent event = new ClientRotationEvent(this.serverYaw, this.serverPitch);
+        ClientRotationEvent event = new ClientRotationEvent(RotationUtils.serverRotations[0],
+                RotationUtils.serverRotations[1], pendingRequests);
 
         MinecraftForge.EVENT_BUS.post(event);
 
-        this.serverYaw = event.yaw;
-        this.serverPitch = event.pitch;
-
-        if (this.serverYaw == null && this.serverPitch == null) {
+        if (!event.hasRotationRequest()) {
             return;
         }
 
-        if (this.serverYaw != null){
+        this.serverYaw = event.getYaw();
+        this.serverPitch = event.getPitch();
+        this.serverYawSource = event.getYawSource();
+        this.serverPitchSource = event.getPitchSource();
+
+        if (this.serverYaw != null && this.serverYawSource != RotationSource.KILL_AURA){
             if (Math.abs(this.serverYaw - mc.thePlayer.rotationYaw) >= 1.0f) {
                 final int randomFactor = (int) Settings.randomYawFactor.getInput();
                 if (randomFactor != 0) {
@@ -166,14 +175,18 @@ public void updateServerRotations() {
                 RotationUtils.serverRotations[0],
                 RotationUtils.serverRotations[1]
         );
-        this.serverYaw = fixed[0];
-        this.serverPitch = fixed[1];
+        if (this.serverYawSource != RotationSource.KILL_AURA) this.serverYaw = fixed[0];
+        if (this.serverPitchSource != RotationSource.KILL_AURA) this.serverPitch = fixed[1];
+        if (this.serverYawSource != null) pendingRequests.request(this.serverYawSource, this.serverYaw, null);
+        if (this.serverPitchSource != null) pendingRequests.request(this.serverPitchSource, null, this.serverPitch);
 
-        if (event.yaw != null && !event.yaw.isNaN() && this.serverYaw != mc.thePlayer.rotationYaw) {
+        if (event.getYawSource() != null && this.serverYaw != null && !this.serverYaw.isNaN()
+                && this.serverYaw != mc.thePlayer.rotationYaw) {
             this.setRotations = true;
         }
 
-        if (event.pitch != null && !event.pitch.isNaN() && this.serverPitch != mc.thePlayer.rotationPitch) {
+        if (event.getPitchSource() != null && this.serverPitch != null && !this.serverPitch.isNaN()
+                && this.serverPitch != mc.thePlayer.rotationPitch) {
             this.setRotations = true;
         }
     }
@@ -185,20 +198,30 @@ public void updateServerRotations() {
 
     @SubscribeEvent
     public void onPreMotion(PreMotionEvent e) {
-        if (!this.setRotations) {
+        if (!pendingRequests.hasRequest()) {
             return;
         }
-        if (this.serverYaw != null && !this.serverYaw.isNaN()) e.setYaw(this.serverYaw);
-        if (this.serverPitch != null && !this.serverPitch.isNaN()) e.setPitch(this.serverPitch);
+        Float requestedYaw = pendingRequests.resolveYaw(null);
+        Float requestedPitch = pendingRequests.resolvePitch(null);
+        float[] fixed = RotationUtils.fixRotation(
+                requestedYaw == null ? mc.thePlayer.rotationYaw : requestedYaw,
+                requestedPitch == null ? mc.thePlayer.rotationPitch : requestedPitch,
+                RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
+        if (requestedYaw != null) e.requestYaw(pendingRequests.getYawSource(), pendingRequests.getYawSource() == RotationSource.KILL_AURA ? requestedYaw : fixed[0]);
+        if (requestedPitch != null) e.requestPitch(pendingRequests.getPitchSource(), pendingRequests.getPitchSource() == RotationSource.KILL_AURA ? requestedPitch : fixed[1]);
     }
 
     @SubscribeEvent
     public void onRunTick(GameTickEvent e) {
         this.serverYaw = this.serverPitch = null;
+        this.serverYawSource = null;
+        this.serverPitchSource = null;
+        this.pendingRequests.clear();
         this.setRotations = false;
         this.serverRelativeMovementInputs = false;
         this.rotationsUpdatedThisTick = false;
         this.swappedForMouseOver = false;
+        this.forceMovementFix = false;
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -235,7 +258,8 @@ public void endSwap(Entity e) {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPostInput(PostPlayerInputEvent event) {
-        if (!fixMovement()) {
+        if (!fixMovement() || this.serverYawSource == RotationSource.KILL_AURA
+                && !ModuleManager.killAura.usesSilentMoveFix()) {
             return;
         }
 
@@ -296,7 +320,15 @@ public void endSwap(Entity e) {
     }
 
     public boolean fixMovement() {
-        return (ModuleManager.movementFix != null && ModuleManager.movementFix.isEnabled()) && this.setRotations;
+        if (this.serverYawSource == RotationSource.KILL_AURA) return this.serverYaw != null
+                && ModuleManager.killAura != null && ModuleManager.killAura.usesMovementYaw();
+        return ((ModuleManager.movementFix != null && ModuleManager.movementFix.isEnabled()) || this.forceMovementFix)
+                && this.setRotations && !scaffoldDisablesMovementFix();
+    }
+
+    private boolean scaffoldDisablesMovementFix() {
+        return this.serverYawSource == RotationSource.SCAFFOLD
+                && ModuleManager.scaffold != null && !ModuleManager.scaffold.usesSilentMoveFix();
     }
 
     public static double getDirection(float rotationYaw, double moveForward, double moveStrafing) {
@@ -318,19 +350,36 @@ public void endSwap(Entity e) {
     }
 
     public void setRotations(float yaw, float pitch) {
-        this.serverYaw = yaw;
-        this.serverPitch = pitch;
-        this.setRotations = true;
+        request(RotationSource.LEGACY, yaw, pitch);
+    }
+
+    public void request(RotationSource source, Float yaw, Float pitch) {
+        if (!pendingRequests.request(source, yaw, pitch) || mc.thePlayer == null) {
+            return;
+        }
+        Float requestedYaw = pendingRequests.resolveYaw(null);
+        Float requestedPitch = pendingRequests.resolvePitch(null);
+        float[] fixed = RotationUtils.fixRotation(
+                requestedYaw == null ? mc.thePlayer.rotationYaw : requestedYaw,
+                requestedPitch == null ? mc.thePlayer.rotationPitch : requestedPitch,
+                RotationUtils.serverRotations[0], RotationUtils.serverRotations[1]);
+        if (requestedYaw != null) {
+            this.serverYaw = fixed[0];
+            this.serverYawSource = pendingRequests.getYawSource();
+        }
+        if (requestedPitch != null) {
+            this.serverPitch = fixed[1];
+            this.serverPitchSource = pendingRequests.getPitchSource();
+        }
+        this.setRotations = requestedYaw != null || requestedPitch != null;
     }
 
     public void setYaw(float yaw) {
-        this.serverYaw = yaw;
-        this.setRotations = true;
+        request(RotationSource.LEGACY, yaw, null);
     }
 
     public void setPitch(float pitch) {
-        this.serverPitch = pitch;
-        this.setRotations = true;
+        request(RotationSource.LEGACY, null, pitch);
     }
 
     public void setServerRelativeMovementInputs(boolean serverRelativeMovementInputs) {
@@ -343,5 +392,26 @@ public void endSwap(Entity e) {
 
     public Float getServerPitch() {
         return serverPitch;
+    }
+
+    public RotationSource getServerYawSource() {
+        return serverYawSource;
+    }
+
+    public RotationSource getServerPitchSource() {
+        return serverPitchSource;
+    }
+
+    public void release(RotationSource source) {
+        pendingRequests.remove(source);
+        if (serverYawSource == source) {
+            serverYaw = pendingRequests.resolveYaw(null);
+            serverYawSource = pendingRequests.getYawSource();
+        }
+        if (serverPitchSource == source) {
+            serverPitch = pendingRequests.resolvePitch(null);
+            serverPitchSource = pendingRequests.getPitchSource();
+        }
+        setRotations = serverYaw != null || serverPitch != null;
     }
 }

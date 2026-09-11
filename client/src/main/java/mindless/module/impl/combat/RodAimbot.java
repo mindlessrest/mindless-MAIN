@@ -66,8 +66,7 @@ public class RodAimbot extends Module {
             if (rotations == null) {
                 return;
             }
-            event.setYaw(rotations[0]);
-            event.setPitch(rotations[1]);
+            event.requestRotation(mindless.rotation.RotationSource.ROD_AIMBOT, rotations[0], rotations[1]);
             if (!rightClick && rotate) {
                 rotate = false;
             }

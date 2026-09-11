@@ -94,7 +94,7 @@ public class AntiFireball extends Module {
             resetClickScheduler();
             return;
         }
-        if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
+        if (ModuleManager.bedAura != null && ModuleManager.bedAura.controlsInteractions()) {
             resetClickScheduler();
             return;
         }
@@ -107,8 +107,8 @@ public class AntiFireball extends Module {
             return;
         }
 
-        float baseYaw = e.yaw != null ? e.yaw : RotationUtils.serverRotations[0];
-        float basePitch = e.pitch != null ? e.pitch : RotationUtils.serverRotations[1];
+        float baseYaw = e.getBaseYaw() != null ? e.getBaseYaw() : RotationUtils.serverRotations[0];
+        float basePitch = e.getBasePitch() != null ? e.getBasePitch() : RotationUtils.serverRotations[1];
 
         float[] target = computeAimRotations(baseYaw, basePitch);
         if (target == null) {
@@ -119,8 +119,7 @@ public class AntiFireball extends Module {
         float[] smooth = RotationUtils.smoothRotation(baseYaw, basePitch, target[0], target[1],
                 (int) rotationSpeed.getInput());
 
-        e.setYaw(smooth[0]);
-        e.setPitch(smooth[1]);
+        e.requestRotation(mindless.rotation.RotationSource.ANTI_FIREBALL, smooth[0], smooth[1]);
     }
 
     private float[] computeAimRotations(float baseYaw, float basePitch) {
@@ -149,7 +148,7 @@ public class AntiFireball extends Module {
             resetClickScheduler();
             return;
         }
-        if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
+        if (ModuleManager.bedAura != null && ModuleManager.bedAura.controlsInteractions()) {
             resetClickScheduler();
             return;
         }

@@ -51,7 +51,6 @@ public class ModuleManager {
     public static AutoClicker autoClicker;
     public static HitSelect hitSelect;
     public static KnockbackDelay knockbackDelay;
-    public static HitBox hitBox;
     public static Reach reach;
     public static NoRotate noRotate;
     public static BlockESP blockESP;
@@ -67,7 +66,6 @@ public class ModuleManager {
     public static Timer timer;
     public static Fly fly;
     public static WTap wTap;
-    public static Velocity velocity;
     public static AntiDebuff antiDebuff;
     public static TargetHUD targetHUD;
     public static StatsHUD statsHUD;
@@ -83,7 +81,6 @@ public class ModuleManager {
     public static KeepSprint keepSprint;
     public static Piercing piercing;
     public static GhostHand ghostHand;
-    public static AntiKnockback antiKnockback;
     public static ExtendCamera extendCamera;
     public static Freelook freelook;
     public static InvManager invManager;
@@ -101,25 +98,26 @@ public class ModuleManager {
     public static NoHurtCam noHurtCam;
     public static AutoTool autoTool;
     public static AutoSwap autoSwap;
+    public static AutoHeadHitter autoHeadHitter;
     public static Scaffold scaffold;
     public static Stasis stasis;
     public static Clutch clutch;
+    public static LadderClutch ladderClutch;
     public static Sprint sprint;
     public static Weather weather;
-    public static Ambience ambience;
     public static ChatCommands chatCommands;
-    public static BlockIn blockIn;
     public static AutoBlockin autoBlockin;
     public static Relationships relationships;
     public static HideWindow hideWindow;
     public static Displace displace;
     public static ShopHelper shopHelper;
+    public static InstantShop instantShop;
     public static BedTracker bedTracker;
     public static mindless.module.impl.bedwars.BedDefender bedDefender;
     public static ResourceTracker resourceTracker;
+    public static ResourceDeposit resourceDeposit;
     public static EventTimers eventTimers;
     public static Autoblock autoBlock;
-    public static MyauBlock myauBlock;
     public static Backtrack backtrack;
     public static Debug debug;
     public static mindless.module.impl.other.DiscordRPC discordRPC;
@@ -138,19 +136,14 @@ public class ModuleManager {
         }
 
         this.addModule(new AimAssist());
-        this.addModule(antiKnockback = new AntiKnockback());
         this.addModule(new AutoBow());
         this.addModule(autoClicker = new AutoClicker());
         this.addModule(autoBlock = new Autoblock());
-        this.addModule(myauBlock = new MyauBlock());
-        this.addModule(blockIn = new BlockIn());
         this.addModule(autoBlockin = new AutoBlockin());
         this.addModule(new ClickAssist());
         this.addModule(displace = new Displace());
         this.addModule(hitSelect = new HitSelect());
-        this.addModule(hitBox = new HitBox());
         this.addModule(new JumpReset());
-        this.addModule(new Criticals());
         this.addModule(new Regen());
         this.addModule(killAura = new KillAura());
         this.addModule(knockbackDelay = new KnockbackDelay());
@@ -159,8 +152,6 @@ public class ModuleManager {
         this.addModule(new RawInput());
         this.addModule(reach = new Reach());
         this.addModule(new RodAimbot());
-        this.addModule(new TPAura());
-        this.addModule(velocity = new Velocity());
         this.addModule(wTap = new WTap());
 
         this.addModule(new ExtraBobbing());
@@ -173,14 +164,14 @@ public class ModuleManager {
         this.addModule(bedTracker = new BedTracker());
         this.addModule(bedDefender = new mindless.module.impl.bedwars.BedDefender());
         this.addModule(resourceTracker = new ResourceTracker());
+        this.addModule(resourceDeposit = new ResourceDeposit());
         this.addModule(eventTimers = new EventTimers());
         this.addModule(bedwars = new BedWars());
         this.addModule(overlay = new Overlay());
         this.addModule(shopHelper = new ShopHelper());
+        this.addModule(instantShop = new InstantShop());
 
         this.addModule(movementFix = new MovementFix());
-        this.addModule(new Boost());
-        this.addModule(new Dolphin());
         this.addModule(fly = new Fly());
         this.addModule(invmove = new InvMove());
         this.addModule(keepSprint = new KeepSprint());
@@ -210,10 +201,12 @@ public class ModuleManager {
         this.addModule(new AntiAFK());
         this.addModule(antiFireball = new AntiFireball());
         this.addModule(new AutoJump());
+        this.addModule(autoHeadHitter = new AutoHeadHitter());
         this.addModule(autoSwap = new AutoSwap());
         this.addModule(new BridgeAssist());
         this.addModule(scaffold = new Scaffold());
         this.addModule(clutch = new Clutch());
+        this.addModule(ladderClutch = new LadderClutch());
         this.addModule(autoTool = new AutoTool());
         this.addModule(bedAura = new BedAura());
         this.addModule(blink = new Blink());
@@ -304,7 +297,6 @@ public class ModuleManager {
 
         this.addModule(targetFilter = new mindless.module.impl.world.TargetFilter());
         this.addModule(weather = new Weather());
-        this.addModule(ambience = new Ambience());
         this.addModule(new Particles());
 
         this.addModule(new mindless.script.Manager());

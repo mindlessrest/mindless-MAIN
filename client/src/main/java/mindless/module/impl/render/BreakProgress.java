@@ -26,6 +26,7 @@ public class BreakProgress extends Module {
     private float progress;
     private BlockPos block;
     private String progressStr;
+    private int progressColor = -1;
 
     public BreakProgress() {
         super("Break Progress", "Shows how far the block you are mining is.", category.render);
@@ -53,7 +54,9 @@ public class BreakProgress extends Module {
         GlStateManager.disableDepth();
         GlStateManager.enableBlend();
         int colorAlpha = Utils.mergeAlpha(-1, Math.max(10, (int) (255 * progress)));
-        mc.fontRendererObj.drawString(this.progressStr, (float) (-mc.fontRendererObj.getStringWidth(this.progressStr) / 2), -3.0f, fadeIn.isToggled() ? colorAlpha : -1, true);
+        int textColor = progressColor == -1 ? -1 : Utils.mergeAlpha(progressColor & 0xFFFFFF, Math.max(10, (int) (255 * progress)));
+        mc.fontRendererObj.drawString(this.progressStr, (float) (-mc.fontRendererObj.getStringWidth(this.progressStr) / 2), -3.0f,
+                fadeIn.isToggled() ? textColor == -1 ? colorAlpha : textColor : textColor, true);
         GlStateManager.disableBlend();
         GlStateManager.enableDepth();
         GlStateManager.depthMask(true);
@@ -88,9 +91,10 @@ public class BreakProgress extends Module {
         if (bedAura.isToggled() && ModuleManager.bedAura != null && ModuleManager.bedAura.isEnabled()) {
             BlockPos ap = ModuleManager.bedAura.getAuraTargetPos();
             float bp = ModuleManager.bedAura.getAuraBreakProgress();
-            if (ap != null && bp > 0.0f) {
+            if (ap != null && bp > 0.0f && ModuleManager.bedAura.shouldShowAuraProgress()) {
                 this.progress = Math.min(1.0f, bp);
                 this.block = ap;
+                this.progressColor = ModuleManager.bedAura.getAuraProgressColor();
                 this.setProgress();
                 return;
             }
@@ -105,6 +109,7 @@ public class BreakProgress extends Module {
             return;
         }
         this.block = mc.objectMouseOver.getBlockPos();
+        this.progressColor = -1;
         this.setProgress();
     }
 
@@ -117,5 +122,6 @@ public class BreakProgress extends Module {
         this.progress = 0.0f;
         this.block = null;
         this.progressStr = "";
+        this.progressColor = -1;
     }
 }

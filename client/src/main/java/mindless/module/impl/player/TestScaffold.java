@@ -3,7 +3,9 @@ package mindless.module.impl.player;
 import mindless.event.PrePlayerInputEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.event.SendPacketEvent;
+import mindless.helper.RotationHelper;
 import mindless.module.Module;
+import mindless.rotation.RotationSource;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.DescriptionSetting;
 import mindless.module.setting.impl.GroupSetting;
@@ -75,6 +77,7 @@ private final double[] placeOffsets = new double[]{
 
 private int rotationTick = 0;
 private int lastSlot = -1;
+private int ownedSlot = -1;
 private int blockCount = -1;
 private int ltDry = 0;
 private int ltVerX = 0;
@@ -264,6 +267,7 @@ public TestScaffold() {
 public void onEnable() {
     Entity p = client.getPlayer();
     lastSlot = (p != null) ? inventory.getSlot() : -1;
+    ownedSlot = -1;
     blockCount = -1;
     rotationTick = 3;
     yaw = -180.0F;
@@ -292,9 +296,10 @@ public void onEnable() {
 @Override
 public void onDisable() {
     Entity p = client.getPlayer();
-    if (p != null && lastSlot != -1) {
+    if (p != null && lastSlot != -1 && inventory.getSlot() == ownedSlot) {
         inventory.setSlot(lastSlot);
     }
+    ownedSlot = -1;
     client.disableMovementFix();
     if (sprintSuppressed) {
         keybinds.setPressed("sprint",
@@ -350,6 +355,11 @@ private void resetShared() {
 }
 
 
+
+private void selectSlot(int slot) {
+    inventory.setSlot(slot);
+    ownedSlot = slot;
+}
 
 private void autoClick(Entity p) {
     float cpsSet = sld("Click Speed");
@@ -483,7 +493,7 @@ public void onPreUpdate(PreUpdateEvent event) {
             int hb = ((i % 9) + 9) % 9;
             ItemStack cand = inventory.getStackInSlot(hb);
             if (cand != null && cand.isBlock) {
-                inventory.setSlot(hb);
+                selectSlot(hb);
                 blockCount = cand.stackSize;
                 break;
             }
@@ -511,7 +521,7 @@ public void onPreUpdate(PreUpdateEvent event) {
                     || p.onGround();
             int want = (wantIce || altSlot < 0) ? iceSlot : altSlot;
             if (want != inventory.getSlot()) {
-                inventory.setSlot(want);
+                selectSlot(want);
                 ItemStack ns = inventory.getStackInSlot(want);
                 blockCount = (ns != null && ns.isBlock) ? ns.stackSize : 0;
             }
@@ -1280,7 +1290,7 @@ public void onPreUpdate(PreUpdateEvent event) {
 
     targetYaw = mouseQuant(targetYaw, lastSentYaw);
     targetPitch = clampPitch(mouseQuant(targetPitch, lastSentPitch));
-    client.setRotations(targetYaw, targetPitch);
+    RotationHelper.get().request(RotationSource.SCAFFOLD, targetYaw, targetPitch);
     ysC = targetYaw;
     prevSentPitch = lastSentPitch;
     lastSentYaw = targetYaw;

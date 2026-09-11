@@ -1,6 +1,7 @@
 package mindless.transformer.impl.client;
 
 import mindless.alt.AltSessionController;
+import mindless.Mindless;
 import mindless.event.ClickMouseEvent;
 import mindless.event.GameTickEvent;
 import mindless.event.GuiUpdateEvent;
@@ -12,7 +13,9 @@ import mindless.event.PreSlotScrollEvent;
 import mindless.event.PreAttackEvent;
 import mindless.event.AttackEvent;
 import mindless.helper.RotationHelper;
+import mindless.lag.service.PacketDelayService;
 import mindless.module.impl.player.DelayRemover;
+import mindless.module.ModuleManager;
 import mindless.runtime.LunarEventBridge;
 import mindless.utility.Utils;
 import net.lenni0451.classtransform.InjectionCallback;
@@ -24,6 +27,7 @@ import net.lenni0451.classtransform.annotations.injection.CInject;
 import net.lenni0451.classtransform.annotations.injection.CRedirect;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.Session;
 import net.minecraftforge.common.MinecraftForge;
@@ -33,6 +37,23 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 public class TransformerMinecraft {
     @CShadow
     private int leftClickCounter;
+
+    @CInline
+    @CInject(method = "loadWorld(Lnet/minecraft/client/multiplayer/WorldClient;Ljava/lang/String;)V",
+            target = @CTarget("HEAD"))
+    private void discardDelayedPacketsBeforeWorldUnload(
+            WorldClient nextWorld, String loadingMessage, InjectionCallback ci
+    ) {
+        Minecraft minecraft = (Minecraft) (Object) this;
+        if (ModuleManager.bedAura != null) ModuleManager.bedAura.onWorldChange();
+        if (minecraft.theWorld != null && minecraft.theWorld != nextWorld && Mindless.packetDelayService != null)
+            Mindless.packetDelayService.advanceWorld();
+        if (ModuleManager.killAura != null) ModuleManager.killAura.onWorldChange();
+        if (nextWorld != null || minecraft.theWorld == null) return;
+        if (ModuleManager.backtrack != null) ModuleManager.backtrack.onWorldUnload();
+        PacketDelayService service = Mindless.packetDelayService;
+        if (service != null) service.onClientWorldUnload();
+    }
 
     @CInline
     @CInject(method = "getSession", target = @CTarget("RETURN"),
@@ -85,13 +106,15 @@ public class TransformerMinecraft {
                     optional = true))
     private void beforePlayerInteraction(InjectionCallback ci) {
         MinecraftForge.EVENT_BUS.post(new PrePlayerInteractEvent());
+        if (ModuleManager.killAura != null) ModuleManager.killAura.beforePlayerInteraction();
     }
 
     @CInline
     @CInject(method = "clickMouse", target = @CTarget("HEAD"), cancellable = true)
     private void onClickMouse(InjectionCallback ci) {
         if (DelayRemover.shouldRemoveHitDelay()) this.leftClickCounter = 0;
-        if (Utils.shouldSuppressManualClicksForModulePlacementTick()) {
+        if (Utils.shouldSuppressManualClicksForModulePlacementTick()
+                || ModuleManager.killAura != null && ModuleManager.killAura.shouldSuppressClicks()) {
             ci.setCancelled(true);
             return;
         }
@@ -118,7 +141,8 @@ public class TransformerMinecraft {
     @CInline
     @CInject(method = "rightClickMouse", target = @CTarget("HEAD"), cancellable = true)
     private void onRightClickMouse(InjectionCallback ci) {
-        if (Utils.shouldSuppressManualClicksForModulePlacementTick()) {
+        if (Utils.shouldSuppressManualClicksForModulePlacementTick()
+                || ModuleManager.killAura != null && ModuleManager.killAura.shouldSuppressClicks()) {
             ci.setCancelled(true);
             return;
         }

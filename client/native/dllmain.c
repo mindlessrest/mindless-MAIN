@@ -120,25 +120,51 @@ static jclass load_class_via_loader(JNIEnv *env, jobject class_loader,
         jmethodID load_class, const char *dotted_name);
 
 void vape_log(const wchar_t *format, ...) {
-#ifdef MINDLESS_DEBUG_LOGS
-    wchar_t message[1024];
-    wchar_t line[1152];
-    va_list arguments;
-    va_start(arguments, format);
-    _vsnwprintf_s(message, sizeof(message) / sizeof(message[0]),
-            _TRUNCATE, format, arguments);
-    va_end(arguments);
-    _snwprintf_s(line, sizeof(line) / sizeof(line[0]), _TRUNCATE,
-            L"[MindlessNative] %ls\n", message);
-    OutputDebugStringW(line);
+#ifdef _NONPROD
+    wchar_t message[2048];
+    wchar_t path[MAX_PATH];
+    wchar_t *file_name;
+    HANDLE file;
+    DWORD written;
+    va_list args;
+
+    if (g_module == NULL) return;
+    if (GetModuleFileNameW(g_module, path, MAX_PATH) == 0) return;
+    file_name = wcsrchr(path, L'\\');
+    file_name = file_name == NULL ? path : file_name + 1;
+    if ((size_t)(file_name - path) + wcslen(L"mindless-native.log") + 1 > MAX_PATH) return;
+    wcscpy_s(file_name, MAX_PATH - (file_name - path), L"mindless-native.log");
+
+    va_start(args, format);
+    _vsnwprintf_s(message, sizeof(message) / sizeof(message[0]), _TRUNCATE, format, args);
+    va_end(args);
+    wcscat_s(message, sizeof(message) / sizeof(message[0]), L"\r\n");
+
+    #ifdef MINDLESS_DEBUG_LOGS
+    OutputDebugStringW(message);
+    #endif
+
+    file = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+            NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return;
+    WriteFile(file, message, (DWORD)(wcslen(message) * sizeof(wchar_t)), &written, NULL);
+    CloseHandle(file);
 #else
     (void)format;
 #endif
 }
 
 void vape_log_pending_exception(JNIEnv *env, const wchar_t *context) {
+#ifdef _NONPROD
+    if (env != NULL && (*env)->ExceptionCheck(env)) {
+        vape_log(L"%ls failed with a pending Java exception", context);
+        (*env)->ExceptionDescribe(env);
+        (*env)->ExceptionClear(env);
+    }
+#else
     (void)context;
     if (env != NULL && (*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+#endif
 }
 
 jint mindless_initialize_jvmti(JavaVM *vm) {
@@ -674,7 +700,9 @@ static int set_runtime_properties(JNIEnv *env,
             && set_system_property(env, "mindless.runtimeProfile", profile_name)
             && set_system_property(env, "mindless.embeddedForge",
                     embedded_forge ? "true" : "false")
-#ifndef _NONPROD
+#ifdef _NONPROD
+            && set_system_property(env, "mindless.development", "true")
+#else
             && set_system_property(env, "mindless.production", "true")
 #endif
             ;

@@ -17,6 +17,7 @@ import mindless.utility.RenderUtils;
 import mindless.utility.ScaledResolutionCache;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
+import mindless.utility.font.ModuleFont;
 import mindless.utility.profile.Manager;
 import mindless.utility.profile.Profile;
 import mindless.utility.profile.ProfileModule;
@@ -1143,10 +1144,8 @@ private void drawDropdownOverlay(int mx, int my) {
             }
             int textColor = sel ? TEXT : mixColor(MUTED, TEXT, rowHp);
             resetTextRenderState();
-            drawTextVCentered(trim(openDropdown.getOptions()[i], dw - 20f, .68f, sel),
-                    dx1 + 10, oy, oy + 19,
-                    withAlpha(textColor, (int)(255 * open)),
-                    .68f, sel);
+            drawOptionTextVCentered(openDropdown, openDropdown.getOptions()[i], dw - 20f,
+                    dx1 + 10, oy, oy + 19, withAlpha(textColor, (int)(255 * open)), .68f, sel);
             oy += 21f;
         }
         if (fullH > viewH + .5f) {
@@ -1179,7 +1178,7 @@ private float overlayWidth() {
         if (openDropdown == null || openDropdown.getOptions() == null) return dropdownWidth;
         float widest = 0f;
         for (String option : openDropdown.getOptions()) {
-            widest = Math.max(widest, textWidth(option, .68f, false));
+            widest = Math.max(widest, optionTextWidth(openDropdown, option, .68f, false));
         }
         return Math.max(dropdownWidth, Math.min(detailW - 34f, widest + 26f));
     }
@@ -1241,7 +1240,8 @@ private float overlayWidth() {
                 rounded(dx1, y + 3, dx2, y + 27, 4f, fa(opaque(
                         mixColor(CONTROL, CONTROL_HOVER, Math.max(hp * .65f, open * .7f))), alpha));
                 resetTextRenderState();
-                drawTextVCentered(trim(sliderValue(slider), dropW - 26f, .68f, false), dx1 + 8, y + 3, y + 27,
+                String value = sliderValue(slider);
+                drawOptionTextVCentered(slider, value, dropW - 26f, dx1 + 8, y + 3, y + 27,
                         fa(mixColor(MUTED, TEXT, Math.max(open, hp * .6f)), alpha), .68f, false);
                 drawChevron(dx2 - 10, y + 15, open, fa(mixColor(MUTED, GOLD, open), alpha));
                 return;
@@ -1332,7 +1332,7 @@ private float keyChipLeft(KeySetting key) {
                     ? mixColor(ROW, GOLD, .17f)
                     : mixColor(ROW, ROW_HOVER, hover)), alpha));
             resetTextRenderState();
-            drawCenteredV(trim(options[i], layout[1] - 16f, .66f, false), sx1, sx2, top, bottom,
+            drawOptionCenteredV(slider, options[i], layout[1] - 16f, sx1, sx2, top, bottom,
                     fa(on ? GOLD : mixColor(MUTED, TEXT, hover * .5f), alpha), .66f, on);
         }
     }
@@ -1736,6 +1736,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     @Override
     public void mouseReleased(int mouseX, int mouseY, int state) {
         visualPreview.endDrag();
+        boolean refreshScale = mindless.module.impl.theme.ThemeManager.isGuiScaleSetting(draggingSlider);
         draggingSlider = null;
         colorDrag = 0;
         draggingScrollbar = 0;
@@ -1744,6 +1745,9 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         }
         draggingGui = false;
         draggingMascot = false;
+        if (refreshScale) {
+            refreshLayoutForConfiguredScale();
+        }
     }
 
     /**
@@ -1932,6 +1936,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         double value = slider.getMin() + clamp01((mouse - x1) / (x2 - x1)) * (slider.getMax() - slider.getMin());
         slider.setValueWithEvent(value);
         if (selectedModule != null) selectedModule.onSlide(slider);
+        if (mindless.module.impl.theme.ThemeManager.isGuiScaleSetting(slider)) markProfileUnsaved();
     }
 
     private List<Module> modulesFor(Module.category category) {
@@ -2017,7 +2022,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
 
     private List<Module> filteredModules() {
         List<Module> result = new ArrayList<Module>();
-        String query = search.trim().toLowerCase(Locale.ROOT);
+        String query = search.trim().toLowerCase(Locale.ROOT).replace(" ", "");
         if (query.isEmpty()) {
             result.addAll(modulesFor(selectedCategory));
         } else {
@@ -2025,8 +2030,8 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
             for (Module.category category : Module.category.values()) {
                 for (Module module : modulesFor(category)) {
                     if (module != null && seen.add(module)
-                            && (module.getName().toLowerCase(Locale.ROOT).contains(query)
-                            || categoryName(module.moduleCategory()).toLowerCase(Locale.ROOT).contains(query))) {
+                            && (module.getName().toLowerCase(Locale.ROOT).replace(" ", "").contains(query)
+                            || categoryName(module.moduleCategory()).toLowerCase(Locale.ROOT).replace(" ", "").contains(query))) {
                         result.add(module);
                     }
                 }
@@ -2658,6 +2663,64 @@ private static final float BASE_TEXT_PX = 13f;
 private MindlessFontRenderer scaledFont(float scale, boolean bold) {
         float px = Math.max(6f, Math.round(BASE_TEXT_PX * scale * TEXT_SCALE));
         return FontManager.getClickGuiRenderer(uiFontFamily(bold), px);
+    }
+
+    private boolean isFontSelector(SliderSetting slider) {
+        return slider != null && slider.isString && FontManager.areFontOptions(slider.getOptions());
+    }
+
+    private MindlessFontRenderer optionFont(SliderSetting slider, String option, float scale, boolean bold) {
+        if (!isFontSelector(slider)) {
+            return scaledFont(scale, bold);
+        }
+        String family = "Default".equals(option) ? ModuleFont.nameOf(slider) : option;
+        float px = Math.max(6f, Math.round(BASE_TEXT_PX * scale * TEXT_SCALE));
+        return FontManager.getClickGuiRenderer(family, px);
+    }
+
+    private float optionTextWidth(SliderSetting slider, String option, float scale, boolean bold) {
+        return optionFont(slider, option, scale, bold).getStringWidth(option == null ? "" : option);
+    }
+
+    private String trimOption(SliderSetting slider, String option, float maxWidth, float scale, boolean bold) {
+        String value = option == null ? "" : option;
+        MindlessFontRenderer font = optionFont(slider, value, scale, bold);
+        if (font.getStringWidth(value) <= maxWidth) {
+            return value;
+        }
+        String end = "...";
+        int length = value.length();
+        while (length > 0 && font.getStringWidth(value.substring(0, length) + end) > maxWidth) {
+            length--;
+        }
+        return length > 0 ? value.substring(0, length) + end : fitWithoutEllipsis(font, value, maxWidth);
+    }
+
+    private void drawOptionTextVCentered(SliderSetting slider, String option, float maxWidth, float x,
+                                         float y1, float y2, int color, float scale, boolean bold) {
+        if (!isFontSelector(slider)) {
+            drawTextVCentered(trim(option, maxWidth, scale, bold), x, y1, y2, color, scale, bold);
+            return;
+        }
+        MindlessFontRenderer font = optionFont(slider, option, scale, bold);
+        String text = trimOption(slider, option, maxWidth, scale, bold);
+        double renderScale = getActiveRenderScale();
+        if (renderScale <= 0) {
+            renderScale = 1;
+        }
+        float textX = (float) (Math.round(x * renderScale) / renderScale);
+        float textY = (float) (Math.round((y1 + (y2 - y1 - font.getFontHeight()) / 2f) * renderScale) / renderScale);
+        GL11.glPushMatrix();
+        GL11.glTranslatef(textX, textY, 0);
+        font.drawString(text, 0, 0, color, false);
+        GL11.glPopMatrix();
+    }
+
+    private void drawOptionCenteredV(SliderSetting slider, String option, float maxWidth, float x1, float x2,
+                                     float y1, float y2, int color, float scale, boolean bold) {
+        String text = trimOption(slider, option, maxWidth, scale, bold);
+        float x = (x1 + x2 - optionTextWidth(slider, text, scale, bold)) / 2f;
+        drawOptionTextVCentered(slider, text, maxWidth, x, y1, y2, color, scale, bold);
     }
 
     private MindlessFontRenderer uiFont(boolean bold) {

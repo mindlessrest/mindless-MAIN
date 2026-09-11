@@ -145,8 +145,6 @@ public class LongJump extends Module {
         if (!function) {
             if (manual.isToggled() && !enabled) {
                 if (ModuleUtils.threwFireballLow) {
-                    ModuleManager.velocity.disable = true;
-                    ModuleManager.antiKnockback.disable = true;
                     enabled();
                 }
             }
@@ -239,7 +237,7 @@ public class LongJump extends Module {
                 yaw = mc.thePlayer.rotationYaw;
                 pitch = 90f;
             }
-            e.setRotations(yaw, pitch);
+            e.requestRotation(mindless.rotation.RotationSource.LONG_JUMP, yaw, pitch);
         }
         if (rotateTick > 0 && ++rotateTick >= 3) {
             rotateTick = 0;

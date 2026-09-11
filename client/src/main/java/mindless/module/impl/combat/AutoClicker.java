@@ -74,6 +74,11 @@ public class AutoClicker extends Module {
 
     @Override
     public void onDisable() {
+        if (mc != null && mc.gameSettings != null) {
+            if (Mouse.isCreated()) Mouse.poll();
+            KeyBinding attack = mc.gameSettings.keyBindAttack;
+            KeyBinding.setKeyBindState(attack.getKeyCode(), KillAura.keyDown(attack));
+        }
         this.nextClickTime = 0L;
         this.inventoryNextClickTime = 0L;
         this.isHoldingBlockBreak = false;

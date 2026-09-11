@@ -627,6 +627,7 @@ String findDanglingSelfMethodReference(byte[] transformedBytes) {
                 "mindless.transformer.impl.entity.TransformerEntityPlayer",
                 "mindless.transformer.impl.entity.TransformerEntityPlayerSP",
                 "mindless.transformer.impl.network.TransformerModList",
+                "mindless.transformer.impl.network.TransformerPacketThreadUtil",
                 "mindless.transformer.impl.network.TransformerNetHandlerPlayClient",
                 "mindless.transformer.impl.network.TransformerNetworkManager",
                 "mindless.transformer.impl.render.TransformerEntityRenderer",

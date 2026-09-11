@@ -23,7 +23,6 @@ public class Gui extends Module {
     public static final int INVALID_COLOR = new Color(255, 80, 80).getRGB();
 
     public static SliderSetting style;
-    public static SliderSetting guiScale;
     public static SliderSetting font;
     public static SliderSetting backgroundBlur;
     public static SliderSetting scrollSpeed;
@@ -36,7 +35,6 @@ public class Gui extends Module {
     public Gui() {
         super("Gui", "The click GUI and how it looks.", category.client, 54);
         this.liteModule = true;
-        this.registerSetting(guiScale = new SliderSetting("Gui scale", "x", 1.0, 0.5, 2.0, 0.01));
         this.registerSetting(font = new SliderSetting("Font", 0, GUI_FONT_OPTIONS));
         this.registerSetting(backgroundBlur = new SliderSetting("Background blur", "%", 0, 0, 100, 1));
         this.registerSetting(scrollSpeed = new SliderSetting("Scroll speed", 20, 2, 90, 1));
@@ -84,14 +82,6 @@ public class Gui extends Module {
 
     public static MindlessFontRenderer getClickGuiSettingFontRenderer() {
         return FontManager.getClickGuiSettingRenderer(getSelectedFontName());
-    }
-
-    public static float getClickGuiScale() {
-        if (guiScale == null) {
-            return 1.0F;
-        }
-
-        return (float) Math.max(0.5D, Math.min(2.0D, guiScale.getInput()));
     }
 
     public static boolean shouldShowModule(Module module) {

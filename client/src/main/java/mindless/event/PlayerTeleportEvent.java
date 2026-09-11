@@ -6,6 +6,7 @@ import net.minecraftforge.fml.common.eventhandler.Event;
 
 @Cancelable
 public class PlayerTeleportEvent extends Event {
+    public PlayerTeleportEvent() { this(null); }
     public S08PacketPlayerPosLook packet;
 
     public PlayerTeleportEvent(S08PacketPlayerPosLook packet) {

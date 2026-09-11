@@ -566,15 +566,15 @@ public class ScriptDefaults {
         }
 
         public static void setRotations(float yaw, float pitch) {
-            RotationHelper.get().setRotations(yaw, pitch);
+            RotationHelper.get().request(mindless.rotation.RotationSource.SCRIPT, yaw, pitch);
         }
 
         public static void setYaw(float yaw) {
-            RotationHelper.get().setYaw(yaw);
+            RotationHelper.get().request(mindless.rotation.RotationSource.SCRIPT, yaw, null);
         }
 
         public static void setPitch(float pitch) {
-            RotationHelper.get().setPitch(pitch);
+            RotationHelper.get().request(mindless.rotation.RotationSource.SCRIPT, null, pitch);
         }
 
         public static Float getServerYaw() {
@@ -2088,4 +2088,3 @@ public static void notify(String title, boolean enabled) {
         }
     }
 }
-
