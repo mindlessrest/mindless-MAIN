@@ -409,7 +409,7 @@ private int ringColor(int ringIndex) {
             healthTrackedTarget = target;
             lastHealth = health;
             playerInfo += " " + Utils.getHealthStr(target, true);
-            if (!screenHides) {
+            if (!screenHides && isTargetOnScreen(target)) {
                 mc.entityRenderer.setupOverlayRendering();
                 drawTargetMarker(target, presentationProgress());
                 drawTargetHUD(fadeTimer, playerInfo, health);
@@ -443,6 +443,10 @@ private int ringColor(int ringIndex) {
         }
         float espFade = Math.min(1.0f, presentationProgress());
         if (espFade <= 0.001f) {
+            return;
+        }
+
+        if (!isTargetOnScreen(auraTarget)) {
             return;
         }
 
@@ -884,6 +888,21 @@ private int ringColor(int ringIndex) {
         output[2] = (float) maxX;
         output[3] = (float) maxY;
         return true;
+    }
+
+    private boolean isTargetOnScreen(EntityLivingBase entity) {
+        if (entity == null || !RenderUtils.isInViewFrustum(
+                entity.getEntityBoundingBox().expand(0.1, 0.1, 0.1))) {
+            return false;
+        }
+        if (!projectTargetBounds(entity, projectedTargetBounds)) {
+            return false;
+        }
+        ScaledResolution resolution = ScaledResolutionCache.get();
+        return projectedTargetBounds[2] >= 0.0f
+                && projectedTargetBounds[0] <= resolution.getScaledWidth()
+                && projectedTargetBounds[3] >= 0.0f
+                && projectedTargetBounds[1] <= resolution.getScaledHeight();
     }
 
     private void drawTargetHUD(Timer fadeTimer, String string, double health) {
