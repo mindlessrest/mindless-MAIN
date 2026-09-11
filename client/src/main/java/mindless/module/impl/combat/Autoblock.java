@@ -29,7 +29,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Mouse;
 
 public class Autoblock extends Module {
-    private static final String[] MODES = new String[]{"Vanilla", "Lag"};
+    private static final String[] MODES = new String[]{"Vanilla", "Lag", "Hypixel"};
     private static final String[] UNBLOCK_OUT_OF_RANGE_MODES = new String[]{"Once", "Always"};
     private static final int UNBLOCK_ONCE = 0;
     private static final int UNBLOCK_ALWAYS = 1;
@@ -63,6 +63,7 @@ public class Autoblock extends Module {
     private int lagStartTick = -1;
     private LagRequest outboundLag;
     private int tickCounter;
+    private boolean hypixelWindowConsumed;
 
     public Autoblock() {
         super("Autoblock", "Predictively blocks around nearby combat targets.", category.combat, 0);
@@ -102,6 +103,7 @@ public class Autoblock extends Module {
     @Override
     public void onEnable() {
         tickCounter = 0;
+        hypixelWindowConsumed = false;
         resetState(false);
     }
 
@@ -247,6 +249,7 @@ public class Autoblock extends Module {
             return;
         }
         if (hurtAgain) {
+            hypixelWindowConsumed = false;
             releaseLag();
             stopBlocking(true);
             manualBlock = false;
@@ -307,6 +310,12 @@ public class Autoblock extends Module {
         int ourHurtTime = mc.thePlayer.hurtTime;
         int triggerTick = (int) Math.round(maxHurtTimeMs.getInput() / 50.0);
         triggerTick = Math.max(1, Math.min(10, triggerTick));
+        if (isHypixelMode()) {
+            if (ourHurtTime == 0) {
+                return !onlyWhenDamaged.isToggled();
+            }
+            return !hypixelWindowConsumed && ourHurtTime <= triggerTick;
+        }
         return ourHurtTime == triggerTick || (!onlyWhenDamaged.isToggled() && ourHurtTime == 0);
     }
 
@@ -322,6 +331,9 @@ public class Autoblock extends Module {
         KeyBinding.onTick(keyCode);
         isBlocking = true;
         blockStartTick = currentTick;
+        if (isHypixelMode() && mc.thePlayer.hurtTime > 0) {
+            hypixelWindowConsumed = true;
+        }
         syncBlockAnimation();
     }
 
@@ -382,6 +394,10 @@ public class Autoblock extends Module {
         return mode.getInput() == 1;
     }
 
+    private boolean isHypixelMode() {
+        return mode.getInput() == 2;
+    }
+
     private boolean canInteractWhileAlwaysUnblocked() {
         MovingObjectPosition hit = mc.objectMouseOver;
         if (hit == null) return false;
@@ -412,6 +428,7 @@ public class Autoblock extends Module {
         lastBlockEndTimeMs = 0L;
         currentTarget = null;
         lastSelfHurtTime = 0;
+        hypixelWindowConsumed = false;
         syncBlockAnimation();
         if (restorePhysicalUse) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), true);
