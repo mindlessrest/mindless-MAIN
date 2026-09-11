@@ -82,7 +82,11 @@ public class DynamicIsland extends Module {
     private String stateLabel = "Mindless";
     private String stateValue = "";
     private ItemStack stateIcon;
-    private float displayedBlockCount = Float.NaN;
+    private int displayedBlockCount = Integer.MIN_VALUE;
+    private int pendingBlockCount = Integer.MIN_VALUE;
+    private float blockValueFade = 1.0f;
+    private float blockValueSlide;
+    private boolean blockValueSwapping;
 
     public float islandPosX = -1.0f;
     public float islandPosY = -1.0f;
@@ -138,7 +142,7 @@ public class DynamicIsland extends Module {
         stateLabel = "Mindless";
         stateValue = "";
         stateIcon = null;
-        displayedBlockCount = Float.NaN;
+        resetBlockValueTransition();
         toggleStates.clear();
         recentToggles.clear();
     }
@@ -201,6 +205,7 @@ public class DynamicIsland extends Module {
     }
 
     private void resolveState(float delta) {
+        updateBlockValueTransition(delta);
         int nextState = STATE_IDLE;
         String nextLabel = "Mindless";
         String nextValue = "";
@@ -228,13 +233,14 @@ public class DynamicIsland extends Module {
             nextLabel = "Blocks";
             int blocks = ModuleManager.blockCounter == null
                     ? scaffoldBlockCount() : ModuleManager.blockCounter.islandCount();
-            if (Float.isNaN(displayedBlockCount)) {
+            if (displayedBlockCount == Integer.MIN_VALUE) {
                 displayedBlockCount = blocks;
-            } else {
-                displayedBlockCount = approach(displayedBlockCount, blocks, 9.0f, delta);
-                if (Math.abs(displayedBlockCount - blocks) < 0.02f) displayedBlockCount = blocks;
+                pendingBlockCount = blocks;
+            } else if (blocks != (blockValueSwapping ? pendingBlockCount : displayedBlockCount)) {
+                pendingBlockCount = blocks;
+                blockValueSwapping = true;
             }
-            nextValue = Integer.toString(Math.round(displayedBlockCount));
+            nextValue = Integer.toString(displayedBlockCount);
             nextIcon = islandBlock;
             nextKey = "scaffold:" + blockKey(islandBlock);
             if (scaffoldPeak == 0) {
@@ -249,7 +255,7 @@ public class DynamicIsland extends Module {
             breakerProgress = 0.0f;
             scaffoldPeak = 0;
             scaffoldProgress = 0.0f;
-            displayedBlockCount = Float.NaN;
+            resetBlockValueTransition();
         }
         // Compared against whatever is already on its way in, so a second toggle during a
         // swap replaces the queued content instead of starting the animation over.
@@ -333,7 +339,10 @@ public class DynamicIsland extends Module {
             }
             float valueWidth = text.getStringWidth(stateValue) * uiScale;
             float valueX = x + width - PAD_X * uiScale - valueWidth;
-            drawScaled(text, stateValue, valueX, textY, uiScale, withAlpha(valueRgb, contentAlpha));
+            float valueFade = islandState == STATE_SCAFFOLD ? blockValueFade : 1.0f;
+            float valueSlide = islandState == STATE_SCAFFOLD ? blockValueSlide * uiScale : 0.0f;
+            drawScaled(text, stateValue, valueX, textY + valueSlide, uiScale,
+                    withAlpha(valueRgb, Math.round(contentAlpha * valueFade)));
         }
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
             float barX = labelX;
@@ -375,6 +384,30 @@ public class DynamicIsland extends Module {
             }
         }
         return count;
+    }
+
+    private void updateBlockValueTransition(float delta) {
+        if (blockValueSwapping) {
+            blockValueFade = approach(blockValueFade, 0.0f, 24.0f, delta);
+            blockValueSlide = approach(blockValueSlide, -1.35f, 24.0f, delta);
+            if (blockValueFade <= 0.04f) {
+                displayedBlockCount = pendingBlockCount;
+                blockValueSwapping = false;
+                blockValueFade = 0.0f;
+                blockValueSlide = 1.35f;
+            }
+        } else {
+            blockValueFade = approach(blockValueFade, 1.0f, 17.0f, delta);
+            blockValueSlide = approach(blockValueSlide, 0.0f, 17.0f, delta);
+        }
+    }
+
+    private void resetBlockValueTransition() {
+        displayedBlockCount = Integer.MIN_VALUE;
+        pendingBlockCount = Integer.MIN_VALUE;
+        blockValueFade = 1.0f;
+        blockValueSlide = 0.0f;
+        blockValueSwapping = false;
     }
 
     private static String blockKey(ItemStack stack) {
