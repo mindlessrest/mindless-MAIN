@@ -46,7 +46,7 @@ public class HudEditor extends Module {
         super("HUD Editor", "Drag and resize your HUD elements.", category.client);
         this.liteModule = true;
         this.registerSetting(depthOfField = new ButtonSetting("Depth of field", true));
-        this.registerSetting(blurStrength = new SliderSetting("Blur strength", "%", 100.0, 0.0, 100.0, 5.0));
+        this.registerSetting(blurStrength = new SliderSetting("Blur strength", "%", 55.0, 0.0, 100.0, 5.0));
     }
 
     @Override
@@ -72,8 +72,11 @@ public class HudEditor extends Module {
         private static final float GUIDE_THRESHOLD = 4.0f;
 
         private static final int BACKDROP_BLUR_PASSES = 2;
-        private static final float BACKDROP_BLUR_RADIUS = 4.2f;
-        private static final int SCRIM = 0x5E000000;
+        private static final float BACKDROP_BLUR_RADIUS = 2.6f;
+        private static final int SCRIM = 0x42000000;
+        /** Height of the bar along the top, and the one along the bottom. */
+        private static final int TOP_BAR = 18;
+        private static final int BOTTOM_BAR = 16;
 
         private final List<Element> elements = new ArrayList<Element>();
         private MindlessButton doneButton;
@@ -100,9 +103,11 @@ public class HudEditor extends Module {
         public void initGui() {
             super.initGui();
             buildElements();
-            buttonList.add(doneButton = new MindlessButton(1, width - 63, 5, 58, 20, "Done"));
-            buttonList.add(resetAllButton = new MindlessButton(3, width - 132, 5, 64, 20, "Reset"));
-            buttonList.add(snapButton = new MindlessButton(2, width - 222, 5, 85, 20, snapLabel()));
+            // Short and shallow, and no longer a bar across the whole width. A watermark or a
+            // stats panel parked at the top was being hidden by the editor meant to move it.
+            buttonList.add(doneButton = new MindlessButton(1, width - 48, 2, 44, 14, "Done"));
+            buttonList.add(resetAllButton = new MindlessButton(3, width - 98, 2, 46, 14, "Reset"));
+            buttonList.add(snapButton = new MindlessButton(2, width - 166, 2, 64, 14, snapLabel()));
         }
 
         @Override
@@ -127,6 +132,10 @@ public class HudEditor extends Module {
             hovered = findTopmost(mouseX, mouseY);
 
             for (Element element : elements) {
+                // An element that has never had a size is one whose module drew nothing at all.
+                // Outlining those put empty rectangles over the screen and stacked them wherever
+                // zero happened to fall.
+                if (!element.hasBounds()) continue;
                 boolean active = element == selected || element == hovered || element == dragging || element == resizing;
                 drawOutline(element, active ? 0xE6FFFFFF : 0x26FFFFFF);
                 if (active) {
@@ -137,17 +146,20 @@ public class HudEditor extends Module {
                 }
             }
 
-            if (guideX) RenderUtils.drawRect(width * 0.5F, 30.0F, width * 0.5F + 0.5F, height, 0x807C6CFF);
+            if (guideX) RenderUtils.drawRect(width * 0.5F, TOP_BAR, width * 0.5F + 0.5F, height, 0x807C6CFF);
             if (guideY) RenderUtils.drawRect(0.0F, height * 0.5F, width, height * 0.5F + 0.5F, 0x807C6CFF);
 
-            drawRect(0, 0, width, 30, 0xE6101013);
-            RenderUtils.drawRect(0.0F, 29.0F, width, 30.0F, 0x303A3A43);
-            fontRendererObj.drawString("HUD editor", 9, 10, 0xFFF2F2F5, false);
+            // Two chips rather than a band: only the width each actually needs is covered, so
+            // anything the player keeps along the top edge stays visible behind them.
+            int titleWidth = fontRendererObj.getStringWidth("HUD editor") + 12;
+            drawRect(0, 0, titleWidth, TOP_BAR, 0xD9101013);
+            drawRect(width - 170, 0, width, TOP_BAR, 0xD9101013);
+            fontRendererObj.drawString("HUD editor", 6, 5, 0xFFF2F2F5, false);
             String hint = selected == null
                     ? "Drag an element to reposition it"
-                    : selected.name + "  ·  Arrow keys to nudge  ·  R to reset";
-            drawRect(0, height - 20, width, height, 0xD9101013);
-            fontRendererObj.drawString(hint, 9, height - 14, 0xFF9898A3, false);
+                    : selected.name + "  ·  Arrows nudge  ·  R resets  ·  Delete turns it off";
+            drawRect(0, height - BOTTOM_BAR, width, height, 0xD9101013);
+            fontRendererObj.drawString(hint, 6, height - BOTTOM_BAR + 4, 0xFF9898A3, false);
 
             super.drawScreen(mouseX, mouseY, partialTicks);
         }
@@ -167,7 +179,7 @@ public class HudEditor extends Module {
                         dragging = selected;
                         dragOffsetX = mouseX - selected.left;
                         dragOffsetY = mouseY - selected.top;
-                    } else if (mouseY > 30 && mouseY < height - 20) {
+                    } else if (mouseY > TOP_BAR && mouseY < height - BOTTOM_BAR) {
                         this.selected = null;
                     }
                 }
@@ -213,6 +225,18 @@ public class HudEditor extends Module {
                 selected.reset();
                 return;
             }
+            if (selected != null && (keyCode == Keyboard.KEY_DELETE || keyCode == Keyboard.KEY_BACK)) {
+                // Turning an overlay off from here saves going back to the click GUI to find it,
+                // and the editor is where you notice you do not want it.
+                if (selected.disableOverlay()) {
+                    selected = null;
+                    hovered = null;
+                    dragging = null;
+                    resizing = null;
+                    elements.clear();
+                }
+                return;
+            }
             if (selected != null && (keyCode == Keyboard.KEY_LEFT || keyCode == Keyboard.KEY_RIGHT
                     || keyCode == Keyboard.KEY_UP || keyCode == Keyboard.KEY_DOWN)) {
                 float step = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)
@@ -238,9 +262,9 @@ public class HudEditor extends Module {
             int major = 0x16FFFFFF;
             for (int x = GRID_SIZE; x < width; x += GRID_SIZE) {
                 int color = x % (GRID_SIZE * 4) == 0 ? major : minor;
-                RenderUtils.drawRect(x, 30.0F, x + 0.5F, height - 20.0F, color);
+                RenderUtils.drawRect(x, TOP_BAR, x + 0.5F, height - BOTTOM_BAR, color);
             }
-            for (int y = 32; y < height - 20; y += GRID_SIZE) {
+            for (int y = TOP_BAR + 2; y < height - BOTTOM_BAR; y += GRID_SIZE) {
                 int color = y % (GRID_SIZE * 4) == 0 ? major : minor;
                 RenderUtils.drawRect(0.0F, y, width, y + 0.5F, color);
             }
@@ -655,7 +679,9 @@ private void beginResize(Element element, int handle) {
                 });
             }
 
-            if (ModuleManager.statsHUD != null) {
+            // The sub-toggles say which readouts the panel contains; the module itself says
+            // whether any of it is on screen to be moved.
+            if (ModuleManager.statsHUD != null && ModuleManager.statsHUD.isEnabled()) {
                 final StatsHUD stats = ModuleManager.statsHUD;
                 if (stats.isFpsEnabled()) {
                     elements.add(new Element("FPS") {
@@ -762,6 +788,17 @@ private void beginResize(Element element, int handle) {
                     }
                 });
             }
+
+            // Nothing to place for an overlay that is switched off. Building them anyway is
+            // what put boxes on screen for things the game never draws, and piled the ones
+            // that report no size into the same corner.
+            java.util.Iterator<Element> iterator = elements.iterator();
+            while (iterator.hasNext()) {
+                Module owner = ModuleManager.getModule(iterator.next().name);
+                if (owner != null && owner.canBeEnabled && !owner.isEnabled()) {
+                    iterator.remove();
+                }
+            }
         }
 
         private float[] renderScoreboardPreview(Float requestedX, Float requestedY) {
@@ -867,13 +904,35 @@ private Element findTopmost(float mouseX, float mouseY) {
             abstract void render();
             abstract void moveTo(float left, float top);
             abstract void reset();
+
+            /**
+             * Switch off whatever draws this, by the name the element carries.
+             *
+             * @return true when something was actually turned off.
+             */
+            boolean disableOverlay() {
+                Module module = ModuleManager.getModule(name);
+                if (module == null || !module.isEnabled() || !module.canBeEnabled) {
+                    return false;
+                }
+                module.toggle();
+                return true;
+            }
 SliderSetting scaleSetting() {
                 return null;
             }
 
+            /**
+             * Keep the last real rectangle when a module draws nothing this frame.
+             *
+             * WAILA with nothing under the crosshair, the potion list with no potions, the
+             * target panel with no target: all of them report nothing, and zeroing on that made
+             * the element vanish and stop answering the mouse. Which is exactly when you want to
+             * be able to put it somewhere.
+             */
             void setBounds(float[] bounds) {
-                if (bounds == null || bounds.length < 4) {
-                    left = top = right = bottom = 0.0F;
+                if (bounds == null || bounds.length < 4
+                        || bounds[2] - bounds[0] < 0.5F || bounds[3] - bounds[1] < 0.5F) {
                     return;
                 }
                 left = bounds[0];
