@@ -1072,7 +1072,9 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             // around the feet, the marker over the body, the panel below both.
             mindless.module.impl.render.TargetHUD hud =
                     (mindless.module.impl.render.TargetHUD) selectedModule;
-            hud.drawPreviewRings(cx, bottom, (bottom - top) / 1.8f);
+            // The biped model is two blocks from the top of its head to its feet, which is
+            // what turns the figure's height into a scale the ring geometry can use.
+            hud.drawPreviewRings(cx, bottom, (bottom - top) / 2.0f);
             hud.drawPreviewMarker(cx, (top + bottom) * .5f);
             hud.drawPreviewPanel(previewX + 14f, bottom + 14f);
             resetTextRenderState();

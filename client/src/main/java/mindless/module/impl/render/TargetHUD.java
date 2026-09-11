@@ -94,10 +94,13 @@ private static final int RING_COUNT = 6;
     private static final int RING_STYLE_RADAR = 5;
     private static final int RING_STYLE_HELIX = 6;
     private static final int RING_STYLE_BEACON = 7;
-    private static final String[] RING_VIEWS = new String[] { "3D", "2D", "Hybrid" };
+    private static final String[] RING_VIEWS = new String[] { "3D", "2D", "Hybrid", "Volume" };
+    /** How far above level the preview looks down on its figure. */
+    private static final float PREVIEW_ELEVATION_DEGREES = 12.0f;
     private static final int RING_VIEW_3D = 0;
     private static final int RING_VIEW_2D = 1;
     private static final int RING_VIEW_HYBRID = 2;
+    private static final int RING_VIEW_VOLUME = 3;
 
     private static final String[] MARKER_STYLES = new String[] { "Brackets", "Frame", "Blades" };
     private static final int MARKER_STYLE_BRACKETS = 0;
@@ -527,7 +530,13 @@ private int ringColor(int ringIndex) {
         float viewTilt = 0.0f;
         float viewSpin = 0.0f;
         float viewRise = 0.0f;
-        if (view != RING_VIEW_3D) {
+        if (view == RING_VIEW_VOLUME) {
+            // A band of fixed height rather than one that grows as the camera drops. The
+            // ring is a solid hoop from every angle: a circle from above, a bar from the
+            // side, and the same object at each point in between.
+            viewRise = baseRadius * 0.45f;
+        }
+        else if (view != RING_VIEW_3D) {
             float edgeOn = 1.0f - Math.min(1.0f,
                     Math.abs(elevation) / (float) Math.toRadians(40.0));
             viewRise = baseRadius * (view == RING_VIEW_2D ? 0.34f : 0.18f)
@@ -2207,10 +2216,14 @@ private static final float[][] HEAD_UVS = {
         GlStateManager.translate(centerX, feetY, 0.0f);
         // Y runs down the screen and up in the world, hence the negative.
         GlStateManager.scale(unitPixels, -unitPixels, unitPixels);
-        GlStateManager.rotate(22.0f, 1.0f, 0.0f, 0.0f);
+        // Roughly the angle you fight at: level with the target's chest and looking a
+        // little down. Tilting further made every flat ring open into a wide ellipse, which
+        // is nothing like the thin band the same setting draws in game.
+        GlStateManager.rotate(PREVIEW_ELEVATION_DEGREES, 1.0f, 0.0f, 0.0f);
         // A player is 0.6 wide and 1.8 tall; three blocks is a normal fighting distance and
         // is what the band thickness is scaled against in game.
-        emitRings(1.8f, 0.6f, 3.0f, (float) Math.toRadians(22.0), 1.0f);
+        emitRings(1.8f, 0.6f, 3.0f,
+                (float) Math.toRadians(PREVIEW_ELEVATION_DEGREES), 1.0f);
         GlStateManager.popMatrix();
     }
 

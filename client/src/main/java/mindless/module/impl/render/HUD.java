@@ -128,7 +128,7 @@ private static final int[][] OUTLINE_OFFSETS = {
         this.registerSetting(backgroundMode = new SliderSetting("Background mode", 0, BACKGROUND_MODES));
         this.registerSetting(roundedBackground = new ButtonSetting("Rounded background", false));
         this.registerSetting(cornerRadius = new SliderSetting("Corner radius", 4.0, 0.0, 20.0, 0.5));
-        this.registerSetting(stepRounding = new SliderSetting("Step rounding", "%", 55.0, 0.0, 100.0, 5.0));
+        this.registerSetting(stepRounding = new SliderSetting("Step rounding", "%", 100.0, 0.0, 100.0, 5.0));
         this.registerSetting(rowSeparators = new ButtonSetting("Row separators", true));
         this.registerSetting(separatorColor = new ColorSetting("Separator color", 255, 255, 255, 38));
         this.registerSetting(backgroundOpacity = new SliderSetting("Background opacity", 43.0, 0.0, 100.0, 1.0));
@@ -905,30 +905,34 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont) {
             float rowTop = top + i * rowHeight;
             boolean firstRow = i == 0;
             boolean lastRow = i == widths.length - 1;
-            boolean widerThanPrevious = !firstRow && widths[i] > widths[i - 1] + 1;
-            boolean widerThanNext = !lastRow && widths[i] > widths[i + 1] + 1;
+            // A step is any change of width, in either direction. Both sides of one get a
+            // corner now: rounding only the protruding row left every second corner square,
+            // which is why the staircase read as a rectangle with a few nicks taken out of it
+            // instead of the rounded rows the per-line mode gives.
+            boolean stepAbove = !firstRow && Math.abs(widths[i] - widths[i - 1]) > 1;
+            boolean stepBelow = !lastRow && Math.abs(widths[i] - widths[i + 1]) > 1;
             float roundedRadius = radius <= 0.0f ? 0.0f : radius + grow;
             float roundedTransition = transitionRadius <= 0.0f ? 0.0f : transitionRadius + grow;
 
-            // Connected rows share their aligned edge. The changing edge is a staircase, so both
-            // corners must not be cut at one transition: that creates the scalloped gaps visible
-            // between every line. Only the wider, protruding row owns the convex rounded corner;
-            // the narrower row remains square and fills the concave side of the join.
+            // The ragged edge is rounded wherever the width changes and at both ends, so every
+            // row reads as rounded on the side that shows. The aligned edge is only rounded at
+            // the very top and bottom, because everything between it is one continuous side --
+            // that is what keeps the list a single shape rather than a stack of separate ones.
             float topLeft;
             float topRight;
             float bottomRight;
             float bottomLeft;
             if (right) {
-                topLeft = firstRow ? roundedRadius : widerThanPrevious ? roundedTransition : 0.0f;
-                bottomLeft = lastRow ? roundedRadius : widerThanNext ? roundedTransition : 0.0f;
+                topLeft = firstRow ? roundedRadius : stepAbove ? roundedTransition : 0.0f;
+                bottomLeft = lastRow ? roundedRadius : stepBelow ? roundedTransition : 0.0f;
                 topRight = firstRow ? roundedRadius : 0.0f;
                 bottomRight = lastRow ? roundedRadius : 0.0f;
             }
             else {
                 topLeft = firstRow ? roundedRadius : 0.0f;
                 bottomLeft = lastRow ? roundedRadius : 0.0f;
-                topRight = firstRow ? roundedRadius : widerThanPrevious ? roundedTransition : 0.0f;
-                bottomRight = lastRow ? roundedRadius : widerThanNext ? roundedTransition : 0.0f;
+                topRight = firstRow ? roundedRadius : stepAbove ? roundedTransition : 0.0f;
+                bottomRight = lastRow ? roundedRadius : stepBelow ? roundedTransition : 0.0f;
             }
 
             // Only the outer edges grow; growing the shared horizontal seams would draw the
