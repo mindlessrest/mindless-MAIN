@@ -19,12 +19,11 @@ import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public final class PlayerKillDetector {
     public static final PlayerKillDetector INSTANCE = new PlayerKillDetector();
@@ -37,7 +36,8 @@ public final class PlayerKillDetector {
 
     private final Map<Integer, TrackedPlayer> tracked = new HashMap<Integer, TrackedPlayer>();
     private final Map<Integer, Long> emitted = new HashMap<Integer, Long>();
-    private final Set<Integer> pending = new HashSet<Integer>();
+    /** Kills waiting to be announced. Written under the monitor, drained without it. */
+    private final List<KillSnapshot> outbox = new ArrayList<KillSnapshot>();
     private WorldClient world;
 
     private PlayerKillDetector() {
@@ -142,19 +142,35 @@ public final class PlayerKillDetector {
     }
 
     @SubscribeEvent
-    public synchronized void onClientTick(TickEvent.ClientTickEvent event) {
+    public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
+        List<KillSnapshot> ready;
+        WorldClient announceIn;
+        synchronized (this) {
+            announceIn = sweep();
+            ready = new ArrayList<KillSnapshot>(outbox);
+            outbox.clear();
+        }
+        announce(ready, announceIn);
+    }
+
+    /**
+     * Expire stale entries and pick up deaths the packets did not describe.
+     *
+     * @return the world the queued kills belong to, or null when there is nothing to say.
+     */
+    private WorldClient sweep() {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.theWorld != world) {
             tracked.clear();
             emitted.clear();
-            pending.clear();
+            outbox.clear();
             world = mc.theWorld;
         }
         if (mc.theWorld == null || mc.thePlayer == null) {
-            return;
+            return null;
         }
 
         long now = System.currentTimeMillis();
@@ -182,42 +198,53 @@ public final class PlayerKillDetector {
                 emittedIterator.remove();
             }
         }
+        return mc.theWorld;
     }
 
-    private void emit(final TrackedPlayer target, long now) {
+    /**
+     * Announce the queued kills, with no lock held.
+     *
+     * Subscribers run arbitrary code, and the packet thread shares this object's monitor,
+     * so holding it across the post would let a slow listener stall the network read.
+     */
+    private void announce(List<KillSnapshot> ready, WorldClient announceIn) {
+        if (announceIn == null || ready.isEmpty()) {
+            return;
+        }
+        for (KillSnapshot snapshot : ready) {
+            if (Minecraft.getMinecraft().theWorld != announceIn) {
+                return;
+            }
+            Entity entity = announceIn.getEntityByID(snapshot.entityId);
+            EntityPlayer player = entity instanceof EntityPlayer ? (EntityPlayer) entity : null;
+            MinecraftForge.EVENT_BUS.post(new PlayerKillEvent(player, snapshot.entityId,
+                    snapshot.name, snapshot.x, snapshot.y, snapshot.z));
+        }
+    }
+
+    /**
+     * Queue a kill for the next client tick.
+     *
+     * Every caller holds this object's monitor, so nothing here may reach for a second
+     * lock. It used to call Minecraft.addScheduledTask from right here, which takes the
+     * scheduled-task monitor -- and the game thread holds that one for the whole of the
+     * task drain while a queued dispatch waits on this one. The packet thread and the
+     * game thread took the two in opposite orders, and the client froze solid with no
+     * exception and no crash report to show for it.
+     *
+     * Nothing is removed from the tracked map here either. Doing that used to run inside
+     * the tick handler's own iteration over it.
+     */
+    private void emit(TrackedPlayer target, long now) {
         Long lastEmission = emitted.get(target.entityId);
-        if (now - target.lastAttackAt > KILL_CREDIT_WINDOW_MS
-                || pending.contains(target.entityId)
+        if (target.announced
+                || now - target.lastAttackAt > KILL_CREDIT_WINDOW_MS
                 || lastEmission != null && now - lastEmission.longValue() <= DEDUPLICATION_WINDOW_MS) {
             return;
         }
-        pending.add(target.entityId);
-        final Minecraft mc = Minecraft.getMinecraft();
-        final WorldClient eventWorld = mc.theWorld;
-        final KillSnapshot snapshot = new KillSnapshot(target);
-        Runnable dispatch = new Runnable() {
-            @Override
-            public void run() {
-                synchronized (PlayerKillDetector.this) {
-                    pending.remove(snapshot.entityId);
-                    if (Minecraft.getMinecraft().theWorld != eventWorld) {
-                        return;
-                    }
-                    emitted.put(snapshot.entityId, System.currentTimeMillis());
-                    tracked.remove(snapshot.entityId);
-                }
-                Entity entity = eventWorld.getEntityByID(snapshot.entityId);
-                EntityPlayer player = entity instanceof EntityPlayer ? (EntityPlayer) entity : null;
-                MinecraftForge.EVENT_BUS.post(new PlayerKillEvent(player, snapshot.entityId,
-                        snapshot.name, snapshot.x, snapshot.y, snapshot.z));
-            }
-        };
-        if (mc.isCallingFromMinecraftThread()) {
-            dispatch.run();
-        }
-        else {
-            mc.addScheduledTask(dispatch);
-        }
+        target.announced = true;
+        emitted.put(target.entityId, now);
+        outbox.add(new KillSnapshot(target));
     }
 
     private static final class TrackedPlayer {
@@ -228,6 +255,8 @@ public final class PlayerKillDetector {
         double z;
         long lastAttackAt;
         long lastDamageAt;
+        /** Set once this death has been queued, so it is not announced twice. */
+        boolean announced;
 
         TrackedPlayer(EntityPlayer player) {
             entityId = player.getEntityId();
@@ -237,6 +266,9 @@ public final class PlayerKillDetector {
         void update(EntityPlayer player, long now) {
             capture(player);
             lastAttackAt = now;
+            // A fresh attack is a fresh engagement, so this death is worth announcing even
+            // if an earlier one on the same player already was.
+            announced = false;
         }
 
         void capture(EntityPlayer player) {

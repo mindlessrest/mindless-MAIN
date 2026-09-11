@@ -10,24 +10,45 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 public final class ResourceMp3Player {
     private static final String RESOURCE = "/assets/mindless/sounds/mommy_asmr.mp3";
     private static final String ALIAS = "mindless_mommy_asmr";
     private static volatile File extracted;
+    private static final ExecutorService PLAYBACK = Executors.newSingleThreadExecutor(
+            new ThreadFactory() {
+                @Override
+                public Thread newThread(Runnable runnable) {
+                    Thread thread = new Thread(runnable, "Mindless Kill Sound");
+                    thread.setDaemon(true);
+                    return thread;
+                }
+            });
 
     private ResourceMp3Player() {
     }
 
+    /**
+     * One thread for the life of the process, not one per kill.
+     *
+     * MCI ties a device to the thread that opened it. A thread that plays a sound and then
+     * exits leaves behind a device that nothing can stop or close again, and the next kill
+     * blocks trying -- which, because play is synchronized, then blocks every kill after it.
+     */
     public static void playMommyAsmr(final float volume) {
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                play(volume);
-            }
-        }, "Mindless Kill Sound");
-        thread.setDaemon(true);
-        thread.start();
+        try {
+            PLAYBACK.execute(new Runnable() {
+                @Override
+                public void run() {
+                    play(volume);
+                }
+            });
+        }
+        catch (RuntimeException ignored) {
+        }
     }
 
     private static synchronized void play(float volume) {

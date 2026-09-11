@@ -16,7 +16,13 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 public class DiscordRPC {
 private static final int MAX_PIPES = 10;
     // The browser/websocket transport. Forks that do not publish a named pipe (Dorion, arRPC based
@@ -30,6 +36,8 @@ private static final long MAX_RECONNECT_INTERVAL_MS = 60000L;
 private static final int MAX_CONSECUTIVE_RECONNECT_FAILURES = 10;
 private static final long POLL_INTERVAL_MS = 100L;
 private static final long STALL_TIMEOUT_MS = 10000L;
+/** How long a pipe gets to answer before the link is written off. */
+private static final long PIPE_READ_TIMEOUT_MS = 4000L;
 private static final int RATE_LIMIT_BURST = 5;
     private static final long RATE_LIMIT_REFILL_MS = 4000L;
 private static final int MAX_REPLY_SCAN = 8;
@@ -51,6 +59,9 @@ private volatile RpcLink connectingPipe;
     private volatile int lastWorkingPipeIndex = -1;
     private volatile long reconnectSignal;
     private Thread worker;
+    /** Bumped to retire a worker. A retired one exits and touches no shared state. */
+    private volatile int workerGeneration;
+    private final AtomicBoolean recovering = new AtomicBoolean();
 
     /**
      * Report a connection event to both the console and the diagnostics log.
@@ -76,10 +87,11 @@ public void connect() {
             }
             running = true;
             lastCycleAt = System.currentTimeMillis();
+            final int generation = ++workerGeneration;
             worker = new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    pump();
+                    pump(generation);
                 }
             }, "Mindless-DiscordRPC");
             worker.setDaemon(true);
@@ -94,14 +106,47 @@ public void update(RichPresence presence) {
             return;
         }
         if (System.currentTimeMillis() - lastCycleAt > STALL_TIMEOUT_MS) {
-            note("worker stalled, dropping connections to free it");
-            for (RpcLink c : connections) {
-                c.forceClose();
-            }
+            recoverFromStall();
+        }
+    }
+
+    /**
+     * Replace a worker that has stopped cycling.
+     *
+     * This runs on the game thread, so nothing in it may block. A worker parked on a pipe
+     * that will never answer cannot be interrupted out of that read, so it is retired rather
+     * than waited for: its generation is bumped, its links are dropped, and a fresh worker
+     * takes over. The old thread exits on its own if the read ever returns.
+     *
+     * This used to force-close the links inline instead, which wrote a close frame to a pipe
+     * whose peer had stopped reading. A Windows pipe write has no timeout, so the game thread
+     * went into that write and never came out, and the client froze with nothing logged.
+     */
+    private void recoverFromStall() {
+        if (!recovering.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            note("worker stalled, retiring it and starting a fresh one");
+            List<RpcLink> doomed = new ArrayList<>(connections);
             RpcLink stuck = connectingPipe;
             if (stuck != null) {
-                stuck.forceClose();
+                doomed.add(stuck);
             }
+            connections.clear();
+            connectingPipe = null;
+            synchronized (lifecycleLock) {
+                workerGeneration++;
+                running = false;
+                worker = null;
+            }
+            for (RpcLink link : doomed) {
+                link.forceClose();
+            }
+            connect();
+        }
+        finally {
+            recovering.set(false);
         }
     }
 
@@ -135,7 +180,7 @@ public RichPresence getDesired() {
         }
         connections.clear();
     }
-private void pump() {
+private void pump(final int generation) {
         int tokens = RATE_LIMIT_BURST;
         long lastRefillAt = System.currentTimeMillis();
         long nextConnectAt = 0L;
@@ -145,7 +190,7 @@ private void pump() {
         String sentSignature = null;
 
         try {
-            while (running) {
+            while (running && generation == workerGeneration) {
                 long now = System.currentTimeMillis();
                 lastCycleAt = now;
 
@@ -209,13 +254,19 @@ private void pump() {
         catch (Throwable ignored) {
         }
         finally {
-            for (RpcLink c : connections) {
-                c.forceClose();
-            }
-            connections.clear();
-            synchronized (lifecycleLock) {
-                running = false;
-                worker = null;
+            // Only when this is still the live worker. A retired one must not tear down the
+            // connections of the worker that replaced it.
+            if (generation == workerGeneration) {
+                for (RpcLink c : connections) {
+                    c.forceClose();
+                }
+                connections.clear();
+                synchronized (lifecycleLock) {
+                    if (generation == workerGeneration) {
+                        running = false;
+                        worker = null;
+                    }
+                }
             }
         }
     }
@@ -228,6 +279,9 @@ private boolean send(RichPresence presence) {
         String json = buildActivityJson(presence);
         boolean delivered = false;
         for (RpcLink c : connections) {
+            // Each link, not each full cycle. One slow endpoint out of several must not read
+            // as a stalled worker, or the stall recovery starts churning through workers.
+            lastCycleAt = System.currentTimeMillis();
             if (c.send(json)) {
                 delivered = true;
             }
@@ -270,6 +324,7 @@ private void findPipes() {
         if (already.contains(link.key())) {
             return;
         }
+        lastCycleAt = System.currentTimeMillis();
         connectingPipe = link;
         try {
             if (link.connect()) {
@@ -439,7 +494,7 @@ private static final class PipeConnection implements RpcLink {
                     pipe = new RandomAccessFile(prefix + pipeIndex, "rw");
                     sendPacket(OP_HANDSHAKE, "{\"v\":1,\"client_id\":\"" + clientId + "\"}");
 
-                    Frame response = readFrame();
+                    Frame response = readFrameWithin(PIPE_READ_TIMEOUT_MS);
                     if (response == null || response.payload.contains("\"evt\":\"ERROR\"")) {
                         if (response != null) {
                             note("" + label + " refused: " + response.payload);
@@ -476,7 +531,7 @@ private static final class PipeConnection implements RpcLink {
             try {
                 sendPacket(OP_FRAME, json);
                 for (int i = 0; i < MAX_REPLY_SCAN; i++) {
-                    Frame frame = readFrame();
+                    Frame frame = readFrameWithin(PIPE_READ_TIMEOUT_MS);
                     if (frame == null) {
                         alive = false;
                         return false;
@@ -513,17 +568,8 @@ private static final class PipeConnection implements RpcLink {
         }
 @Override
         public void forceClose() {
-            alive = false;
-            RandomAccessFile open = pipe;
-            if (open == null) {
-                return;
-            }
-            try {
-                open.write(ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
-                        .putInt(OP_CLOSE).putInt(0).array());
-            }
-            catch (Exception ignored) {
-            }
+            // No close frame any more. Writing one to a pipe whose peer has stopped reading
+            // blocks forever, and this is called from the game thread.
             closeQuietly();
         }
 
@@ -531,12 +577,65 @@ private static final class PipeConnection implements RpcLink {
             RandomAccessFile open = pipe;
             pipe = null;
             alive = false;
-            try {
-                if (open != null) {
-                    open.close();
-                }
+            closeDetached(open);
+        }
+
+        /**
+         * Close on a thread of its own.
+         *
+         * Closing a Windows pipe whose peer has gone quiet blocks the same way reading it
+         * does, so no caller of this class ever waits for one to let go. A handle that never
+         * closes costs one parked daemon thread, which is the cheap end of the trade.
+         */
+        private static void closeDetached(final RandomAccessFile open) {
+            if (open == null) {
+                return;
             }
-            catch (Exception ignored) {
+            Thread closer = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        open.close();
+                    }
+                    catch (Exception ignored) {
+                    }
+                }
+            }, "Mindless-DiscordRPC-Close");
+            closer.setDaemon(true);
+            closer.start();
+        }
+
+        /**
+         * Read one frame, giving up after a deadline.
+         *
+         * A Windows named pipe has no read timeout and a thread cannot be interrupted out of
+         * a blocking read on one, so the read runs on a thread of its own and is abandoned
+         * when it does not answer. Without this one wedged Discord client parks the worker
+         * for good, which is the state the stall recovery was then asked to clean up.
+         */
+        private Frame readFrameWithin(long timeoutMs) throws Exception {
+            if (pipe == null) {
+                return null;
+            }
+            FutureTask<Frame> read = new FutureTask<Frame>(new Callable<Frame>() {
+                @Override
+                public Frame call() throws Exception {
+                    return readFrame();
+                }
+            });
+            Thread thread = new Thread(read, "Mindless-DiscordRPC-Read");
+            thread.setDaemon(true);
+            thread.start();
+            try {
+                return read.get(timeoutMs, TimeUnit.MILLISECONDS);
+            }
+            catch (TimeoutException timeout) {
+                alive = false;
+                throw new IllegalStateException(label + " did not answer within " + timeoutMs + "ms");
+            }
+            catch (ExecutionException failure) {
+                Throwable cause = failure.getCause();
+                throw cause instanceof Exception ? (Exception) cause : new IllegalStateException(cause);
             }
         }
 
