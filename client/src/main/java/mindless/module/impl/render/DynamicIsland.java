@@ -84,8 +84,7 @@ public class DynamicIsland extends Module {
     private ItemStack stateIcon;
     private int displayedBlockCount = Integer.MIN_VALUE;
     private int pendingBlockCount = Integer.MIN_VALUE;
-    private float blockValueFade = 1.0f;
-    private float blockValueSlide;
+    private float blockValueBlend = 1.0f;
     private boolean blockValueSwapping;
 
     public float islandPosX = -1.0f;
@@ -234,7 +233,10 @@ public class DynamicIsland extends Module {
                 pendingBlockCount = blocks;
             } else if (blocks != (blockValueSwapping ? pendingBlockCount : displayedBlockCount)) {
                 pendingBlockCount = blocks;
-                blockValueSwapping = true;
+                if (!blockValueSwapping) {
+                    blockValueBlend = 0.0f;
+                    blockValueSwapping = true;
+                }
             }
             nextValue = Integer.toString(displayedBlockCount);
             nextIcon = islandBlock;
@@ -340,10 +342,19 @@ public class DynamicIsland extends Module {
             }
             float valueWidth = text.getStringWidth(stateValue) * uiScale;
             float valueX = x + width - PAD_X * uiScale - valueWidth;
-            float valueFade = islandState == STATE_SCAFFOLD ? blockValueFade : 1.0f;
-            float valueSlide = islandState == STATE_SCAFFOLD ? blockValueSlide * uiScale : 0.0f;
-            drawScaled(text, stateValue, valueX, textY + valueSlide, uiScale,
-                    withAlpha(valueRgb, Math.round(contentAlpha * valueFade)));
+            if (islandState == STATE_SCAFFOLD && blockValueSwapping) {
+                float blend = smoothStep(blockValueBlend);
+                drawScaled(text, stateValue, valueX, textY, uiScale,
+                        withAlpha(valueRgb, Math.round(contentAlpha * (1.0f - blend))));
+                String incoming = Integer.toString(pendingBlockCount);
+                float incomingWidth = text.getStringWidth(incoming) * uiScale;
+                float incomingX = x + width - PAD_X * uiScale - incomingWidth;
+                drawScaled(text, incoming, incomingX, textY, uiScale,
+                        withAlpha(valueRgb, Math.round(contentAlpha * blend)));
+            } else {
+                drawScaled(text, stateValue, valueX, textY, uiScale,
+                        withAlpha(valueRgb, contentAlpha));
+            }
         }
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
             float barX = labelX;
@@ -389,26 +400,25 @@ public class DynamicIsland extends Module {
 
     private void updateBlockValueTransition(float delta) {
         if (blockValueSwapping) {
-            blockValueFade = approach(blockValueFade, 0.0f, 24.0f, delta);
-            blockValueSlide = approach(blockValueSlide, -1.35f, 24.0f, delta);
-            if (blockValueFade <= 0.04f) {
+            blockValueBlend = approach(blockValueBlend, 1.0f, 13.0f, delta);
+            if (blockValueBlend >= 0.985f) {
                 displayedBlockCount = pendingBlockCount;
                 blockValueSwapping = false;
-                blockValueFade = 0.0f;
-                blockValueSlide = 1.35f;
+                blockValueBlend = 1.0f;
             }
-        } else {
-            blockValueFade = approach(blockValueFade, 1.0f, 17.0f, delta);
-            blockValueSlide = approach(blockValueSlide, 0.0f, 17.0f, delta);
         }
     }
 
     private void resetBlockValueTransition() {
         displayedBlockCount = Integer.MIN_VALUE;
         pendingBlockCount = Integer.MIN_VALUE;
-        blockValueFade = 1.0f;
-        blockValueSlide = 0.0f;
+        blockValueBlend = 1.0f;
         blockValueSwapping = false;
+    }
+
+    private static float smoothStep(float value) {
+        float clamped = Math.max(0.0f, Math.min(1.0f, value));
+        return clamped * clamped * (3.0f - 2.0f * clamped);
     }
 
     private static String blockKey(ItemStack stack) {
