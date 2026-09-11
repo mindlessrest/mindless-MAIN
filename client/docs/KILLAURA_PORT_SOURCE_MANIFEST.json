@@ -1,0 +1,348 @@
+{
+  "createdUtc": "2026-09-11T04:50:20.1319013Z",
+  "purpose": "Read-only handoff baseline. Changed files must be re-read, not overwritten from this manifest.",
+  "files": [
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\KillAuraModule.java",
+      "sha256": "9EE51392A188E2C85B790FF3781D0EA7A2055E3C5A82A358528EF1CB92753333",
+      "bytes": 51295
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\AuraTarget.java",
+      "sha256": "5BA62E6F5FF58AB68A52701E45946F73E9A489B8ACDDFE07470D0C7B01E7C9E6",
+      "bytes": 926
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\ModuleModeIds.java",
+      "sha256": "A681BC09B042481DC4CDA9F50CFE98D8C5EA564B8CC0D71DEB935DF2C8B17816",
+      "bytes": 10497
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\ClientTickTiming.java",
+      "sha256": "9E9B493141DC5BA28020042EADE8CACFFA0246CD174EB3D2D6010B3253A06AF3",
+      "bytes": 175
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\NumericConversions.java",
+      "sha256": "4E3E157C4A98522177E791B9BDAB33163C6B5A82558E9CB8749ACB7BDFADCFA4",
+      "bytes": 231
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\ElapsedTimer.java",
+      "sha256": "60F7AA081E00E551AEB4A582FE8BAFD777162BCAEBB8A046173EA250AB8EB640",
+      "bytes": 469
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\RandomUtils.java",
+      "sha256": "1EFAD6038AC39853DC8B48CFA5F19027236F5CAF63F4ED29A4F5478649118B06",
+      "bytes": 633
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\PacketActionTracker.java",
+      "sha256": "80411E6A0D0BBA3FE7B98D914FB4BD8F52253290BA5AE84780DE7185C2187F89",
+      "bytes": 1501
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\HurtTimeTracker.java",
+      "sha256": "7E0E8068D671CE1DAAE667A45CA77BD2603E65EBC6AD38E0334802B8D39F9561",
+      "bytes": 1974
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\OutgoingPacketBuffer.java",
+      "sha256": "4284BF0A8109863FE78C339726EE9D2367F296AC68626EF471EAE24060163A0F",
+      "bytes": 3259
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\OutgoingBufferOwner.java",
+      "sha256": "07796F89E7E1C8B67EE4A62E4583C318B95405CD184E7BED25CE18ACB59833E4",
+      "bytes": 122
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\RotationUpdateEvent.java",
+      "sha256": "A4EF2776AC7C382F24049D8FDEF8769B4F58A1F78B23F50881F4ED42002C356F",
+      "bytes": 1653
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\RotationState.java",
+      "sha256": "688E24B3CB0132A0EC14297A72447748B6ADE45426BB8A2F660C218F5D581262",
+      "bytes": 3304
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\RotationUtils.java",
+      "sha256": "040C26D03A2FED0C52686C718E8BCCA4382C45260BB4322499135969300E2C76",
+      "bytes": 10145
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\ItemUtils.java",
+      "sha256": "59E56065B2A9D460143FAAF1490254B9BC35C46DF635D0CD2E84D339BF25A20E",
+      "bytes": 11800
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\EntityUtils.java",
+      "sha256": "05C3CF3271B4C39B2C1044FA9B5DE8F38E6286CD7B7A3726D06F1699C62CC315",
+      "bytes": 5888
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\MovementUtils.java",
+      "sha256": "314964DA41CEA273A5029579EB752E5689CFB8645A81926301DFED6CA90C4998",
+      "bytes": 7370
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\PlayerUtils.java",
+      "sha256": "14DCA963EEFE095C504841000E73DBB9F8D7AC31DFB3E50895710943977DE783",
+      "bytes": 13201
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\PacketUtils.java",
+      "sha256": "FC3D4F0A58B5797696AA0734F8009980A2EC29541A2DFD063B12B2B06E81723E",
+      "bytes": 504
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\mixin\\MixinMinecraft.java",
+      "sha256": "5FA54BFBD5D979BC55FD362D68A884B88C811A4AF985AE45C41233134504FF7A",
+      "bytes": 5480
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\mixin\\MixinEntityPlayerSP.java",
+      "sha256": "0CFDC6A2C0673C5538E5E82609A6617E556FA753EE7402A0173DAB54211D35DF",
+      "bytes": 6272
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\mixin\\MixinNetworkManager.java",
+      "sha256": "38CC1BF1BCDE4E7FCA83C97DB0598EB8407275289C3E460DEE30A6819540B007",
+      "bytes": 4135
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\mixin\\MixinPlayerControllerMP.java",
+      "sha256": "6F49339D8AEEFD9D1CC2A889A86615C06306BF4CE90617BE14E57BF7985F15DE",
+      "bytes": 1681
+    },
+    {
+      "role": "source",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\clean-java\\src\\main\\java\\myau\\mixin\\MixinEntityRenderer.java",
+      "sha256": "4B55F2A29036301A9C6910FB301CDD1BEFE793212FB19D33EED8234A11620CF1",
+      "bytes": 10069
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\AGENTS.md",
+      "sha256": "85EDA672629BCD9CB2BFC4F267431FAE9E191F2280F5F1CA60D300EBF72F4F2D",
+      "bytes": 24
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\build.gradle.kts",
+      "sha256": "4234EE783E34D1C7CA4C994F69C32FC79C512026EECE15990E15E326DD409154",
+      "bytes": 14329
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\module\\impl\\combat\\KillAura.java",
+      "sha256": "C36CDB6A5366EAA843F0AED99589A06F1860A24CDEA76C5D42A41C76A63EBB66",
+      "bytes": 40641
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\module\\impl\\combat\\Autoblock.java",
+      "sha256": "A9703B9F1DFC3926502A2497D2775D28E02700DBEC35BF1597C6241BB395230E",
+      "bytes": 7609
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\module\\impl\\combat\\AutoWeapon.java",
+      "sha256": "C55EBE6682EC8D19648DCCC91554431D9AE6CBAEC699CBA8C0BAE018EC732FDA",
+      "bytes": 6385
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\module\\impl\\combat\\HitSelect.java",
+      "sha256": "DE1161F7E3FEA2CABE13CF3A80A4D468D3241FDA193AF49B827204BEA2290125",
+      "bytes": 17678
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\module\\impl\\movement\\NoSlow.java",
+      "sha256": "547538B8A3CCAB58E3D37A7352F237946F946E3AA0C15F90F07B86848E48C9AA",
+      "bytes": 6892
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\helper\\RotationHelper.java",
+      "sha256": "6349993C5232C4CA107BB1D820FC354C5308588DF486E45E99954210F351629A",
+      "bytes": 18975
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\rotation\\RotationArbiter.java",
+      "sha256": "63F8F6A52516A918366FCBA69848411D334E56AA69E29D9B938916F58D37BE62",
+      "bytes": 2789
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\rotation\\RotationSource.java",
+      "sha256": "A05E289AB0D703F8833EE24C54951F3D6F810BA72E6E4674467E1DE542AB0497",
+      "bytes": 640
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\event\\ClientRotationEvent.java",
+      "sha256": "0E660F50AD6DA6D8FA3B6C242AEA92128C6C2F34CD6B63BC5D7923C0AA93E26A",
+      "bytes": 1673
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\event\\PreMotionEvent.java",
+      "sha256": "DD69EE675626F1D9EBE5573AA0A890831F483D73CF9DBC02AD42F6E7EE35849E",
+      "bytes": 3974
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\event\\PreAttackEvent.java",
+      "sha256": "6E07246FBFEFE5DB81C541F537378C2C2F3B34763942727BC8B1F7F83B25B131",
+      "bytes": 780
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\event\\AttackEvent.java",
+      "sha256": "0B3D2F5C75307D594D353C9DF1B6BD4637694FCE44AE92D538C94500A10430EE",
+      "bytes": 626
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\Mindless.java",
+      "sha256": "538CFFA9CA560379F2C0B4ADA5FB63D701E435511AE2BDAACB3DE2FA8761EC3C",
+      "bytes": 16937
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\utility\\profile\\ProfileManager.java",
+      "sha256": "6601E6A7F30522A9EA2CAB828C27E8A070983185F4BFE5E076716E9A747D5239",
+      "bytes": 48655
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\utility\\profile\\ProfileMigrations.java",
+      "sha256": "4C824B48461436E18FAB2A5217267E9B3F7F5338A642D680F46273C4176FB414",
+      "bytes": 9915
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\module\\setting\\Setting.java",
+      "sha256": "FFD53031D958A72C5B04898528F8BAB557C3429B6ED616FAA0FC160C2551B3CE",
+      "bytes": 1692
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\module\\setting\\impl\\SliderSetting.java",
+      "sha256": "A66ACE0591745C86E818036CE7B126F3CE023219F13D2D1AEE2B9BB46E95FAD2",
+      "bytes": 9569
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\runtime\\AccessorBridge.java",
+      "sha256": "AF7526A0C8F4EBADCAAA1F3AEAFAEFEE14CCF9256B18701931C71BF4F9FAC66B",
+      "bytes": 23305
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\runtime\\MindlessTransformerManager.java",
+      "sha256": "ACF4CDBAFBDE5915FB54C583A52B3B8B1C8C0BDFFA7AC1638797E51771F6D498",
+      "bytes": 35226
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\mixin\\impl\\client\\MixinMinecraft.java",
+      "sha256": "DB7C2BDC3DC6A88BFA421D58A34D6C4C3341E53D789CCABC29103573B2E02942",
+      "bytes": 3627
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\transformer\\impl\\client\\TransformerMinecraft.java",
+      "sha256": "B68447CD197AC49D1103CD07A5540DC916DF92A9222A5619DB64336DCCE14F9E",
+      "bytes": 7861
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\mixin\\impl\\client\\MixinPlayerControllerMP.java",
+      "sha256": "46B494E48F27182E869A95224410298EEBFEBC28A48C51D0C6DE884C3C62E346",
+      "bytes": 6029
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\transformer\\impl\\client\\TransformerPlayerControllerMP.java",
+      "sha256": "C57259E06D9B8FD183BECD478C277A707B844627512E3A27BF9C3D4EA80212D4",
+      "bytes": 4236
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\mixin\\impl\\entity\\MixinEntityPlayerSP.java",
+      "sha256": "5C126F045D8161D46A1F84737E91DDE8D5D3AF958A7A043DC4DBAD5BE30D39A2",
+      "bytes": 22287
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\transformer\\impl\\entity\\TransformerEntityPlayerSP.java",
+      "sha256": "0CDB93EDC770C898140062BC5F5B011969089AF75DB7D16C13970729ACBAB955",
+      "bytes": 7391
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\mixin\\impl\\network\\MixinNetworkManager.java",
+      "sha256": "A8681292FD5EC641C0735087EDFE93F382354FDCCFE8B7793E3EEB8EF9385957",
+      "bytes": 4149
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\transformer\\impl\\network\\TransformerNetworkManager.java",
+      "sha256": "AE4854D805D3864360A4FE94CCA598D66EB44F5956644047BD38427D6D19CB17",
+      "bytes": 4641
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\lag\\api\\DelayRequest.java",
+      "sha256": "F382FC190609EA9CB0830FF6108257C043AACDC7548B909BD276CF09C50F4645",
+      "bytes": 4330
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\lag\\api\\DelayLease.java",
+      "sha256": "0DD702D933B8E6ED06904E29E22B2F0CE236581D87F09E13100E311FEFF67343",
+      "bytes": 1981
+    },
+    {
+      "role": "destination_baseline",
+      "path": "C:\\Users\\Michael\\Downloads\\mindless-MAIN-master (1)\\mindless-MAIN-master\\client\\src\\main\\java\\mindless\\lag\\service\\PacketDelayService.java",
+      "sha256": "46BF85B2CC815F585454DE83CE4C524FA898F3E263167593D68441D4C14EA838",
+      "bytes": 34749
+    },
+    {
+      "role": "source_profile",
+      "path": "C:\\Users\\Michael\\Downloads\\myau-clean-final\\myau-clean-final\\predac.json",
+      "sha256": "174E4EA0B7BDAD56CCA7E301FB54ACA4CD0E5031D999093EC7D1A20309AB3D5E",
+      "bytes": 12682
+    }
+  ]
+}
