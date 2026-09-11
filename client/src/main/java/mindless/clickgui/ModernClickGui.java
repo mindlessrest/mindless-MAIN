@@ -193,10 +193,12 @@ private void layoutDropdown() {
     private float sideW;
     private float centerW;
     private float detailW;
-    private float centerX, detailX;
+    private float previewW;
+    private float centerX, detailX, previewX;
     private float settingsContentHeight;
     private float modulesContentHeight;
 private float detailPanelOpen = 0f;
+private float previewPanelOpen = 0f;
 private Module lastRenderedModule = null;
 private float detailContentReveal = 0f;
 private float guiOpenProgress = 0f;
@@ -294,6 +296,7 @@ private float aboutOpenProgress = 0f;
             moduleSnapshot = new ModuleSnapshot(selectedModule);
         }
         detailPanelOpen = selectedModule != null ? 1f : 0f;
+        previewPanelOpen = supportsVisualPreview() ? 1f : 0f;
         detailContentReveal = selectedModule != null ? 1f : 0f;
         lastRenderedModule = selectedModule;
         guiClosing = false;
@@ -337,6 +340,7 @@ private float aboutOpenProgress = 0f;
             return;
         }
         detailPanelOpen = ease(detailPanelOpen, selectedModule != null ? 1f : 0f, 14f);
+        previewPanelOpen = ease(previewPanelOpen, supportsVisualPreview() ? 1f : 0f, 14f);
         if (lastRenderedModule != selectedModule) {
             lastRenderedModule = selectedModule;
             detailContentReveal = 0f;
@@ -359,7 +363,8 @@ private float aboutOpenProgress = 0f;
 
         float transition = guiOpenProgress * guiOpenProgress * (3f - 2f * guiOpenProgress);
         float transitionScale = .97f + .03f * transition;
-        float dashboardRight = detailW > 2f ? detailX + detailW : centerX + centerW;
+        float dashboardRight = previewW > 2f ? previewX + previewW
+                : (detailW > 2f ? detailX + detailW : centerX + centerW);
         float dashboardCenterX = (baseX + dashboardRight) * .5f;
         float dashboardCenterY = baseY + panelH * .5f;
         GlStateManager.pushMatrix();
@@ -369,6 +374,8 @@ private float aboutOpenProgress = 0f;
         drawPanels();
         drawSidebar(mx, my);
         drawModulePanel(mx, my);
+        // Before the settings panel, so an open dropdown still lands on top of everything.
+        drawVisualPreviewPanel(mx, my);
         drawSettingsPanel(mx, my);
         int transitionCover = Math.round(210f * (1f - transition));
         if (transitionCover > 0) {
@@ -378,6 +385,10 @@ private float aboutOpenProgress = 0f;
                     argb(transitionCover, 2, 4, 5));
             if (detailW > 2f) {
                 rounded(detailX, baseY, detailX + detailW, baseY + panelH, 7f,
+                        argb(transitionCover, 2, 4, 5));
+            }
+            if (previewW > 2f) {
+                rounded(previewX, baseY, previewX + previewW, baseY + panelH, 7f,
                         argb(transitionCover, 2, 4, 5));
             }
         }
@@ -430,19 +441,30 @@ private float aboutOpenProgress = 0f;
 
     private void computeLayout() {
         float gap = 9f;
-        float totalW = Math.min(700f, width - 18f);
+        float p = previewPanelOpen;
+        // The preview column widens the dashboard rather than taking space from the settings,
+        // which is why the three panels behind it keep the width they always had.
+        previewW = 176f * (p * p * (3f - 2f * p));
+        float usedByPreview = previewW > 1f ? previewW + gap : 0f;
+        float available = width - 18f;
+        float coreW = Math.min(700f, available);
+        // Only give ground when the screen cannot hold both. On anything normal the three
+        // panels keep exactly the width they had before the column existed.
+        if (coreW + usedByPreview > available) coreW = Math.max(0f, available - usedByPreview);
+        float totalW = coreW + usedByPreview;
         panelH = Math.max(326f, Math.min(356f, height - 18f));
-        sideW = Math.max(104f, totalW * .16f);
-        float detailWFull = Math.max(238f, totalW * .35f);
+        sideW = Math.max(104f, coreW * .16f);
+        float detailWFull = Math.max(238f, coreW * .35f);
         float t = detailPanelOpen;
         float openEased = t * t * (3f - 2f * t);
         detailW = detailWFull * openEased;
         float usedByDetail = detailW > 1f ? detailW + gap : 0f;
-        centerW = totalW - sideW - gap - usedByDetail;
+        centerW = coreW - sideW - gap - usedByDetail;
         baseX = snapToTextGrid(Math.max(5f, (width - totalW) / 2f + guiDragOffsetX));
         baseY = snapToTextGrid(Math.max(6f, (height - panelH) / 2f + guiDragOffsetY));
         centerX = snapToTextGrid(baseX + sideW + gap);
         detailX = snapToTextGrid(centerX + centerW + gap);
+        previewX = snapToTextGrid(detailX + detailW + gap);
     }
 
     /**
@@ -467,6 +489,9 @@ private float aboutOpenProgress = 0f;
         panelSurface(centerX, baseY, centerX + centerW, baseY + panelH, PANEL);
         if (detailW > 2f) {
             panelSurface(detailX, baseY, detailX + detailW, baseY + panelH, PANEL_ALT);
+        }
+        if (previewW > 2f) {
+            panelSurface(previewX, baseY, previewX + previewW, baseY + panelH, PANEL_ALT);
         }
     }
 
@@ -544,6 +569,7 @@ private float aboutOpenProgress = 0f;
     private boolean insideDashboard(int mx, int my) {
         if (inside(mx, my, baseX, baseY, baseX + sideW, baseY + panelH)) return true;
         if (inside(mx, my, centerX, baseY, centerX + centerW, baseY + panelH)) return true;
+        if (previewW > 2f && inside(mx, my, previewX, baseY, previewX + previewW, baseY + panelH)) return true;
         return detailW > 2f && inside(mx, my, detailX, baseY, detailX + detailW, baseY + panelH);
     }
 
@@ -552,6 +578,9 @@ private float aboutOpenProgress = 0f;
         drawPanelShadow(centerX, baseY, centerW, panelH, renderScale);
         if (detailW > 2f) {
             drawPanelShadow(detailX, baseY, detailW, panelH, renderScale);
+        }
+        if (previewW > 2f) {
+            drawPanelShadow(previewX, baseY, previewW, panelH, renderScale);
         }
     }
 
@@ -571,6 +600,9 @@ private float aboutOpenProgress = 0f;
             rounded(centerX, baseY, centerX + centerW, baseY + panelH, 7f, 0xFFFFFFFF);
             if (detailW > 2f) {
                 rounded(detailX, baseY, detailX + detailW, baseY + panelH, 7f, 0xFFFFFFFF);
+            }
+            if (previewW > 2f) {
+                rounded(previewX, baseY, previewX + previewW, baseY + panelH, 7f, 0xFFFFFFFF);
             }
             GlStateManager.popMatrix();
             BlurUtils.blurEnd(2, blurRadius, eased * .9f);
@@ -910,9 +942,7 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
 
         measureSettingColumns();
 
-        boolean showVisualPreview = supportsVisualPreview();
-        if (showVisualPreview) drawVisualPreview(mx, my, contentAlpha);
-        float top = baseY + (showVisualPreview ? 198f : 59f), bottom = baseY + panelH - 12f;
+        float top = settingsTop(), bottom = baseY + panelH - 12f;
         scissor(detailX + 8, top, detailX + detailW - 8, bottom, true);
         float y = top + settingScroll;
         GroupSetting currentGroup = null;
@@ -942,6 +972,16 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
 
     private float settingsLeft() { return detailX + 15; }
 
+    /**
+     * One origin for the settings list, shared by drawing and hit testing.
+     *
+     * The preview used to be a strip inside this panel, which pushed the drawn rows down by
+     * 139 pixels while clicks were still tested from the top. Every row answered for whatever
+     * was drawn well below it, so dropdowns and options could not be hit at all on the five
+     * modules that have a preview.
+     */
+    private float settingsTop() { return baseY + 59f; }
+
     private boolean supportsVisualPreview() {
         return selectedModule instanceof mindless.module.impl.render.Nametags
                 || selectedModule instanceof mindless.module.impl.render.TargetHUD
@@ -950,58 +990,91 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
                 || selectedModule instanceof mindless.module.impl.render.Wings;
     }
 
-    private void drawVisualPreview(int mouseX, int mouseY, float alpha) {
-        float left = detailX + 15f;
-        float top = baseY + 61f;
-        float right = detailX + detailW - 15f;
-        float bottom = baseY + 190f;
-        rounded(left, top, right, bottom, 7f, withAlpha(CONTROL, (int) (220f * alpha)));
-        outline(left, top, right, bottom, 7f, withAlpha(BORDER, (int) (90f * alpha)));
-        drawText("LIVE PREVIEW", left + 9f, top + 8f, withAlpha(MUTED, (int) (255f * alpha)), .58f, true);
-        drawText("drag to rotate", right - 65f, top + 8f, withAlpha(DIM, (int) (255f * alpha)), .52f, false);
+    /**
+     * The visual preview, in a column of its own to the right of the settings.
+     *
+     * A full-height stage rather than the old letterbox strip: the figure is drawn at the
+     * size it would be in game instead of squeezed into 129 pixels, and nothing it draws
+     * over can steal a click from the settings list any more.
+     */
+    private void drawVisualPreviewPanel(int mouseX, int mouseY) {
+        if (previewW < 6f || selectedModule == null) return;
+        float alpha = previewPanelOpen;
+        int full = (int) (255f * alpha);
+        float left = previewX + 12f;
+        float right = previewX + previewW - 12f;
 
-        visualPreviewX = Math.round(left + 24f);
-        visualPreviewY = Math.round(top + 22f);
-        visualPreviewW = Math.max(48, Math.round(right - left - 48f));
-        visualPreviewH = Math.max(72, Math.round(bottom - top - 26f));
+        drawText("VISUAL PREVIEW", left, baseY + 15f, withAlpha(MUTED, full), .58f, true);
+        line(left, baseY + 32f, right, baseY + 32f, withAlpha(DIVIDER, full));
+
+        // A lit floor under a dark sky. The figure has to look like it is standing somewhere,
+        // or the panel reads as a flat swatch with a doll pasted on it.
+        float stageTop = baseY + 40f;
+        float stageBottom = baseY + panelH - 30f;
+        int sky = withAlpha(0x070910, (int) (242f * alpha));
+        int ground = withAlpha(0x171C27, (int) (242f * alpha));
+        gradientRoundedCorners(left, stageTop, right, stageBottom, 7f, 7f, 7f, 7f,
+                ground, sky, ground, sky);
+        outline(left, stageTop, right, stageBottom, 7f, withAlpha(BORDER, (int) (70f * alpha)));
+
+        visualPreviewX = Math.round(left + 5f);
+        visualPreviewY = Math.round(stageTop + 13f);
+        visualPreviewW = Math.max(48, Math.round(right - left - 10f));
+        visualPreviewH = Math.max(72, Math.round(stageBottom - stageTop - 28f));
+
         if (mc.thePlayer instanceof AbstractClientPlayer) {
             AbstractClientPlayer player = (AbstractClientPlayer) mc.thePlayer;
             visualPreview.draw(player.getLocationSkin(), "slim".equals(player.getSkinType()),
                     visualPreviewX, visualPreviewY, visualPreviewW, visualPreviewH, mouseX, mouseY);
+            drawPreviewOverlay(alpha);
         }
 
-        float centerX = (left + right) * .5f;
+        drawCentered("drag to rotate", left, right, baseY + panelH - 24f,
+                withAlpha(DIM, (int) (220f * alpha)), .52f, false);
+        resetTextRenderState();
+    }
+
+    /**
+     * What the selected module actually puts on screen, drawn around the figure.
+     *
+     * Modules that change the player itself rather than adding to it -- Chams and Wings --
+     * get nothing here on purpose: the figure is the preview.
+     */
+    private void drawPreviewOverlay(float alpha) {
+        float cx = visualPreview.bodyCenterX();
+        float top = visualPreview.bodyTop();
+        float bottom = visualPreview.bodyBottom();
+        float half = visualPreview.bodyHalfWidth();
+        if (half < 1f) return;
+        int full = (int) (255f * alpha);
+
+        // Sits just under the boots rather than across them, so it reads as contact with the
+        // floor instead of a smudge on the model.
+        rounded(cx - half * .8f, bottom - 1f, cx + half * .8f, bottom + 4f, 2.5f,
+                withAlpha(0x000000, (int) (120f * alpha)));
+
         if (selectedModule instanceof mindless.module.impl.render.Nametags) {
             String name = mc.thePlayer == null ? "Player" : mc.thePlayer.getName();
-            float nameWidth = textWidth(name, .62f, true);
-            float badgeLeft = centerX - nameWidth * .5f - 7f;
-            float badgeTop = top + 24f;
-            rounded(badgeLeft, badgeTop, badgeLeft + nameWidth + 14f, badgeTop + 16f,
-                    4f, withAlpha(0x101318, (int) (225f * alpha)));
-            rounded(badgeLeft, badgeTop + 3f, badgeLeft + 1.5f, badgeTop + 13f,
-                    .75f, withAlpha(ACCENT, (int) (235f * alpha)));
-            drawCentered(name, badgeLeft, badgeLeft + nameWidth + 14f, badgeTop + 4f,
-                    withAlpha(TEXT, (int) (255f * alpha)), .62f, true);
-        } else if (selectedModule instanceof mindless.module.impl.render.TargetHUD) {
-            float cy = top + 75f;
-            float radius = Math.min(28f, (right - left) * .19f);
-            segments(withAlpha(ACCENT, (int) (235f * alpha)),
-                    centerX - radius, cy - radius, centerX - radius * .35f, cy - radius,
-                    centerX + radius * .35f, cy - radius, centerX + radius, cy - radius,
-                    centerX - radius, cy + radius, centerX - radius * .35f, cy + radius,
-                    centerX + radius * .35f, cy + radius, centerX + radius, cy + radius,
-                    centerX - radius, cy - radius, centerX - radius, cy - radius * .35f,
-                    centerX - radius, cy + radius * .35f, centerX - radius, cy + radius,
-                    centerX + radius, cy - radius, centerX + radius, cy - radius * .35f,
-                    centerX + radius, cy + radius * .35f, centerX + radius, cy + radius);
-        } else {
-            float bodyLeft = centerX - 18f;
-            rounded(bodyLeft, top + 34f, bodyLeft + 36f, bottom - 13f, 8f,
-                    withAlpha(ACCENT_SOFT, (int) (105f * alpha)));
-            outline(bodyLeft, top + 34f, bodyLeft + 36f, bottom - 13f, 8f,
-                    withAlpha(ACCENT, (int) (180f * alpha)));
+            float w = textWidth(name, .62f, true);
+            float x1 = cx - w * .5f - 7f;
+            float y1 = top - 21f;
+            rounded(x1, y1, x1 + w + 14f, y1 + 15f, 4f, withAlpha(0x0B0E13, (int) (230f * alpha)));
+            rounded(x1, y1 + 3f, x1 + 1.5f, y1 + 12f, .75f, withAlpha(ACCENT, full));
+            drawCentered(name, x1, x1 + w + 14f, y1 + 3.5f, withAlpha(TEXT, full), .62f, true);
         }
-        resetTextRenderState();
+        else if (selectedModule instanceof mindless.module.impl.render.TargetHUD
+                || selectedModule instanceof mindless.module.impl.render.SexyESP) {
+            // Corner brackets on the hitbox, which is what both of these draw in game.
+            float x1 = cx - half, x2 = cx + half;
+            float y1 = top - 3f, y2 = bottom + 2f;
+            float arm = Math.min(10f, (y2 - y1) * .2f);
+            int c = withAlpha(ACCENT, (int) (238f * alpha));
+            segments(c,
+                    x1, y1, x1 + arm, y1, x1, y1, x1, y1 + arm,
+                    x2, y1, x2 - arm, y1, x2, y1, x2, y1 + arm,
+                    x1, y2, x1 + arm, y2, x1, y2, x1, y2 - arm,
+                    x2, y2, x2 - arm, y2, x2, y2, x2, y2 - arm);
+        }
     }
 
     private float settingsRight() { return detailX + detailW - 15; }
@@ -1624,7 +1697,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     }
 
     private void clickSetting(int mx, int my, int button) {
-        float top = baseY + 59f, bottom = baseY + panelH - 12f;
+        float top = settingsTop(), bottom = baseY + panelH - 12f;
         if (!inside(mx, my, detailX + 8, top, detailX + detailW - 8, bottom)) return;
         float y = top + settingScroll;
         for (Setting setting : selectedModule.getSettings()) {

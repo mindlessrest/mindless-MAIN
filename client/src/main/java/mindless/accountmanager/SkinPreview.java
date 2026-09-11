@@ -3,6 +3,7 @@ package mindless.accountmanager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.ModelPlayer;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.opengl.GL11;
@@ -34,6 +35,27 @@ public final class SkinPreview {
     private float dragYaw;
     private float dragPitch;
     private long lastFrame;
+    /** Where the figure ended up last frame, so callers can draw against it. */
+    private float lastCenterX;
+    private float lastFeetY;
+    private float lastScale;
+
+    public float bodyCenterX() {
+        return lastCenterX;
+    }
+
+    public float bodyTop() {
+        return lastFeetY - lastScale * 2.0f;
+    }
+
+    public float bodyBottom() {
+        return lastFeetY;
+    }
+
+    /** Half the shoulder-to-shoulder span, arms included. */
+    public float bodyHalfWidth() {
+        return lastScale * 0.52f;
+    }
 
     public boolean isDragging() {
         return dragging;
@@ -91,33 +113,48 @@ public final class SkinPreview {
             pitch += (0.0f - pitch) * blend;
         }
 
-        float centerX = x + width / 2.0f;
-        float centerY = y + height / 2.0f;
-        // The model is two units tall once ModelRenderer applies its 1/16 scale, so this fills
-        // the panel height rather than sitting as a thumbnail in the middle of it. Width is
+        // The model is two units tall once ModelRenderer applies its 1/16 scale. Width is
         // capped too, or a short wide panel would push the arms outside it.
-        float scale = Math.min(height / 2.15f, width / 1.3f);
+        float scale = Math.min(height / 2.2f, width / 1.3f);
+        float centerX = x + width / 2.0f;
+        // Vanilla stands the doll on its feet rather than on its middle, so this is where
+        // the feet have to land for the body to sit centred in the panel.
+        float feetY = y + (height + scale * 2.0f) / 2.0f;
+        lastCenterX = centerX;
+        lastFeetY = feetY;
+        lastScale = scale;
 
         ModelPlayer model = model(slimModel);
-        pose(model, mouseX, mouseY, centerX, y + height / 2.0f);
+        pose(model, mouseX, mouseY, centerX, feetY - scale * 1.6f);
+
+        // Fixed-function geometry sent through whatever shader the surrounding screen last
+        // bound comes out as nothing, or as a flat black cut-out.
+        OpenGlHelper.glUseProgram(0);
 
         GlStateManager.pushMatrix();
         GlStateManager.enableColorMaterial();
-        GlStateManager.translate(centerX, centerY, 100.0f);
+        GlStateManager.translate(centerX, feetY, 100.0f);
         // Only X is mirrored. Model space already runs +Y downward, the same way GUI space
         // does, so negating Y as well is what had it standing on its head -- the entity path
         // flips Y because it goes through world space first, and this does not.
         GlStateManager.scale(-scale, scale, scale);
+        // The lighting rig is built square to the camera and the turn undone straight away,
+        // which is what the inventory doll does. Enabling it further down, after the model
+        // rotations, lit the figure from behind instead and left it reading as a silhouette.
+        GlStateManager.rotate(135.0f, 0.0f, 1.0f, 0.0f);
+        RenderHelper.enableStandardItemLighting();
+        GlStateManager.rotate(-135.0f, 0.0f, 1.0f, 0.0f);
         GlStateManager.rotate(pitch, 1.0f, 0.0f, 0.0f);
         // The biped model is built facing away down -Z, and the GUI camera looks the other
         // way, so without this half turn the preview opens on the back of the head.
         GlStateManager.rotate(yaw + 180.0f, 0.0f, 1.0f, 0.0f);
-        // Applied first, in model space: shifts the two-unit body onto its own middle so it
-        // turns about its waist instead of orbiting the panel centre.
-        GlStateManager.translate(0.0f, -0.5f, 0.0f);
+        // Applied first, in model space: drops the body so its feet, not its middle, sit on
+        // the origin -- the same offset the entity renderer uses.
+        GlStateManager.translate(0.0f, -1.5078125f, 0.0f);
 
-        RenderHelper.enableStandardItemLighting();
+        GlStateManager.enableTexture2D();
         GlStateManager.enableDepth();
+        GlStateManager.depthMask(true);
         GlStateManager.enableRescaleNormal();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         // The second layer is transparent where it is unused, so it needs blending and the alpha
@@ -136,6 +173,7 @@ public final class SkinPreview {
         GlStateManager.disableDepth();
         GlStateManager.disableColorMaterial();
         GlStateManager.popMatrix();
+        GlStateManager.enableTexture2D();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
