@@ -37,7 +37,7 @@ import java.nio.file.StandardCopyOption;
 public final class ProfileMigrations {
 
     /** Bump when a migration is added below. */
-    public static final int CURRENT_VERSION = 4;
+    public static final int CURRENT_VERSION = 5;
 
     private static final String VERSION_KEY = "configVersion";
 
@@ -124,8 +124,28 @@ public final class ProfileMigrations {
             case 3:
                 migrateKillAura(profile);
                 break;
+            case 4:
+                migrateScaffoldMovement(profile);
+                break;
             default:
                 break;
+        }
+    }
+
+    private static void migrateScaffoldMovement(JsonObject profile) {
+        JsonElement modules = profile.get("modules");
+        if (modules == null || !modules.isJsonArray()) return;
+        for (JsonElement element : modules.getAsJsonArray()) {
+            if (!element.isJsonObject()) continue;
+            JsonObject module = element.getAsJsonObject();
+            JsonElement name = module.get("name");
+            if (name == null || !name.isJsonPrimitive() || !"Scaffold".equalsIgnoreCase(name.getAsString())) continue;
+            Integer tower = integerValue(module, "tower");
+            if (tower != null && tower == 2) module.addProperty("tower", 1);
+            else if (tower != null && tower == 3) module.addProperty("tower", 2);
+            module.remove("ground-motion");
+            module.remove("air-motion");
+            module.remove("speed-motion");
         }
     }
 

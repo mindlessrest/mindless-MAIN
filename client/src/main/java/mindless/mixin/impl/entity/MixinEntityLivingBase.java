@@ -24,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Map;
 
@@ -31,6 +32,13 @@ import java.util.Map;
 public abstract class MixinEntityLivingBase extends Entity {
     public MixinEntityLivingBase(World worldIn) {
         super(worldIn);
+    }
+
+    @Inject(method = "onLivingUpdate", at = @At("HEAD"))
+    private void beforeScaffoldMovement(CallbackInfo ci) {
+        if ((Object) this == Minecraft.getMinecraft().thePlayer && ModuleManager.scaffold != null) {
+            ModuleManager.scaffold.beforeLivingMovement();
+        }
     }
 
     private final Map<Integer, PotionEffect> activePotionsMap = Maps.newHashMap();

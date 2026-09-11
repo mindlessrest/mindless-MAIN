@@ -259,7 +259,9 @@ public void endSwap(Entity e) {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onPostInput(PostPlayerInputEvent event) {
         if (!fixMovement() || this.serverYawSource == RotationSource.KILL_AURA
-                && !ModuleManager.killAura.usesSilentMoveFix()) {
+                && !ModuleManager.killAura.usesSilentMoveFix()
+                || this.serverYawSource == RotationSource.SCAFFOLD && ModuleManager.scaffold != null
+                && !ModuleManager.scaffold.usesSilentMoveFix()) {
             return;
         }
 
@@ -320,15 +322,11 @@ public void endSwap(Entity e) {
     }
 
     public boolean fixMovement() {
+        if (this.serverYawSource == RotationSource.SCAFFOLD) return this.serverYaw != null && this.setRotations;
         if (this.serverYawSource == RotationSource.KILL_AURA) return this.serverYaw != null
                 && ModuleManager.killAura != null && ModuleManager.killAura.usesMovementYaw();
         return ((ModuleManager.movementFix != null && ModuleManager.movementFix.isEnabled()) || this.forceMovementFix)
-                && this.setRotations && !scaffoldDisablesMovementFix();
-    }
-
-    private boolean scaffoldDisablesMovementFix() {
-        return this.serverYawSource == RotationSource.SCAFFOLD
-                && ModuleManager.scaffold != null && !ModuleManager.scaffold.usesSilentMoveFix();
+                && this.setRotations;
     }
 
     public static double getDirection(float rotationYaw, double moveForward, double moveStrafing) {

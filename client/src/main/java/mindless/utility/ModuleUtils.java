@@ -10,6 +10,10 @@ import mindless.module.ModuleManager;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.*;
 import net.minecraft.network.play.server.S27PacketExplosion;
+import net.minecraft.network.play.server.S02PacketChat;
+import net.minecraft.network.play.server.S08PacketPlayerPosLook;
+import net.minecraftforge.event.entity.EntityJoinWorldEvent;
+import net.minecraftforge.event.world.WorldEvent;
 import net.minecraft.util.BlockPos;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
@@ -83,6 +87,31 @@ public class ModuleUtils implements IMinecraftInstance {
         }
     }
 
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onBedTrackingPacket(ReceivePacketEvent event) {
+        if (event.isCanceled()) return;
+        Packet<?> packet = event.getPacket();
+        if (packet instanceof S02PacketChat) {
+            S02PacketChat chat = (S02PacketChat) packet;
+            if (chat.getType() != 2) {
+                mc.addScheduledTask(() -> OwnBedTracker.handleChat(
+                        Utils.stripColor(chat.getChatComponent().getUnformattedText())));
+            }
+        } else if (packet instanceof S08PacketPlayerPosLook) {
+            mc.addScheduledTask(OwnBedTracker::handleSpawnTeleport);
+        }
+    }
+
+    @SubscribeEvent
+    public void onBedTrackingWorldUnload(WorldEvent.Unload event) {
+        if (event.world == mc.theWorld) OwnBedTracker.reset();
+    }
+
+    @SubscribeEvent
+    public void onBedTrackingWorldJoin(EntityJoinWorldEvent event) {
+        if (event.entity == mc.thePlayer) OwnBedTracker.reset();
+    }
+
     private void handleAllPacket(Packet<?> packet) {
         if (!Utils.nullCheck()) {
             return;
@@ -106,6 +135,7 @@ public class ModuleUtils implements IMinecraftInstance {
 
     @SubscribeEvent
     public void onPreUpdate(PreUpdateEvent e) {
+        OwnBedTracker.tick();
         if (damage && ++damageTicks >= 8) {
             damage = firstDamage = false;
             damageTicks = 0;

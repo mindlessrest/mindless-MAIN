@@ -854,61 +854,8 @@ public static String getServerBrand() {
         return darkenedColor;
     }
 public static boolean isTeammate(Entity entity) {
-        try {
-            if (mc.thePlayer == null || !(entity instanceof EntityLivingBase) || entity == mc.thePlayer) {
-                return false;
-            }
-            if (mc.thePlayer.isOnSameTeam((EntityLivingBase) entity)) {
-                return true;
-            }
-            char own = detectTeamColor(mc.thePlayer);
-            return own != 0 && own == detectTeamColor((EntityLivingBase) entity);
-        } catch (Exception ignored) {}
-        return false;
-    }
-
-    private static char detectTeamColor(EntityLivingBase entity) {
-        if (entity instanceof EntityPlayer) {
-            char displayColor = displayNameColorCode((EntityPlayer) entity);
-            if (displayColor != 0) return displayColor;
-        }
-        return teamPrefixColorCode(entity);
-    }
-
-    private static char displayNameColorCode(EntityPlayer player) {
-        String name = player.getName();
-        String formatted = player.getDisplayName().getFormattedText();
-        if (formatted == null || !formatted.contains("§")) return 0;
-        int nameIndex = formatted.indexOf(name);
-        if (nameIndex <= 0) return 0;
-        for (int i = nameIndex - 1; i >= 0; i--) {
-            if (formatted.charAt(i) == '§' && i + 1 < formatted.length()) {
-                char c = Character.toLowerCase(formatted.charAt(i + 1));
-                if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-                    return c == 'f' ? 0 : c;
-                }
-            }
-        }
-        return 0;
-    }
-
-    private static char teamPrefixColorCode(EntityLivingBase entity) {
-        net.minecraft.scoreboard.Team team = entity.getTeam();
-        if (!(team instanceof ScorePlayerTeam)) {
-            return 0;
-        }
-        String prefix = ((ScorePlayerTeam) team).getColorPrefix();
-        char color = 0;
-        for (int i = 0; i + 1 < prefix.length(); i++) {
-            if (prefix.charAt(i) != '§') {
-                continue;
-            }
-            char c = Character.toLowerCase(prefix.charAt(i + 1));
-            if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-                color = c;
-            }
-        }
-        return color == 'f' ? 0 : color;
+        return entity instanceof EntityPlayer
+                && BedwarsTeam.isSameColorTeam(mc.thePlayer, (EntityPlayer) entity);
     }
 
     public static String getNetworkDisplayName() {

@@ -29,7 +29,8 @@ public final class HypixelLanguage {
 
     static {
         add("en",
-                Key.BED_INTRO, "protect your bed and destroy the enemy beds",
+                Key.BED_INTRO, "protect your bed and destroy the enemy bed",
+                "destroy the enemy bed and then eliminate them", "every few seconds brings a new surprise",
                 Key.RESPAWNED, "you have respawned",
                 Key.RESPAWN_IN, "you will respawn in",
                 Key.TEAM_SWAP, "your team swapped and you are now",

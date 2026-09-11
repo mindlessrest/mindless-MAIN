@@ -19,7 +19,7 @@ private static BlockPos ownBedFoot;
     private static long scanAt;
     private static int attempts;
     private static boolean announced;
-    private static int previousBedwarsStatus = -1;
+    private static boolean awaitingSpawnTeleport;
 
     private OwnBedTracker() {
     }
@@ -31,7 +31,8 @@ public static void handleChat(String strippedMessage) {
         if (HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.BED_INTRO)) {
             ownBedFoot = null;
             destroyed = false;
-            scheduleScan();
+            scanAt = 0L;
+            awaitingSpawnTeleport = true;
         }
         else if (HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.RESPAWNED)) {
             if (!destroyed && ownBedFoot == null) {
@@ -42,6 +43,7 @@ public static void handleChat(String strippedMessage) {
                 && HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.YOUR_BED)) {
             ownBedFoot = null;
             destroyed = true;
+            awaitingSpawnTeleport = false;
             scanAt = 0L;
         }
         else if (HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.TEAM_SWAP)) {
@@ -55,20 +57,14 @@ public static void tick() {
             return;
         }
 
-        int status = Utils.getBedwarsStatus();
-        if (status == 2 && previousBedwarsStatus != 2) {
-            ownBedFoot = null;
-            destroyed = false;
-            scheduleScan();
-        }
-        previousBedwarsStatus = status;
-
         if (scanAt != 0L && System.currentTimeMillis() >= scanAt) {
             runScan();
         }
-        if (ownBedFoot != null && footHeadPair(ownBedFoot) == null) {
+        if (ownBedFoot != null && mc.theWorld.isAreaLoaded(ownBedFoot.add(-1, 0, -1),
+                ownBedFoot.add(1, 0, 1)) && footHeadPair(ownBedFoot) == null) {
             ownBedFoot = null;
             destroyed = true;
+            awaitingSpawnTeleport = false;
             scanAt = 0L;
         }
     }
@@ -78,10 +74,18 @@ public static void reset() {
         scanAt = 0L;
         attempts = 0;
         announced = false;
-        previousBedwarsStatus = -1;
+        awaitingSpawnTeleport = false;
+    }
+
+    public static void handleSpawnTeleport() {
+        if (awaitingSpawnTeleport) {
+            awaitingSpawnTeleport = false;
+            scheduleScan();
+        }
     }
 
     private static void scheduleScan() {
+        awaitingSpawnTeleport = false;
         scanAt = System.currentTimeMillis() + SCAN_DELAY_MS;
         attempts = 0;
         announced = false;
@@ -148,24 +152,24 @@ public static boolean removeOwnBed(List<BlockPos[]> pairs) {
         return false;
     }
 private static BlockPos[] findNearestBed() {
-        BlockPos origin = new BlockPos(mc.thePlayer);
-
-        for (int r = 0; r <= SEARCH_RADIUS; r++) {
-            for (int dx = -r; dx <= r; dx++) {
-                for (int dy = -r; dy <= r; dy++) {
-                    for (int dz = -r; dz <= r; dz++) {
-                        if (Math.max(Math.abs(dx), Math.max(Math.abs(dy), Math.abs(dz))) != r) {
-                            continue;
-                        }
-                        BlockPos[] pair = footHeadPair(origin.add(dx, dy, dz));
-                        if (pair != null) {
-                            return pair;
-                        }
+        BlockPos origin = new BlockPos(mc.thePlayer.posX,
+                mc.thePlayer.posY + mc.thePlayer.getEyeHeight(), mc.thePlayer.posZ);
+        BlockPos[] closest = null;
+        int closestDistance = Integer.MAX_VALUE;
+        for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
+            for (int dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
+                for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
+                    int distance = Math.abs(dx) + Math.abs(dy) + Math.abs(dz);
+                    if (distance >= closestDistance) continue;
+                    BlockPos[] pair = footHeadPair(origin.add(dx, dy, dz));
+                    if (pair != null) {
+                        closest = pair;
+                        closestDistance = distance;
                     }
                 }
             }
         }
-        return null;
+        return closest;
     }
 public static BlockPos[] footHeadPair(BlockPos at) {
         if (mc.theWorld == null) {

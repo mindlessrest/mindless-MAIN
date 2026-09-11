@@ -13,6 +13,47 @@ import static org.junit.Assert.assertTrue;
 
 public class ProfileMigrationsTest {
     @Test
+    public void oldScaffoldTowerModesMigrateWithoutRestoringMotionScaling() {
+        for (int mode = 0; mode <= 3; mode++) {
+            JsonObject profile = new JsonObject();
+            profile.addProperty("configVersion", 4);
+            JsonObject scaffold = new JsonObject();
+            scaffold.addProperty("name", "Scaffold");
+            scaffold.addProperty("tower", mode);
+            scaffold.addProperty("ground-motion", 200);
+            scaffold.addProperty("air-motion", 50);
+            scaffold.addProperty("speed-motion", 175);
+            scaffold.addProperty("keep-y", 3);
+            JsonArray modules = new JsonArray();
+            modules.add(scaffold);
+            profile.add("modules", modules);
+            assertTrue(ProfileMigrations.migrate(profile, null, "test"));
+            assertEquals(mode == 2 ? 1 : mode == 3 ? 2 : mode, scaffold.get("tower").getAsInt());
+            assertFalse(scaffold.has("ground-motion"));
+            assertFalse(scaffold.has("air-motion"));
+            assertFalse(scaffold.has("speed-motion"));
+            assertEquals(3, scaffold.get("keep-y").getAsInt());
+            assertFalse(ProfileMigrations.migrate(profile, null, "test"));
+        }
+    }
+
+    @Test
+    public void malformedScaffoldTowerAndUnrelatedSettingsSurviveMigration() {
+        JsonObject profile = new JsonObject();
+        profile.addProperty("configVersion", 4);
+        JsonObject scaffold = new JsonObject();
+        scaffold.addProperty("name", "Scaffold");
+        scaffold.addProperty("tower", "unknown");
+        scaffold.addProperty("safe-walk", true);
+        JsonArray modules = new JsonArray();
+        modules.add(scaffold);
+        modules.add(new com.google.gson.JsonPrimitive("invalid"));
+        profile.add("modules", modules);
+        assertTrue(ProfileMigrations.migrate(profile, null, "test"));
+        assertEquals("unknown", scaffold.get("tower").getAsString());
+        assertTrue(scaffold.get("safe-walk").getAsBoolean());
+    }
+    @Test
     public void versionTwoBedBreakerGetsIndependentSilentDefaults() {
         JsonObject profile = profileWithBedBreaker();
         JsonObject bedBreaker = profile.getAsJsonArray("modules").get(0).getAsJsonObject();
@@ -20,7 +61,7 @@ public class ProfileMigrationsTest {
         bedBreaker.addProperty("Range", 4.2D);
 
         assertTrue(ProfileMigrations.migrate(profile, null, "test"));
-        assertEquals(4, ProfileMigrations.versionOf(profile));
+        assertEquals(ProfileMigrations.CURRENT_VERSION, ProfileMigrations.versionOf(profile));
         assertEquals(1, bedBreaker.get("Mode").getAsInt());
         assertEquals(4.2D, bedBreaker.get("Range").getAsDouble(), 0.0D);
         assertEquals(5.5D, bedBreaker.get("Silent.Range").getAsDouble(), 0.0D);

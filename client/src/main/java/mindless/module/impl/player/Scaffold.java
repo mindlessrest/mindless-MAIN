@@ -9,12 +9,14 @@ import mindless.event.PrePlayerInputEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.event.RightClickMouseEvent;
 import mindless.event.SlotUpdateEvent;
+import mindless.helper.RotationHelper;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.placement.PlacementCoordinator;
 import mindless.placement.PlacementLease;
 import mindless.placement.PlacementRuntime;
+import mindless.rotation.RotationSource;
 import mindless.utility.BlockUtils;
 import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
@@ -22,7 +24,6 @@ import net.minecraft.block.Block;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.client.C0APacketAnimation;
@@ -36,23 +37,17 @@ import net.minecraft.util.Vec3;
 import net.minecraft.world.WorldSettings.GameType;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import org.lwjgl.input.Keyboard;
 
 public class Scaffold extends Module {
     private static final int ROTATIONS_NONE = 0;
     private static final int ROTATIONS_DEFAULT = 1;
     private static final int ROTATIONS_BACKWARDS = 2;
     private static final int ROTATIONS_SIDEWAYS = 3;
-    private static final int MOVE_FIX_NONE = 0;
     private static final int MOVE_FIX_SILENT = 1;
     private static final int SPRINT_NONE = 0;
-    private static final int SPRINT_VANILLA = 1;
     private static final int TOWER_NONE = 0;
-    private static final int TOWER_VANILLA = 1;
-    private static final int TOWER_EXTRA = 2;
-    private static final int TOWER_TELLY = 3;
+    private static final int TOWER_TELLY = 2;
     private static final int KEEP_Y_NONE = 0;
-    private static final int KEEP_Y_VANILLA = 1;
     private static final int KEEP_Y_EXTRA = 2;
     private static final int KEEP_Y_TELLY = 3;
     private static final double[] FACE_SAMPLE_OFFSETS = {
@@ -65,9 +60,6 @@ public class Scaffold extends Module {
     private final SliderSetting rotations;
     private final SliderSetting moveFix;
     private final SliderSetting sprint;
-    private final SliderSetting groundMotion;
-    private final SliderSetting airMotion;
-    private final SliderSetting speedMotion;
     private final SliderSetting tower;
     private final SliderSetting keepY;
     private final ButtonSetting keepYOnPress;
@@ -83,14 +75,11 @@ public class Scaffold extends Module {
     private float placementYaw = -180.0F;
     private float placementPitch;
     private boolean hasPlacementRotation;
-    private int towerPhase;
-    private int towerCycleCount;
     private int keepYState;
     private int keepYLevel = 256;
     private boolean keepYRecoveryPlacement;
     private boolean tellyRotationActive;
     private boolean wasOnGround;
-    private EnumFacing pendingPlacementFace;
     private BlockPlacementTarget queuedTarget;
     private Vec3 queuedHit;
     private PlacementLease placementLease;
@@ -104,11 +93,8 @@ public class Scaffold extends Module {
                 new String[]{"NONE", "SILENT"}));
         this.registerSetting(sprint = new SliderSetting("sprint", SPRINT_NONE,
                 new String[]{"NONE", "VANILLA"}));
-        this.registerSetting(groundMotion = new SliderSetting("ground-motion", 100, 0, 200, 1));
-        this.registerSetting(airMotion = new SliderSetting("air-motion", 100, 0, 200, 1));
-        this.registerSetting(speedMotion = new SliderSetting("speed-motion", 100, 0, 200, 1));
         this.registerSetting(tower = new SliderSetting("tower", TOWER_NONE,
-                new String[]{"NONE", "VANILLA", "EXTRA", "TELLY"}));
+                new String[]{"NONE", "VANILLA", "TELLY"}));
         this.registerSetting(keepY = new SliderSetting("keep-y", KEEP_Y_TELLY,
                 new String[]{"NONE", "VANILLA", "EXTRA", "TELLY"}));
         this.registerSetting(keepYOnPress = new ButtonSetting("keep-y-on-press", true));
@@ -140,35 +126,27 @@ public class Scaffold extends Module {
         placementYaw = -180.0F;
         placementPitch = 0.0F;
         hasPlacementRotation = false;
-        towerPhase = 0;
-        towerCycleCount = 0;
         keepYState = 0;
         keepYLevel = 256;
         keepYRecoveryPlacement = false;
         tellyRotationActive = false;
         wasOnGround = Utils.nullCheck() && mc.thePlayer.onGround;
-        pendingPlacementFace = null;
         queuedTarget = null;
         queuedHit = null;
     }
 
     @Override
     public void onDisable() {
+        RotationHelper.get().release(RotationSource.SCAFFOLD);
         releasePlacement(false);
         PlacementCoordinator.get().cancel(this);
         if (Utils.nullCheck() && itemSpoof.isToggled() && previousHotbarSlot >= 0) {
             Utils.switchSlot(previousHotbarSlot, false);
         }
-        if (mc.gameSettings != null && !Keyboard.isKeyDown(mc.gameSettings.keyBindSprint.getKeyCode())) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
-        }
         queuedTarget = null;
         queuedHit = null;
-        pendingPlacementFace = null;
         placementDelayTicks = 0;
         hasPlacementRotation = false;
-        towerPhase = 0;
-        towerCycleCount = 0;
         keepYState = 0;
         keepYRecoveryPlacement = false;
         tellyRotationActive = false;
@@ -233,14 +211,7 @@ public class Scaffold extends Module {
         if (!isEnabled() || !Utils.nullCheck()) {
             return;
         }
-        updateTowerMotion();
-        boolean placed = placeCurrentAndAdditionalBlocks();
-        if (!placed) {
-            handlePendingTowerPlacement();
-        }
-        if (shouldDisableSprint()) {
-            mc.thePlayer.setSprinting(false);
-        }
+        placeCurrentAndAdditionalBlocks();
     }
 
     @SubscribeEvent
@@ -248,17 +219,25 @@ public class Scaffold extends Module {
         if (!isEnabled() || !Utils.nullCheck()) {
             return;
         }
-        float multiplier = getMotionMultiplier();
-        float forward = event.getForward();
-        float strafe = event.getStrafe();
-        if (forward != 0.0F && strafe != 0.0F) {
-            forward *= 0.70710677F;
-            strafe *= 0.70710677F;
+        if (wantsSafeWalk()) {
+            event.setSneak(true);
         }
-        event.setForward(forward * multiplier);
-        event.setStrafe(strafe * multiplier);
-        if (mc.thePlayer.onGround && keepYState > 0 && hasMovementInput(event)) {
+        if (mc.thePlayer.onGround && keepYState > 0 && hasMovementInput(event)
+                && !event.isSneak() && isHoldingPlaceableBlock()
+                && !mc.thePlayer.capabilities.isFlying && !mc.thePlayer.isRiding()) {
             event.setJump(true);
+        }
+    }
+
+    public void beforeLivingMovement() {
+        if (!isEnabled() || !Utils.nullCheck() || mc.thePlayer.movementInput == null) {
+            return;
+        }
+        if (shouldDisableSprint() || mc.thePlayer.movementInput.moveForward < 0.8F
+                || mc.thePlayer.movementInput.sneak || mc.thePlayer.isCollidedHorizontally
+                || mc.thePlayer.isUsingItem() || mc.thePlayer.isPotionActive(Potion.blindness)
+                || mc.thePlayer.getFoodStats().getFoodLevel() <= 6 && !mc.thePlayer.capabilities.allowFlying) {
+            mc.thePlayer.setSprinting(false);
         }
     }
 
@@ -297,21 +276,17 @@ public class Scaffold extends Module {
 
     public boolean wantsSafeWalk() {
         return isEnabled() && safeWalk.isToggled() && Utils.nullCheck()
+                && !mc.thePlayer.capabilities.isFlying && !mc.thePlayer.isRiding()
                 && mc.thePlayer.onGround && mc.thePlayer.motionY <= 0.0D
                 && hasNoSupportAt(mc.thePlayer.motionX, mc.thePlayer.motionZ);
     }
 
     public boolean isActivelyScaffolding() {
-        return isEnabled() && (queuedTarget != null || pendingPlacementFace != null);
+        return isEnabled() && queuedTarget != null;
     }
 
     public boolean blocksMining() {
         return isEnabled();
-    }
-
-    public boolean isSprintScaffoldSprinting() {
-        return isEnabled() && (int) sprint.getInput() == SPRINT_VANILLA
-                && Utils.nullCheck() && mc.thePlayer.isSprinting();
     }
 
     public boolean usesSilentMoveFix() {
@@ -550,14 +525,14 @@ public class Scaffold extends Module {
                 placementDelayTicks = Math.max(placementDelayTicks, 1);
             }
         }
-        event.requestRotation(mindless.rotation.RotationSource.SCAFFOLD, requestedYaw, requestedPitch);
+        event.requestRotation(RotationSource.SCAFFOLD, requestedYaw, requestedPitch);
     }
 
     private boolean placeCurrentAndAdditionalBlocks() {
         if (queuedTarget == null || queuedHit == null || placementDelayTicks > 0) {
             return false;
         }
-        boolean placed = placeBlock(queuedTarget, queuedHit);
+        boolean placed = placeBlock(queuedTarget);
         queuedTarget = null;
         queuedHit = null;
         if (!placed || !multiPlace.isToggled()) {
@@ -568,31 +543,36 @@ public class Scaffold extends Module {
             if (target == null) {
                 break;
             }
-            MovingObjectPosition hit = RotationUtils.rayCastBlock(
-                    mc.playerController.getBlockReachDistance(), placementYaw, placementPitch);
-            if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
-                    || !target.position.equals(hit.getBlockPos()) || target.face != hit.sideHit
-                    || !placeBlock(target, hit.hitVec)) {
+            if (!placeBlock(target)) {
                 break;
             }
         }
         return true;
     }
 
-    private boolean placeBlock(BlockPlacementTarget target, Vec3 hit) {
-        if (!isHoldingPlaceableBlock() || remainingStackBlocks <= 0 || placementLease == null) {
+    private boolean placeBlock(BlockPlacementTarget target) {
+        if (!isHoldingPlaceableBlock() || remainingStackBlocks <= 0 || placementLease == null
+                || !PlacementRuntime.isHotbarSynchronized()) {
             return false;
         }
+        RotationHelper helper = RotationHelper.get();
+        float yaw = helper.getServerYaw() == null ? mc.thePlayer.rotationYaw : helper.getServerYaw();
+        float pitch = helper.getServerPitch() == null ? mc.thePlayer.rotationPitch : helper.getServerPitch();
+        MovingObjectPosition hit = RotationUtils.rayCastBlock(mc.playerController.getBlockReachDistance(), yaw, pitch);
+        if (hit == null || !target.position.equals(hit.getBlockPos()) || target.face != hit.sideHit) {
+            return false;
+        }
+        final Vec3 placementHit = hit.hitVec;
         final ItemStack stack = mc.thePlayer.inventory.getCurrentItem();
         if (stack == null) {
             return false;
         }
-        boolean placed = placementLease.tryControllerAction(Utils.getBaseClientTick(),
+        boolean placed = placementLease.tryControllerAction(Utils.getBaseClientTick(), multiPlace.isToggled() ? 4 : 1,
                 new PlacementLease.ControllerAction() {
                     @Override
                     public boolean run() {
                         return mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, stack,
-                                target.position, target.face, hit);
+                                target.position, target.face, placementHit);
                     }
                 });
         if (!placed) {
@@ -608,17 +588,6 @@ public class Scaffold extends Module {
             mc.getNetHandler().addToSendQueue(new C0APacketAnimation());
         }
         return true;
-    }
-
-    private boolean handlePendingTowerPlacement() {
-        if (pendingPlacementFace == null || placementDelayTicks > 0 || placementLease == null) {
-            return false;
-        }
-        BlockPos beneath = new BlockPos(MathHelper.floor_double(mc.thePlayer.posX),
-                MathHelper.floor_double(mc.thePlayer.posY) - 1, MathHelper.floor_double(mc.thePlayer.posZ));
-        EnumFacing face = pendingPlacementFace;
-        pendingPlacementFace = null;
-        return placeBlock(new BlockPlacementTarget(beneath, face), faceHitVector(beneath, face));
     }
 
     private void selectPlacementHotbarSlot() {
@@ -643,121 +612,6 @@ public class Scaffold extends Module {
         }
     }
 
-    private void updateTowerMotion() {
-        if (!towerEligible()) {
-            towerPhase = 0;
-            towerCycleCount = 0;
-            return;
-        }
-        int heightHundredths = (int) (mc.thePlayer.posY % 1.0D * 100.0D);
-        switch ((int) tower.getInput()) {
-            case TOWER_VANILLA:
-                applyVanillaTowerMotion(heightHundredths);
-                return;
-            case TOWER_EXTRA:
-                applyExtraTowerMotion(heightHundredths);
-                return;
-            default:
-                towerPhase = 0;
-                towerCycleCount = 0;
-        }
-    }
-
-    private void applyVanillaTowerMotion(int heightHundredths) {
-        switch (towerPhase) {
-            case 0:
-                if (mc.thePlayer.onGround) {
-                    towerPhase = 1;
-                    mc.thePlayer.motionY = -0.0784000015258789D;
-                }
-                return;
-            case 1:
-                if (heightHundredths == 0 && hasCollisionBelow()) {
-                    keepYLevel = MathHelper.floor_double(mc.thePlayer.posY);
-                    towerPhase = 2;
-                    mc.thePlayer.motionY = 0.42D;
-                    if (!hasMovementInput()) {
-                        mc.thePlayer.motionX = 0.0D;
-                        mc.thePlayer.motionZ = 0.0D;
-                    }
-                }
-                else {
-                    towerPhase = 0;
-                }
-                return;
-            case 2:
-                towerPhase = 3;
-                mc.thePlayer.motionY = 0.75D - mc.thePlayer.posY % 1.0D;
-                return;
-            case 3:
-                towerPhase = 1;
-                mc.thePlayer.motionY = 1.0D - mc.thePlayer.posY % 1.0D;
-                return;
-            default:
-                towerPhase = 0;
-        }
-    }
-
-    private void applyExtraTowerMotion(int heightHundredths) {
-        switch (towerPhase) {
-            case 0:
-                if (mc.thePlayer.onGround) {
-                    towerPhase = 1;
-                    mc.thePlayer.motionY = -0.0784000015258789D;
-                }
-                return;
-            case 1:
-                if (heightHundredths != 0 || !hasCollisionBelow()) {
-                    towerPhase = 0;
-                    towerCycleCount = 0;
-                    return;
-                }
-                keepYLevel = MathHelper.floor_double(mc.thePlayer.posY);
-                towerPhase = 2;
-                towerCycleCount++;
-                mc.thePlayer.motionY = 0.42D;
-                if (!hasMovementInput()) {
-                    mc.thePlayer.motionX = 0.0D;
-                    mc.thePlayer.motionZ = 0.0D;
-                    pendingPlacementFace = facingFromYaw(MathHelper.wrapAngleTo180_float(placementYaw - 180.0F));
-                }
-                return;
-            case 2:
-                towerPhase = 3;
-                mc.thePlayer.motionY -= RandomRange.doubleBetween(0.00101D, 0.00109D);
-                return;
-            case 3:
-                if (towerCycleCount >= 4) {
-                    towerPhase = 4;
-                    towerCycleCount = 0;
-                }
-                else {
-                    towerPhase = 1;
-                    mc.thePlayer.motionY = 1.0D - mc.thePlayer.posY % 1.0D;
-                }
-                return;
-            case 4:
-                towerPhase = 5;
-                return;
-            case 5:
-                towerPhase = hasCollisionBelow() ? 1 : 0;
-                if (towerPhase == 1) {
-                    mc.thePlayer.motionY = (mc.thePlayer.motionY - 0.08D) * 0.98D;
-                    mc.thePlayer.motionY = (mc.thePlayer.motionY - 0.08D) * 0.98D;
-                }
-                return;
-            default:
-                towerPhase = 0;
-                towerCycleCount = 0;
-        }
-    }
-
-    private boolean towerEligible() {
-        return (int) tower.getInput() != TOWER_NONE && !mc.thePlayer.isCollidedHorizontally
-                && mc.thePlayer.hurtTime <= 5 && !mc.thePlayer.isPotionActive(Potion.jump)
-                && Utils.isBindDown(mc.gameSettings.keyBindJump) && isHoldingPlaceableBlock();
-    }
-
     private boolean isTellyTakeoff() {
         if (!mc.thePlayer.onGround || !hasMovementInput() || hasCollisionAbove()) {
             return false;
@@ -766,20 +620,6 @@ public class Scaffold extends Module {
             return true;
         }
         return (int) tower.getInput() == TOWER_TELLY && Utils.isBindDown(mc.gameSettings.keyBindJump);
-    }
-
-    private float getMotionMultiplier() {
-        int percent;
-        if (!mc.thePlayer.onGround) {
-            percent = (int) airMotion.getInput();
-        }
-        else if (mc.thePlayer.isPotionActive(Potion.moveSpeed)) {
-            percent = (int) speedMotion.getInput();
-        }
-        else {
-            percent = (int) groundMotion.getInput();
-        }
-        return percent / 100.0F;
     }
 
     private float getMovementYaw() {
@@ -840,11 +680,8 @@ public class Scaffold extends Module {
     }
 
     private boolean shouldDisableSprint() {
-        if (isTellyTakeoff()) {
-            return false;
-        }
-        int keepMode = (int) keepY.getInput();
-        if ((keepMode == KEEP_Y_VANILLA || keepMode == KEEP_Y_EXTRA) && keepYState > 0) {
+        if (keepYState > 0 || (int) tower.getInput() == TOWER_TELLY
+                && mc.thePlayer.movementInput.jump) {
             return false;
         }
         return (int) sprint.getInput() == SPRINT_NONE;
@@ -857,11 +694,6 @@ public class Scaffold extends Module {
 
     private static boolean hasMovementInput(PrePlayerInputEvent event) {
         return event.getForward() != 0.0F || event.getStrafe() != 0.0F;
-    }
-
-    private boolean hasCollisionBelow() {
-        AxisAlignedBB below = mc.thePlayer.getEntityBoundingBox().offset(0.0D, -0.01D, 0.0D);
-        return !mc.theWorld.getCollidingBoundingBoxes(mc.thePlayer, below).isEmpty();
     }
 
     private boolean hasCollisionAbove() {
@@ -918,25 +750,6 @@ public class Scaffold extends Module {
                 previousYaw, previousPitch);
     }
 
-    private static Vec3 faceHitVector(BlockPos position, EnumFacing face) {
-        return new Vec3(position.getX() + 0.5D + face.getFrontOffsetX() * 0.5D,
-                position.getY() + 0.5D + face.getFrontOffsetY() * 0.5D,
-                position.getZ() + 0.5D + face.getFrontOffsetZ() * 0.5D);
-    }
-
-    private static EnumFacing facingFromYaw(float yaw) {
-        if (yaw < -135.0F || yaw > 135.0F) {
-            return EnumFacing.NORTH;
-        }
-        if (yaw < -45.0F) {
-            return EnumFacing.EAST;
-        }
-        if (yaw < 45.0F) {
-            return EnumFacing.SOUTH;
-        }
-        return EnumFacing.WEST;
-    }
-
     private static final class BlockPlacementTarget {
         private final BlockPos position;
         private final EnumFacing face;
@@ -953,10 +766,6 @@ public class Scaffold extends Module {
 
         private static float floatBetween(float min, float max) {
             return min + (float) Math.random() * (max - min);
-        }
-
-        private static double doubleBetween(double min, double max) {
-            return min + Math.random() * (max - min);
         }
     }
 }

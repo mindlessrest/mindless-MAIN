@@ -147,6 +147,7 @@ dependencies {
 }
 
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    forkEvery = 1
     systemProperty("mindless.testForgeVersion", mindlessForgeVersion)
     providers.systemProperty("mindless.lunarBake").orNull?.let {
         systemProperty("mindless.lunarBake", it)

@@ -35,9 +35,10 @@ public class ResourceDeposit extends Module {
     private volatile ContainerChest boundContainer;
     private volatile int boundWindowId = -1;
     private volatile boolean passActive;
+    private boolean withdrawing;
 
     public ResourceDeposit() {
-        super("Resource Deposit", "Deposits resources into standard chests with upward scroll.", category.bedwars);
+        super("Resource Deposit", "Scroll up to deposit resources; scroll down to withdraw them.", category.bedwars);
     }
 
     @Override
@@ -46,7 +47,7 @@ public class ResourceDeposit extends Module {
     }
 
     public void onMouseWheel(int wheelDelta) {
-        if (!isEnabled() || wheelDelta <= 0 || passActive) {
+        if (!isEnabled() || wheelDelta == 0 || passActive) {
             return;
         }
         if (mc == null || mc.theWorld == null || mc.thePlayer == null || mc.thePlayer.inventory == null
@@ -71,6 +72,7 @@ public class ResourceDeposit extends Module {
         }
 
         if (isBoundChestCurrent()) {
+            withdrawing = wheelDelta < 0;
             passActive = true;
         }
     }
@@ -95,14 +97,11 @@ public class ResourceDeposit extends Module {
             return;
         }
 
-        Slot source = findNextSourceSlot(boundContainer, boundPlayer.inventory);
+        Slot source = withdrawing
+                ? findNextChestSourceSlot(boundContainer, boundPlayer.inventory)
+                : findNextSourceSlot(boundContainer, boundPlayer.inventory);
         if (source == null) {
             passActive = false;
-            return;
-        }
-
-        ItemStack sourceStack = source.getStack();
-        if (!isResourceStack(sourceStack) || !canEnterChest(boundContainer, sourceStack)) {
             return;
         }
 
@@ -228,15 +227,20 @@ public class ResourceDeposit extends Module {
     }
 
     static boolean canEnterChest(ContainerChest container, ItemStack source) {
-        if (container == null || source == null || source.stackSize <= 0) {
+        if (container == null) {
             return false;
         }
-
         IInventory storage = container.getLowerChestInventory();
-        int storageSize = storage == null ? 0 : storage.getSizeInventory();
-        int slotCount = Math.min(storageSize, container.inventorySlots.size());
-        for (int index = 0; index < slotCount; index++) {
-            Slot target = container.inventorySlots.get(index);
+        return storage != null && canEnterInventory(container, storage, storage.getSizeInventory(), source);
+    }
+
+    private static boolean canEnterInventory(ContainerChest container, IInventory inventory,
+                                             int size, ItemStack source) {
+        if (source == null || source.stackSize <= 0) {
+            return false;
+        }
+        for (int index = 0; index < size; index++) {
+            Slot target = container.getSlotFromInventory(inventory, index);
             if (target == null || !target.isItemValid(source)) {
                 continue;
             }
@@ -261,22 +265,38 @@ public class ResourceDeposit extends Module {
         return false;
     }
 
+    static Slot findNextChestSourceSlot(ContainerChest container, InventoryPlayer inventory) {
+        if (container == null || inventory == null) {
+            return null;
+        }
+        IInventory storage = container.getLowerChestInventory();
+        if (storage == null) {
+            return null;
+        }
+        for (int index = 0; index < storage.getSizeInventory(); index++) {
+            Slot slot = container.getSlotFromInventory(storage, index);
+            if (slot == null) {
+                continue;
+            }
+            ItemStack source = slot.getStack();
+            if (isResourceStack(source) && canEnterInventory(container, inventory, 36, source)) {
+                return slot;
+            }
+        }
+        return null;
+    }
+
     static Slot findNextSourceSlot(ContainerChest container, InventoryPlayer inventory) {
         if (container == null || inventory == null) {
             return null;
         }
 
         for (int section = 0; section < 2; section++) {
-            for (Slot slot : container.inventorySlots) {
-                if (slot.inventory != inventory) {
-                    continue;
-                }
-
-                int inventoryIndex = slot.getSlotIndex();
-                boolean inSection = section == 0
-                        ? inventoryIndex >= InventoryPlayer.getHotbarSize() && inventoryIndex < 36
-                        : inventoryIndex >= 0 && inventoryIndex < InventoryPlayer.getHotbarSize();
-                if (!inSection) {
+            int start = section == 0 ? InventoryPlayer.getHotbarSize() : 0;
+            int end = section == 0 ? 36 : InventoryPlayer.getHotbarSize();
+            for (int inventoryIndex = start; inventoryIndex < end; inventoryIndex++) {
+                Slot slot = container.getSlotFromInventory(inventory, inventoryIndex);
+                if (slot == null) {
                     continue;
                 }
 

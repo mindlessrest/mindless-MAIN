@@ -473,7 +473,6 @@ public class BedWars extends Module {
             obsidianPos.clear();
             entitySpawnQueue.clear();
             spawnedMobs.clear();
-            resetSpawnTracking();
             magicMilkExpiresAt = 0L;
         }
         else {
@@ -501,7 +500,6 @@ public class BedWars extends Module {
             return;
         }
 
-        OwnBedTracker.tick();
 
         if (Utils.getBedwarsStatus() == 2) {
             if (bow.isToggled() || diamondArmor.isToggled() || dreamDefender.isToggled()
@@ -557,7 +555,6 @@ public class BedWars extends Module {
         }
 
         String strippedMessage = Utils.stripColor(event.message.getUnformattedText());
-        OwnBedTracker.handleChat(strippedMessage);
 
         if (HypixelLanguage.contains(strippedMessage, HypixelLanguage.Key.BED_INTRO)) {
             magicMilkExpiresAt = 0L;
@@ -633,9 +630,6 @@ private Vec3 getOwnBedReference() {
             return mc.thePlayer.getDistanceToEntity(player);
         }
         return player.getDistance(bedReference.xCoord, bedReference.yCoord, bedReference.zCoord);
-    }
-private void resetSpawnTracking() {
-        OwnBedTracker.reset();
     }
 
     private String getItemType(ItemStack item) {

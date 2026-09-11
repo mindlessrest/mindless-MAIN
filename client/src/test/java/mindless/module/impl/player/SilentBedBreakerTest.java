@@ -70,6 +70,7 @@ public class SilentBedBreakerTest {
 
     @Before public void reset() throws Exception {
         world.blocks.clear();
+        world.bedAreaLoaded = false;
         mc.thePlayer.inventory = new net.minecraft.entity.player.InventoryPlayer(mc.thePlayer);
         mc.thePlayer.capabilities.allowEdit = true;
         mc.thePlayer.capabilities.isCreativeMode = false;
@@ -305,6 +306,42 @@ public class SilentBedBreakerTest {
         }
     }
 
+    @Test public void whitelistWaitsForSpawnAndChoosesNearestBed() throws Exception {
+        mindless.utility.OwnBedTracker.reset();
+        try {
+            bed(new BlockPos(-3, 62, -3), EnumFacing.WEST);
+            BlockPos own = new BlockPos(5, 65, 0);
+            bed(own, EnumFacing.EAST);
+            mindless.utility.OwnBedTracker.handleChat("Protect your bed and destroy the enemy beds.");
+            assertEquals(0L, field(mindless.utility.OwnBedTracker.class, "scanAt").getLong(null));
+            mindless.utility.OwnBedTracker.handleSpawnTeleport();
+            assertTrue(field(mindless.utility.OwnBedTracker.class, "scanAt").getLong(null) > 0);
+            Method scan = mindless.utility.OwnBedTracker.class.getDeclaredMethod("findNearestBed");
+            scan.setAccessible(true);
+            BlockPos[] pair = (BlockPos[]) scan.invoke(null);
+            assertEquals(own, pair[0]);
+            field(mindless.utility.OwnBedTracker.class, "ownBedFoot").set(null, pair[0]);
+            assertTrue(mindless.utility.OwnBedTracker.isOwnBed(
+                    mindless.utility.OwnBedTracker.footHeadPair(own.east())));
+            field(mindless.utility.OwnBedTracker.class, "scanAt").setLong(null, 0L);
+            world.blocks.clear();
+            mindless.utility.OwnBedTracker.tick();
+            assertTrue(mindless.utility.OwnBedTracker.isKnown());
+            assertFalse(mindless.utility.OwnBedTracker.isDestroyed());
+            world.bedAreaLoaded = true;
+            mindless.utility.OwnBedTracker.tick();
+            assertTrue(mindless.utility.OwnBedTracker.isDestroyed());
+            assertFalse(mindless.utility.OwnBedTracker.isKnown());
+            mindless.utility.OwnBedTracker.handleChat("You have respawned!");
+            assertEquals(0L, field(mindless.utility.OwnBedTracker.class, "scanAt").getLong(null));
+            mindless.utility.OwnBedTracker.reset();
+            mindless.utility.OwnBedTracker.handleSpawnTeleport();
+            assertEquals(0L, field(mindless.utility.OwnBedTracker.class, "scanAt").getLong(null));
+        } finally {
+            mindless.utility.OwnBedTracker.reset();
+        }
+    }
+
     private void resolvedAction() throws Exception {
         mindless.event.ClientRotationEvent rotation = new mindless.event.ClientRotationEvent(0.0F, 0.0F);
         silent.requestRotation(rotation);
@@ -350,7 +387,9 @@ public class SilentBedBreakerTest {
 
     private static class TestWorld extends WorldClient {
         Map<BlockPos, IBlockState> blocks;
+        boolean bedAreaLoaded;
         private TestWorld() { super(null, null, 0, null, null); }
+        @Override public boolean isAreaLoaded(BlockPos from, BlockPos to) { return bedAreaLoaded; }
         @Override public IBlockState getBlockState(BlockPos position) {
             IBlockState state = blocks.get(position);
             return state == null ? Blocks.air.getDefaultState() : state;

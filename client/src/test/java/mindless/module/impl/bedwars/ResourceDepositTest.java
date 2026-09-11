@@ -85,12 +85,12 @@ public class ResourceDepositTest {
 
         Slot source = ResourceDeposit.findNextSourceSlot(fixture.container, fixture.player.inventory);
         Assert.assertNotNull(source);
-        Assert.assertEquals(9, source.getSlotIndex());
+        Assert.assertTrue(source.isHere(fixture.player.inventory, 9));
 
         fixture.player.inventory.mainInventory[9] = null;
         source = ResourceDeposit.findNextSourceSlot(fixture.container, fixture.player.inventory);
         Assert.assertNotNull(source);
-        Assert.assertEquals(0, source.getSlotIndex());
+        Assert.assertTrue(source.isHere(fixture.player.inventory, 0));
     }
 
     @Test
@@ -200,6 +200,75 @@ public class ResourceDepositTest {
         module.onMouseWheel(1);
         module.onDisable();
         Assert.assertFalse(passActive(module));
+    }
+
+    @Test
+    public void scrollDownWithdrawsOnlyResourcesOneStackPerTick() throws Exception {
+        for (int size : new int[]{27, 54}) {
+            Fixture fixture = fixture(size, size == 27 ? "container.enderchest" : "container.chestDouble");
+            fixture.storage.setInventorySlotContents(0, new ItemStack(Items.stick, 3));
+            fixture.storage.setInventorySlotContents(1, new ItemStack(Items.gold_ingot, 4));
+            fixture.storage.setInventorySlotContents(size - 1, new ItemStack(Items.emerald, 2));
+            ResourceDeposit module = enabledModule();
+            module.onMouseWheel(0);
+            Assert.assertFalse(passActive(module));
+            module.onMouseWheel(-1);
+            module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.START));
+            Assert.assertEquals(0, fixture.controller.clicks.size());
+            module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+            Assert.assertEquals(1, fixture.controller.clicks.size());
+            Assert.assertEquals(1, fixture.controller.clicks.get(0).slotId);
+            Assert.assertNull(fixture.storage.getStackInSlot(1));
+            Assert.assertEquals(4, fixture.player.inventory.mainInventory[8].stackSize);
+            module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+            Assert.assertEquals(2, fixture.controller.clicks.size());
+            Assert.assertNull(fixture.storage.getStackInSlot(size - 1));
+            Assert.assertNotNull(fixture.storage.getStackInSlot(0));
+            module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+            Assert.assertFalse(passActive(module));
+            module.onMouseWheel(1);
+            module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+            Assert.assertEquals(3, fixture.controller.clicks.size());
+            Assert.assertTrue(fixture.controller.clicks.get(2).slotId >= size);
+        }
+    }
+
+    @Test
+    public void withdrawalSkipsResourcesThatDoNotFitAndStopsWhenInventoryIsFull() throws Exception {
+        Fixture fixture = fixture(27, "container.chest");
+        for (int index = 0; index < 36; index++) {
+            fixture.player.inventory.mainInventory[index] = new ItemStack(Items.stick, 64);
+        }
+        fixture.player.inventory.mainInventory[0] = new ItemStack(Items.gold_ingot, 63);
+        fixture.storage.setInventorySlotContents(0, new ItemStack(Items.emerald, 2));
+        fixture.storage.setInventorySlotContents(1, new ItemStack(Items.gold_ingot, 4));
+        ResourceDeposit module = enabledModule();
+        module.onMouseWheel(-1);
+        module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+        Assert.assertEquals(1, fixture.controller.clicks.size());
+        Assert.assertEquals(1, fixture.controller.clicks.get(0).slotId);
+        Assert.assertEquals(64, fixture.player.inventory.mainInventory[0].stackSize);
+        Assert.assertEquals(3, fixture.storage.getStackInSlot(1).stackSize);
+        module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+        Assert.assertEquals(1, fixture.controller.clicks.size());
+        Assert.assertFalse(passActive(module));
+    }
+
+    @Test
+    public void withdrawalCancelsOnManualInteractionAndRejectedTransaction() throws Exception {
+        Fixture fixture = fixture(27, "container.chest");
+        fixture.storage.setInventorySlotContents(0, new ItemStack(Items.diamond, 4));
+        ResourceDeposit module = enabledModule();
+        module.onMouseWheel(-1);
+        module.onManualInventoryInteraction();
+        module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+        Assert.assertEquals(0, fixture.controller.clicks.size());
+        module.onMouseWheel(-1);
+        module.onReceivePacket(new mindless.event.ReceivePacketEvent(
+                new S32PacketConfirmTransaction(fixture.container.windowId, (short) 1, false)));
+        module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+        Assert.assertFalse(passActive(module));
+        Assert.assertEquals(0, fixture.controller.clicks.size());
     }
 
     private ResourceDeposit enabledModule() {

@@ -1,6 +1,5 @@
 package mindless.utility;
 
-import mindless.module.ModuleManager;
 import mindless.module.impl.player.SafeWalk;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
@@ -13,13 +12,13 @@ public static boolean isSneakingRaw(Entity entity) {
         return (entity.getDataWatcher().getWatchableObjectByte(0) & 1 << 1) != 0;
     }
 public static boolean shouldSafeWalk(Entity entity) {
-        boolean sneaking = isSneakingRaw(entity);
         Minecraft mc = Minecraft.getMinecraft();
+        boolean sneaking = entity == mc.thePlayer && mc.thePlayer.movementInput != null
+                ? mc.thePlayer.movementInput.sneak : isSneakingRaw(entity);
         if (entity != mc.thePlayer || !entity.onGround) {
             return sneaking;
         }
-        boolean safeWalk = SafeWalk.canSafeWalk()
-                || ModuleManager.scaffold != null && ModuleManager.scaffold.wantsSafeWalk();
+        boolean safeWalk = SafeWalk.canSafeWalk();
         enable(safeWalk);
         return sneaking || safeWalk;
     }

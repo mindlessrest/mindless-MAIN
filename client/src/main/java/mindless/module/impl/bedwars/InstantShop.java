@@ -13,13 +13,14 @@ public class InstantShop extends Module {
 
     public boolean tryPurchase(GuiContainer gui, Slot slot, int slotId, int clickedButton, int clickType) {
         if (!isEnabled() || gui == null || slot == null || !slot.getHasStack()) return false;
-        if (slotId < 0 || (clickedButton != 0 && clickedButton != 2) || clickType != 0) return false;
+        if (slotId < 0 || (clickedButton != 0 && clickedButton != 2)) return false;
+        if (clickType != 0 && !(clickedButton == 2 && clickType == 3)) return false;
         if (mc.thePlayer == null || mc.playerController == null) return false;
 
         ShopHelper shopHelper = ModuleManager.shopHelper;
         if (shopHelper == null || !shopHelper.isShopOpen(gui)) return false;
 
-        mc.playerController.windowClick(gui.inventorySlots.windowId, slotId, 2, 0, mc.thePlayer);
+        mc.playerController.windowClick(gui.inventorySlots.windowId, slotId, 2, 3, mc.thePlayer);
         return true;
     }
 }

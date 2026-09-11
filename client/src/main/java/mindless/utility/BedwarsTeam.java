@@ -38,19 +38,22 @@ public final class BedwarsTeam {
         if (own == null) {
             return false;
         }
-        ScorePlayerTeam first = info.getPlayerTeam();
-        ScorePlayerTeam second = own.getPlayerTeam();
-        if (first != null && second != null && first.getRegisteredName().equals(second.getRegisteredName())) {
-            return true;
-        }
-        return sameIdentity(identity(info), identity(own));
+        return sameTeamPrefix(info.getPlayerTeam(), own.getPlayerTeam());
     }
 
     public static boolean isSameColorTeam(EntityPlayer first, EntityPlayer second) {
-        if (first == null || second == null || first == second) {
+        if (first == null || second == null || mc.getNetHandler() == null) {
             return false;
         }
-        return sameIdentity(identity(first), identity(second));
+        NetworkPlayerInfo firstInfo = mc.getNetHandler().getPlayerInfo(first.getUniqueID());
+        NetworkPlayerInfo secondInfo = mc.getNetHandler().getPlayerInfo(second.getUniqueID());
+        return firstInfo != null && secondInfo != null
+                && sameTeamPrefix(firstInfo.getPlayerTeam(), secondInfo.getPlayerTeam());
+    }
+
+    static boolean sameTeamPrefix(ScorePlayerTeam first, ScorePlayerTeam second) {
+        return first != null && second != null && !first.getColorPrefix().isEmpty()
+                && first.getColorPrefix().equals(second.getColorPrefix());
     }
 
     private static String label(String username, String formatted, net.minecraft.scoreboard.Team team) {
@@ -60,20 +63,6 @@ public final class BedwarsTeam {
         }
         String color = identity.color == 0 ? "" : "\u00A7" + identity.color;
         return color + "[" + identity.marker + "] " + color + username;
-    }
-
-    private static Identity identity(EntityPlayer player) {
-        String formatted = player.getDisplayName() == null
-                ? null : player.getDisplayName().getFormattedText();
-        return identity(player.getName(), formatted, player.getTeam());
-    }
-
-    private static Identity identity(NetworkPlayerInfo info) {
-        String username = info.getGameProfile() == null ? "" : info.getGameProfile().getName();
-        String formatted = info.getDisplayName() == null
-                ? ScorePlayerTeam.formatPlayerName(info.getPlayerTeam(), username)
-                : info.getDisplayName().getFormattedText();
-        return identity(username, formatted, info.getPlayerTeam());
     }
 
     private static Identity identity(String username, String formatted, net.minecraft.scoreboard.Team team) {
@@ -86,16 +75,6 @@ public final class BedwarsTeam {
             marker = markerForColor(color);
         }
         return new Identity(marker, color);
-    }
-
-    private static boolean sameIdentity(Identity first, Identity second) {
-        if (first.color != 0 && second.color != 0) {
-            return first.color == second.color;
-        }
-        if (first.marker != 0 && second.marker != 0) {
-            return first.marker == second.marker;
-        }
-        return false;
     }
 
     private static char marker(String formatted) {

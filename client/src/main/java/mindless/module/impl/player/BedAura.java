@@ -34,7 +34,6 @@ import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.*;
 import net.minecraftforge.client.event.MouseEvent;
-import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
@@ -213,7 +212,6 @@ private static final double AIM_FACE_INSET = 0.12;
     @Override
     public void onUpdate() {
         if (Utils.nullCheck()) {
-            OwnBedTracker.tick();
             int selectedMode = (int) mode.getInput();
             if (activeMode != -1 && activeMode != selectedMode) {
                 silent.cleanup();
@@ -253,17 +251,7 @@ private static final double AIM_FACE_INSET = 0.12;
     public void onWorldJoin(EntityJoinWorldEvent e) {
         if (e.entity == mc.thePlayer) {
             silent.cleanup();
-            resetSpawnTracking();
         }
-    }
-
-    @SubscribeEvent
-    public void onChat(ClientChatReceivedEvent event) {
-        if (!Utils.nullCheck()) {
-            return;
-        }
-
-        OwnBedTracker.handleChat(Utils.stripColor(event.message.getUnformattedText()));
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -1246,9 +1234,6 @@ private BlockPos[] footHeadPair(BlockPos at) {
         return ModuleManager.killAura != null
                 && ModuleManager.killAura.isEnabled()
                 && KillAura.target != null;
-    }
-private void resetSpawnTracking() {
-        OwnBedTracker.reset();
     }
 private void removeOwnBedPair() {
         if (!whitelistOwnBed.isToggled()) {

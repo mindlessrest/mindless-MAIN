@@ -54,6 +54,11 @@ public abstract class TransformerEntityLivingBase {
         MinecraftForge.EVENT_BUS.post(event);
         if (event.isCanceled()) {
             cir.setCancelled(true);
+            return;
+        }
+        if (self == net.minecraft.client.Minecraft.getMinecraft().thePlayer
+                && mindless.module.ModuleManager.scaffold != null) {
+            mindless.module.ModuleManager.scaffold.beforeLivingMovement();
         }
     }
 

@@ -5,8 +5,8 @@ import mindless.event.GameTickEvent;
 import mindless.lag.api.DelayLease;
 import mindless.lag.api.DelayRequest;
 import mindless.lag.api.EnumLagDirection;
-import mindless.lag.api.InboundClaimPolicy;
-import mindless.lag.api.SessionEpoch;
+import mindless.lag.api.KnockbackPacketPolicy;
+import mindless.runtime.AccessorBridge;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
 import mindless.module.impl.player.Blink;
@@ -17,9 +17,6 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.CombatTargeting;
 import mindless.utility.Utils;
 import net.minecraft.item.ItemStack;
-import net.minecraft.network.Packet;
-import net.minecraft.network.play.server.S08PacketPlayerPosLook;
-import net.minecraft.network.play.server.S12PacketEntityVelocity;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Mouse;
 
@@ -32,7 +29,7 @@ public class KnockbackDelay extends Module {
     private final ButtonSetting requireLeftMouse;
     private final ButtonSetting onlyWhitelistedItem;
     private final ItemListSetting whitelistedItems;
-    private final KnockbackClaimPolicy packetPolicy = new KnockbackClaimPolicy();
+    private KnockbackPacketPolicy packetPolicy = new KnockbackPacketPolicy();
     private DelayLease inboundLease;
 
     public KnockbackDelay() {
@@ -65,7 +62,7 @@ public class KnockbackDelay extends Module {
             disable();
             return;
         }
-        packetPolicy.reset();
+        packetPolicy = new KnockbackPacketPolicy();
         inboundLease = Mindless.packetDelayService.acquire(DelayRequest.fixedWindow(
                 "Knockback Delay", EnumLagDirection.ONLY_INBOUND, packetPolicy,
                 packetPolicy::chooseDelayNanos));
@@ -73,7 +70,7 @@ public class KnockbackDelay extends Module {
 
     @Override
     public void onDisable() {
-        packetPolicy.reset();
+        packetPolicy.disable();
         if (inboundLease != null) {
             inboundLease.release();
             inboundLease = null;
@@ -89,22 +86,28 @@ public class KnockbackDelay extends Module {
     public void onGameTick(GameTickEvent event) {
         if (!isEnabled()) return;
         if (!Utils.nullCheck() || mc.thePlayer == null || mc.theWorld == null || mc.thePlayer.isDead) {
-            packetPolicy.reset();
+            packetPolicy.disable();
             if (inboundLease != null) inboundLease.releaseClaims();
+            return;
+        }
+        if (blinksInbound()) {
+            Utils.sendMessage("&cKnockback Delay conflicts with Blink inbound / both. Disable Blink or use outbound-only.");
+            disable();
             return;
         }
         boolean eligible = conditionsFailureReason() == null;
         packetPolicy.configure(
+                Mindless.packetDelayService.getCurrentEpoch(),
                 eligible,
                 mc.thePlayer.getEntityId(),
                 (long) maximumDelay.getInput(),
                 chance.getInput());
         if (!eligible && inboundLease != null) inboundLease.releaseClaims();
-        packetPolicy.expire(System.nanoTime());
         Mindless.packetDelayService.drainExpired();
     }
 
     private String conditionsFailureReason() {
+        if (mc.thePlayer.isInWater() || mc.thePlayer.isInLava() || AccessorBridge.Entity_getIsInWeb(mc.thePlayer)) return "in fluid or web";
         double maxSq = distanceToTarget.getInput() * distanceToTarget.getInput();
         if (CombatTargeting.findTarget(maxSq) == null) return "no target in range";
         if (inAir.isToggled() && mc.thePlayer.onGround) return "not in air";
@@ -122,67 +125,4 @@ public class KnockbackDelay extends Module {
         return blink != null && blink.isEnabled() && blink.delaysInboundPackets();
     }
 
-    private final class KnockbackClaimPolicy implements InboundClaimPolicy {
-        private volatile boolean eligible;
-        private volatile int localEntityId;
-        private volatile long delayNanos;
-        private volatile double chancePercent;
-        private volatile boolean holding;
-        private volatile long deadlineNanos;
-        private volatile long selectedDelayNanos;
-        private volatile boolean delaySelected;
-        private volatile SessionEpoch stateEpoch = new SessionEpoch(0L, 0L);
-
-        private void configure(boolean nextEligible, int nextLocalEntityId, long nextDelayMs, double nextChance) {
-            eligible = nextEligible;
-            localEntityId = nextLocalEntityId;
-            delayNanos = DelayRequest.millisToNanos(nextDelayMs);
-            chancePercent = nextChance;
-            if (!eligible && holding) reset();
-        }
-
-        private void expire(long nowNanos) {
-            if (holding && nowNanos >= deadlineNanos) reset();
-        }
-
-        private void reset() {
-            holding = false;
-            deadlineNanos = 0L;
-            selectedDelayNanos = 0L;
-            delaySelected = false;
-        }
-
-        private long chooseDelayNanos() {
-            return delaySelected ? selectedDelayNanos : delayNanos;
-        }
-
-        @Override
-        public Decision decide(Packet<?> packet, SessionEpoch epoch, long nowNanos) {
-            if (epoch != null && !stateEpoch.isSameSession(epoch)) {
-                stateEpoch = epoch;
-                reset();
-            }
-            if (packet instanceof S08PacketPlayerPosLook) {
-                reset();
-                return Decision.RELEASE_AND_PASS;
-            }
-            expire(nowNanos);
-            if (holding) return Decision.CLAIM;
-            if (!eligible || !(packet instanceof S12PacketEntityVelocity)) return Decision.PASS;
-            S12PacketEntityVelocity velocity = (S12PacketEntityVelocity) packet;
-            if (velocity.getEntityID() != localEntityId || chancePercent <= 0.0D
-                    || chancePercent < 100.0D && Math.random() * 100.0D >= chancePercent) return Decision.PASS;
-            selectedDelayNanos = delayNanos;
-            delaySelected = true;
-            deadlineNanos = safeAdd(nowNanos, selectedDelayNanos);
-            holding = selectedDelayNanos > 0L;
-            return holding ? Decision.CLAIM : Decision.PASS;
-        }
-    }
-
-    private static long safeAdd(long left, long right) {
-        if (right <= 0L) return left;
-        if (left > Long.MAX_VALUE - right) return Long.MAX_VALUE;
-        return left + right;
-    }
 }
