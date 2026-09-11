@@ -41,7 +41,7 @@ public class MixinMinecraft {
 
     @Inject(method = "rightClickMouse", at = @At("HEAD"), cancellable = true)
     private void auraUseInput(CallbackInfo ci) {
-        if (ModuleManager.killAura != null && ModuleManager.killAura.shouldSuppressClicks()) { ci.cancel(); return; }
+        if (ModuleManager.killAura != null && ModuleManager.killAura.shouldSuppressUse()) { ci.cancel(); return; }
         RightClickMouseEvent event = new RightClickMouseEvent();
         MinecraftForge.EVENT_BUS.post(event);
         if (event.isCanceled()) ci.cancel();

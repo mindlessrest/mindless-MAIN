@@ -148,7 +148,7 @@ public class TransformerMinecraft {
     @CInject(method = "rightClickMouse", target = @CTarget("HEAD"), cancellable = true)
     private void onRightClickMouse(InjectionCallback ci) {
         if (Utils.shouldSuppressManualClicksForModulePlacementTick()
-                || ModuleManager.killAura != null && ModuleManager.killAura.shouldSuppressClicks()) {
+                || ModuleManager.killAura != null && ModuleManager.killAura.shouldSuppressUse()) {
             ci.setCancelled(true);
             return;
         }

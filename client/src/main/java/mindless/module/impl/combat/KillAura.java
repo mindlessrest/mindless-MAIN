@@ -218,6 +218,17 @@ public class KillAura extends Module {
     public boolean ownsCombatInteractions() { return isEnabled() && combatReady && target != null; }
     public boolean ownsAutoBlock() { return ownsCombatInteractions() && autoBlock.getInput() != NONE && canAutoBlock(); }
     public boolean shouldSuppressClicks() { return !performingClick && ownsCombatInteractions() && (block.active || currentTarget.distance <= swingRange.getInput()); }
+
+    /**
+     * Whether the aura owns the use button, not just the attack button.
+     *
+     * Right click was suppressed on the strength of a target being in range alone, which took
+     * the button away from the Autoblock module as well -- it blocks by pressing the use
+     * keybind, and the game turns that into the very call being cancelled. With this module's
+     * own auto block set to None that left nothing blocking at all, and only while a target
+     * was in range. The same ownership test the Autoblock module already stands down for.
+     */
+    public boolean shouldSuppressUse() { return shouldSuppressClicks() && (block.active || ownsAutoBlock()); }
     public boolean shouldSuppressStopUse() { return isEnabled() && combatReady && block.active; }
     public boolean shouldRenderBlocking() { return isEnabled() && combatReady && block.render && Utils.holdingSword(); }
     public boolean allowsAuraNoSlow() { return ownsAutoBlock() && block.active && autoBlockNoSlow.isToggled(); }
