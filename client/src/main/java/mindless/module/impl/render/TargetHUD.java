@@ -1239,9 +1239,34 @@ private int ringColor(int ringIndex) {
             return;
         }
 
-        ScaledResolution resolution = ScaledResolutionCache.get();
         float centerX = (projectedTargetBounds[0] + projectedTargetBounds[2]) * 0.5f;
         float centerY = (projectedTargetBounds[1] + projectedTargetBounds[3]) * 0.5f;
+        paintMarker(entity, centerX, centerY, fade, true);
+    }
+
+    /**
+     * The real marker, around a rectangle someone else chose.
+     *
+     * For the click GUI's visual preview, so it shows this module's actual style, size,
+     * thickness and colours instead of an impression drawn by the panel itself.
+     */
+    public void drawPreviewMarker(float centerX, float centerY) {
+        paintMarker(mc.thePlayer, centerX, centerY, 1.0f, false);
+    }
+
+    /**
+     * The marker itself, entirely in screen space.
+     *
+     * Split from the projection above so both the world target and the preview can reach
+     * it. clipToScreen is what the world path needs and the preview must not have: the
+     * preview sits inside a panel, not against the viewport.
+     */
+    private void paintMarker(EntityLivingBase entity, float centerX, float centerY,
+                             float fade, boolean clipToScreen) {
+        if (markerEnabled == null || !markerEnabled.isToggled()) {
+            return;
+        }
+        ScaledResolution resolution = ScaledResolutionCache.get();
 
         // Screen-space marker means screen-space sizing: turning silent rotations, changing FOV,
         // or moving a few blocks must not make the brackets pulse larger and smaller.
@@ -1254,8 +1279,9 @@ private int ringColor(int ringIndex) {
         // inside the viewport, so a target anywhere near an edge lost it completely rather
         // than having it clipped.
         float markerExtent = size + thickness;
-        if (centerX + markerExtent < 0.0f || centerX - markerExtent > resolution.getScaledWidth()
-                || centerY + markerExtent < 0.0f || centerY - markerExtent > resolution.getScaledHeight()) {
+        if (clipToScreen
+                && (centerX + markerExtent < 0.0f || centerX - markerExtent > resolution.getScaledWidth()
+                || centerY + markerExtent < 0.0f || centerY - markerExtent > resolution.getScaledHeight())) {
             traceStage(entity, "marker skipped: off screen", "x=" + Math.round(centerX) + " y=" + Math.round(centerY));
             return;
         }

@@ -1062,6 +1062,11 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
                     .drawPreview(mc.thePlayer, cx - half, top, cx + half, bottom);
             resetTextRenderState();
         }
+        else if (selectedModule instanceof mindless.module.impl.render.TargetHUD) {
+            ((mindless.module.impl.render.TargetHUD) selectedModule)
+                    .drawPreviewMarker(cx, (top + bottom) * .5f);
+            resetTextRenderState();
+        }
         else if (selectedModule instanceof mindless.module.impl.render.Nametags) {
             String name = mc.thePlayer == null ? "Player" : mc.thePlayer.getName();
             float w = textWidth(name, .62f, true);

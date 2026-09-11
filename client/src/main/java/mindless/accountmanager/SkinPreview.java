@@ -148,7 +148,12 @@ public final class SkinPreview {
         GlStateManager.rotate(135.0f, 0.0f, 1.0f, 0.0f);
         RenderHelper.enableStandardItemLighting();
         GlStateManager.rotate(-135.0f, 0.0f, 1.0f, 0.0f);
+        // Pitch turns the figure about its own middle. The origin here is under its feet, so
+        // rotating straight about it swung the whole body through an arc and read as the model
+        // sliding up and down the panel rather than leaning.
+        GlStateManager.translate(0.0f, -1.0f, 0.0f);
         GlStateManager.rotate(pitch, 1.0f, 0.0f, 0.0f);
+        GlStateManager.translate(0.0f, 1.0f, 0.0f);
         // The biped model is built facing away down -Z, and the GUI camera looks the other
         // way, so without this half turn the preview opens on the back of the head.
         GlStateManager.rotate(yaw + 180.0f, 0.0f, 1.0f, 0.0f);

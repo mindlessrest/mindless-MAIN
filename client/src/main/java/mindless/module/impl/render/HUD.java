@@ -125,7 +125,7 @@ private static final int[][] OUTLINE_OFFSETS = {
         this.registerSetting(drawBackground = new ButtonSetting("Draw background", false));
         this.registerSetting(backgroundMode = new SliderSetting("Background mode", 0, BACKGROUND_MODES));
         this.registerSetting(roundedBackground = new ButtonSetting("Rounded background", false));
-        this.registerSetting(cornerRadius = new SliderSetting("Corner radius", 4.0, 0.0, 12.0, 0.5));
+        this.registerSetting(cornerRadius = new SliderSetting("Corner radius", 4.0, 0.0, 20.0, 0.5));
         this.registerSetting(stepRounding = new SliderSetting("Step rounding", "%", 55.0, 0.0, 100.0, 5.0));
         this.registerSetting(backgroundOpacity = new SliderSetting("Background opacity", 43.0, 0.0, 100.0, 1.0));
         this.registerSetting(backgroundBlur = new ButtonSetting("Background blur", false));
@@ -844,15 +844,16 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont) {
         }
 
         boolean right = alignRight.isToggled();
-        float narrowest = rowHeight;
+        float narrowest = Float.MAX_VALUE;
         for (int i = 0; i < widths.length; i++) {
             float rowWidth = widths[i] + horizontalTextPadding * 2f;
             if (rowWidth < narrowest) narrowest = rowWidth;
         }
-        // Clamped against the narrowest row as well as the height: a radius wider than the
-        // row leaves the corner discs with nothing joining them.
-        float radius = getBackgroundRadius(Math.min(rowHeight, narrowest));
-        float transitionRadius = getBackgroundStepRadius(radius);
+        if (narrowest == Float.MAX_VALUE) narrowest = rowHeight;
+        // The outer corners get the full radius; the staircase steps in the middle stay
+        // inside half a row, or two of them meet and eat the join between the rows.
+        float radius = getOuterBackgroundRadius(rowHeight, narrowest);
+        float transitionRadius = Math.min(getBackgroundStepRadius(radius), rowHeight * 0.5f);
         // The whole staircase is emitted into one batch and blended once. Drawing each row as
         // its own translucent shape meant every shared edge was blended twice, which outlined
         // each row and made the list read as separate chips instead of one connected panel.
@@ -1061,16 +1062,36 @@ private static void radialBand(float cx, float cy, float r0, float a0, float r1,
                 (int) Math.round((backgroundOpacity == null ? 43.0 : backgroundOpacity.getInput()) * 2.55)));
     }
 
-    private static float getBackgroundRadius(float height) {
+    /** What the slider asks for, before anything geometric is allowed to cut it down. */
+    private static float configuredBackgroundRadius() {
         if (roundedBackground == null || !roundedBackground.isToggled()) {
             return 0.0f;
         }
-        float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
+        return (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
                 * mindless.module.impl.theme.ThemeManager.roundingScale();
+    }
+
+    private static float getBackgroundRadius(float height) {
         // Half the height is a full pill. The old third of it meant a row eleven pixels
-        // tall could never round by more than three, whatever the slider was set to, so
-        // turning the corner radius up looked like it did nothing.
-        return Math.max(0.0f, Math.min(radius, height * 0.5f));
+        // tall could never round by more than three, whatever the slider was set to.
+        return Math.max(0.0f, Math.min(configuredBackgroundRadius(), height * 0.5f));
+    }
+
+    /**
+     * The radius for the four corners on the outside of a stack of rows.
+     *
+     * Bounded by the whole row height rather than half of it. A corner at the very top of
+     * a stack has the rows beneath it to fill in behind, so it can be as deep as the row is
+     * tall; halving it is a single-row rule that was being applied where it did not belong.
+     * On a list thirty rows long those four corners are the only rounding anyone can see,
+     * and capping them at three pixels is why turning the slider up did nothing.
+     */
+    private static float getOuterBackgroundRadius(float rowHeight, float narrowestWidth) {
+        float radius = configuredBackgroundRadius();
+        if (radius <= 0.0f) {
+            return 0.0f;
+        }
+        return Math.max(0.0f, Math.min(radius, Math.min(rowHeight, narrowestWidth * 0.5f)));
     }
 
     private static float getBackgroundStepRadius(float outerRadius) {
