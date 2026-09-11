@@ -124,6 +124,9 @@ public class TransformerCompatibilityTest {
             for (AbstractInsnNode instruction : loadWorld.instructions.toArray()) {
                 if (!(instruction instanceof MethodInsnNode)) continue;
                 MethodInsnNode invoke = (MethodInsnNode) instruction;
+                Assert.assertFalse("loadWorld must not advance an already established respawn session",
+                        "mindless/lag/service/PacketDelayService".equals(invoke.owner)
+                                && "advanceWorld".equals(invoke.name));
                 if ("mindless/lag/service/PacketDelayService".equals(invoke.owner)
                         && "onClientWorldUnload".equals(invoke.name) && "()V".equals(invoke.desc)) {
                     invalidatesPacketSession = true;

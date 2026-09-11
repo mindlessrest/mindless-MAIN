@@ -58,7 +58,8 @@ public final class PacketDelayService {
         SESSION_RESET,
         OLD_EPOCH,
         DISABLED,
-        INSTALL_FAILURE
+        INSTALL_FAILURE,
+        DELIVERY_FAILURE
     }
 
     public static final class DiagnosticsSnapshot {
@@ -70,6 +71,7 @@ public final class PacketDelayService {
         private final long maxAgeFlushes;
         private final long barrierFlushes;
         private final long installFailures;
+        private final long deliveryFailures;
         private final ReleaseReason lastReleaseReason;
 
         private DiagnosticsSnapshot(
@@ -81,6 +83,7 @@ public final class PacketDelayService {
                 long maxAgeFlushes,
                 long barrierFlushes,
                 long installFailures,
+                long deliveryFailures,
                 ReleaseReason lastReleaseReason
         ) {
             this.inboundQueued = inboundQueued;
@@ -91,6 +94,7 @@ public final class PacketDelayService {
             this.maxAgeFlushes = maxAgeFlushes;
             this.barrierFlushes = barrierFlushes;
             this.installFailures = installFailures;
+            this.deliveryFailures = deliveryFailures;
             this.lastReleaseReason = lastReleaseReason;
         }
 
@@ -101,6 +105,7 @@ public final class PacketDelayService {
         public long getCapacityFlushes() { return capacityFlushes; }
         public long getMaxAgeFlushes() { return maxAgeFlushes; }
         public long getBarrierFlushes() { return barrierFlushes; }
+        public long getDeliveryFailures() { return deliveryFailures; }
         public long getInstallFailures() { return installFailures; }
         public ReleaseReason getLastReleaseReason() { return lastReleaseReason; }
     }
@@ -153,10 +158,12 @@ public final class PacketDelayService {
     private final AtomicLong maxAgeFlushes = new AtomicLong();
     private final AtomicLong barrierFlushes = new AtomicLong();
     private final AtomicLong installFailures = new AtomicLong();
+    private final AtomicLong deliveryFailures = new AtomicLong();
     private volatile Executor eventLoop = Runnable::run;
     private volatile ScheduledExecutorService scheduler;
     private final ThreadLocal<Boolean> onEventLoop = new ThreadLocal<>();
     private volatile SessionEpoch currentEpoch = new SessionEpoch(0L, 0L);
+    private volatile SessionEpoch minimumDeliveryEpoch = currentEpoch;
     private SessionEpoch appliedEpoch = currentEpoch;
     private volatile boolean valid = true;
     private volatile NetworkManager boundNetworkManager;
@@ -197,10 +204,7 @@ public final class PacketDelayService {
         if (request == null) throw new IllegalArgumentException("request");
         DelayLease lease = new DelayLease(this, request, nextLeaseId.getAndIncrement(), currentEpoch);
         leases.put(lease, Boolean.TRUE);
-        executeOnEventLoop(() -> {
-            fixedDeadlines.remove(lease);
-            drainAllExpired(clock.nanoTime());
-        });
+        executeOnEventLoop(() -> drainAllExpired(clock.nanoTime()));
         return lease;
     }
 
@@ -341,8 +345,13 @@ public final class PacketDelayService {
 
     public void setEpoch(SessionEpoch epoch) {
         if (epoch == null) throw new IllegalArgumentException("epoch");
+        minimumDeliveryEpoch = epoch;
         currentEpoch = epoch;
-        executeOnEventLoop(() -> resetForEpoch(epoch, ReleaseReason.SESSION_RESET));
+        executeOnEventLoop(() -> {
+            if (currentEpoch.isSameSession(epoch) && !appliedEpoch.isSameSession(epoch)) {
+                resetForEpoch(epoch, ReleaseReason.SESSION_RESET);
+            }
+        });
     }
 
     public void invalidate() {
@@ -351,6 +360,7 @@ public final class PacketDelayService {
         leases.clear();
         NetworkManager managerToDetach = boundNetworkManager;
         SessionEpoch invalidationEpoch = currentEpoch.nextConnection();
+        minimumDeliveryEpoch = invalidationEpoch;
         currentEpoch = invalidationEpoch;
         executeOnEventLoop(() -> {
             try {
@@ -389,6 +399,7 @@ public final class PacketDelayService {
                 maxAgeFlushes.get(),
                 barrierFlushes.get(),
                 installFailures.get(),
+                deliveryFailures.get(),
                 lastReleaseReason
         );
     }
@@ -524,8 +535,8 @@ public final class PacketDelayService {
         SessionEpoch epoch = packetEpoch == null ? currentEpoch : packetEpoch;
         if (!currentEpoch.isSameSession(epoch)) {
             if (isNewer(epoch, currentEpoch)) {
-                resetForEpoch(epoch, ReleaseReason.SESSION_RESET);
                 currentEpoch = epoch;
+                resetForEpoch(epoch, ReleaseReason.SESSION_RESET);
             }
             else {
                 droppedOldEpoch.incrementAndGet();
@@ -534,13 +545,14 @@ public final class PacketDelayService {
             }
         }
 
-        drainExpired(direction, now);
         if (direction == EnumLagDirection.INBOUND && isSessionBoundary(packet)) {
             SessionEpoch boundaryEpoch = currentEpoch.nextWorld();
+            currentEpoch = boundaryEpoch;
             resetForEpoch(boundaryEpoch, ReleaseReason.SESSION_RESET);
             deliverDirect(packet, route, direction == EnumLagDirection.OUTBOUND);
             return false;
         }
+        drainExpired(direction, now);
         if (direction == EnumLagDirection.INBOUND && packet instanceof S08PacketPlayerPosLook) {
             for (DelayLease lease : activeLeases(direction)) {
                 lease.getRequest().getInboundClaimPolicy().decide(packet, currentEpoch, now);
@@ -633,7 +645,13 @@ public final class PacketDelayService {
             delivered.incrementAndGet();
         }
         catch (RuntimeException failure) {
-            lastReleaseReason = ReleaseReason.EXPLICIT;
+            lastReleaseReason = ReleaseReason.DELIVERY_FAILURE;
+            long failures = deliveryFailures.incrementAndGet();
+            if ((failures & (failures - 1L)) == 0L) {
+                System.err.println("[mindless] [packet-delay] delivery failed count=" + failures
+                        + " packet=" + packet.getClass().getSimpleName());
+                failure.printStackTrace();
+            }
         } finally {
             if (outbound) CombatPacketState.consumeReplay(packet);
         }
@@ -645,10 +663,23 @@ public final class PacketDelayService {
     }
 
     private boolean acceptsFinalEpoch(SessionEpoch epoch) {
-        return valid && epoch != null && currentEpoch.isSameSession(epoch);
+        SessionEpoch current = currentEpoch;
+        SessionEpoch minimum = minimumDeliveryEpoch;
+        return valid && epoch != null
+                && epoch.getConnectionGeneration() == current.getConnectionGeneration()
+                && epoch.getConnectionGeneration() == minimum.getConnectionGeneration()
+                && epoch.getWorldGeneration() >= minimum.getWorldGeneration()
+                && epoch.getWorldGeneration() <= current.getWorldGeneration();
     }
 
     private void drainExpired(EnumLagDirection direction, long now) {
+        if (direction == EnumLagDirection.INBOUND) {
+            for (DelayLease lease : activeLeases(direction)) {
+                if (lease.getRequest().getInboundClaimPolicy().shouldRelease(currentEpoch, now)) {
+                    releaseClaimsInternal(lease, direction, ReleaseReason.BARRIER);
+                }
+            }
+        }
         ArrayDeque<DelayedEnvelope> queue = queues.get(direction);
         if (isTooOld(queue.peek(), now)) {
             maxAgeFlushes.incrementAndGet();
@@ -688,6 +719,11 @@ public final class PacketDelayService {
     }
 
     private void flushDirection(EnumLagDirection direction, ReleaseReason reason) {
+        if (direction == EnumLagDirection.INBOUND) {
+            for (DelayLease lease : activeLeases(direction)) {
+                lease.getRequest().getInboundClaimPolicy().onRelease(currentEpoch, clock.nanoTime());
+            }
+        }
         ArrayDeque<DelayedEnvelope> queue = queues.get(direction);
         for (DelayedEnvelope envelope : queue) envelope.releaseAll();
         lastReleaseReason = reason;
@@ -703,6 +739,9 @@ public final class PacketDelayService {
             return;
         }
         ArrayDeque<DelayedEnvelope> queue = queues.get(direction);
+        if (direction == EnumLagDirection.INBOUND) {
+            lease.getRequest().getInboundClaimPolicy().onRelease(currentEpoch, clock.nanoTime());
+        }
         for (DelayedEnvelope envelope : queue) envelope.release(lease);
         lastReleaseReason = reason;
         drainPrefix(direction);
@@ -772,8 +811,10 @@ public final class PacketDelayService {
     }
 
     private void resetForEpoch(SessionEpoch epoch, ReleaseReason reason) {
-        currentEpoch = epoch;
         appliedEpoch = epoch;
+        for (DelayLease lease : activeLeases(EnumLagDirection.INBOUND)) {
+            lease.getRequest().getInboundClaimPolicy().onRelease(epoch, clock.nanoTime());
+        }
         clearQueues();
         fixedDeadlines.clear();
         cancelSchedules();

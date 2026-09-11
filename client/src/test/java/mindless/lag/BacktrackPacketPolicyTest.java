@@ -46,7 +46,7 @@ public class BacktrackPacketPolicyTest {
         Assert.assertTrue(pose.isActive());
         Assert.assertEquals(3.0D, pose.getShadowX(), 0.000001D);
         Assert.assertEquals(2.0D, pose.getDisplayedX(), 0.000001D);
-        Assert.assertEquals(InboundClaimPolicy.Decision.BYPASS,
+        Assert.assertEquals(InboundClaimPolicy.Decision.CLAIM,
                 policy.decide(new TestPacket(), epoch, 3L));
     }
 

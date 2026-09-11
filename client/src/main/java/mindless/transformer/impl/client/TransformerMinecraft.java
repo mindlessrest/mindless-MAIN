@@ -46,13 +46,11 @@ public class TransformerMinecraft {
     ) {
         Minecraft minecraft = (Minecraft) (Object) this;
         if (ModuleManager.bedAura != null) ModuleManager.bedAura.onWorldChange();
-        if (minecraft.theWorld != null && minecraft.theWorld != nextWorld && Mindless.packetDelayService != null)
-            Mindless.packetDelayService.advanceWorld();
         if (ModuleManager.killAura != null) ModuleManager.killAura.onWorldChange();
         if (nextWorld != null || minecraft.theWorld == null) return;
-        if (ModuleManager.backtrack != null) ModuleManager.backtrack.onWorldUnload();
         PacketDelayService service = Mindless.packetDelayService;
         if (service != null) service.onClientWorldUnload();
+        if (ModuleManager.backtrack != null) ModuleManager.backtrack.onWorldUnload();
     }
 
     @CInline
@@ -136,6 +134,14 @@ public class TransformerMinecraft {
     @CInject(method = "clickMouse", target = @CTarget("RETURN"))
     private void clearClickDelayAfterClick(InjectionCallback ci) {
         if (DelayRemover.shouldRemoveHitDelay()) this.leftClickCounter = 0;
+    }
+
+    @CInline
+    @CInject(method = "sendClickBlockToController", target = @CTarget("HEAD"), cancellable = true)
+    private void blockScaffoldMining(boolean attack, InjectionCallback ci) {
+        if (attack && ModuleManager.scaffold != null && ModuleManager.scaffold.blocksMining()) {
+            ci.setCancelled(true);
+        }
     }
 
     @CInline

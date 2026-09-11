@@ -42,10 +42,15 @@ public final class BacktrackPacketPolicy implements InboundClaimPolicy {
     private volatile FixedPosition shadowPosition;
     private volatile boolean shadowInitialized;
     private volatile boolean windowActive;
-    private volatile long windowOpenedNanos;
+    private long cooldownUntilNanos;
+    private long windowCooldownNanos;
+    private boolean windowDebugLogging;
+    private int invalidatedTargetId = NO_ENTITY;
     private volatile long windowDeadlineNanos;
     private volatile long selectedDelayNanos;
     private volatile boolean delaySelected;
+    private boolean localDead;
+    private long blockedAttackAtNanos = NO_ATTACK;
     private float lastServerHealth = Float.NaN;
 
     public BacktrackPacketPolicy() {
@@ -81,16 +86,44 @@ public final class BacktrackPacketPolicy implements InboundClaimPolicy {
         return current;
     }
 
-    public void releaseWindow() {
-        resetWindow();
+    @Override
+    public void onRelease(SessionEpoch epoch, long nowNanos) {
+        if (!stateEpoch.isSameSession(epoch)) {
+            resetForEpoch(epoch);
+            return;
+        }
+        endWindow(nowNanos, "transport_release");
+    }
+
+    @Override
+    public boolean shouldRelease(SessionEpoch epoch, long nowNanos) {
+        if (!stateEpoch.isSameSession(epoch)) {
+            boolean pending = windowActive;
+            resetForEpoch(epoch);
+            return pending;
+        }
+        if (!windowActive) return false;
         BacktrackControlSnapshot current = control;
-        double shadowX = shadowPosition == null ? current.getDisplayedX() : shadowPosition.x / 32.0D;
-        double shadowY = shadowPosition == null ? current.getDisplayedY() : shadowPosition.y / 32.0D;
-        double shadowZ = shadowPosition == null ? current.getDisplayedZ() : shadowPosition.z / 32.0D;
-        pose = new BacktrackPoseSnapshot(
-                stateEpoch, false, false, false, current.getTargetEntityId(),
-                current.getDisplayedX(), current.getDisplayedY(), current.getDisplayedZ(),
-                shadowX, shadowY, shadowZ, current.getWidth(), current.getHeight(), 0L);
+        String reason;
+        if (current.getTargetEntityId() != shadowEntityId) reason = "target_changed";
+        else if (!matchesEpoch(current, epoch) || localDead) reason = "session_invalid";
+        else if (!current.isEnabled() || !current.isTargetEligible() || current.getMaxDelayNanos() <= 0L) reason = "ineligible";
+        else if (!isAttackFresh(current, nowNanos)) reason = "attack_expired";
+        else if (nowNanos >= windowDeadlineNanos) reason = "deadline";
+        else if (!hasUsefulPosition(current, current.getContinueEpsilon())) reason = "position_not_useful";
+        else return false;
+        endWindow(nowNanos, reason);
+        return true;
+    }
+
+    private void endWindow(long nowNanos, String reason) {
+        if (windowActive) {
+            cooldownUntilNanos = safeAdd(nowNanos, windowCooldownNanos);
+            if (windowDebugLogging) System.out.println("[mindless] [backtrack] close target=" + shadowEntityId
+                    + " reason=" + reason + " delayMs=" + selectedDelayNanos / 1000000L);
+        }
+        resetWindow();
+        publishPose(control, stateEpoch, nowNanos, false, false);
     }
 
     public boolean isWindowActive(long nowNanos) {
@@ -131,63 +164,74 @@ public final class BacktrackPacketPolicy implements InboundClaimPolicy {
         if (packet == null || epoch == null) return Decision.PASS;
         if (!stateEpoch.isSameSession(epoch)) resetForEpoch(epoch);
 
-        if (packet instanceof S0CPacketSpawnPlayer) {
-            S0CPacketSpawnPlayer spawn = (S0CPacketSpawnPlayer) packet;
-            baselines.put(spawn.getEntityID(), new FixedPosition(spawn.getX(), spawn.getY(), spawn.getZ()));
-            if (spawn.getEntityID() == shadowEntityId) {
-                shadowPosition = baselines.get(spawn.getEntityID());
-                shadowInitialized = true;
+        BacktrackControlSnapshot current = control;
+        if (!matchesEpoch(current, epoch)) {
+            endWindow(nowNanos, "session_invalid");
+            return Decision.RELEASE_AND_PASS;
+        }
+        boolean targetChanged = current.getTargetEntityId() != shadowEntityId;
+        boolean releasePrevious = targetChanged && windowActive;
+        if (targetChanged) {
+            endWindow(nowNanos, "target_changed");
+            invalidatedTargetId = NO_ENTITY;
+            shadowEntityId = current.getTargetEntityId();
+            shadowPosition = baselines.get(shadowEntityId);
+            if (shadowPosition == null && current.hasServerPosition()) {
+                shadowPosition = new FixedPosition(current.getServerX(), current.getServerY(), current.getServerZ());
+                baselines.put(shadowEntityId, shadowPosition);
             }
+            shadowInitialized = shadowPosition != null;
+        }
+        boolean targetMovement = trackMovement(packet, current.getTargetEntityId());
+        Decision barrier = classifyBarrier(packet, current);
+        if (barrier != null || releasePrevious) {
+            endWindow(nowNanos, "barrier_" + packet.getClass().getSimpleName());
+            return Decision.RELEASE_AND_PASS;
         }
 
-        BacktrackControlSnapshot current = control;
-        synchronizeTarget(current);
-
-        Decision barrier = classifyBarrier(packet, current);
-        if (barrier != null) return barrier;
-
-        boolean targetUpdate = isTargetUpdate(packet, current.getTargetEntityId());
-        boolean targetMovement = applyTargetMovement(packet, current.getTargetEntityId());
-        boolean eligible = current.isEnabled() && current.isTargetEligible()
-                && current.getTargetEntityId() != NO_ENTITY && current.getMaxDelayNanos() > 0L;
+        boolean eligible = matchesEpoch(current, epoch) && !localDead && current.isEnabled() && current.isTargetEligible()
+                && current.getTargetEntityId() != NO_ENTITY && current.getTargetEntityId() != invalidatedTargetId
+                && current.getMaxDelayNanos() > 0L
+                && isAttackFresh(current, nowNanos);
         if (!eligible) {
             if (windowActive) {
-                resetWindow();
-                publishPose(current, epoch, nowNanos, false, false);
+                endWindow(nowNanos, "ineligible");
                 return Decision.RELEASE_AND_PASS;
             }
             publishPose(current, epoch, nowNanos, false, false);
             return Decision.PASS;
         }
 
-        if (nowNanos < current.getCooldownUntilNanos()) {
+        if (nowNanos < cooldownUntilNanos) {
             publishPose(current, epoch, nowNanos, false, false);
             return Decision.PASS;
         }
 
         if (windowActive) {
             if (nowNanos >= windowDeadlineNanos) {
-                resetWindow();
-                publishPose(current, epoch, nowNanos, false, false);
+                endWindow(nowNanos, "deadline");
                 return Decision.RELEASE_AND_PASS;
             }
             if (!hasUsefulPosition(current, current.getContinueEpsilon())) {
-                resetWindow();
-                publishPose(current, epoch, nowNanos, false, false);
+                endWindow(nowNanos, "position_not_useful");
                 return Decision.RELEASE_AND_PASS;
             }
             publishPose(current, epoch, nowNanos, true, hasUsefulPosition(current, 0.0D));
-            return targetUpdate ? Decision.CLAIM : Decision.BYPASS;
+            return Decision.CLAIM;
         }
 
         if (targetMovement && isAttackFresh(current, nowNanos)
                 && hasUsefulPosition(current, current.getStartEpsilon())) {
             windowActive = true;
-            windowOpenedNanos = nowNanos;
+            windowCooldownNanos = current.getCooldownNanos();
+            windowDebugLogging = current.isDebugLogging();
             delaySelected = false;
             long delay = chooseWindowDelayNanos();
             windowDeadlineNanos = safeAdd(nowNanos, delay);
             windowActive = delay > 0L;
+            if (windowActive && windowDebugLogging) System.out.println("[mindless] [backtrack] open target="
+                    + shadowEntityId + " delayMs=" + delay / 1000000L
+                    + " shadow=" + shadowPosition.x / 32.0D + "," + shadowPosition.y / 32.0D + "," + shadowPosition.z / 32.0D);
             publishPose(current, epoch, nowNanos, windowActive, windowActive);
             return windowActive ? Decision.CLAIM : Decision.PASS;
         }
@@ -198,15 +242,18 @@ public final class BacktrackPacketPolicy implements InboundClaimPolicy {
 
     private Decision classifyBarrier(Packet<?> packet, BacktrackControlSnapshot current) {
         if (packet instanceof S08PacketPlayerPosLook) {
-            resetWindow();
+            blockedAttackAtNanos = current.getAttackAtNanos();
+            return Decision.RELEASE_AND_PASS;
+        }
+        if (packet instanceof net.minecraft.network.play.server.S00PacketKeepAlive
+                || packet instanceof net.minecraft.network.play.server.S32PacketConfirmTransaction) {
             return Decision.RELEASE_AND_PASS;
         }
         if (packet instanceof S13PacketDestroyEntities) {
             for (int entityId : ((S13PacketDestroyEntities) packet).getEntityIDs()) {
                 if (entityId == current.getTargetEntityId()) {
+                    invalidatedTargetId = current.getTargetEntityId();
                     shadowInitialized = false;
-                    resetWindow();
-                    publishPose(current, stateEpoch, 0L, false, false);
                     return Decision.RELEASE_AND_PASS;
                 }
             }
@@ -215,21 +262,22 @@ public final class BacktrackPacketPolicy implements InboundClaimPolicy {
             float health = ((S06PacketUpdateHealth) packet).getHealth();
             boolean damaged = !Float.isNaN(lastServerHealth) && health < lastServerHealth - 0.001F;
             lastServerHealth = health;
+            if (health <= 0.0F) {
+                localDead = true;
+                invalidatedTargetId = current.getTargetEntityId();
+            }
             if (health <= 0.0F || current.isFlushOnDamage() && damaged) {
-                resetWindow();
                 return Decision.RELEASE_AND_PASS;
             }
         }
         if (current.isFlushOnDamage() && packet instanceof S12PacketEntityVelocity
                 && ((S12PacketEntityVelocity) packet).getEntityID() == current.getLocalEntityId()) {
-            resetWindow();
             return Decision.RELEASE_AND_PASS;
         }
         if (current.isFlushOnDamage() && packet instanceof S27PacketExplosion) {
             S27PacketExplosion explosion = (S27PacketExplosion) packet;
             if (explosion.func_149149_c() != 0.0F || explosion.func_149144_d() != 0.0F
                     || explosion.func_149147_e() != 0.0F) {
-                resetWindow();
                 return Decision.RELEASE_AND_PASS;
             }
         }
@@ -238,14 +286,14 @@ public final class BacktrackPacketPolicy implements InboundClaimPolicy {
             int entityId = AccessorBridge.S19PacketEntityStatus_getEntityId(status);
             if (status.getOpCode() == 3 && (entityId == current.getLocalEntityId()
                     || entityId == current.getTargetEntityId())) {
+                if (entityId == current.getLocalEntityId()) localDead = true;
+                invalidatedTargetId = current.getTargetEntityId();
                 shadowInitialized = false;
-                resetWindow();
                 return Decision.RELEASE_AND_PASS;
             }
             if (status.getOpCode() == 2
                     && (current.isFlushOnDamage() && entityId == current.getLocalEntityId()
-                    || entityId == current.getTargetEntityId())) {
-                resetWindow();
+                    || current.isFlushOnTargetHit() && entityId == current.getTargetEntityId())) {
                 return Decision.RELEASE_AND_PASS;
             }
         }
@@ -254,59 +302,63 @@ public final class BacktrackPacketPolicy implements InboundClaimPolicy {
             if (combat.eventType == S42PacketCombatEvent.Event.ENTITY_DIED
                     && (combat.field_179774_b == current.getLocalEntityId()
                     || combat.field_179774_b == current.getTargetEntityId())) {
+                if (combat.field_179774_b == current.getLocalEntityId()) localDead = true;
+                invalidatedTargetId = current.getTargetEntityId();
                 shadowInitialized = false;
-                resetWindow();
                 return Decision.RELEASE_AND_PASS;
             }
         }
         return null;
     }
 
-    private void synchronizeTarget(BacktrackControlSnapshot current) {
-        int targetId = current.getTargetEntityId();
-        if (targetId == shadowEntityId) return;
-        resetWindow();
-        shadowEntityId = targetId;
-        shadowPosition = baselines.get(targetId);
-        shadowInitialized = shadowPosition != null;
-    }
-
-    private boolean applyTargetMovement(Packet<?> packet, int targetId) {
-        if (targetId == NO_ENTITY || shadowEntityId != targetId) return false;
+    private boolean trackMovement(Packet<?> packet, int targetId) {
+        int entityId;
+        FixedPosition position;
+        if (packet instanceof S0CPacketSpawnPlayer) {
+            S0CPacketSpawnPlayer spawn = (S0CPacketSpawnPlayer) packet;
+            baselines.put(spawn.getEntityID(), new FixedPosition(spawn.getX(), spawn.getY(), spawn.getZ()));
+            if (spawn.getEntityID() == targetId) {
+                shadowPosition = baselines.get(targetId);
+                shadowInitialized = true;
+            }
+            return false;
+        }
+        if (packet instanceof S13PacketDestroyEntities) {
+            for (int destroyed : ((S13PacketDestroyEntities) packet).getEntityIDs()) baselines.remove(destroyed);
+            return false;
+        }
         if (packet instanceof S14PacketEntity) {
             S14PacketEntity movement = (S14PacketEntity) packet;
-            if (AccessorBridge.S14PacketEntity_getEntityId(movement) != targetId
-                    || !(movement instanceof S14PacketEntity.S15PacketEntityRelMove)
+            if (!(movement instanceof S14PacketEntity.S15PacketEntityRelMove)
                     && !(movement instanceof S14PacketEntity.S17PacketEntityLookMove)) return false;
-            if (!shadowInitialized || shadowPosition == null) return false;
-            shadowPosition = new FixedPosition(
-                    shadowPosition.x + AccessorBridge.S14PacketEntity_getDeltaX(movement),
-                    shadowPosition.y + AccessorBridge.S14PacketEntity_getDeltaY(movement),
-                    shadowPosition.z + AccessorBridge.S14PacketEntity_getDeltaZ(movement));
-            return true;
-        }
-        if (packet instanceof S18PacketEntityTeleport) {
+            entityId = AccessorBridge.S14PacketEntity_getEntityId(movement);
+            FixedPosition previous = baselines.get(entityId);
+            if (previous == null) return false;
+            position = new FixedPosition(
+                    previous.x + AccessorBridge.S14PacketEntity_getDeltaX(movement),
+                    previous.y + AccessorBridge.S14PacketEntity_getDeltaY(movement),
+                    previous.z + AccessorBridge.S14PacketEntity_getDeltaZ(movement));
+        } else if (packet instanceof S18PacketEntityTeleport) {
             S18PacketEntityTeleport teleport = (S18PacketEntityTeleport) packet;
-            if (teleport.getEntityId() != targetId) return false;
-            shadowPosition = new FixedPosition(teleport.getX(), teleport.getY(), teleport.getZ());
-            shadowInitialized = true;
-            return true;
+            entityId = teleport.getEntityId();
+            position = new FixedPosition(teleport.getX(), teleport.getY(), teleport.getZ());
+        } else {
+            return false;
         }
-        return false;
+        baselines.put(entityId, position);
+        if (entityId != targetId) return false;
+        shadowPosition = position;
+        shadowInitialized = true;
+        return true;
     }
 
-    private boolean isTargetUpdate(Packet<?> packet, int targetId) {
-        if (targetId == NO_ENTITY) return false;
-        if (packet instanceof S14PacketEntity) {
-            return AccessorBridge.S14PacketEntity_getEntityId((S14PacketEntity) packet) == targetId;
-        }
-        return packet instanceof S18PacketEntityTeleport
-                && ((S18PacketEntityTeleport) packet).getEntityId() == targetId;
+    private boolean matchesEpoch(BacktrackControlSnapshot current, SessionEpoch epoch) {
+        return current.getEpoch() == null || current.getEpoch().isSameSession(epoch);
     }
 
     private boolean isAttackFresh(BacktrackControlSnapshot current, long nowNanos) {
         long attackAt = current.getAttackAtNanos();
-        if (attackAt == NO_ATTACK || current.getAttackWindowNanos() <= 0L || nowNanos < attackAt) return false;
+        if (attackAt == NO_ATTACK || attackAt == blockedAttackAtNanos || current.getAttackWindowNanos() <= 0L || nowNanos < attackAt) return false;
         return nowNanos - attackAt <= current.getAttackWindowNanos();
     }
 
@@ -350,13 +402,17 @@ public final class BacktrackPacketPolicy implements InboundClaimPolicy {
         shadowPosition = null;
         shadowInitialized = false;
         lastServerHealth = Float.NaN;
+        localDead = false;
+        blockedAttackAtNanos = NO_ATTACK;
+        cooldownUntilNanos = 0L;
+        invalidatedTargetId = NO_ENTITY;
         resetWindow();
         pose = BacktrackPoseSnapshot.EMPTY;
     }
 
     private void resetWindow() {
         windowActive = false;
-        windowOpenedNanos = 0L;
+        windowCooldownNanos = 0L;
         windowDeadlineNanos = 0L;
         selectedDelayNanos = 0L;
         delaySelected = false;
@@ -374,7 +430,7 @@ public final class BacktrackPacketPolicy implements InboundClaimPolicy {
     ) {
         double halfWidth = width * 0.5D + 0.1D;
         double closestX = clamp(eyeX, x - halfWidth, x + halfWidth);
-        double closestY = clamp(eyeY, y, y + height);
+        double closestY = clamp(eyeY, y - 0.1D, y + height + 0.1D);
         double closestZ = clamp(eyeZ, z - halfWidth, z + halfWidth);
         double dx = eyeX - closestX;
         double dy = eyeY - closestY;

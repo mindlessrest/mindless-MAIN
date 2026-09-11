@@ -47,6 +47,13 @@ public class MixinMinecraft {
         if (event.isCanceled()) ci.cancel();
     }
 
+    @Inject(method = "sendClickBlockToController", at = @At("HEAD"), cancellable = true)
+    private void mindless$blockScaffoldMining(boolean attack, CallbackInfo ci) {
+        if (attack && ModuleManager.scaffold != null && ModuleManager.scaffold.blocksMining()) {
+            ci.cancel();
+        }
+    }
+
     @Inject(method = "loadWorld(Lnet/minecraft/client/multiplayer/WorldClient;Ljava/lang/String;)V",
             at = @At("HEAD"))
     private void mindless$discardDelayedPacketsBeforeWorldUnload(
@@ -54,13 +61,11 @@ public class MixinMinecraft {
     ) {
         Minecraft minecraft = (Minecraft) (Object) this;
         if (ModuleManager.bedAura != null) ModuleManager.bedAura.onWorldChange();
-        if (minecraft.theWorld != null && minecraft.theWorld != nextWorld && Mindless.packetDelayService != null)
-            Mindless.packetDelayService.advanceWorld();
         if (ModuleManager.killAura != null) ModuleManager.killAura.onWorldChange();
         if (nextWorld != null || minecraft.theWorld == null) return;
-        if (ModuleManager.backtrack != null) ModuleManager.backtrack.onWorldUnload();
         PacketDelayService service = Mindless.packetDelayService;
         if (service != null) service.onClientWorldUnload();
+        if (ModuleManager.backtrack != null) ModuleManager.backtrack.onWorldUnload();
     }
 
     @Inject(method = "runTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/EntityRenderer;getMouseOver(F)V", shift = At.Shift.AFTER))

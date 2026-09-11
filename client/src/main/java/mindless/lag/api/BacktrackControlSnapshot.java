@@ -3,13 +3,20 @@ package mindless.lag.api;
 public final class BacktrackControlSnapshot {
     public static final BacktrackControlSnapshot EMPTY = disabled();
     private final boolean enabled;
+    private final SessionEpoch epoch;
     private final boolean targetEligible;
     private final boolean flushOnDamage;
+    private final boolean flushOnTargetHit;
+    private final boolean debugLogging;
+    private final boolean hasServerPosition;
+    private final int serverX;
+    private final int serverY;
+    private final int serverZ;
     private final int localEntityId;
     private final int targetEntityId;
     private final long attackAtNanos;
     private final long attackWindowNanos;
-    private final long cooldownUntilNanos;
+    private final long cooldownNanos;
     private final long minDelayNanos;
     private final long maxDelayNanos;
     private final double eyeX;
@@ -27,13 +34,20 @@ public final class BacktrackControlSnapshot {
 
     private BacktrackControlSnapshot(Builder builder) {
         this.enabled = builder.enabled;
+        this.epoch = builder.epoch;
         this.targetEligible = builder.targetEligible;
         this.flushOnDamage = builder.flushOnDamage;
+        this.flushOnTargetHit = builder.flushOnTargetHit;
+        this.debugLogging = builder.debugLogging;
+        this.hasServerPosition = builder.hasServerPosition;
+        this.serverX = builder.serverX;
+        this.serverY = builder.serverY;
+        this.serverZ = builder.serverZ;
         this.localEntityId = builder.localEntityId;
         this.targetEntityId = builder.targetEntityId;
         this.attackAtNanos = builder.attackAtNanos;
         this.attackWindowNanos = builder.attackWindowNanos;
-        this.cooldownUntilNanos = builder.cooldownUntilNanos;
+        this.cooldownNanos = builder.cooldownNanos;
         this.minDelayNanos = builder.minDelayNanos;
         this.maxDelayNanos = builder.maxDelayNanos;
         this.eyeX = builder.eyeX;
@@ -58,14 +72,21 @@ public final class BacktrackControlSnapshot {
         return new Builder();
     }
 
+    public SessionEpoch getEpoch() { return epoch; }
     public boolean isEnabled() { return enabled; }
     public boolean isTargetEligible() { return targetEligible; }
+    public boolean isDebugLogging() { return debugLogging; }
+    public boolean isFlushOnTargetHit() { return flushOnTargetHit; }
+    public boolean hasServerPosition() { return hasServerPosition; }
+    public int getServerX() { return serverX; }
+    public int getServerY() { return serverY; }
+    public int getServerZ() { return serverZ; }
     public boolean isFlushOnDamage() { return flushOnDamage; }
     public int getLocalEntityId() { return localEntityId; }
     public int getTargetEntityId() { return targetEntityId; }
     public long getAttackAtNanos() { return attackAtNanos; }
     public long getAttackWindowNanos() { return attackWindowNanos; }
-    public long getCooldownUntilNanos() { return cooldownUntilNanos; }
+    public long getCooldownNanos() { return cooldownNanos; }
     public long getMinDelayNanos() { return minDelayNanos; }
     public long getMaxDelayNanos() { return maxDelayNanos; }
     public double getEyeX() { return eyeX; }
@@ -83,13 +104,20 @@ public final class BacktrackControlSnapshot {
 
     public static final class Builder {
         private boolean enabled;
+        private SessionEpoch epoch;
         private boolean targetEligible;
         private boolean flushOnDamage = true;
+        private boolean flushOnTargetHit;
+        private boolean debugLogging;
+        private boolean hasServerPosition;
+        private int serverX;
+        private int serverY;
+        private int serverZ;
         private int localEntityId = Integer.MIN_VALUE;
         private int targetEntityId = Integer.MIN_VALUE;
         private long attackAtNanos = Long.MIN_VALUE;
         private long attackWindowNanos;
-        private long cooldownUntilNanos;
+        private long cooldownNanos;
         private long minDelayNanos;
         private long maxDelayNanos;
         private double eyeX;
@@ -105,14 +133,18 @@ public final class BacktrackControlSnapshot {
         private double startEpsilon = 0.025D;
         private double continueEpsilon = 0.01D;
 
+        public Builder epoch(SessionEpoch value) { epoch = value; return this; }
         public Builder enabled(boolean value) { enabled = value; return this; }
         public Builder targetEligible(boolean value) { targetEligible = value; return this; }
+        public Builder debugLogging(boolean value) { debugLogging = value; return this; }
+        public Builder flushOnTargetHit(boolean value) { flushOnTargetHit = value; return this; }
+        public Builder serverPosition(int x, int y, int z) { hasServerPosition = true; serverX = x; serverY = y; serverZ = z; return this; }
         public Builder flushOnDamage(boolean value) { flushOnDamage = value; return this; }
         public Builder localEntityId(int value) { localEntityId = value; return this; }
         public Builder targetEntityId(int value) { targetEntityId = value; return this; }
         public Builder attackAtNanos(long value) { attackAtNanos = value; return this; }
         public Builder attackWindowNanos(long value) { attackWindowNanos = Math.max(0L, value); return this; }
-        public Builder cooldownUntilNanos(long value) { cooldownUntilNanos = value; return this; }
+        public Builder cooldownNanos(long value) { cooldownNanos = Math.max(0L, value); return this; }
         public Builder minDelayNanos(long value) { minDelayNanos = Math.max(0L, value); return this; }
         public Builder maxDelayNanos(long value) { maxDelayNanos = Math.max(0L, value); return this; }
         public Builder eye(double x, double y, double z) { eyeX = x; eyeY = y; eyeZ = z; return this; }

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import mindless.event.ClientRotationEvent;
+import mindless.event.PreAttackEvent;
 import mindless.event.PrePlayerInputEvent;
 import mindless.event.PreUpdateEvent;
 import mindless.event.RightClickMouseEvent;
@@ -130,6 +131,9 @@ public class Scaffold extends Module {
 
     @Override
     public void onEnable() {
+        if (Utils.nullCheck() && mc.playerController != null) {
+            mc.playerController.resetBlockRemoving();
+        }
         previousHotbarSlot = Utils.nullCheck() ? mc.thePlayer.inventory.currentItem : -1;
         remainingStackBlocks = -1;
         placementDelayTicks = 0;
@@ -259,6 +263,14 @@ public class Scaffold extends Module {
     }
 
     @SubscribeEvent
+    public void onBlockAttack(PreAttackEvent event) {
+        if (blocksMining() && event.objectMouseOver != null
+                && event.objectMouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
     public void onRightClick(RightClickMouseEvent event) {
         if (isEnabled()) {
             event.setCanceled(true);
@@ -291,6 +303,10 @@ public class Scaffold extends Module {
 
     public boolean isActivelyScaffolding() {
         return isEnabled() && (queuedTarget != null || pendingPlacementFace != null);
+    }
+
+    public boolean blocksMining() {
+        return isEnabled();
     }
 
     public boolean isSprintScaffoldSprinting() {

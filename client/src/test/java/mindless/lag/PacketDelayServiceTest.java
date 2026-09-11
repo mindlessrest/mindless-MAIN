@@ -1,6 +1,8 @@
 package mindless.lag;
 
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import mindless.event.SendPacketEvent;
 import mindless.lag.api.DelayLease;
 import mindless.lag.api.DelayRequest;
@@ -18,6 +20,8 @@ import net.minecraft.network.Packet;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.network.play.server.S01PacketJoinGame;
+import net.minecraft.network.play.server.S07PacketRespawn;
+import net.minecraft.network.play.server.S21PacketChunkData;
 import net.minecraft.network.play.server.S14PacketEntity;
 import net.minecraft.network.play.server.S18PacketEntityTeleport;
 import net.minecraft.network.play.server.S08PacketPlayerPosLook;
@@ -145,7 +149,7 @@ public class PacketDelayServiceTest {
     }
 
     @Test
-    public void backtrackDoesNotHoldUnrelatedWorldPackets() {
+    public void backtrackPreservesInboundOrderDuringTheWindow() {
         ManualClock clock = new ManualClock();
         PacketDelayService service = new PacketDelayService(clock, Runnable::run, null);
         BacktrackPacketPolicy policy = new BacktrackPacketPolicy(() -> 0.0D);
@@ -178,8 +182,13 @@ public class PacketDelayServiceTest {
         TestPacket worldPacket = new TestPacket("world-state");
         service.handleInbound(worldPacket, epoch, delivered::add);
 
-        Assert.assertEquals(Arrays.asList(worldPacket), delivered);
-        Assert.assertEquals(1, service.getPendingCount(EnumLagDirection.INBOUND));
+        Assert.assertTrue(delivered.isEmpty());
+        Assert.assertEquals(2, service.getPendingCount(EnumLagDirection.INBOUND));
+        clock.set(100L);
+        service.drainExpired();
+        Assert.assertEquals(2, delivered.size());
+        Assert.assertSame(worldPacket, delivered.get(1));
+        Assert.assertEquals(0, service.getPendingCount(EnumLagDirection.INBOUND));
     }
 
     @Test
@@ -365,6 +374,140 @@ public class PacketDelayServiceTest {
         Assert.assertTrue(channel.writeInbound(afterJoin));
         Assert.assertSame(afterJoin, channel.readInbound());
         channel.finish();
+    }
+
+    @Test
+    public void queuedResetCannotInvalidatePacketsAfterJoin() {
+        ArrayDeque<Runnable> work = new ArrayDeque<>();
+        PacketDelayService service = new PacketDelayService(() -> 0L, work::add, null);
+        service.advanceConnection();
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new mindless.lag.service.PacketDelayChannelHandler(service, service.getCurrentEpoch()));
+        S01PacketJoinGame join = new S01PacketJoinGame();
+        Assert.assertTrue(channel.writeInbound(join));
+        Assert.assertSame(join, channel.readInbound());
+        SessionEpoch joinedEpoch = service.getCurrentEpoch();
+        PacketDelayService.consumeReplay(join);
+        AtomicInteger joinDeliveries = new AtomicInteger();
+        Runnable delivery = PacketDelayService.guardFinalDelivery(joinDeliveries::incrementAndGet);
+
+        drain(work);
+
+        Assert.assertTrue(service.getCurrentEpoch().isSameSession(joinedEpoch));
+        TestPacket update = new TestPacket("chunk-or-entity-update");
+        Assert.assertTrue(channel.writeInbound(update));
+        Assert.assertSame(update, channel.readInbound());
+        delivery.run();
+        Assert.assertEquals(1, joinDeliveries.get());
+        PacketDelayService.consumeReplay(update);
+        PacketDelayService.clearFinalDelivery(update);
+        channel.finish();
+    }
+
+    @Test
+    public void joinAndRespawnBurstReachesMinecraftInOrder() {
+        PacketDelayService service = new PacketDelayService(() -> 0L, Runnable::run, null);
+        service.acquire(DelayRequest.fixedWindow(
+                "Backtrack", EnumLagDirection.ONLY_INBOUND, new BacktrackPacketPolicy(), Long.MAX_VALUE));
+        ArrayDeque<Runnable> minecraftTasks = new ArrayDeque<>();
+        List<Packet<?>> delivered = new ArrayList<>();
+        EmbeddedChannel channel = deferredMinecraftChannel(service, minecraftTasks, delivered);
+        Packet<?>[] burst = {new S01PacketJoinGame(), new S21PacketChunkData(),
+                new S07PacketRespawn(), new S07PacketRespawn(), new S18PacketEntityTeleport()};
+        try {
+            for (Packet<?> packet : burst) channel.writeInbound(packet);
+            Assert.assertTrue(delivered.isEmpty());
+            drain(minecraftTasks);
+            Assert.assertEquals(Arrays.asList(burst), delivered);
+        } finally {
+            channel.finish();
+        }
+    }
+
+    @Test
+    public void disconnectStillRejectsQueuedJoinAndRespawnBurst() {
+        for (boolean replaceConnection : new boolean[]{false, true}) {
+            PacketDelayService service = new PacketDelayService(() -> 0L, Runnable::run, null);
+            service.acquire(DelayRequest.fixedWindow(
+                    "Backtrack", EnumLagDirection.ONLY_INBOUND, new BacktrackPacketPolicy(), Long.MAX_VALUE));
+            ArrayDeque<Runnable> minecraftTasks = new ArrayDeque<>();
+            List<Packet<?>> delivered = new ArrayList<>();
+            EmbeddedChannel channel = deferredMinecraftChannel(service, minecraftTasks, delivered);
+            try {
+                channel.writeInbound(new S01PacketJoinGame());
+                channel.writeInbound(new S07PacketRespawn());
+                if (replaceConnection) service.advanceConnection();
+                else service.onClientWorldUnload();
+                drain(minecraftTasks);
+                Assert.assertTrue(delivered.isEmpty());
+            } finally {
+                channel.finish();
+            }
+        }
+    }
+
+    @Test
+    public void respawnDiscardsHeldMovementButPreservesQueuedJoin() {
+        PacketDelayService service = new PacketDelayService(() -> 0L, Runnable::run, null);
+        service.acquire(DelayRequest.fixedWindow(
+                "test", EnumLagDirection.ONLY_INBOUND,
+                (packet, epoch, now) -> packet instanceof S14PacketEntity
+                        ? InboundClaimPolicy.Decision.CLAIM : InboundClaimPolicy.Decision.BYPASS,
+                Long.MAX_VALUE));
+        ArrayDeque<Runnable> minecraftTasks = new ArrayDeque<>();
+        List<Packet<?>> delivered = new ArrayList<>();
+        EmbeddedChannel channel = deferredMinecraftChannel(service, minecraftTasks, delivered);
+        S01PacketJoinGame join = new S01PacketJoinGame();
+        S07PacketRespawn respawn = new S07PacketRespawn();
+        channel.pipeline().addFirst(PacketDelayService.HANDLER_NAME,
+                new mindless.lag.service.PacketDelayChannelHandler(service, service.getCurrentEpoch()));
+        try {
+            channel.writeInbound(join);
+            channel.writeInbound(new S14PacketEntity.S15PacketEntityRelMove(
+                    7, (byte) 32, (byte) 0, (byte) 0, true));
+            Assert.assertEquals(1, service.getPendingCount(EnumLagDirection.INBOUND));
+            channel.writeInbound(respawn);
+            Assert.assertEquals(0, service.getPendingCount(EnumLagDirection.INBOUND));
+            drain(minecraftTasks);
+            Assert.assertEquals(Arrays.asList(join, respawn), delivered);
+        } finally {
+            channel.finish();
+        }
+    }
+
+    private static EmbeddedChannel deferredMinecraftChannel(
+            PacketDelayService service, ArrayDeque<Runnable> tasks, List<Packet<?>> delivered) {
+        return new EmbeddedChannel(new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelRead(ChannelHandlerContext context, Object message) {
+                Packet<?> packet = (Packet<?>) message;
+                if (!PacketDelayService.consumeReplay(packet)
+                        && service.interceptFirstInbound(context, packet)) return;
+                if (!PacketDelayService.checkFinalDelivery(packet, false)) return;
+                tasks.add(PacketDelayService.guardFinalDelivery(() -> delivered.add(packet)));
+                PacketDelayService.clearFinalDelivery(packet);
+            }
+        });
+    }
+
+    @Test
+    public void obsoleteResetDoesNotDiscardNewWorldQueue() {
+        ArrayDeque<Runnable> work = new ArrayDeque<>();
+        PacketDelayService service = new PacketDelayService(() -> 0L, work::add, null);
+        service.acquire(DelayRequest.fixedWindow(
+                "test", EnumLagDirection.ONLY_INBOUND, InboundClaimPolicy.ALWAYS, Long.MAX_VALUE));
+        drain(work);
+        service.advanceWorld();
+        service.advanceWorld();
+        SessionEpoch current = service.getCurrentEpoch();
+        List<Packet<?>> delivered = new ArrayList<>();
+        service.handleInbound(new TestPacket("current"), current, delivered::add);
+
+        drain(work);
+
+        Assert.assertTrue(service.getCurrentEpoch().isSameSession(current));
+        Assert.assertEquals(1, service.getPendingCount(EnumLagDirection.INBOUND));
+        Assert.assertTrue(delivered.isEmpty());
     }
 
     @Test

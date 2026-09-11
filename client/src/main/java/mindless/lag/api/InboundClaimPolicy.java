@@ -6,6 +6,10 @@ import net.minecraft.network.Packet;
 public interface InboundClaimPolicy {
     Decision decide(Packet<?> packet, SessionEpoch epoch, long nowNanos);
 
+    default boolean shouldRelease(SessionEpoch epoch, long nowNanos) { return false; }
+
+    default void onRelease(SessionEpoch epoch, long nowNanos) { }
+
     enum Decision {
         PASS,
         BYPASS,
