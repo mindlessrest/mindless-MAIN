@@ -146,6 +146,8 @@ private static final int[] DEFAULT_RING_COLORS = {
     private Timer fadeTimer;
     private Timer healthBarTimer = null;
     private EntityLivingBase target;
+    /** Set only while the click GUI is painting its preview copy of the panel. */
+    private boolean previewPanel;
     private double lastHealth;
     private float lastHealthBar;
     private long popInStart = -1;
@@ -477,6 +479,29 @@ private int ringColor(int ringIndex) {
         double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - mc.getRenderManager().viewerPosY;
         double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - mc.getRenderManager().viewerPosZ;
 
+        double horizontalDistance = Math.sqrt(x * x + z * z);
+        double centerToCameraY = -(y + entity.height * 0.5);
+        float elevation = (float) Math.atan2(centerToCameraY, Math.max(0.001, horizontalDistance));
+        double distance = Math.sqrt(x * x + y * y + z * z);
+
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(
+                (float) (x + (ringOffsetX == null ? 0.0 : ringOffsetX.getInput())),
+                (float) (y + (ringOffsetY == null ? 0.0 : ringOffsetY.getInput())),
+                (float) (z + (ringOffsetZ == null ? 0.0 : ringOffsetZ.getInput())));
+        emitRings(entity.height, entity.width, (float) distance, elevation, fade);
+        GlStateManager.popMatrix();
+    }
+
+    /**
+     * The rings themselves, around whatever origin the caller has already set up.
+     *
+     * Split from the world path above so the click GUI's visual preview can draw the real
+     * thing in a little world of its own instead of an impression of it. Everything the
+     * settings drive comes through here, so both callers get the same rings.
+     */
+    private void emitRings(float entityHeight, float entityWidth, float distance,
+                           float elevation, float fade) {
         int style = ringStyle == null ? RING_STYLE_BOUNCE : (int) ringStyle.getInput();
         int count = style == RING_STYLE_RING || style == RING_STYLE_RADAR
                 ? 1
@@ -484,8 +509,7 @@ private int ringColor(int ringIndex) {
         int segments = Math.max(8, ringQuality == null ? 40 : (int) ringQuality.getInput());
         boolean soft = ringSoftEdges == null || ringSoftEdges.isToggled();
 
-        float entityHeight = entity.height;
-        float baseRadius = entity.width * 0.7f * (float) (ringSize == null ? 1.0 : ringSize.getInput());
+        float baseRadius = entityWidth * 0.7f * (float) (ringSize == null ? 1.0 : ringSize.getInput());
         double speed = ringSpeed == null ? 1.0 : ringSpeed.getInput();
         double time = (System.currentTimeMillis() % 86400000L) / 2000.0 * speed;
 
@@ -504,9 +528,6 @@ private int ringColor(int ringIndex) {
         float viewSpin = 0.0f;
         float viewRise = 0.0f;
         if (view != RING_VIEW_3D) {
-            double horizontalDistance = Math.sqrt(x * x + z * z);
-            double centerToCameraY = -(y + entityHeight * 0.5);
-            float elevation = (float) Math.atan2(centerToCameraY, Math.max(0.001, horizontalDistance));
             float edgeOn = 1.0f - Math.min(1.0f,
                     Math.abs(elevation) / (float) Math.toRadians(40.0));
             viewRise = baseRadius * (view == RING_VIEW_2D ? 0.34f : 0.18f)
@@ -516,17 +537,11 @@ private int ringColor(int ringIndex) {
         // A band is world space, so a ring far away thins out to nothing where a screen-space
         // line would not. Widen it with distance, but only up to a point, or a target across
         // the map ends up wearing a dinner plate.
-        double distance = Math.sqrt(x * x + y * y + z * z);
         float thickness = (float) ((ringThickness == null ? 2.5 : ringThickness.getInput()) * 0.012);
         thickness *= (float) Math.min(3.5, Math.max(1.0, distance / 12.0));
 
         ensureCircle(segments);
 
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(
-                (float) (x + (ringOffsetX == null ? 0.0 : ringOffsetX.getInput())),
-                (float) (y + (ringOffsetY == null ? 0.0 : ringOffsetY.getInput())),
-                (float) (z + (ringOffsetZ == null ? 0.0 : ringOffsetZ.getInput())));
         // Whatever drew last in the world pass may have left a shader program bound, and a
         // fixed-function batch drawn through someone else's program renders nothing or garbage.
         // The array list batch already had to do this; the rings never did.
@@ -678,7 +693,6 @@ private int ringColor(int ringIndex) {
         GlStateManager.enableDepth();
         GlStateManager.enableTexture2D();
         GlStateManager.disableBlend();
-        GlStateManager.popMatrix();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
@@ -989,7 +1003,9 @@ private int ringColor(int ringIndex) {
         float desiredX = (scaledResolution.getScaledWidth() / 2 - targetStrWithPadding / 2) + posX;
         float desiredY = (scaledResolution.getScaledHeight() / 2 + 15) + posY;
 
-        int posMode = positionMode != null ? (int) positionMode.getInput() : 0;
+        // The preview pins the panel where it was asked to go. There is no target on screen
+        // for it to anchor itself to, so the anchoring modes have nothing to work from.
+        int posMode = positionMode != null && !previewPanel ? (int) positionMode.getInput() : 0;
         if (posMode > 0 && target != null) {
             float sw = scaledResolution.getScaledWidth();
             float sh = scaledResolution.getScaledHeight();
@@ -2136,6 +2152,66 @@ private static final float[][] HEAD_UVS = {
 
     public float[] renderPreview() {
         return renderDesignerPreview(posX, posY);
+    }
+
+    /**
+     * The real panel, drawn with its top-left corner where the click GUI asked.
+     *
+     * posX and posY are the module's own HUD offsets and the designer preview writes
+     * straight to them, so they are put back afterwards: looking at the panel in the click
+     * GUI must not move it in game. The same goes for the live target.
+     */
+    public void drawPreviewPanel(float left, float top) {
+        if (mc.thePlayer == null || mc.fontRendererObj == null) {
+            return;
+        }
+        int savedX = posX;
+        int savedY = posY;
+        EntityLivingBase savedTarget = target;
+        previewPanel = true;
+        try {
+            target = mc.thePlayer;
+            ScaledResolution resolution = new ScaledResolution(mc);
+            String info = mc.thePlayer.getDisplayName().getFormattedText()
+                    + " " + Utils.getHealthStr(mc.thePlayer, true);
+            int headSize = mc.fontRendererObj.FONT_HEIGHT + 18;
+            int contentWidth = mc.fontRendererObj.getStringWidth(info) + 8 + headSize + 10;
+            // renderDesignerPreview adds the screen-centre origin back, so this takes it off.
+            renderDesignerPreview(
+                    left + 8f - (resolution.getScaledWidth() / 2f - contentWidth / 2f),
+                    top + 8f - (resolution.getScaledHeight() / 2f + 15f));
+        }
+        catch (Exception ignored) {
+        }
+        finally {
+            previewPanel = false;
+            posX = savedX;
+            posY = savedY;
+            target = savedTarget;
+        }
+    }
+
+    /**
+     * The real rings, in a small world of their own.
+     *
+     * A ring is world geometry around the player's feet, so the preview builds a matrix
+     * that maps one block to unitPixels and looks down at it slightly. Everything the
+     * settings drive -- style, count, size, speed, thickness, colours, band height -- comes
+     * out exactly as it would in game.
+     */
+    public void drawPreviewRings(float centerX, float feetY, float unitPixels) {
+        if (renderEsp == null || !renderEsp.isToggled() || unitPixels <= 0.01f) {
+            return;
+        }
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(centerX, feetY, 0.0f);
+        // Y runs down the screen and up in the world, hence the negative.
+        GlStateManager.scale(unitPixels, -unitPixels, unitPixels);
+        GlStateManager.rotate(22.0f, 1.0f, 0.0f, 0.0f);
+        // A player is 0.6 wide and 1.8 tall; three blocks is a normal fighting distance and
+        // is what the band thickness is scaled against in game.
+        emitRings(1.8f, 0.6f, 3.0f, (float) Math.toRadians(22.0), 1.0f);
+        GlStateManager.popMatrix();
     }
 
     public float[] renderDesignerPreview(float left, float top) {

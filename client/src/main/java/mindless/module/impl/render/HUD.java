@@ -56,6 +56,8 @@ private static final double HUD_WAVE_HORIZONTAL_X_SCALE = 0.35;
     private static ButtonSetting roundedBackground;
     private static SliderSetting cornerRadius;
     private static SliderSetting stepRounding;
+    private static ButtonSetting rowSeparators;
+    private static ColorSetting separatorColor;
     private static SliderSetting backgroundOpacity;
     private static ButtonSetting backgroundBlur;
     private static SliderSetting blurStrength;
@@ -127,6 +129,8 @@ private static final int[][] OUTLINE_OFFSETS = {
         this.registerSetting(roundedBackground = new ButtonSetting("Rounded background", false));
         this.registerSetting(cornerRadius = new SliderSetting("Corner radius", 4.0, 0.0, 20.0, 0.5));
         this.registerSetting(stepRounding = new SliderSetting("Step rounding", "%", 55.0, 0.0, 100.0, 5.0));
+        this.registerSetting(rowSeparators = new ButtonSetting("Row separators", true));
+        this.registerSetting(separatorColor = new ColorSetting("Separator color", 255, 255, 255, 38));
         this.registerSetting(backgroundOpacity = new SliderSetting("Background opacity", 43.0, 0.0, 100.0, 1.0));
         this.registerSetting(backgroundBlur = new ButtonSetting("Background blur", false));
         this.registerSetting(blurStrength = new SliderSetting("Blur strength", 4.0, 0.5, 16.0, 0.5));
@@ -193,6 +197,13 @@ private static final int[][] OUTLINE_OFFSETS = {
         }
         if (cornerRadius != null) {
             cornerRadius.setVisible(background && roundedBackground != null && roundedBackground.isToggled(), this);
+        }
+        boolean connected = background && backgroundMode != null && (int) backgroundMode.getInput() == 0;
+        if (rowSeparators != null) {
+            rowSeparators.setVisible(connected, this);
+        }
+        if (separatorColor != null) {
+            separatorColor.setVisible(connected && rowSeparators != null && rowSeparators.isToggled(), this);
         }
         if (stepRounding != null) {
             stepRounding.setVisible(background
@@ -794,6 +805,7 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont) {
         // panel back on top of the thing it was meant to replace, which is why turning blur on
         // looked like it did nothing.
         if (blurring) {
+            paintRowSeparators(widths, top, horizontalTextPadding, rowHeight);
             return;
         }
 
@@ -802,6 +814,35 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont) {
             int tint = backgroundTint == null ? 0 : backgroundTint.getRGB();
             paintBackgroundShapes(widths, top, horizontalTextPadding, rowHeight,
                     (alpha << 24) | tint, 0.0f);
+        }
+        paintRowSeparators(widths, top, horizontalTextPadding, rowHeight);
+    }
+
+    /**
+     * A hairline where two rows meet.
+     *
+     * Connected mode is deliberately one silhouette, which is what makes it connected, but
+     * with nothing between the rows a long list reads as a single slab. The line spans only
+     * the width the two neighbours share, so it never pokes out past the staircase.
+     */
+    private static void paintRowSeparators(int[] widths, float top, int horizontalTextPadding,
+                                           int rowHeight) {
+        if (rowSeparators == null || !rowSeparators.isToggled() || getBackgroundMode() != 0) {
+            return;
+        }
+        if (widths.length < 2 || separatorColor == null) {
+            return;
+        }
+        int color = separatorColor.getColor();
+        if ((color >>> 24) == 0) {
+            return;
+        }
+        boolean right = alignRight.isToggled();
+        for (int i = 0; i + 1 < widths.length; i++) {
+            float shared = Math.min(widths[i], widths[i + 1]) + horizontalTextPadding * 2f;
+            float left = right ? posX + horizontalTextPadding - shared : posX - horizontalTextPadding;
+            float y = top + (i + 1) * rowHeight;
+            RenderUtils.drawRect(left, y - 0.5f, left + shared, y + 0.5f, color);
         }
     }
 

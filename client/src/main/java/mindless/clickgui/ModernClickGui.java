@@ -1023,9 +1023,14 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
 
         if (mc.thePlayer instanceof AbstractClientPlayer) {
             AbstractClientPlayer player = (AbstractClientPlayer) mc.thePlayer;
+            // Clipped to the stage. What the modules draw is sized for a screen, not for a
+            // column this narrow, and a target panel that is wider than the stage would
+            // otherwise run straight over the settings next to it.
+            scissor(left, stageTop, right, stageBottom, true);
             visualPreview.draw(player.getLocationSkin(), "slim".equals(player.getSkinType()),
                     visualPreviewX, visualPreviewY, visualPreviewW, visualPreviewH, mouseX, mouseY);
             drawPreviewOverlay(alpha);
+            scissor(0, 0, 0, 0, false);
         }
 
         drawCentered("drag to rotate", left, right, baseY + panelH - 24f,
@@ -1063,8 +1068,13 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             resetTextRenderState();
         }
         else if (selectedModule instanceof mindless.module.impl.render.TargetHUD) {
-            ((mindless.module.impl.render.TargetHUD) selectedModule)
-                    .drawPreviewMarker(cx, (top + bottom) * .5f);
+            // Everything this module puts on screen, in the places it puts it: the rings
+            // around the feet, the marker over the body, the panel below both.
+            mindless.module.impl.render.TargetHUD hud =
+                    (mindless.module.impl.render.TargetHUD) selectedModule;
+            hud.drawPreviewRings(cx, bottom, (bottom - top) / 1.8f);
+            hud.drawPreviewMarker(cx, (top + bottom) * .5f);
+            hud.drawPreviewPanel(previewX + 14f, bottom + 14f);
             resetTextRenderState();
         }
         else if (selectedModule instanceof mindless.module.impl.render.Nametags) {
