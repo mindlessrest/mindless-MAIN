@@ -291,7 +291,7 @@ public void endSwap(Entity e) {
                 float predictedStrafe = psRaw * sneakMultiplier;
 
                 double predictedAngle = MathHelper.wrapAngleTo180_double(Math.toDegrees(getDirection(yaw, predictedForward, predictedStrafe)));
-                double difference = Math.abs(angle - predictedAngle);
+                double difference = Math.abs(MathHelper.wrapAngleTo180_double(angle - predictedAngle));
 
                 if (difference < closestDifference) {
                     closestDifference = (float) difference;

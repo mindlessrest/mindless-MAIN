@@ -376,6 +376,92 @@ public class PlacementModuleRegressionTest {
         assertFalse((Boolean) get(module, "placeQueued"));
     }
 
+    @Test public void scaffoldMoveFixUsesKeyboardDirectionsAndHandlesYawWrap() throws Exception {
+        Scaffold previous = ModuleManager.scaffold;
+        Scaffold module = new Scaffold();
+        field(mindless.module.Module.class, "enabled").setBoolean(module, true);
+        ModuleManager.scaffold = module;
+        mindless.helper.RotationHelper helper = new mindless.helper.RotationHelper();
+        helper.forceMovementFix = true;
+        set(helper, "serverYawSource", RotationSource.SCAFFOLD);
+        set(helper, "setRotations", true);
+        mc.thePlayer.movementInput = new net.minecraft.util.MovementInput();
+        try {
+            for (boolean sneak : new boolean[]{false, true}) {
+                float scale = sneak ? 0.3F : 1.0F;
+                mc.thePlayer.movementInput.sneak = sneak;
+                for (float cameraYaw : new float[]{0, 90, 179, -179}) {
+                    mc.thePlayer.rotationYaw = cameraYaw;
+                    for (float placementYaw : new float[]{157, 158, 179, -179, -158, -157, 23}) {
+                        set(helper, "serverYaw", placementYaw);
+                        mc.thePlayer.movementInput.moveForward = scale;
+                        mc.thePlayer.movementInput.moveStrafe = 0;
+                        helper.onPostInput(new mindless.event.PostPlayerInputEvent());
+                        float forward = mc.thePlayer.movementInput.moveForward;
+                        float strafe = mc.thePlayer.movementInput.moveStrafe;
+                        assertTrue("forward must be a keyboard input", forward == 0 || Math.abs(forward) == scale);
+                        assertTrue("strafe must be a keyboard input", strafe == 0 || Math.abs(strafe) == scale);
+                        double direction = Math.toDegrees(mindless.helper.RotationHelper.getDirection(placementYaw, forward, strafe));
+                        double error = Math.abs(net.minecraft.util.MathHelper.wrapAngleTo180_double(direction - cameraYaw));
+                        assertTrue("nearest direction across yaw wrap: " + error, error <= 22.5001D);
+                    }
+                }
+            }
+        } finally {
+            ModuleManager.scaffold = previous;
+        }
+    }
+
+    @Test public void normalScaffoldFindsStraightAimAcrossTheBlockFace() throws Exception {
+        for (double x : new double[]{0.2D, 0.5D, 0.8D}) {
+            Scaffold module = scaffoldFacingSupport(x, 1.25D);
+            Vec3 hit = scaffoldPlacementHit(module, EnumFacing.SOUTH);
+            assertNotNull(hit);
+            float yaw = (Float) get(module, "placementYaw");
+            float relative = net.minecraft.util.MathHelper.wrapAngleTo180_float(yaw - mc.thePlayer.rotationYaw);
+            assertEquals("aim must align with a keyboard direction", Math.round(relative / 45.0F) * 45.0F, relative, 0.2F);
+            assertEquals(EnumFacing.SOUTH, mindless.utility.RotationUtils.rayCastBlock(4.5D,
+                    yaw, (Float) get(module, "placementPitch")).sideHit);
+        }
+    }
+
+    @Test public void normalScaffoldKeepsReachableFallbackWhenStraightAimMisses() throws Exception {
+        Scaffold module = scaffoldFacingSupport(2.5D, 1.1D);
+        Vec3 hit = scaffoldPlacementHit(module, EnumFacing.EAST);
+        assertNotNull("keep the existing placement search when aligned rays miss", hit);
+        MovingObjectPosition ray = mindless.utility.RotationUtils.rayCastBlock(4.5D,
+                (Float) get(module, "placementYaw"), (Float) get(module, "placementPitch"));
+        assertNotNull(ray);
+        assertEquals(BlockPos.ORIGIN, ray.getBlockPos());
+        assertEquals(EnumFacing.EAST, ray.sideHit);
+    }
+
+    private Scaffold scaffoldFacingSupport(double x, double z) throws Exception {
+        Scaffold module = new Scaffold();
+        field(mindless.module.Module.class, "enabled").setBoolean(module, true);
+        ((mindless.module.setting.impl.SliderSetting) get(module, "keepY")).setValueRaw(0);
+        set(module, "placementYaw", -157.5F);
+        set(module, "placementPitch", 78.0F);
+        mc.thePlayer.posX = x;
+        mc.thePlayer.posY = 1.0D;
+        mc.thePlayer.posZ = z;
+        mc.thePlayer.rotationYaw = 0;
+        mc.thePlayer.movementInput = new net.minecraft.util.MovementInput();
+        mc.thePlayer.movementInput.moveForward = 1;
+        world.traceGeometry = true;
+        world.blocks.put(BlockPos.ORIGIN, Blocks.stone.getDefaultState());
+        return module;
+    }
+
+    private Vec3 scaffoldPlacementHit(Scaffold module, EnumFacing face) throws Exception {
+        Class<?> targetType = Class.forName(Scaffold.class.getName() + "$BlockPlacementTarget");
+        java.lang.reflect.Constructor<?> constructor = targetType.getDeclaredConstructor(BlockPos.class, EnumFacing.class);
+        constructor.setAccessible(true);
+        Object target = constructor.newInstance(BlockPos.ORIGIN, face);
+        return (Vec3) method(Scaffold.class, "findBestPlacementHit", targetType, float.class, float.class)
+                .invoke(module, target, -157.5F, 78.0F);
+    }
+
     @Test public void scaffoldRetainsPreRepairInputOwnership() throws Exception {
         Scaffold module = new Scaffold();
         field(mindless.module.Module.class, "enabled").setBoolean(module, true);

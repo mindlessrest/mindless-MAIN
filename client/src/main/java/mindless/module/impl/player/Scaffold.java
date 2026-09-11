@@ -432,6 +432,18 @@ public class Scaffold extends Module {
     }
 
     private Vec3 findBestPlacementHit(BlockPlacementTarget target, float previousYaw, float previousPitch) {
+        if (keepYState == 0 && (int) rotations.getInput() == ROTATIONS_DEFAULT
+                && usesSilentMoveFix() && hasMovementInput()) {
+            Vec3 alignedHit = findBestPlacementHit(target, previousYaw, previousPitch, true);
+            if (alignedHit != null) {
+                return alignedHit;
+            }
+        }
+        return findBestPlacementHit(target, previousYaw, previousPitch, false);
+    }
+
+    private Vec3 findBestPlacementHit(BlockPlacementTarget target, float previousYaw, float previousPitch,
+                                     boolean alignMovement) {
         double[] offsetsX = FACE_SAMPLE_OFFSETS;
         double[] offsetsY = FACE_SAMPLE_OFFSETS;
         double[] offsetsZ = FACE_SAMPLE_OFFSETS;
@@ -469,6 +481,10 @@ public class Scaffold extends Module {
                             - mc.thePlayer.posY - mc.thePlayer.getEyeHeight();
                     double deltaZ = target.position.getZ() + offsetZ - mc.thePlayer.posZ;
                     float[] raw = rotationsFromDelta(deltaX, deltaY, deltaZ);
+                    if (alignMovement) {
+                        float relativeYaw = MathHelper.wrapAngleTo180_float(raw[0] - mc.thePlayer.rotationYaw);
+                        raw[0] = mc.thePlayer.rotationYaw + Math.round(relativeYaw / 45.0F) * 45.0F;
+                    }
                     float[] candidate = quantize(raw[0], raw[1], previousYaw, previousPitch);
                     MovingObjectPosition hit = RotationUtils.rayCastBlock(
                             mc.playerController.getBlockReachDistance(), candidate[0], candidate[1]);
