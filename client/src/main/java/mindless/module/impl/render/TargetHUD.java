@@ -477,6 +477,10 @@ private int ringColor(int ringIndex) {
         double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - mc.getRenderManager().viewerPosY;
         double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - mc.getRenderManager().viewerPosZ;
 
+        drawPillEsp(entity, fade, x, y, z);
+    }
+
+    private void drawPillEsp(EntityLivingBase entity, float fade, double x, double y, double z) {
         int style = ringStyle == null ? RING_STYLE_BOUNCE : (int) ringStyle.getInput();
         int count = style == RING_STYLE_RING || style == RING_STYLE_RADAR
                 ? 1
@@ -489,25 +493,8 @@ private int ringColor(int ringIndex) {
         double speed = ringSpeed == null ? 1.0 : ringSpeed.getInput();
         double time = (System.currentTimeMillis() % 86400000L) / 2000.0 * speed;
 
-        /*
-         * Keep every view as a ring around the player's vertical axis.  The old 2D mode fully
-         * bill-boarded the ring to the camera; at normal combat distance that turned it into a
-         * huge upright circle covering the player and most of the screen. 2D and Hybrid now
-         * only add a restrained camera-side lean. That exposes the far edge from a low viewing
-         * angle without changing the original around-the-player silhouette.
-         */
-        int view = ringView == null ? RING_VIEW_HYBRID : (int) ringView.getInput();
         float viewTilt = 0.0f;
         float viewSpin = 0.0f;
-        if (view != RING_VIEW_3D) {
-            double horizontalDistance = Math.sqrt(x * x + z * z);
-            double centerToCameraY = -(y + entityHeight * 0.5);
-            float elevation = (float) Math.atan2(centerToCameraY, Math.max(0.001, horizontalDistance));
-            float readableTilt = (float) Math.toRadians(18.0)
-                    + Math.min((float) Math.toRadians(10.0), Math.abs(elevation) * 0.35f);
-            viewTilt = view == RING_VIEW_2D ? readableTilt : readableTilt * 0.52f;
-            viewSpin = (float) Math.atan2(-x, -z);
-        }
 
         // A band is world space, so a ring far away thins out to nothing where a screen-space
         // line would not. Widen it with distance, but only up to a point, or a target across
@@ -725,6 +712,24 @@ private int ringColor(int ringIndex) {
 
         for (int segment = 0; segment < segments; segment++) {
             int next = segment + 1 == segments ? 0 : segment + 1;
+            float sideHeight = ringView != null && (int) ringView.getInput() == RING_VIEW_3D
+                    ? 0.0f : thickness * 0.5f;
+            if (sideHeight > 0.0f) {
+                for (int side = -1; side <= 1; side += 2) {
+                    ringVertex(worldRenderer, segment, radius, centerX, ringY, centerZ,
+                            cosTilt, sinTilt, cosSpin, sinSpin, cosViewTilt, sinViewTilt,
+                            cosViewSpin, sinViewSpin, red, green, blue, alpha);
+                    ringVertex(worldRenderer, next, radius, centerX, ringY, centerZ,
+                            cosTilt, sinTilt, cosSpin, sinSpin, cosViewTilt, sinViewTilt,
+                            cosViewSpin, sinViewSpin, red, green, blue, alpha);
+                    ringVertex(worldRenderer, next, radius, centerX, ringY + side * sideHeight, centerZ,
+                            cosTilt, sinTilt, cosSpin, sinSpin, cosViewTilt, sinViewTilt,
+                            cosViewSpin, sinViewSpin, red, green, blue, soft ? 0 : alpha);
+                    ringVertex(worldRenderer, segment, radius, centerX, ringY + side * sideHeight, centerZ,
+                            cosTilt, sinTilt, cosSpin, sinSpin, cosViewTilt, sinViewTilt,
+                            cosViewSpin, sinViewSpin, red, green, blue, soft ? 0 : alpha);
+                }
+            }
             if (soft) {
                 band(worldRenderer, segment, next, inner, radius, centerX, ringY, centerZ,
                         cosTilt, sinTilt, cosSpin, sinSpin, cosViewTilt, sinViewTilt,
@@ -780,6 +785,17 @@ private int ringColor(int ringIndex) {
             // Ramp along the sweep so the tail dissolves and the head is solid.
             int alpha0 = Math.round(alpha * t0 * t0);
             int alpha1 = Math.round(alpha * t1 * t1);
+            if (ringView == null || (int) ringView.getInput() != RING_VIEW_3D) {
+                float halfHeight = thickness * 0.5f;
+                arcVertex(worldRenderer, a0, radius, centerX, ringY - halfHeight, centerZ,
+                        viewTilt, viewSpin, red, green, blue, alpha0);
+                arcVertex(worldRenderer, a1, radius, centerX, ringY - halfHeight, centerZ,
+                        viewTilt, viewSpin, red, green, blue, alpha1);
+                arcVertex(worldRenderer, a1, radius, centerX, ringY + halfHeight, centerZ,
+                        viewTilt, viewSpin, red, green, blue, alpha1);
+                arcVertex(worldRenderer, a0, radius, centerX, ringY + halfHeight, centerZ,
+                        viewTilt, viewSpin, red, green, blue, alpha0);
+            }
             arcQuad(worldRenderer, a0, a1, inner, outer, centerX, ringY, centerZ,
                     viewTilt, viewSpin, red, green, blue, alpha0, alpha1);
         }
@@ -906,12 +922,19 @@ private int ringColor(int ringIndex) {
     }
 
     private void drawTargetHUD(Timer fadeTimer, String string, double health) {
-        if (showDifference.isToggled() && target != null) {
-            float enemyHealth = target.isDead ? 0 : Utils.getTotalHealth(target);
+        drawTargetHUD(fadeTimer, string, health, Float.NaN, Float.NaN, 0.0f);
+    }
+
+    private void drawTargetHUD(Timer fadeTimer, String string, double health,
+                               float previewX, float previewY, float previewWidth) {
+        boolean preview = !Float.isNaN(previewX);
+        EntityLivingBase displayTarget = preview ? mc.thePlayer : target;
+        if (showDifference.isToggled() && displayTarget != null) {
+            float enemyHealth = displayTarget.isDead ? 0 : Utils.getTotalHealth(displayTarget);
             float playerHealth = Utils.getTotalHealth(mc.thePlayer);
 
             double diff = playerHealth - enemyHealth;
-            double percent = (playerHealth / mc.thePlayer.getMaxHealth()) - (enemyHealth / target.getMaxHealth());
+            double percent = (playerHealth / mc.thePlayer.getMaxHealth()) - (enemyHealth / displayTarget.getMaxHealth());
 
             diff = Utils.round(diff, 1);
 
@@ -940,14 +963,14 @@ private int ringColor(int ringIndex) {
         float desiredY = (scaledResolution.getScaledHeight() / 2 + 15) + posY;
 
         int posMode = positionMode != null ? (int) positionMode.getInput() : 0;
-        if (posMode > 0 && target != null) {
+        if (!preview && posMode > 0 && displayTarget != null) {
             float sw = scaledResolution.getScaledWidth();
             float sh = scaledResolution.getScaledHeight();
             float hudW = targetStrWithPadding + padding;
             float hudH = (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding * 2 + footerHeight;
             float anchorGap = 10.0f;
 
-            if (projectTargetBounds(target, projectedTargetBounds)) {
+            if (projectTargetBounds(displayTarget, projectedTargetBounds)) {
                 float left = projectedTargetBounds[0];
                 float top = projectedTargetBounds[1];
                 float right = projectedTargetBounds[2];
@@ -971,37 +994,41 @@ private int ringColor(int ringIndex) {
             }
         }
 
-        long positionNow = System.nanoTime();
-        int currentTargetId = target == null ? Integer.MIN_VALUE : target.getEntityId();
-        if (Float.isNaN(tweenedX) || currentTargetId != tweenTargetId) {
-            tweenedX = desiredX;
-            tweenedY = desiredY;
-            tweenTargetId = currentTargetId;
+        if (!preview) {
+            long positionNow = System.nanoTime();
+            int currentTargetId = displayTarget == null ? Integer.MIN_VALUE : displayTarget.getEntityId();
+            if (Float.isNaN(tweenedX) || currentTargetId != tweenTargetId) {
+                tweenedX = desiredX;
+                tweenedY = desiredY;
+                tweenTargetId = currentTargetId;
+                lastPositionUpdateNanos = positionNow;
+            }
+            float smoothness = (float) (positionSmoothness == null ? 65.0 : positionSmoothness.getInput());
+            float positionBlend;
+            if (posMode == 0 || smoothness <= 0.0f) {
+                positionBlend = 1.0f;
+            } else {
+                float elapsed = lastPositionUpdateNanos == 0L ? 1.0f / 60.0f
+                        : Math.max(1.0f / 240.0f, Math.min(0.05f,
+                        (positionNow - lastPositionUpdateNanos) / 1_000_000_000.0f));
+                float response = 30.0f - 26.0f * (smoothness / 100.0f);
+                positionBlend = 1.0f - (float) Math.exp(-response * elapsed);
+            }
             lastPositionUpdateNanos = positionNow;
-        }
-        float smoothness = (float) (positionSmoothness == null ? 65.0 : positionSmoothness.getInput());
-        float positionBlend;
-        if (posMode == 0 || smoothness <= 0.0f) {
-            positionBlend = 1.0f;
-        } else {
-            float elapsed = lastPositionUpdateNanos == 0L ? 1.0f / 60.0f
-                    : Math.max(1.0f / 240.0f, Math.min(0.05f,
-                    (positionNow - lastPositionUpdateNanos) / 1_000_000_000.0f));
-            float response = 30.0f - 26.0f * (smoothness / 100.0f);
-            positionBlend = 1.0f - (float) Math.exp(-response * elapsed);
-        }
-        lastPositionUpdateNanos = positionNow;
-        tweenedX += (desiredX - tweenedX) * positionBlend;
-        tweenedY += (desiredY - tweenedY) * positionBlend;
+            tweenedX += (desiredX - tweenedX) * positionBlend;
+            tweenedY += (desiredY - tweenedY) * positionBlend;
 
-        final int x = Math.round(tweenedX);
-        final int y = Math.round(tweenedY);
+        }
+        final float previewScale = preview ? Math.min(1.0f, previewWidth / (targetStrWithPadding + padding)) : 1.0f;
+        final int x = Math.round(preview ? previewX + padding
+                + (previewWidth - (targetStrWithPadding + padding) * previewScale) * 0.5f : tweenedX);
+        final int y = Math.round(preview ? previewY + padding : tweenedY);
         final int n6 = x - padding;
         final int n7 = y - padding;
         final int n8 = x + targetStrWithPadding;
         final int n9 = y + (mc.fontRendererObj.FONT_HEIGHT + 5) - 6 + padding;
 
-        float popProgress = presentationProgress();
+        float popProgress = preview ? 1.0f : presentationProgress();
 
         // Only a completed fade-OUT ends the panel. The pop-in starts at exactly zero --
         // easeOutBack(0) is 0, and popInStart is set in the same call that draws, so the first
@@ -1012,7 +1039,7 @@ private int ringColor(int ringIndex) {
         // the two. That is the second or so before the panel appears while the ESP rings are
         // already up.
         if (fadeTimer != null && popProgress <= 0.001f) {
-            traceStage(target, "panel skipped: faded out", "");
+            traceStage(displayTarget, "panel skipped: faded out", "");
             target = null;
             healthBarTimer = null;
             popInStart = -1;
@@ -1024,13 +1051,13 @@ private int ringColor(int ringIndex) {
         // concatenating it unconditionally would allocate a string per frame for a line
         // nobody is reading.
         if (mindless.utility.Diagnostics.isEnabled()) {
-            traceStage(target, "panel drawn", "alpha=" + alpha + " x=" + x + " y=" + y
+            traceStage(displayTarget, "panel drawn", "alpha=" + alpha + " x=" + x + " y=" + y
                     + " w=" + targetStrWithPadding + " posMode=" + posMode
                     + " desired=" + Math.round(desiredX) + "," + Math.round(desiredY));
         }
-        float scale = popProgress;
-        float centerX = (n6 + n8) * 0.5f;
-        float centerY = (n7 + n9 + footerHeight) * 0.5f;
+        float scale = preview ? previewScale : popProgress;
+        float centerX = preview ? n6 : (n6 + n8) * 0.5f;
+        float centerY = preview ? n7 : (n7 + n9 + footerHeight) * 0.5f;
 
         GlStateManager.pushMatrix();
         GlStateManager.translate(centerX, centerY, 0.0f);
@@ -1073,12 +1100,12 @@ private int ringColor(int ringIndex) {
         final int n14 = n8 - 6;
         final int n15 = n9;
 
-        if (target instanceof EntityPlayer) {
+        if (displayTarget instanceof EntityPlayer) {
             int headX = n6 + 5;
             int headY = n7 + 5;
-            float hit = hitEnvelope();
+            float hit = preview ? 0.0f : hitEnvelope();
             if (hit <= 0.0f) {
-                drawPlayerHead((EntityPlayer) target, headX, headY, headSize, headSize, alpha);
+                drawPlayerHead((EntityPlayer) displayTarget, headX, headY, headSize, headSize, alpha);
             }
             else {
                 // Punch out from the head's own centre and settle back. Scaling about the
@@ -1091,7 +1118,7 @@ private int ringColor(int ringIndex) {
                 GlStateManager.translate(centreX + shake, centreY, 0.0f);
                 GlStateManager.scale(punch, punch, 1.0f);
                 GlStateManager.translate(-centreX, -centreY, 0.0f);
-                drawPlayerHead((EntityPlayer) target, headX, headY, headSize, headSize, alpha);
+                drawPlayerHead((EntityPlayer) displayTarget, headX, headY, headSize, headSize, alpha);
                 if (hitStyleValue() == HIT_STYLE_FLASH) {
                     drawHitFlash(headX, headY, headSize, hit, alpha);
                 }
@@ -1100,7 +1127,7 @@ private int ringColor(int ringIndex) {
 
             // Outside the punch matrix: the particles are thrown off the head, they do not
             // ride its scale. They also outlive the punch, so this is not inside the branch.
-            updateAndDrawHitParticles(headX, headY, headSize, alpha);
+            if (!preview) updateAndDrawHitParticles(headX, headY, headSize, alpha);
         }
 
         RenderUtils.drawRoundedRectangle((float) n13, (float) n15, (float) n14,
@@ -1110,7 +1137,7 @@ private int ringColor(int ringIndex) {
         int mergedGradientRight = Utils.mergeAlpha(gradientColors[1], maxAlphaBackground);
         float healthBar = (float) (int) (n14 + (n13 - n14) * (1 - health));
         boolean smoothBack = false;
-        if (healthBar != lastHealthBar && lastHealthBar - n13 >= 3 && healthBarTimer != null ) {
+        if (!preview && healthBar != lastHealthBar && lastHealthBar - n13 >= 3 && healthBarTimer != null ) {
             int type = mode.getInput() == 0 ? 4 : 1;
             float diff = lastHealthBar - healthBar;
             if (diff > 0) {
@@ -1189,10 +1216,13 @@ private int ringColor(int ringIndex) {
             return;
         }
 
-        ScaledResolution resolution = ScaledResolutionCache.get();
-        float centerX = (projectedTargetBounds[0] + projectedTargetBounds[2]) * 0.5f;
-        float centerY = (projectedTargetBounds[1] + projectedTargetBounds[3]) * 0.5f;
+        drawTargetMarker(entity, fade, (projectedTargetBounds[0] + projectedTargetBounds[2]) * 0.5f,
+                (projectedTargetBounds[1] + projectedTargetBounds[3]) * 0.5f);
+    }
 
+    private void drawTargetMarker(EntityLivingBase entity, float fade, float centerX, float centerY) {
+        if (markerEnabled == null || !markerEnabled.isToggled()) return;
+        ScaledResolution resolution = ScaledResolutionCache.get();
         // Screen-space marker means screen-space sizing: turning silent rotations, changing FOV,
         // or moving a few blocks must not make the brackets pulse larger and smaller.
         float requestedSize = 30.0f * (float) (markerSize == null ? 1.0 : markerSize.getInput());
@@ -2056,6 +2086,35 @@ private static final float[][] HEAD_UVS = {
     public void resetPosition() {
         posX = 70;
         posY = 30;
+    }
+
+    public void renderVisualPreview(EntityPlayer player, float centerX, float top, float bottom,
+                                    float panelLeft, float panelTop, float panelWidth) {
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GlStateManager.pushMatrix();
+        try {
+            if (renderEsp.isToggled()) {
+                float scale = (bottom - top) / player.height;
+                GlStateManager.translate(centerX, bottom, 100.0f);
+                GlStateManager.scale(scale, -scale, scale);
+                GlStateManager.rotate(12.0f, 1.0f, 0.0f, 0.0f);
+                drawPillEsp(player, 1.0f, 0.0, 0.0, 0.0);
+            }
+        } finally {
+            GlStateManager.popMatrix();
+            RenderUtils.popAttrib();
+            RenderUtils.syncGlState();
+        }
+        GlStateManager.disableDepth();
+        drawTargetMarker(player, 1.0f, centerX, (top + bottom) * 0.5f);
+        float savedHealthBar = lastHealthBar;
+        try {
+            String label = player.getDisplayName().getFormattedText() + " " + Utils.getHealthStr(player, true);
+            double health = player.isDead ? 0.0 : player.getHealth() / player.getMaxHealth();
+            drawTargetHUD(null, label, health, panelLeft, panelTop, panelWidth);
+        } finally {
+            lastHealthBar = savedHealthBar;
+        }
     }
 
     public float[] renderPreview() {

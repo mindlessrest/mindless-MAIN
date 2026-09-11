@@ -97,6 +97,8 @@ public class SexyESP extends Module {
     private final ButtonSetting statsColorByFkdr;
     private final ButtonSetting itemTags;
     private final SliderSetting fontScale;
+    private final SliderSetting itemFontScale;
+    private final ButtonSetting itemDistanceScale;
     private final ButtonSetting distanceTextScale;
     private final ButtonSetting textBorder;
     private final ButtonSetting localPlayer;
@@ -203,11 +205,16 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(tagBackgroundColor = new ColorSetting(tagGroup, "Background color", 10, 10, 12, 190));
         registerSetting(tagBackgroundRadius = new SliderSetting(tagGroup, "Background radius", 4.0, 0.0, 8.0, 0.5));
         registerSetting(tagPadding = new SliderSetting(tagGroup, "Background padding", 4.0, 0.0, 8.0, 0.5));
-        registerSetting(itemTags = new ButtonSetting(tagGroup, "Held item", true));
         registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.75, 0.4, 1.0, 0.05));
         registerSetting(distanceTextScale = new ButtonSetting(tagGroup, "Distance scaling", false));
         registerSetting(textBorder = new ButtonSetting(tagGroup, "Text shadow", true,
                 "Tags.Text shadow", "Text shadow", "Tags.Black text outline", "Black text outline"));
+
+        GroupSetting itemGroup = new GroupSetting("Held item");
+        registerSetting(itemGroup);
+        registerSetting(itemTags = new ButtonSetting(itemGroup, "Enabled", true, "Tags.Held item", "Held item"));
+        registerSetting(itemFontScale = new SliderSetting(itemGroup, "Font scale", 0.75, 0.4, 1.0, 0.05));
+        registerSetting(itemDistanceScale = new ButtonSetting(itemGroup, "Distance scaling", false));
 
         GroupSetting statsGroup = new GroupSetting("Stats");
         registerSetting(statsGroup);
@@ -442,6 +449,61 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         return true;
     }
 
+    public void renderPreviewGlow(EntityPlayer player, Runnable drawSkin) {
+        if (!outlineEnabled.isToggled() || !glowShader.isValid()) return;
+        float size = (float) outlineGlowSize.getInput();
+        if (size <= 0.0f && !outlineEdge.isToggled()) return;
+        outlineFramebuffer = createOutlineFramebuffer(outlineFramebuffer, 1);
+        if (outlineFramebuffer == null) return;
+        int tint = outlineColor.getRGB();
+        if (outlineTeamColor.isToggled()) {
+            int team = Utils.getColorFromEntity(player);
+            if (team != -1) tint = team;
+        }
+        int red = tint >> 16 & 255, green = tint >> 8 & 255, blue = tint & 255;
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GlStateManager.pushMatrix();
+        GlStateManager.matrixMode(GL11.GL_PROJECTION);
+        GlStateManager.pushMatrix();
+        GlStateManager.matrixMode(GL11.GL_MODELVIEW);
+        try {
+            outlineFramebuffer.framebufferClear();
+            outlineFramebuffer.bindFramebuffer(true);
+            glowShader.use();
+            glowShader.setColor(red, green, blue, 255);
+            drawSkin.run();
+            glowShader.stop();
+            mc.entityRenderer.setupOverlayRendering();
+            mc.getFramebuffer().bindFramebuffer(true);
+            if (size > 0.0f) {
+                glowBloomShader.render(outlineFramebuffer, size * 4.0f,
+                        (float) outlineGlowStrength.getInput(), red, green, blue);
+            }
+            if (outlineEdge.isToggled()) separableOutlineShader.render(outlineFramebuffer);
+        } finally {
+            glowShader.stop();
+            mc.getFramebuffer().bindFramebuffer(true);
+            GlStateManager.matrixMode(GL11.GL_PROJECTION);
+            GlStateManager.popMatrix();
+            GlStateManager.matrixMode(GL11.GL_MODELVIEW);
+            GlStateManager.popMatrix();
+            RenderUtils.popAttrib();
+            RenderUtils.syncGlState();
+        }
+    }
+
+    public void renderPreview(EntityPlayer player, double left, double top, double right, double bottom) {
+        Bounds bounds = new Bounds();
+        bounds.set(left, top, right, bottom);
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        try {
+            renderEntity(player, bounds);
+        } finally {
+            RenderUtils.popAttrib();
+            RenderUtils.syncGlState();
+        }
+    }
+
     private void renderEntity(Entity entity, Bounds b) {
         restoreFlatOverlayState();
         rectBatch.begin();
@@ -589,7 +651,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
 
         if (itemTags.isToggled() && living.getHeldItem() != null) {
             drawTag(living.getHeldItem().getDisplayName(), b.left + b.width() / 2.0,
-                    b.bottom + 2, getTagScale(b), 0xFFFFFFFF);
+                    b.bottom + 2, getTextScale(b, itemFontScale, itemDistanceScale), 0xFFFFFFFF);
         }
     }
 
@@ -1010,12 +1072,16 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
             drawFlatRect(b.right + 2, b.bottom - b.height() * ratio, b.right + 3.5, b.bottom, 0xFF00FFFF);
         }
         if (itemTags.isToggled()) drawTag(stack.getDisplayName(), b.left + b.width() / 2.0,
-                b.bottom + 2, getTagScale(b), 0xFFFFFFFF);
+                b.bottom + 2, getTextScale(b, itemFontScale, itemDistanceScale), 0xFFFFFFFF);
     }
 
     private double getTagScale(Bounds b) {
-        double scale = Math.max(0.6, fontScale.getInput());
-        if (distanceTextScale.isToggled()) {
+        return getTextScale(b, fontScale, distanceTextScale);
+    }
+
+    private double getTextScale(Bounds b, SliderSetting size, ButtonSetting distanceScaling) {
+        double scale = size.getInput();
+        if (distanceScaling.isToggled()) {
             scale *= MathHelper.clamp_double(b.height() / 48.0, 0.9, 1.1);
         }
         return scale;
@@ -1144,6 +1210,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         rectBatch.add(left, top, right, bottom, color);
     }
 private void restoreFlatOverlayState() {
+        GlStateManager.disableAlpha();
         GlStateManager.disableLighting();
         GlStateManager.disableRescaleNormal();
         GlStateManager.disableDepth();

@@ -92,6 +92,11 @@ public final class SkinPreview {
 
     public void draw(ResourceLocation skin, boolean slimModel, int x, int y, int width, int height,
                      int mouseX, int mouseY) {
+        draw(skin, slimModel, x, y, width, height, mouseX, mouseY, false);
+    }
+
+    public void draw(ResourceLocation skin, boolean slimModel, int x, int y, int width, int height,
+                     int mouseX, int mouseY, boolean preserveProgram) {
         if (skin == null) {
             return;
         }
@@ -102,9 +107,9 @@ public final class SkinPreview {
         lastFrame = now;
 
         if (dragging) {
-            yaw = dragYaw + (mouseX - dragFromX);
+            yaw = dragYaw - (mouseX - dragFromX);
             // Clamped so it cannot be rolled past upside down, which has no useful view in it.
-            pitch = Math.max(-35.0f, Math.min(35.0f, dragPitch + (mouseY - dragFromY) * 0.5f));
+            pitch = Math.max(-35.0f, Math.min(35.0f, dragPitch - (mouseY - dragFromY) * 0.5f));
         }
         else {
             // Ease back to the front rather than snapping, and let go of the pitch entirely.
@@ -129,7 +134,7 @@ public final class SkinPreview {
 
         // Fixed-function geometry sent through whatever shader the surrounding screen last
         // bound comes out as nothing, or as a flat black cut-out.
-        OpenGlHelper.glUseProgram(0);
+        if (!preserveProgram) OpenGlHelper.glUseProgram(0);
 
         GlStateManager.pushMatrix();
         GlStateManager.enableColorMaterial();

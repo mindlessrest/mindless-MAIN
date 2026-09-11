@@ -708,7 +708,7 @@ private static int getHudInfoColor(int nameColor) {
     }
 
     private static int getHudHorizontalTextPadding() {
-        return getScaledHudPixels(2.0f);
+        return Math.max(getScaledHudPixels(2.0f), (int) Math.ceil(getBackgroundRadius(Float.MAX_VALUE)) + 1);
     }
 
     private static int getHudTextTopPadding() {
@@ -716,7 +716,7 @@ private static int getHudInfoColor(int nameColor) {
     }
 
     private static int getHudTextBottomPadding() {
-        return 0;
+        return drawBackground != null && drawBackground.isToggled() ? getScaledHudPixels(2.0f) : 0;
     }
 
     private static int getHudOutlineThickness() {
@@ -855,30 +855,30 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont) {
             float rowTop = top + i * rowHeight;
             boolean firstRow = i == 0;
             boolean lastRow = i == widths.length - 1;
-            boolean widerThanPrevious = !firstRow && widths[i] > widths[i - 1] + 1;
-            boolean widerThanNext = !lastRow && widths[i] > widths[i + 1] + 1;
+            boolean widerThanPrevious = !firstRow && widths[i] > widths[i - 1];
+            boolean widerThanNext = !lastRow && widths[i] > widths[i + 1];
             float roundedRadius = radius <= 0.0f ? 0.0f : radius + grow;
             float roundedTransition = transitionRadius <= 0.0f ? 0.0f : transitionRadius + grow;
+            float previousTransition = firstRow ? 0.0f
+                    : Math.min(roundedTransition, Math.abs(widths[i] - widths[i - 1]) * 0.5f);
+            float nextTransition = lastRow ? 0.0f
+                    : Math.min(roundedTransition, Math.abs(widths[i] - widths[i + 1]) * 0.5f);
 
-            // Connected rows share their aligned edge. The changing edge is a staircase, so both
-            // corners must not be cut at one transition: that creates the scalloped gaps visible
-            // between every line. Only the wider, protruding row owns the convex rounded corner;
-            // the narrower row remains square and fills the concave side of the join.
             float topLeft;
             float topRight;
             float bottomRight;
             float bottomLeft;
             if (right) {
-                topLeft = firstRow ? roundedRadius : widerThanPrevious ? roundedTransition : 0.0f;
-                bottomLeft = lastRow ? roundedRadius : widerThanNext ? roundedTransition : 0.0f;
+                topLeft = firstRow ? roundedRadius : widerThanPrevious ? previousTransition : -previousTransition;
+                bottomLeft = lastRow ? roundedRadius : widerThanNext ? nextTransition : -nextTransition;
                 topRight = firstRow ? roundedRadius : 0.0f;
                 bottomRight = lastRow ? roundedRadius : 0.0f;
             }
             else {
                 topLeft = firstRow ? roundedRadius : 0.0f;
                 bottomLeft = lastRow ? roundedRadius : 0.0f;
-                topRight = firstRow ? roundedRadius : widerThanPrevious ? roundedTransition : 0.0f;
-                bottomRight = lastRow ? roundedRadius : widerThanNext ? roundedTransition : 0.0f;
+                topRight = firstRow ? roundedRadius : widerThanPrevious ? previousTransition : -previousTransition;
+                bottomRight = lastRow ? roundedRadius : widerThanNext ? nextTransition : -nextTransition;
             }
 
             // Only the outer edges grow; growing the shared horizontal seams would draw the
@@ -890,7 +890,7 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont) {
             // composited twice there and draws a darker line across every seam -- which is the
             // banding this was meant to avoid. Two abutting triangles cannot leave a gap either;
             // the rasteriser fill rule gives each pixel to exactly one of them.
-            fillRow(left - grow, rowTop - growTop, left + width + grow,
+            fillRow(Tessellator.getInstance().getWorldRenderer(), left - grow, rowTop - growTop, left + width + grow,
                     rowTop + rowHeight + growBottom,
                     topLeft, topRight, bottomRight, bottomLeft, color);
         }
@@ -933,119 +933,36 @@ private static void beginRowBatch() {
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    private static void emitQuad(WorldRenderer wr, float x1, float y1, float x2, float y2,
-                                 int r, int g, int b, int a) {
-        if (x2 <= x1 || y2 <= y1) {
-            return;
-        }
-        wr.pos(x1, y1, 0.0D).color(r, g, b, a).endVertex();
-        wr.pos(x1, y2, 0.0D).color(r, g, b, a).endVertex();
-        wr.pos(x2, y2, 0.0D).color(r, g, b, a).endVertex();
-
-        wr.pos(x1, y1, 0.0D).color(r, g, b, a).endVertex();
-        wr.pos(x2, y2, 0.0D).color(r, g, b, a).endVertex();
-        wr.pos(x2, y1, 0.0D).color(r, g, b, a).endVertex();
+    private static float cornerInset(float distance, float radius) {
+        float magnitude = Math.abs(radius);
+        if (magnitude == 0.0f || distance >= magnitude) return 0.0f;
+        float offset = magnitude - Math.max(0.0f, distance);
+        float inset = magnitude - (float) Math.sqrt(Math.max(0.0f, magnitude * magnitude - offset * offset));
+        return Math.copySign(inset, radius);
     }
 
-    private static void emitCorner(WorldRenderer wr, float cx, float cy, float radius,
-                                   float startDeg, int r, int g, int b, int a) {
-        if (radius <= 0.0f) {
-            return;
+    private static void fillRow(WorldRenderer wr, float x1, float y1, float x2, float y2,
+                                float topLeft, float topRight, float bottomRight, float bottomLeft, int color) {
+        int a = color >>> 24;
+        int r = (color >> 16) & 255;
+        int g = (color >> 8) & 255;
+        int b = color & 255;
+        if (a == 0 || x2 <= x1 || y2 <= y1) return;
+        int strips = Math.max(1, (int) Math.ceil((y2 - y1) * 2.0f));
+        for (int i = 0; i < strips; i++) {
+            float top = y1 + (y2 - y1) * i / strips;
+            float bottom = y1 + (y2 - y1) * (i + 1) / strips;
+            float leftTop = x1 + cornerInset(top - y1, topLeft) + cornerInset(y2 - top, bottomLeft);
+            float leftBottom = x1 + cornerInset(bottom - y1, topLeft) + cornerInset(y2 - bottom, bottomLeft);
+            float rightTop = x2 - cornerInset(top - y1, topRight) - cornerInset(y2 - top, bottomRight);
+            float rightBottom = x2 - cornerInset(bottom - y1, topRight) - cornerInset(y2 - bottom, bottomRight);
+            wr.pos(leftTop, top, 0).color(r, g, b, a).endVertex();
+            wr.pos(leftBottom, bottom, 0).color(r, g, b, a).endVertex();
+            wr.pos(rightBottom, bottom, 0).color(r, g, b, a).endVertex();
+            wr.pos(leftTop, top, 0).color(r, g, b, a).endVertex();
+            wr.pos(rightBottom, bottom, 0).color(r, g, b, a).endVertex();
+            wr.pos(rightTop, top, 0).color(r, g, b, a).endVertex();
         }
-        int segments = 8;
-        for (int i = 0; i < segments; i++) {
-            double t0 = Math.toRadians(startDeg + 90.0 * i / segments);
-            double t1 = Math.toRadians(startDeg + 90.0 * (i + 1) / segments);
-            wr.pos(cx, cy, 0.0D).color(r, g, b, a).endVertex();
-            wr.pos(cx + Math.sin(t0) * radius, cy - Math.cos(t0) * radius, 0.0D)
-                    .color(r, g, b, a).endVertex();
-            wr.pos(cx + Math.sin(t1) * radius, cy - Math.cos(t1) * radius, 0.0D)
-                    .color(r, g, b, a).endVertex();
-        }
-    }
-
-    /**
-     * One row of the connected array list, emitted into the batch opened by beginRowBatch.
-     *
-     * Same decomposition as a rounded rect -- three bands plus a fan per rounded corner -- but
-     * every piece goes into a single buffer that is blended once at the end. That is the whole
-     * point: abutting and slightly overlapping geometry inside one batch costs nothing, whereas
-     * as separate draws each seam was composited twice and showed as a seam.
-     */
-    private static void fillRow(float x1, float y1, float x2, float y2,
-                                float topLeft, float topRight, float bottomRight, float bottomLeft,
-                                int color) {
-        if (x2 <= x1 || y2 <= y1) {
-            return;
-        }
-        int a = (color >>> 24) & 0xFF;
-        int r = (color >> 16) & 0xFF;
-        int g = (color >> 8) & 0xFF;
-        int b = color & 0xFF;
-        if (a <= 0) {
-            return;
-        }
-
-        WorldRenderer wr = Tessellator.getInstance().getWorldRenderer();
-        float topBand = Math.max(topLeft, topRight);
-        float bottomBand = Math.max(bottomLeft, bottomRight);
-
-        if (topBand > 0.0f) {
-            emitQuad(wr, x1 + topLeft, y1, x2 - topRight, y1 + topBand, r, g, b, a);
-        }
-        emitQuad(wr, x1, y1 + topBand, x2, y2 - bottomBand, r, g, b, a);
-        if (bottomBand > 0.0f) {
-            emitQuad(wr, x1 + bottomLeft, y2 - bottomBand, x2 - bottomRight, y2, r, g, b, a);
-        }
-
-        emitCorner(wr, x1 + topLeft, y1 + topLeft, topLeft, 270.0f, r, g, b, a);
-        emitCorner(wr, x2 - topRight, y1 + topRight, topRight, 0.0f, r, g, b, a);
-        emitCorner(wr, x2 - bottomRight, y2 - bottomRight, bottomRight, 90.0f, r, g, b, a);
-        emitCorner(wr, x1 + bottomLeft, y2 - bottomLeft, bottomLeft, 180.0f, r, g, b, a);
-    }
-
-private static final float CORNER_FEATHER = 0.6f;
-
-    private static void quarterDisc(float cx, float cy, float radius, float startDeg, int color) {
-        if (radius <= 0.0f) {
-            return;
-        }
-        radialBand(cx, cy, 0.0f, 1.0f, radius, 1.0f, startDeg, color);
-        radialBand(cx, cy, radius, 1.0f, radius + CORNER_FEATHER, 0.0f, startDeg, color);
-    }
-private static void radialBand(float cx, float cy, float r0, float a0, float r1, float a1,
-                                   float startDeg, int color) {
-        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
-        int alpha = (color >>> 24) & 0xFF;
-        int c0 = Math.round(alpha * a0), c1 = Math.round(alpha * a1);
-        if (c0 <= 0 && c1 <= 0) {
-            return;
-        }
-        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
-        GlStateManager.enableBlend();
-        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
-                GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GlStateManager.disableTexture2D();
-        GlStateManager.disableAlpha();
-        GlStateManager.disableCull();
-        GlStateManager.shadeModel(GL11.GL_SMOOTH);
-        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-
-        Tessellator tessellator = Tessellator.getInstance();
-        WorldRenderer worldRenderer = tessellator.getWorldRenderer();
-        worldRenderer.begin(GL11.GL_TRIANGLE_STRIP, DefaultVertexFormats.POSITION_COLOR);
-        for (int i = 0; i <= 12; i++) {
-            double t = Math.toRadians(startDeg + 90.0 * i / 12.0);
-            double sin = Math.sin(t), cos = Math.cos(t);
-            worldRenderer.pos(cx + sin * r1, cy - cos * r1, 0.0D).color(r, g, b, c1).endVertex();
-            worldRenderer.pos(cx + sin * r0, cy - cos * r0, 0.0D).color(r, g, b, c0).endVertex();
-        }
-        tessellator.draw();
-        GlStateManager.shadeModel(GL11.GL_FLAT);
-        GlStateManager.enableCull();
-        GlStateManager.enableAlpha();
-        GlStateManager.enableTexture2D();
-
     }
 
     private static int getBackgroundAlpha() {
@@ -1057,9 +974,8 @@ private static void radialBand(float cx, float cy, float r0, float a0, float r1,
         if (roundedBackground == null || !roundedBackground.isToggled()) {
             return 0.0f;
         }
-        float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput())
-                * mindless.module.impl.theme.ThemeManager.roundingScale();
-        return Math.max(0.0f, Math.min(radius, height * 0.34f));
+        float radius = (float) (cornerRadius == null ? 4.0 : cornerRadius.getInput());
+        return Math.max(0.0f, Math.min(radius, height * 0.5f));
     }
 
     private static float getBackgroundStepRadius(float outerRadius) {

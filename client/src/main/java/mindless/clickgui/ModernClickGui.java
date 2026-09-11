@@ -1020,12 +1020,19 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
         visualPreviewX = Math.round(left + 5f);
         visualPreviewY = Math.round(stageTop + 13f);
         visualPreviewW = Math.max(48, Math.round(right - left - 10f));
-        visualPreviewH = Math.max(72, Math.round(stageBottom - stageTop - 28f));
+        visualPreviewH = Math.max(72, Math.round(stageBottom - stageTop - 28f
+                - (selectedModule instanceof mindless.module.impl.render.TargetHUD ? 58f : 0f)));
 
         if (mc.thePlayer instanceof AbstractClientPlayer) {
             AbstractClientPlayer player = (AbstractClientPlayer) mc.thePlayer;
             visualPreview.draw(player.getLocationSkin(), "slim".equals(player.getSkinType()),
                     visualPreviewX, visualPreviewY, visualPreviewW, visualPreviewH, mouseX, mouseY);
+            if (selectedModule instanceof mindless.module.impl.render.SexyESP) {
+                ((mindless.module.impl.render.SexyESP) selectedModule).renderPreviewGlow(player,
+                        () -> visualPreview.draw(player.getLocationSkin(), "slim".equals(player.getSkinType()),
+                                visualPreviewX, visualPreviewY, visualPreviewW, visualPreviewH,
+                                mouseX, mouseY, true));
+            }
             drawPreviewOverlay(alpha);
         }
 
@@ -1062,18 +1069,14 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             rounded(x1, y1 + 3f, x1 + 1.5f, y1 + 12f, .75f, withAlpha(ACCENT, full));
             drawCentered(name, x1, x1 + w + 14f, y1 + 3.5f, withAlpha(TEXT, full), .62f, true);
         }
-        else if (selectedModule instanceof mindless.module.impl.render.TargetHUD
-                || selectedModule instanceof mindless.module.impl.render.SexyESP) {
-            // Corner brackets on the hitbox, which is what both of these draw in game.
-            float x1 = cx - half, x2 = cx + half;
-            float y1 = top - 3f, y2 = bottom + 2f;
-            float arm = Math.min(10f, (y2 - y1) * .2f);
-            int c = withAlpha(ACCENT, (int) (238f * alpha));
-            segments(c,
-                    x1, y1, x1 + arm, y1, x1, y1, x1, y1 + arm,
-                    x2, y1, x2 - arm, y1, x2, y1, x2, y1 + arm,
-                    x1, y2, x1 + arm, y2, x1, y2, x1, y2 - arm,
-                    x2, y2, x2 - arm, y2, x2, y2, x2, y2 - arm);
+        else if (selectedModule instanceof mindless.module.impl.render.TargetHUD) {
+            ((mindless.module.impl.render.TargetHUD) selectedModule).renderVisualPreview(
+                    mc.thePlayer, cx, top, bottom, previewX + 17f,
+                    baseY + panelH - 85f, previewW - 34f);
+        }
+        else if (selectedModule instanceof mindless.module.impl.render.SexyESP) {
+            ((mindless.module.impl.render.SexyESP) selectedModule).renderPreview(
+                    mc.thePlayer, cx - half, top, cx + half, bottom);
         }
     }
 
