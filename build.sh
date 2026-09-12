@@ -95,10 +95,8 @@ section "Detecting tools"
 run_root() {
     if [ "${EUID:-$(id -u)}" -eq 0 ]; then
         "$@"
-    elif command -v sudo >/dev/null 2>&1; then
-        sudo "$@"
     else
-        die "root privileges are required to install packages; install sudo or run as root"
+        die "cannot install host packages on a non-root runner without sudo; provision the missing packages in the runner image or set MINDLESS_AUTO_INSTALL=0"
     fi
 }
 
@@ -201,11 +199,24 @@ if ! command -v xwin >/dev/null 2>&1; then
     add_cargo_path
 fi
 
+find_java_home() {
+    local javac_path javac_real
+    if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/javac" ]; then
+        return 0
+    fi
+    if javac_path="$(command -v javac 2>/dev/null)"; then
+        javac_real="$(readlink -f "$javac_path" 2>/dev/null || printf '%s' "$javac_path")"
+        JAVA_HOME="${javac_real%/bin/javac}"
+        [ -x "$JAVA_HOME/bin/javac" ] && { export JAVA_HOME; return 0; }
+    fi
+    return 1
+}
+
 if [ -n "${JAVA_HOME:-}" ] && [ ! -x "$JAVA_HOME/bin/javac" ]; then
     warn "JAVA_HOME has no javac: $JAVA_HOME"
     unset JAVA_HOME
 fi
-if [ -z "${JAVA_HOME:-}" ]; then
+if ! find_java_home; then
     for candidate in /usr/lib/jvm/java-17-openjdk /usr/lib/jvm/java-17-temurin; do
         [ -x "$candidate/bin/javac" ] && { export JAVA_HOME="$candidate"; break; }
     done
