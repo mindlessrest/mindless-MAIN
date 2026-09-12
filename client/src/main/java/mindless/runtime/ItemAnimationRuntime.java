@@ -2,6 +2,7 @@ package mindless.runtime;
 
 import mindless.module.impl.render.AlwaysBlock;
 import mindless.module.impl.render.Animations;
+import mindless.module.impl.render.HitAnimation;
 import mindless.module.impl.render.Slow;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.AbstractClientPlayer;
@@ -21,7 +22,10 @@ public final class ItemAnimationRuntime {
 
     private ItemAnimationRuntime() {}
 public static boolean renderSwordOverride(ItemRenderer renderer, ItemStack rendered, float partialTicks) {
-        if (!isSword(rendered) || !Slow.isActive() && !Animations.isActive()) return false;
+        if (!isSword(rendered)
+                || !Slow.isActive() && !Animations.isActive() && !HitAnimation.isActive()) {
+            return false;
+        }
         Minecraft mc = Minecraft.getMinecraft();
         EntityPlayerSP player = mc.thePlayer;
         if (player == null) return false;
@@ -57,7 +61,10 @@ public static boolean renderSwordOverride(ItemRenderer renderer, ItemStack rende
                     transform(renderer, equip, swing);
                 }
             }
+
             if (Animations.isActive()) applyScaleOnly();
+            // Last, so it composes on top of whatever Animations chose rather than fighting it.
+            HitAnimation.apply();
             renderer.renderItem(player, rendered, ItemCameraTransforms.TransformType.FIRST_PERSON);
         } finally {
             GlStateManager.popMatrix();
