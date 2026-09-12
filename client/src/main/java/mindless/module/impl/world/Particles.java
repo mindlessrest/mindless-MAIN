@@ -1,6 +1,7 @@
 package mindless.module.impl.world;
 
 import mindless.module.Module;
+import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
@@ -27,10 +28,30 @@ import java.util.List;
 import java.util.Random;
 
 public class Particles extends Module {
+
+    // Appended, never reordered: the dropdown persists by index, so moving one of these changes
+    // what every saved profile means.
+    private static final String[] MODES = new String[]{
+            "Rain", "Snow", "Hearts", "Stars", "Fireflies", "Embers", "Ash", "Motes"
+    };
+    private static final int MODE_RAIN = 0;
+    private static final int MODE_FIREFLIES = 4;
+    private static final int MODE_EMBERS = 5;
+    private static final int MODE_ASH = 6;
+    private static final int MODE_MOTES = 7;
+
+    private static final String[] QUALITIES = new String[]{"Low", "Medium", "High"};
+
     public SliderSetting mode;
     public SliderSetting count;
     public SliderSetting size;
     public ColorSetting color;
+    private SliderSetting speed;
+    private SliderSetting quality;
+    private SliderSetting spawnRadius;
+    private SliderSetting glowSize;
+    private ButtonSetting flicker;
+    private ButtonSetting additive;
 
     private ResourceLocation snowTex;
     private ResourceLocation heartTex;
@@ -44,10 +65,35 @@ public class Particles extends Module {
 
     public Particles() {
         super("Particles", "Recolours and resizes hit particles.", category.world);
-        this.registerSetting(mode = new SliderSetting("Mode", 0, new String[]{"Rain", "Snow", "Hearts", "Stars"}));
+        this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(count = new SliderSetting("Count", 200, 10, 1000, 10));
+        this.registerSetting(quality = new SliderSetting("Quality", 1, QUALITIES));
         this.registerSetting(size = new SliderSetting("Size", 0.5, 0.1, 2.0, 0.05));
+        this.registerSetting(speed = new SliderSetting("Speed", "x", 1.0, 0.1, 3.0, 0.05));
+        this.registerSetting(spawnRadius = new SliderSetting("Radius", "blocks", 32.0, 8.0, 80.0, 2.0));
+        this.registerSetting(glowSize = new SliderSetting("Glow", "x", 1.0, 0.0, 3.0, 0.1));
+        this.registerSetting(flicker = new ButtonSetting("Flicker", true));
+        this.registerSetting(additive = new ButtonSetting("Additive", true));
         this.registerSetting(color = new ColorSetting("Color", 255, 255, 255, 200));
+    }
+
+    /** Glow modes are untextured soft dots; the rest keep the paths they already had. */
+    private static boolean isGlow(int m) {
+        return m >= MODE_FIREFLIES;
+    }
+
+    @Override
+    public void guiUpdate() {
+        boolean glow = isGlow((int) mode.getInput());
+        if (glowSize != null) glowSize.setVisible(glow, this);
+        if (flicker != null) flicker.setVisible(glow, this);
+        if (additive != null) additive.setVisible(glow, this);
+    }
+
+    /** Count is the look; quality is the budget that look is allowed to cost. */
+    private int effectiveCount() {
+        double scale = (int) quality.getInput() == 0 ? 0.35 : (int) quality.getInput() == 1 ? 0.7 : 1.0;
+        return Math.max(4, (int) Math.round(count.getInput() * scale));
     }
 
     @Override
@@ -72,7 +118,7 @@ public class Particles extends Module {
             lastMode = currentMode;
         }
 
-        int maxCount = (int) count.getInput();
+        int maxCount = effectiveCount();
 
         while (particles.size() > maxCount) {
             particles.remove(0);
@@ -92,20 +138,36 @@ public class Particles extends Module {
         Iterator<AmbientParticle> it = particles.iterator();
         while (it.hasNext()) {
             AmbientParticle p = it.next();
+            float rate = (float) speed.getInput();
             p.prevX = p.x;
             p.prevY = p.y;
             p.prevZ = p.z;
-            p.x += p.vx;
-            p.y += p.vy;
-            p.z += p.vz;
+            p.x += p.vx * rate;
+            p.y += p.vy * rate;
+            p.z += p.vz * rate;
             p.age++;
-            p.rotation += p.rotSpeed;
+            p.rotation += p.rotSpeed * rate;
 
-            collisionPos.set(MathHelper.floor_double(p.x), MathHelper.floor_double(p.y), MathHelper.floor_double(p.z));
-            Block block = mc.theWorld.getBlockState(collisionPos).getBlock();
-            Material mat = block.getMaterial();
-            if (mat != Material.air && mat != Material.glass && mat != Material.water) {
-                p.collided = true;
+            // Fireflies and motes wander rather than travel, so they are nudged each tick instead
+            // of being given one velocity at birth and following it into a wall.
+            if (currentMode == MODE_FIREFLIES || currentMode == MODE_MOTES) {
+                p.vx += (random.nextDouble() - 0.5) * 0.0016;
+                p.vy += (random.nextDouble() - 0.5) * 0.0012;
+                p.vz += (random.nextDouble() - 0.5) * 0.0016;
+                p.vx *= 0.985;
+                p.vy *= 0.985;
+                p.vz *= 0.985;
+            }
+
+            // Ambient motes are not weather. Killing them on contact would empty the air anywhere
+            // near a wall, which is exactly where they are wanted.
+            if (!isGlow(currentMode)) {
+                collisionPos.set(MathHelper.floor_double(p.x), MathHelper.floor_double(p.y), MathHelper.floor_double(p.z));
+                Block block = mc.theWorld.getBlockState(collisionPos).getBlock();
+                Material mat = block.getMaterial();
+                if (mat != Material.air && mat != Material.glass && mat != Material.water) {
+                    p.collided = true;
+                }
             }
 
             if (p.age >= p.maxAge || p.collided) {
@@ -119,7 +181,12 @@ public class Particles extends Module {
         if (!Utils.nullCheck() || particles.isEmpty()) return;
 
         int currentMode = (int) mode.getInput();
-        boolean isRain = currentMode == 0;
+        boolean isRain = currentMode == MODE_RAIN;
+        boolean glow = isGlow(currentMode);
+        if (glow) {
+            renderGlow(currentMode, e.partialTicks);
+            return;
+        }
         int argb = color.getColor();
         float colorAlpha = ((argb >> 24) & 0xFF) / 255.0f;
         float cr = ((argb >> 16) & 0xFF) / 255.0f;
@@ -248,10 +315,121 @@ public class Particles extends Module {
         buffer.pos(x2, y2, z2).color(r, g, b, a).endVertex();
     }
 
+    /**
+     * The untextured modes.
+     *
+     * A fan per particle rather than a textured quad: the falloff is radial and comes from the
+     * vertex colour, so there is no texture to bind and no atlas edge to bleed. Segment count
+     * follows the quality setting, because a hundred motes at sixteen segments each is the one
+     * place this module can cost real frames.
+     */
+    private void renderGlow(int currentMode, float partialTicks) {
+        int argb = color.getColor();
+        float colorAlpha = ((argb >> 24) & 0xFF) / 255.0f;
+        int cr = (argb >> 16) & 0xFF;
+        int cg = (argb >> 8) & 0xFF;
+        int cb = argb & 0xFF;
+        float sz = (float) size.getInput() * 0.35f;
+        float halo = (float) glowSize.getInput();
+        int segments = (int) quality.getInput() == 0 ? 5 : (int) quality.getInput() == 1 ? 8 : 12;
+
+        double viewX = mc.getRenderManager().viewerPosX;
+        double viewY = mc.getRenderManager().viewerPosY;
+        double viewZ = mc.getRenderManager().viewerPosZ;
+
+        float yaw = (float) Math.toRadians(mc.getRenderManager().playerViewY);
+        float pitch = (float) Math.toRadians(mc.getRenderManager().playerViewX);
+        float rightX = MathHelper.cos(yaw), rightZ = MathHelper.sin(yaw);
+        float upX = -MathHelper.sin(yaw) * MathHelper.sin(pitch);
+        float upY = MathHelper.cos(pitch);
+        float upZ = MathHelper.cos(yaw) * MathHelper.sin(pitch);
+
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.pushMatrix();
+        GlStateManager.enableBlend();
+        if (additive.isToggled()) {
+            GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+        }
+        else {
+            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                    GL11.GL_ONE, GL11.GL_ZERO);
+        }
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableAlpha();
+        GlStateManager.disableLighting();
+        GlStateManager.disableCull();
+        GlStateManager.depthMask(false);
+        GlStateManager.shadeModel(GL11.GL_SMOOTH);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer buffer = tessellator.getWorldRenderer();
+        buffer.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_COLOR);
+
+        for (AmbientParticle particle : particles) {
+            float lifeRatio = 1.0f - (float) particle.age / particle.maxAge;
+            if (lifeRatio <= 0.0f) continue;
+
+            // Fade in as well as out. A mote that appears at full brightness reads as a popping
+            // pixel rather than as something that drifted into view.
+            float fade = Math.min(1.0f, Math.min(lifeRatio * 4.0f, (1.0f - lifeRatio) * 6.0f + 0.15f));
+            float pulse = flicker.isToggled()
+                    ? 0.55f + 0.45f * MathHelper.sin((particle.age + partialTicks) * 0.22f + particle.rotation)
+                    : 1.0f;
+            float alpha = colorAlpha * fade * pulse;
+            if (alpha <= 0.01f) continue;
+
+            double ix = particle.prevX + (particle.x - particle.prevX) * partialTicks - viewX;
+            double iy = particle.prevY + (particle.y - particle.prevY) * partialTicks - viewY;
+            double iz = particle.prevZ + (particle.z - particle.prevZ) * partialTicks - viewZ;
+
+            int core = Math.round(alpha * 255.0f);
+            float radius = sz * (currentMode == MODE_EMBERS ? 0.7f : 1.0f);
+            fan(buffer, ix, iy, iz, radius, segments, rightX, rightZ, upX, upY, upZ, cr, cg, cb, core, core);
+            if (halo > 0.0f) {
+                fan(buffer, ix, iy, iz, radius * (1.0f + halo * 2.2f), segments,
+                        rightX, rightZ, upX, upY, upZ, cr, cg, cb, Math.round(core * 0.45f), 0);
+            }
+        }
+
+        tessellator.draw();
+
+        GlStateManager.shadeModel(GL11.GL_FLAT);
+        GlStateManager.depthMask(true);
+        GlStateManager.enableCull();
+        GlStateManager.enableAlpha();
+        GlStateManager.enableTexture2D();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
+        GlStateManager.disableBlend();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        GlStateManager.popMatrix();
+    }
+
+    private void fan(WorldRenderer buffer, double x, double y, double z, float radius, int segments,
+                     float rightX, float rightZ, float upX, float upY, float upZ,
+                     int r, int g, int b, int centreAlpha, int rimAlpha) {
+        if (radius <= 0.0f || (centreAlpha <= 0 && rimAlpha <= 0)) return;
+        for (int i = 0; i < segments; i++) {
+            double t0 = (i / (double) segments) * Math.PI * 2.0;
+            double t1 = ((i + 1) / (double) segments) * Math.PI * 2.0;
+            float s0 = (float) Math.sin(t0), c0 = (float) Math.cos(t0);
+            float s1 = (float) Math.sin(t1), c1 = (float) Math.cos(t1);
+            buffer.pos(x, y, z).color(r, g, b, centreAlpha).endVertex();
+            buffer.pos(x + (rightX * s0 + upX * c0) * radius,
+                    y + (upY * c0) * radius,
+                    z + (rightZ * s0 + upZ * c0) * radius).color(r, g, b, rimAlpha).endVertex();
+            buffer.pos(x + (rightX * s1 + upX * c1) * radius,
+                    y + (upY * c1) * radius,
+                    z + (rightZ * s1 + upZ * c1) * radius).color(r, g, b, rimAlpha).endVertex();
+        }
+    }
+
     private AmbientParticle createParticle(int m) {
         double px, py, pz, vx, vy, vz;
         int maxAge;
-        double radius = m == 0 ? 60.0 : 32.0;
+        double radius = m == MODE_RAIN ? 60.0 : 32.0;
+        double spawn = spawnRadius.getInput();
 
         switch (m) {
             case 0:
@@ -291,6 +469,42 @@ public class Particles extends Module {
                 vy = (random.nextDouble() - 0.5) * 0.04;
                 vz = (random.nextDouble() - 0.5) * 0.04;
                 maxAge = 100 + random.nextInt(100);
+                break;
+            case MODE_FIREFLIES:
+                px = mc.thePlayer.posX + (random.nextDouble() - 0.5) * spawn * 2.0;
+                py = mc.thePlayer.posY - 1.0 + random.nextDouble() * 4.5;
+                pz = mc.thePlayer.posZ + (random.nextDouble() - 0.5) * spawn * 2.0;
+                vx = (random.nextDouble() - 0.5) * 0.012;
+                vy = (random.nextDouble() - 0.5) * 0.008;
+                vz = (random.nextDouble() - 0.5) * 0.012;
+                maxAge = 260 + random.nextInt(320);
+                break;
+            case MODE_EMBERS:
+                px = mc.thePlayer.posX + (random.nextDouble() - 0.5) * spawn * 1.4;
+                py = mc.thePlayer.posY - 2.0 + random.nextDouble() * 3.0;
+                pz = mc.thePlayer.posZ + (random.nextDouble() - 0.5) * spawn * 1.4;
+                vx = (random.nextDouble() - 0.5) * 0.02;
+                vy = 0.02 + random.nextDouble() * 0.05;
+                vz = (random.nextDouble() - 0.5) * 0.02;
+                maxAge = 90 + random.nextInt(110);
+                break;
+            case MODE_ASH:
+                px = mc.thePlayer.posX + (random.nextDouble() - 0.5) * spawn * 2.0;
+                py = mc.thePlayer.posY + 6.0 + random.nextDouble() * 18.0;
+                pz = mc.thePlayer.posZ + (random.nextDouble() - 0.5) * spawn * 2.0;
+                vx = Math.cos(windAngle) * (0.01 + random.nextDouble() * 0.03);
+                vy = -0.015 - random.nextDouble() * 0.025;
+                vz = Math.sin(windAngle) * (0.01 + random.nextDouble() * 0.03);
+                maxAge = 300 + random.nextInt(300);
+                break;
+            case MODE_MOTES:
+                px = mc.thePlayer.posX + (random.nextDouble() - 0.5) * spawn;
+                py = mc.thePlayer.posY - 1.0 + random.nextDouble() * 6.0;
+                pz = mc.thePlayer.posZ + (random.nextDouble() - 0.5) * spawn;
+                vx = (random.nextDouble() - 0.5) * 0.006;
+                vy = (random.nextDouble() - 0.5) * 0.004;
+                vz = (random.nextDouble() - 0.5) * 0.006;
+                maxAge = 400 + random.nextInt(400);
                 break;
             default:
                 return null;

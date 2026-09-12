@@ -109,6 +109,13 @@ public class SexyESP extends Module {
     private final ColorSetting color;
     private final SliderSetting maxDistance;
 
+    private final ButtonSetting skeletonEnabled;
+    private final SliderSetting skeletonWidth;
+    private final ButtonSetting skeletonTeamColor;
+    private final ColorSetting skeletonColor;
+    private final ButtonSetting skeletonThroughWalls;
+    private final ButtonSetting skeletonJoints;
+
     private final ButtonSetting outlineEnabled;
     private final SliderSetting outlineGlowSize;
     private final SliderSetting outlineGlowStrength;
@@ -223,6 +230,15 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(statsScale = new SliderSetting(statsGroup, "Scale", "x", 0.8, 0.4, 1.5, 0.05));
         registerSetting(statsColorByFkdr = new ButtonSetting(statsGroup, "Color by FKDR", true));
 
+        GroupSetting skeletonGroup = new GroupSetting("Skeleton");
+        registerSetting(skeletonGroup);
+        registerSetting(skeletonEnabled = new ButtonSetting(skeletonGroup, "Enabled", false));
+        registerSetting(skeletonWidth = new SliderSetting(skeletonGroup, "Line width", "px", 1.5, 0.5, 6.0, 0.5));
+        registerSetting(skeletonJoints = new ButtonSetting(skeletonGroup, "Joints", true));
+        registerSetting(skeletonTeamColor = new ButtonSetting(skeletonGroup, "Team color", true));
+        registerSetting(skeletonColor = new ColorSetting(skeletonGroup, "Color", 255, 255, 255));
+        registerSetting(skeletonThroughWalls = new ButtonSetting(skeletonGroup, "Through walls", true));
+
         GroupSetting outlineGroup = new GroupSetting("Outline");
         registerSetting(outlineGroup);
         registerSetting(outlineEnabled = new ButtonSetting(outlineGroup, "Enabled", false));
@@ -314,6 +330,170 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         glowBloomShader.delete();
     }
 
+    /**
+     * A stick figure standing in for the player model.
+     *
+     * Joints are derived from the entity's own body yaw, head yaw and limb swing rather than read
+     * off a rendered ModelBiped. The model's angles only exist inside its render pass, and holding
+     * a reference to it to read them afterwards gets whatever the last entity drawn left there.
+     */
+    private void runSkeletonPass(float partialTicks) {
+        RenderManager rm = mc.getRenderManager();
+        double maxSq = maxDistance.getInput() * maxDistance.getInput();
+
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.pushMatrix();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableAlpha();
+        GlStateManager.disableLighting();
+        GlStateManager.disableCull();
+        GlStateManager.depthMask(false);
+        if (skeletonThroughWalls.isToggled()) {
+            GlStateManager.disableDepth();
+        }
+        GL11.glEnable(GL11.GL_LINE_SMOOTH);
+        GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
+        GL11.glLineWidth((float) skeletonWidth.getInput());
+        GlStateManager.translate(-rm.viewerPosX, -rm.viewerPosY, -rm.viewerPosZ);
+
+        try {
+            for (int i = 0; i < mc.theWorld.playerEntities.size(); i++) {
+                EntityPlayer player = mc.theWorld.playerEntities.get(i);
+                if (player == mc.thePlayer && !localPlayer.isToggled()) {
+                    continue;
+                }
+                if (player.isDead || (player.isInvisible() && !showInvisible.isToggled())) {
+                    continue;
+                }
+                if (player.getDistanceSqToEntity(mc.getRenderViewEntity()) > maxSq) {
+                    continue;
+                }
+                drawSkeleton(player, partialTicks);
+            }
+        }
+        finally {
+            GL11.glLineWidth(1.0f);
+            GL11.glDisable(GL11.GL_LINE_SMOOTH);
+            GlStateManager.enableDepth();
+            GlStateManager.depthMask(true);
+            GlStateManager.enableCull();
+            GlStateManager.enableAlpha();
+            GlStateManager.enableTexture2D();
+            GlStateManager.disableBlend();
+            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+            GlStateManager.popMatrix();
+        }
+    }
+
+    private void drawSkeleton(EntityPlayer player, float partialTicks) {
+        double px = player.lastTickPosX + (player.posX - player.lastTickPosX) * partialTicks;
+        double py = player.lastTickPosY + (player.posY - player.lastTickPosY) * partialTicks;
+        double pz = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * partialTicks;
+
+        float bodyYaw = player.prevRenderYawOffset
+                + (player.renderYawOffset - player.prevRenderYawOffset) * partialTicks;
+        float headYaw = player.prevRotationYawHead
+                + (player.rotationYawHead - player.prevRotationYawHead) * partialTicks;
+        float pitch = player.prevRotationPitch + (player.rotationPitch - player.prevRotationPitch) * partialTicks;
+
+        // The same swing the model uses, so the legs match the ones being drawn next to them.
+        float swing = player.limbSwing - player.limbSwingAmount * (1.0f - partialTicks);
+        float amount = player.prevLimbSwingAmount
+                + (player.limbSwingAmount - player.prevLimbSwingAmount) * partialTicks;
+        float legAngle = MathHelper.cos(swing * 0.6662f) * 1.4f * amount;
+        float legAlt = MathHelper.cos(swing * 0.6662f + (float) Math.PI) * 1.4f * amount;
+
+        float crouch = player.isSneaking() ? 0.18f : 0.0f;
+        float hipY = 0.75f - crouch;
+        float shoulderY = 1.42f - crouch;
+        float headY = shoulderY + 0.5f;
+        float limb = 0.75f;
+
+        // Reuses the module's own colour resolution, so the skeleton agrees with the box and
+        // the tag rather than inventing a third opinion about whose team someone is on.
+        int rgb = skeletonTeamColor.isToggled()
+                ? (getEntityColor(player) & 0xFFFFFF)
+                : (skeletonColor.getRGB() & 0xFFFFFF);
+        GlStateManager.color(((rgb >> 16) & 0xFF) / 255.0f, ((rgb >> 8) & 0xFF) / 255.0f,
+                (rgb & 0xFF) / 255.0f, 1.0f);
+
+        double sin = Math.sin(Math.toRadians(-bodyYaw));
+        double cos = Math.cos(Math.toRadians(-bodyYaw));
+
+        double[] hipL = local(px, py, pz, -0.125, hipY, 0.0, sin, cos);
+        double[] hipR = local(px, py, pz, 0.125, hipY, 0.0, sin, cos);
+        double[] shoulderL = local(px, py, pz, -0.3125, shoulderY, 0.0, sin, cos);
+        double[] shoulderR = local(px, py, pz, 0.3125, shoulderY, 0.0, sin, cos);
+        double[] neck = local(px, py, pz, 0.0, shoulderY, 0.0, sin, cos);
+        double[] hipMid = local(px, py, pz, 0.0, hipY, 0.0, sin, cos);
+
+        double[] footL = local(px, py, pz, -0.125, hipY - limb * Math.cos(legAngle),
+                limb * Math.sin(legAngle), sin, cos);
+        double[] footR = local(px, py, pz, 0.125, hipY - limb * Math.cos(legAlt),
+                limb * Math.sin(legAlt), sin, cos);
+        double[] handL = local(px, py, pz, -0.3125, shoulderY - limb * Math.cos(legAlt),
+                limb * Math.sin(legAlt), sin, cos);
+        double[] handR = local(px, py, pz, 0.3125, shoulderY - limb * Math.cos(legAngle),
+                limb * Math.sin(legAngle), sin, cos);
+
+        // The head follows the head yaw, not the body's, which is the whole tell of where someone
+        // is actually looking.
+        double headSin = Math.sin(Math.toRadians(-headYaw));
+        double headCos = Math.cos(Math.toRadians(-headYaw));
+        double nose = 0.35 * Math.cos(Math.toRadians(pitch));
+        double[] head = local(px, py, pz, 0.0, headY, 0.0, headSin, headCos);
+        double[] gaze = local(px, py, pz, 0.0, headY - 0.35 * Math.sin(Math.toRadians(pitch)),
+                nose, headSin, headCos);
+
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer wr = tessellator.getWorldRenderer();
+        wr.begin(GL11.GL_LINES, DefaultVertexFormats.POSITION);
+        line(wr, hipL, hipR);
+        line(wr, shoulderL, shoulderR);
+        line(wr, hipMid, neck);
+        line(wr, hipL, footL);
+        line(wr, hipR, footR);
+        line(wr, shoulderL, handL);
+        line(wr, shoulderR, handR);
+        line(wr, neck, head);
+        line(wr, head, gaze);
+        tessellator.draw();
+
+        if (skeletonJoints.isToggled()) {
+            GL11.glPointSize((float) skeletonWidth.getInput() * 2.4f);
+            wr.begin(GL11.GL_POINTS, DefaultVertexFormats.POSITION);
+            point(wr, hipL);
+            point(wr, hipR);
+            point(wr, shoulderL);
+            point(wr, shoulderR);
+            point(wr, head);
+            point(wr, footL);
+            point(wr, footR);
+            point(wr, handL);
+            point(wr, handR);
+            tessellator.draw();
+            GL11.glPointSize(1.0f);
+        }
+    }
+
+    /** Body-space offset to world, rotated about the given yaw's sine and cosine. */
+    private static double[] local(double ox, double oy, double oz,
+                                  double x, double y, double z, double sin, double cos) {
+        return new double[]{ox + x * cos - z * sin, oy + y, oz + x * sin + z * cos};
+    }
+
+    private static void line(WorldRenderer wr, double[] a, double[] b) {
+        wr.pos(a[0], a[1], a[2]).endVertex();
+        wr.pos(b[0], b[1], b[2]).endVertex();
+    }
+
+    private static void point(WorldRenderer wr, double[] a) {
+        wr.pos(a[0], a[1], a[2]).endVertex();
+    }
+
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRenderWorld(RenderWorldLastEvent event) {
         if (!Utils.nullCheck() || mc.theWorld == null || mc.entityRenderer == null) {
@@ -325,6 +505,12 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
 
         if (outlineEnabled.isToggled()) {
             runOutlinePass(event.partialTicks);
+        }
+
+        // Before setupOverlayRendering, because the skeleton lives in the world and that call
+        // replaces the projection with a flat one. Everything after this point is screen space.
+        if (skeletonEnabled.isToggled()) {
+            runSkeletonPass(event.partialTicks);
         }
 
         ScaledResolution resolution = ScaledResolutionCache.get();
