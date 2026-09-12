@@ -123,10 +123,12 @@ public static SliderSetting lyricsPosX;
         if (!Utils.nullCheck()) return;
         SystemMediaClient mediaClient = SystemMediaClient.getInstance();
         mediaClient.setLyricsWanted(showLyrics.isToggled());
-        mediaClient.setPlayerWantsArtwork(showAlbumArt.isToggled()
+        boolean islandHandlesPlayer = ModuleManager.dynamicIsland != null
+                && ModuleManager.dynamicIsland.handlesSpotify();
+        mediaClient.setPlayerWantsArtwork(islandHandlesPlayer || showAlbumArt.isToggled()
                 || (int) progressBarColorMode.getInput() == 1);
 
-        MediaPlayerRenderer.render();
+        if (!islandHandlesPlayer) MediaPlayerRenderer.render();
     }
 
     public void openEditScreen() {

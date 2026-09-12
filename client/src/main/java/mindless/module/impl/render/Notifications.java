@@ -207,7 +207,7 @@ public static void notifyScript(String title, boolean enabled) {
         long now = System.currentTimeMillis();
         notifications.push(title, enabled, (long) (notifications.duration.getInput() * 1000.0), now);
     }
-public static void notify(String title, String status, boolean positive) {
+    public static void notify(String title, String status, boolean positive) {
         Notifications notifications = instance;
         if (notifications == null || !notifications.isEnabled() || title == null || title.isEmpty()) return;
         if (!net.minecraft.client.Minecraft.getMinecraft().isCallingFromMinecraftThread()) {
@@ -224,9 +224,43 @@ public static void notify(String title, String status, boolean positive) {
         notifications.cards.add(new Card(title, status, positive, now, dur, startY));
     }
 
+    public static IslandNotification latestForIsland(long now) {
+        Notifications notifications = instance;
+        if (notifications == null || !notifications.isEnabled()) return null;
+        for (int i = notifications.cards.size() - 1; i >= 0; i--) {
+            Card card = notifications.cards.get(i);
+            if (now <= card.birthMs + card.durationMs) {
+                String status = card.customStatus != null
+                        ? card.customStatus : (card.enabled ? "ON" : "OFF");
+                return new IslandNotification(card.title, status, card.enabled,
+                        card.birthMs, card.durationMs);
+            }
+        }
+        return null;
+    }
+
+    public static final class IslandNotification {
+        public final String title;
+        public final String status;
+        public final boolean positive;
+        public final long bornAt;
+        public final long durationMs;
+
+        private IslandNotification(String title, String status, boolean positive,
+                                   long bornAt, long durationMs) {
+            this.title = title;
+            this.status = status;
+            this.positive = positive;
+            this.bornAt = bornAt;
+            this.durationMs = durationMs;
+        }
+    }
+
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent e) {
         if (e.phase != TickEvent.Phase.END || !Utils.nullCheck() || cards.isEmpty()) return;
+        if (ModuleManager.dynamicIsland != null
+                && ModuleManager.dynamicIsland.handlesNotifications()) return;
 
         MindlessFontRenderer font = HUD.getHudFontRenderer();
         if (font == null) return;

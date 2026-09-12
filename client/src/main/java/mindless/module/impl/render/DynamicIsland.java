@@ -2,6 +2,7 @@ package mindless.module.impl.render;
 
 import mindless.module.Module;
 import mindless.module.ModuleManager;
+import mindless.module.impl.client.SpotifyMiniPlayer;
 import mindless.module.impl.theme.ThemeManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.GroupSetting;
@@ -12,6 +13,8 @@ import mindless.utility.Utils;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.font.ModuleFont;
+import mindless.utility.media.SystemMediaClient;
+import mindless.utility.media.SystemMediaInfo;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
@@ -46,11 +49,21 @@ public class DynamicIsland extends Module {
     private static final int STATE_NOTIFICATION = 1;
     private static final int STATE_BREAKER = 2;
     private static final int STATE_SCAFFOLD = 3;
+    private static final int STATE_SPOTIFY = 4;
+    private static final int STATE_HIDDEN = 5;
     private static final int MAX_TOGGLES = 8;
+    private static final float SPOTIFY_TEXT_WIDTH = 92.0f;
+    private static final float EQUALIZER_WIDTH = 9.0f;
 
     private final SliderSetting font;
     private final SliderSetting anchor;
     private final SliderSetting notificationDuration;
+    private final GroupSetting contentGroup;
+    private final ButtonSetting showNotifications;
+    private final ButtonSetting showBedAura;
+    private final ButtonSetting showScaffold;
+    private final ButtonSetting showSpotify;
+    private final ButtonSetting showIdle;
     private final GroupSetting styleGroup;
     private final ButtonSetting blurBackdrop;
     private final ButtonSetting dropShadow;
@@ -73,6 +86,8 @@ public class DynamicIsland extends Module {
     private String pendingValue = "";
     private int pendingState = STATE_IDLE;
     private ItemStack pendingIcon;
+    private ResourceLocation pendingArtwork;
+    private boolean pendingMediaPlaying;
     private float scaffoldProgress;
     private float breakerProgress;
     private int scaffoldPeak;
@@ -83,6 +98,9 @@ public class DynamicIsland extends Module {
     private String stateLabel = "Mindless";
     private String stateValue = "";
     private ItemStack stateIcon;
+    private ResourceLocation stateArtwork;
+    private boolean mediaPlaying;
+    private float spotifyProgress;
     private int displayedBlockCount = Integer.MIN_VALUE;
     private int pendingBlockCount = Integer.MIN_VALUE;
     private float blockValueBlend = 1.0f;
@@ -92,9 +110,15 @@ public class DynamicIsland extends Module {
     public float islandPosY = -1.0f;
 
     public DynamicIsland() {
-        super("Dynamic Island", "Shows Mindless, notifications and Scaffold blocks.", category.render);
+        super("Dynamic Island", "Shows notifications, combat, movement and media activity.", category.render);
         this.registerSetting(anchor = new SliderSetting("Anchor", 0, ANCHORS));
         this.registerSetting(font = new SliderSetting("Font", 0, ModuleFont.options()));
+        this.registerSetting(contentGroup = new GroupSetting("Content"));
+        this.registerSetting(showNotifications = new ButtonSetting(contentGroup, "Notifications", true));
+        this.registerSetting(showBedAura = new ButtonSetting(contentGroup, "Bed Aura", true));
+        this.registerSetting(showScaffold = new ButtonSetting(contentGroup, "Scaffold", true));
+        this.registerSetting(showSpotify = new ButtonSetting(contentGroup, "Spotify", true));
+        this.registerSetting(showIdle = new ButtonSetting(contentGroup, "Idle logo", true));
         notificationDuration = new SliderSetting(
                 "Notification time", 2.5, 0.5, 8.0, 0.5,
                 "Toggle time", "Content.Toggle time");
@@ -116,7 +140,8 @@ public class DynamicIsland extends Module {
     @Override
     public void guiUpdate() {
         anchor.setVisible(true, this);
-        notificationDuration.setVisible(true, this);
+        notificationDuration.setVisible(showNotifications.isToggled(), this);
+        contentGroup.setVisible(true, this);
         styleGroup.setVisible(true, this);
     }
 
@@ -132,6 +157,8 @@ public class DynamicIsland extends Module {
         pendingValue = "";
         pendingState = STATE_IDLE;
         pendingIcon = null;
+        pendingArtwork = null;
+        pendingMediaPlaying = false;
         scaffoldProgress = 0.0f;
         breakerProgress = 0.0f;
         scaffoldPeak = 0;
@@ -142,6 +169,9 @@ public class DynamicIsland extends Module {
         stateLabel = "Mindless";
         stateValue = "";
         stateIcon = null;
+        stateArtwork = null;
+        mediaPlaying = false;
+        spotifyProgress = 0.0f;
         resetBlockValueTransition();
         toggleStates.clear();
         recentToggles.clear();
@@ -165,6 +195,7 @@ public class DynamicIsland extends Module {
         if (text == null) return;
         float delta = frameDelta();
         resolveState(delta);
+        if (islandState == STATE_HIDDEN) return;
         float uiScale = (float) scale.getInput();
         float targetWidth = stateWidth(text) * uiScale;
         float height = HEIGHT * uiScale;
@@ -191,6 +222,8 @@ public class DynamicIsland extends Module {
                 stateValue = pendingValue;
                 islandState = pendingState;
                 stateIcon = pendingIcon;
+                stateArtwork = pendingArtwork;
+                mediaPlaying = pendingMediaPlaying;
                 swapping = false;
                 contentFade = 0.0f;
                 contentSlide = CONTENT_RISE;
@@ -211,10 +244,27 @@ public class DynamicIsland extends Module {
         String nextValue = "";
         String nextKey = "idle";
         ItemStack nextIcon = null;
+        ResourceLocation nextArtwork = null;
+        boolean nextMediaPlaying = false;
+        long now = System.currentTimeMillis();
         ItemStack islandBlock = ModuleManager.blockCounter == null
                 ? null : ModuleManager.blockCounter.islandBlock();
-        Toggle toggle = latestToggle(System.currentTimeMillis());
-        if (ModuleManager.bedAura != null && ModuleManager.bedAura.isBreakingRoute()) {
+        Notifications.IslandNotification notification = showNotifications.isToggled()
+                ? Notifications.latestForIsland(now) : null;
+        Toggle toggle = showNotifications.isToggled() ? latestToggle(now) : null;
+        SystemMediaInfo mediaInfo = currentSpotifyInfo();
+        if (notification != null) {
+            nextState = STATE_NOTIFICATION;
+            nextLabel = notification.title;
+            nextValue = notification.status;
+            nextKey = "notification:" + notification.bornAt;
+        } else if (toggle != null) {
+            nextState = STATE_NOTIFICATION;
+            nextLabel = toggle.name;
+            nextValue = toggle.enabled ? "ON" : "OFF";
+            nextKey = "notification:" + toggle.name + ':' + toggle.enabled + ':' + toggle.bornAt;
+        } else if (showBedAura.isToggled()
+                && ModuleManager.bedAura != null && ModuleManager.bedAura.isBreakingRoute()) {
             nextState = STATE_BREAKER;
             nextLabel = ModuleManager.bedAura.getAuraToolName();
             float target = Math.max(0.0f, Math.min(1.0f,
@@ -223,8 +273,8 @@ public class DynamicIsland extends Module {
             nextValue = Math.round(breakerProgress * 100.0f) + "%";
             nextIcon = ModuleManager.bedAura.getAuraToolStack();
             nextKey = "breaker:" + nextLabel;
-        } else if (islandBlock != null
-                || ModuleManager.scaffold != null && ModuleManager.scaffold.isActivelyScaffolding()) {
+        } else if (showScaffold.isToggled() && (islandBlock != null
+                || ModuleManager.scaffold != null && ModuleManager.scaffold.isActivelyScaffolding())) {
             nextState = STATE_SCAFFOLD;
             nextLabel = "Blocks";
             int blocks = ModuleManager.blockCounter == null
@@ -250,11 +300,19 @@ public class DynamicIsland extends Module {
                 float target = blocks / (float) Math.max(1, scaffoldPeak);
                 scaffoldProgress = approach(scaffoldProgress, target, 9.0f, delta);
             }
-        } else if (toggle != null) {
-            nextState = STATE_NOTIFICATION;
-            nextLabel = toggle.name;
-            nextValue = toggle.enabled ? "ON" : "OFF";
-            nextKey = "notification:" + toggle.name + ':' + toggle.enabled;
+        } else if (mediaInfo != null) {
+            nextState = STATE_SPOTIFY;
+            nextLabel = mediaInfo.getTitle();
+            nextKey = "spotify:" + mediaInfo.getTitle() + ':' + mediaInfo.getArtist();
+            nextArtwork = SystemMediaClient.getInstance().getAlbumArtTextureLocation();
+            nextMediaPlaying = mediaInfo.isPlaying();
+            spotifyProgress = mediaInfo.getDurationMs() <= 0L ? 0.0f
+                    : Math.max(0.0f, Math.min(1.0f,
+                    mediaInfo.getLivePositionMs() / (float) mediaInfo.getDurationMs()));
+        } else if (!showIdle.isToggled()) {
+            nextState = STATE_HIDDEN;
+            nextLabel = "";
+            nextKey = "hidden";
         } else {
             breakerProgress = 0.0f;
             scaffoldPeak = 0;
@@ -264,12 +322,35 @@ public class DynamicIsland extends Module {
         // Compared against whatever is already on its way in, so a second toggle during a
         // swap replaces the queued content instead of starting the animation over.
         String showing = swapping ? pendingKey : stateKey;
+        if (nextState == STATE_HIDDEN || islandState == STATE_HIDDEN) {
+            stateKey = nextKey;
+            stateLabel = nextLabel;
+            stateValue = nextValue;
+            islandState = nextState;
+            stateIcon = nextIcon;
+            stateArtwork = nextArtwork;
+            mediaPlaying = nextMediaPlaying;
+            pendingKey = nextKey;
+            pendingLabel = nextLabel;
+            pendingValue = nextValue;
+            pendingState = nextState;
+            pendingIcon = nextIcon;
+            pendingArtwork = nextArtwork;
+            pendingMediaPlaying = nextMediaPlaying;
+            swapping = false;
+            contentFade = 1.0f;
+            contentSlide = 0.0f;
+            animatedWidth = -1.0f;
+            return;
+        }
         if (!nextKey.equals(showing)) {
             pendingKey = nextKey;
             pendingLabel = nextLabel;
             pendingValue = nextValue;
             pendingState = nextState;
             pendingIcon = nextIcon;
+            pendingArtwork = nextArtwork;
+            pendingMediaPlaying = nextMediaPlaying;
             swapping = true;
             return;
         }
@@ -280,6 +361,8 @@ public class DynamicIsland extends Module {
             stateLabel = nextLabel;
             stateValue = nextValue;
             stateIcon = nextIcon;
+            stateArtwork = nextArtwork;
+            mediaPlaying = nextMediaPlaying;
         }
     }
 
@@ -318,7 +401,10 @@ public class DynamicIsland extends Module {
         int accent = ThemeManager.getWatermarkColor(0.0) & 0xFFFFFF;
         float markHeight = 7.8f * uiScale;
         float markWidth = markHeight * LOGO_ASPECT;
-        if ((islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) && stateIcon != null) {
+        if (islandState == STATE_SPOTIFY && stateArtwork != null) {
+            drawTexture(stateArtwork, badgeX, badgeY, badge, badge,
+                    withAlpha(0xFFFFFF, contentAlpha));
+        } else if ((islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) && stateIcon != null) {
             drawItemIcon(stateIcon, badgeX, badgeY, badge, contentAlpha);
         } else {
             drawLogo(badgeX + (badge - markWidth) * 0.5f,
@@ -330,7 +416,9 @@ public class DynamicIsland extends Module {
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
             textY -= 1.15f * uiScale;
         }
-        drawScaled(text, stateLabel, labelX, textY, uiScale, withAlpha(0xF1F1F5, contentAlpha));
+        String visibleLabel = islandState == STATE_SPOTIFY
+                ? fitText(text, stateLabel, SPOTIFY_TEXT_WIDTH) : stateLabel;
+        drawScaled(text, visibleLabel, labelX, textY, uiScale, withAlpha(0xF1F1F5, contentAlpha));
         if (!stateValue.isEmpty()) {
             // On takes the theme colour, off goes quiet. The state is then readable from
             // the corner of the eye without reading the word.
@@ -370,26 +458,38 @@ public class DynamicIsland extends Module {
                         withAlpha(valueRgb, contentAlpha));
             }
         }
-        if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
+        if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD
+                || islandState == STATE_SPOTIFY) {
             float barX = labelX;
             float barY = y + height - 4.1f * uiScale + slide;
             float barWidth = Math.max(10.0f * uiScale,
-                    width - (labelX - x) - PAD_X * uiScale);
+                    width - (labelX - x) - PAD_X * uiScale
+                            - (islandState == STATE_SPOTIFY ? (EQUALIZER_WIDTH + VALUE_GAP) * uiScale : 0.0f));
             float barHeight = Math.max(1.0f, 1.65f * uiScale);
             RoundedUtils.drawRound(barX, barY, barWidth, barHeight, barHeight * 0.5f,
                     withAlpha(0xFFFFFF, Math.min(contentAlpha, 36)));
-            float progress = islandState == STATE_BREAKER ? breakerProgress : scaffoldProgress;
+            float progress = islandState == STATE_BREAKER ? breakerProgress
+                    : islandState == STATE_SCAFFOLD ? scaffoldProgress : spotifyProgress;
             float fill = barWidth * Math.max(0.0f, Math.min(1.0f, progress));
             if (fill > 0.5f) {
                 RoundedUtils.drawRound(barX, barY, fill, barHeight, barHeight * 0.5f,
                         withAlpha(0xF1F1F5, contentAlpha));
             }
         }
+        if (islandState == STATE_SPOTIFY) {
+            drawEqualizer(x + width - (PAD_X + EQUALIZER_WIDTH) * uiScale,
+                    y + height * 0.5f + slide, uiScale, contentAlpha, accent, mediaPlaying);
+        }
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private float stateWidth(MindlessFontRenderer text) {
         float width = PAD_X * 2.0f + BADGE_SIZE + BADGE_GAP + text.getStringWidth(stateLabel);
+        if (islandState == STATE_SPOTIFY) {
+            width = PAD_X * 2.0f + BADGE_SIZE + BADGE_GAP
+                    + Math.min(SPOTIFY_TEXT_WIDTH, text.getStringWidth(stateLabel))
+                    + VALUE_GAP + EQUALIZER_WIDTH;
+        }
         if (!stateValue.isEmpty()) {
             float valueWidth = text.getStringWidth(stateValue);
             if (islandState == STATE_SCAFFOLD) {
@@ -398,6 +498,48 @@ public class DynamicIsland extends Module {
             width += VALUE_GAP + valueWidth;
         }
         return Math.max(42.0f, width);
+    }
+
+    private SystemMediaInfo currentSpotifyInfo() {
+        if (!showSpotify.isToggled() || ModuleManager.spotifyMiniPlayer == null
+                || !ModuleManager.spotifyMiniPlayer.isEnabled()) return null;
+        SystemMediaInfo info = SystemMediaClient.getInstance().getCurrentInfo();
+        if (info == null || !info.isAvailable() || info.getTitle().trim().isEmpty()) return null;
+        if (SpotifyMiniPlayer.hideWhenPaused != null
+                && SpotifyMiniPlayer.hideWhenPaused.isToggled() && info.isPaused()) return null;
+        return info;
+    }
+
+    public boolean handlesNotifications() {
+        return isEnabled() && showNotifications.isToggled();
+    }
+
+    public boolean handlesSpotify() {
+        return isEnabled() && showSpotify.isToggled();
+    }
+
+    private String fitText(MindlessFontRenderer text, String value, float maxWidth) {
+        if (text.getStringWidth(value) <= maxWidth) return value;
+        String suffix = "...";
+        float available = maxWidth - text.getStringWidth(suffix);
+        int length = value.length();
+        while (length > 0 && text.getStringWidth(value.substring(0, length)) > available) length--;
+        return value.substring(0, length) + suffix;
+    }
+
+    private void drawEqualizer(float x, float centerY, float uiScale, int alpha,
+                               int accent, boolean playing) {
+        float barWidth = Math.max(1.0f, 1.25f * uiScale);
+        float gap = 1.25f * uiScale;
+        double time = System.currentTimeMillis() / 155.0;
+        for (int i = 0; i < 3; i++) {
+            float height = playing
+                    ? (2.5f + 3.0f * (float) Math.abs(Math.sin(time + i * 1.35))) * uiScale
+                    : 2.0f * uiScale;
+            float barX = x + i * (barWidth + gap);
+            RoundedUtils.drawRound(barX, centerY - height * 0.5f, barWidth, height,
+                    barWidth * 0.5f, withAlpha(accent, alpha));
+        }
     }
 
     private int scaffoldBlockCount() {
@@ -517,6 +659,12 @@ public class DynamicIsland extends Module {
     private void drawLogo(float x, float y, float width, float height, int colour) {
         ResourceLocation texture = logoTexture();
         if (texture == null) return;
+        drawTexture(texture, x, y, width, height, colour);
+    }
+
+    private void drawTexture(ResourceLocation texture, float x, float y, float width,
+                             float height, int colour) {
+        if (texture == null || ((colour >>> 24) & 0xFF) <= 0) return;
         GlStateManager.enableTexture2D();
         GlStateManager.enableAlpha();
         GlStateManager.enableBlend();
