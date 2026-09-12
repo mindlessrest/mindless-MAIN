@@ -88,6 +88,9 @@ public class SexyESP extends Module {
     private final ButtonSetting tagBackground;
     private final ColorSetting tagBackgroundColor;
     private final SliderSetting tagBackgroundRadius;
+    private final ButtonSetting tagBackgroundOutline;
+    private final ColorSetting tagBackgroundOutlineColor;
+    private final SliderSetting tagBackgroundOutlineWidth;
     private final SliderSetting tagPadding;
 
     private final ButtonSetting playerStats;
@@ -212,6 +215,9 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         registerSetting(tagBackgroundColor = new ColorSetting(tagGroup, "Background color", 10, 10, 12, 190));
         registerSetting(tagBackgroundRadius = new SliderSetting(tagGroup, "Background radius", 4.0, 0.0, 8.0, 0.5));
         registerSetting(tagPadding = new SliderSetting(tagGroup, "Background padding", 4.0, 0.0, 8.0, 0.5));
+        registerSetting(tagBackgroundOutline = new ButtonSetting(tagGroup, "Background outline", false));
+        registerSetting(tagBackgroundOutlineColor = new ColorSetting(tagGroup, "Outline color", 0, 0, 0, 220));
+        registerSetting(tagBackgroundOutlineWidth = new SliderSetting(tagGroup, "Outline width", "px", 1.0, 0.5, 3.0, 0.5));
         registerSetting(itemTags = new ButtonSetting(tagGroup, "Held item", true));
         registerSetting(fontScale = new SliderSetting(tagGroup, "Font scale", 0.75, 0.4, 1.0, 0.05));
         // Font scale stays the shared base; these two size the name and the held item
@@ -285,9 +291,13 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         enemyColor.setVisible(named && nameMode == NAME_RELATION, this);
         tagDistance.setVisible(named, this);
         tagPing.setVisible(named, this);
-        tagBackgroundColor.setVisible(tagBackground.isToggled(), this);
-        tagBackgroundRadius.setVisible(tagBackground.isToggled(), this);
-        tagPadding.setVisible(tagBackground.isToggled(), this);
+        boolean tagBg = tagBackground.isToggled();
+        tagBackgroundColor.setVisible(tagBg, this);
+        tagBackgroundRadius.setVisible(tagBg, this);
+        tagPadding.setVisible(tagBg, this);
+        tagBackgroundOutline.setVisible(tagBg, this);
+        tagBackgroundOutlineColor.setVisible(tagBg && tagBackgroundOutline.isToggled(), this);
+        tagBackgroundOutlineWidth.setVisible(tagBg && tagBackgroundOutline.isToggled(), this);
 
         boolean stats = playerStats.isToggled();
         statsLayout.setVisible(stats, this);
@@ -901,6 +911,25 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         }
     }
 
+    /**
+     * A hairline around the tag's fill.
+     *
+     * A grown rounded rect drawn behind the fill rather than a stroked path: the tag background is
+     * already drawn as a rounded rect, and matching that exactly is the only way the outline
+     * follows the same corner the fill has instead of cutting across it.
+     */
+    private void drawTagOutline(double x1, double y1, double x2, double y2, double radius) {
+        if (!tagBackgroundOutline.isToggled()) {
+            return;
+        }
+        int color = tagBackgroundOutlineColor.getColor();
+        if ((color >>> 24) == 0) {
+            return;
+        }
+        double width = tagBackgroundOutlineWidth.getInput();
+        drawTagBackground(x1 - width, y1 - width, x2 + width, y2 + width, radius + width, color);
+    }
+
     private int nameTagColor(EntityLivingBase living, double healthRatio, Bounds b) {
         switch ((int) nameColorMode.getInput()) {
             case NAME_RELATION:
@@ -1031,6 +1060,9 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
         if (tagBackground.isToggled()) {
             double pad = tagPadding.getInput() * scale;
             double padY = Math.max(0.5, pad * 0.75);
+            drawTagOutline(centerX - width / 2 - pad, y - padY,
+                    centerX + width / 2 + pad, y + tagFont.getFontHeight() * scale + padY,
+                    tagBackgroundRadius.getInput() * scale);
             drawTagBackground(centerX - width / 2 - pad, y - padY,
                     centerX + width / 2 + pad, y + tagFont.getFontHeight() * scale + padY,
                     tagBackgroundRadius.getInput() * scale, tagBackgroundColor.getColor());
@@ -1251,6 +1283,7 @@ private final java.util.List<EntityPlayer> outlineCandidates = new java.util.Arr
             double right = centerX + width / 2 + pad;
             double bottom = y + tagFont.getFontHeight() * scale + padY;
             double radius = tagBackgroundRadius.getInput() * scale;
+            drawTagOutline(left, top, right, bottom, radius);
             drawTagBackground(left, top, right, bottom, radius, tagBackgroundColor.getColor());
         }
         rectBatch.flush();
