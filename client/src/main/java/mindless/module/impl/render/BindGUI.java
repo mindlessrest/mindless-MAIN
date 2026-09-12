@@ -32,11 +32,19 @@ public class BindGUI extends Module {
     private static final String[] ALIGNMENTS = new String[]{"Left", "Right"};
     private static final int ALIGN_LEFT = 0;
 
+    private static final String[] SOURCES = new String[]{"Bound", "Bound and enabled", "Everything"};
+    private static final int SOURCE_BOUND = 0;
+    private static final int SOURCE_BOUND_AND_ENABLED = 1;
+    private static final String UNBOUND_KEY = "-";
+    private static final int UNBOUND_COLOR = 0xFF5A616B;
+    private static final int OFF_COLOR = 0xFF9AA1AA;
+    private static final int ON_COLOR = 0xFFFFFFFF;
+
     private final SliderSetting posX;
     private final SliderSetting posY;
     private final SliderSetting alignment;
     private final SliderSetting scale;
-    private final ButtonSetting onlyEnabled;
+    private final SliderSetting source;
     private final ButtonSetting showBackground;
     private final ButtonSetting sortByName;
     private final ButtonSetting useThemeColor;
@@ -49,7 +57,7 @@ public class BindGUI extends Module {
         this.registerSetting(posY = new SliderSetting("Y", 120.0, 0.0, 400.0, 1.0));
         this.registerSetting(alignment = new SliderSetting("Align", ALIGN_LEFT, ALIGNMENTS));
         this.registerSetting(scale = new SliderSetting("Scale", 1.0, 0.5, 2.0, 0.05));
-        this.registerSetting(onlyEnabled = new ButtonSetting("Only enabled", false));
+        this.registerSetting(source = new SliderSetting("Show", SOURCE_BOUND, SOURCES));
         this.registerSetting(showBackground = new ButtonSetting("Background", true));
         this.registerSetting(sortByName = new ButtonSetting("Sort by name", true));
         this.registerSetting(useThemeColor = new ButtonSetting("Theme color", true));
@@ -77,18 +85,24 @@ public class BindGUI extends Module {
             return;
         }
 
+        // Listing only what is bound is why this looked broken. On a profile where nothing has
+        // a key yet the list came out empty and the module drew nothing at all, with no way to
+        // tell that apart from it being switched off. Disabled modules were always included;
+        // they are just drawn grey.
+        int mode = (int) source.getInput();
         List<Module> bound = new ArrayList<Module>();
         for (Module module : Mindless.getModuleManager().getModules()) {
-            if (module.getKeycode() <= 0 || module.getName() == null) {
+            if (module.getName() == null || module.isHidden() || module == this) {
                 continue;
             }
-            if (onlyEnabled.isToggled() && !module.isEnabled()) {
+            boolean isBound = module.getKeycode() > 0;
+            if (mode == SOURCE_BOUND && !isBound) {
+                continue;
+            }
+            if (mode == SOURCE_BOUND_AND_ENABLED && !isBound && !module.isEnabled()) {
                 continue;
             }
             bound.add(module);
-        }
-        if (bound.isEmpty()) {
-            return;
         }
         if (sortByName.isToggled()) {
             Collections.sort(bound, new Comparator<Module>() {
@@ -107,12 +121,22 @@ public class BindGUI extends Module {
         float widest = 0.0f;
         List<String> names = new ArrayList<String>();
         List<String> keys = new ArrayList<String>();
+        List<Integer> colors = new ArrayList<Integer>();
         for (Module module : bound) {
-            String name = module.getName();
-            String key = keyName(module.getKeycode());
-            names.add(name);
-            keys.add(key);
-            float lineWidth = mc.fontRendererObj.getStringWidth(name + "  " + key);
+            boolean isBound = module.getKeycode() > 0;
+            names.add(module.getName());
+            keys.add(isBound ? keyName(module.getKeycode()) : UNBOUND_KEY);
+            colors.add(module.isEnabled() ? ON_COLOR : OFF_COLOR);
+        }
+        // An empty panel is indistinguishable from the module being off, so say why it is empty
+        // rather than drawing nothing.
+        if (names.isEmpty()) {
+            names.add("No binds set");
+            keys.add(UNBOUND_KEY);
+            colors.add(OFF_COLOR);
+        }
+        for (int i = 0; i < names.size(); i++) {
+            float lineWidth = mc.fontRendererObj.getStringWidth(names.get(i) + "  " + keys.get(i));
             if (lineWidth > widest) {
                 widest = lineWidth;
             }
@@ -128,18 +152,21 @@ public class BindGUI extends Module {
         GlStateManager.scale(factor, factor, 1.0f);
 
         if (showBackground.isToggled()) {
-            RenderUtils.drawRect(0, 0, panelWidth, bound.size() * rowHeight + 4.0f,
+            RenderUtils.drawRect(0, 0, panelWidth, names.size() * rowHeight + 4.0f,
                     background.getRGB() | (background.getAlpha() << 24));
         }
 
-        for (int i = 0; i < bound.size(); i++) {
+        for (int i = 0; i < names.size(); i++) {
             String name = names.get(i);
             String key = keys.get(i);
             float rowTop = 2.0f + i * rowHeight;
-            int nameColor = bound.get(i).isEnabled() ? 0xFFFFFFFF : 0xFF9AA1AA;
-            int accent = useThemeColor.isToggled()
-                    ? HUD.getHudColor(i * 30.0)
-                    : keyColor.getRGB() | 0xFF000000;
+            int nameColor = colors.get(i);
+            // An unbound row's key column carries nothing, so it is dimmed instead of accented.
+            int accent = UNBOUND_KEY.equals(key)
+                    ? UNBOUND_COLOR
+                    : useThemeColor.isToggled()
+                            ? HUD.getHudColor(i * 30.0)
+                            : keyColor.getRGB() | 0xFF000000;
 
             mc.fontRendererObj.drawStringWithShadow(name, 4.0f, rowTop, nameColor);
             // The key sits hard against the right edge so the column lines up whatever the
