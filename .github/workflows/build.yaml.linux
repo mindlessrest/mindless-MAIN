@@ -1,4 +1,4 @@
-name: Build client on Debian
+name: Build and Publish Client
 
 on:
   workflow_dispatch:
@@ -10,49 +10,122 @@ on:
       - ".gitignore"
 
 concurrency:
-  group: linux-build-${{ github.ref }}
+  group: production-client-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    # The runner should be a Debian self-hosted runner with the standard
-    # self-hosted/linux/x64 labels. build.sh installs missing packages with apt.
-    runs-on: [self-hosted, linux, x64]
+  build-and-publish:
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 90
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Build Windows client and native components
-        env:
-          MINDLESS_AUTO_INSTALL: "1"
+      - name: Build production client
         run: ./build.sh --prod
 
       - name: Verify build outputs
         shell: bash
         run: |
           set -euo pipefail
+
           for file in \
             MindlessLoader.exe \
             client/native_build/dist/MindlessNative.dll \
             client/build/libs/mindless-obf.jar \
-            client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar; do
-            test -s "$file" || { echo "Missing or empty build output: $file" >&2; exit 1; }
+            client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar \
+            client/build/mappings/forge.json \
+            client/build/mappings/lunar.json; do
+            test -s "$file" || {
+              echo "::error::Missing or empty build output: $file"
+              exit 1
+            }
           done
 
-      - name: Upload Windows client artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mindless-client-${{ github.sha }}
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            MindlessLoader.exe
-            client/native_build/dist/MindlessNative.dll
-            client/build/libs/mindless-obf.jar
-            client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar
+      - name: Calculate release metadata
+        id: release-metadata
+        shell: bash
+        run: |
+          set -euo pipefail
 
+          echo "forge-jar-sha256=$(sha256sum client/build/libs/mindless-obf.jar | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "lunar-jar-sha256=$(sha256sum client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployment secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -n "$DEPLOY_HOST" || {
+            echo "::error::DEPLOY_HOST is not configured"
+            exit 1
+          }
+
+          test -n "$DEPLOY_USER" || {
+            echo "::error::DEPLOY_USER is not configured"
+            exit 1
+          }
+
+          test -n "$DEPLOY_SSH_KEY" || {
+            echo "::error::DEPLOY_SSH_KEY is not configured"
+            exit 1
+          }
+
+      - name: Upload release to VPS staging
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "MindlessLoader.exe,client/native_build/dist/MindlessNative.dll,client/build/mappings/forge.json,client/build/mappings/lunar.json"
+          target: "/tmp/mindless-${{ github.sha }}"
+
+      - name: Publish release to panel
+        uses: appleboy/ssh-action@v1
+        env:
+          FORGE_SHA256: ${{ steps.release-metadata.outputs.forge-jar-sha256 }}
+          LUNAR_SHA256: ${{ steps.release-metadata.outputs.lunar-jar-sha256 }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: FORGE_SHA256,LUNAR_SHA256
+          script: |
+            set -eu
+
+            staging="/tmp/mindless-${{ github.sha }}"
+
+            loader="$staging/MindlessLoader.exe"
+            native="$staging/client/native_build/dist/MindlessNative.dll"
+            forge_mapping="$staging/client/build/mappings/forge.json"
+            lunar_mapping="$staging/client/build/mappings/lunar.json"
+
+            test -s "$loader"
+            test -s "$native"
+            test -s "$forge_mapping"
+            test -s "$lunar_mapping"
+
+            cd /var/mindless/backend
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            go run ./cmd/promote-release \
+              -config config.yaml \
+              -loader "$loader" \
+              -native "$native" \
+              -build-id "${{ github.sha }}" \
+              -forge-mapping "$forge_mapping" \
+              -lunar-mapping "$lunar_mapping" \
+              -forge-jar-sha256 "$FORGE_SHA256" \
+              -lunar-jar-sha256 "$LUNAR_SHA256"
+
+            rm -rf "$staging"

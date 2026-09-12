@@ -385,7 +385,9 @@ def update_preset(clang, lld, ninja, vcpkg, prod=False):
             cv["VCPKG_INSTALLED_DIR"]  = str(LOADER_DIR / "vcpkg_installed").replace("\\", "/")
             cv["VCPKG_TARGET_TRIPLET"] = "x64-windows-static"
             cv["MINDLESS_PRODUCTION"] = "ON" if prod else "OFF"
-            cv["MINDLESS_PRIVATE_PDB"] = "ON" if prod else "OFF"
+            # Keep symbols enabled for ordinary Release builds as well.  The
+            # loader's Release configuration uses this to emit /Zi and a PDB.
+            cv["MINDLESS_PRIVATE_PDB"] = "ON"
             cv.pop("CMAKE_C_FLAGS_RELEASE", None)
             cv.pop("CMAKE_CXX_FLAGS_RELEASE", None)
     preset_contents = json.dumps(data, indent=4) + "\n"

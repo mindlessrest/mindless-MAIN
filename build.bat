@@ -54,11 +54,11 @@ if %errorlevel% equ 0 (
 :: -----------------------------------------------
 echo.
 echo  ==========================================
-echo   Running tools\build.py %*
+echo   Running tools\build.py --prod %*
 echo  ==========================================
 echo.
 
-python "%~dp0tools\build.py" %*
+python "%~dp0tools\build.py" --prod %*
 set EXIT_CODE=%errorlevel%
 
 echo.
