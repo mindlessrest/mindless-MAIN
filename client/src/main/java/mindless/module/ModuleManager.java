@@ -190,6 +190,7 @@ public class ModuleManager {
 
         this.addModule(new Anticheat());
         this.addModule(new ChatBypass());
+        this.addModule(new Disabler());
         this.addModule(discordRPC = new mindless.module.impl.other.DiscordRPC());
         this.addModule(new FakeChat());
         this.addModule(new LatencyAlerts());
