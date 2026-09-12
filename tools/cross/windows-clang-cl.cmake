@@ -63,6 +63,10 @@ set(_mindless_libpaths
     "/libpath:\"${XWIN_ROOT}/sdk/lib/ucrt/x86_64\""
     "/libpath:\"${XWIN_ROOT}/sdk/lib/um/x86_64\"")
 list(JOIN _mindless_libpaths " " _mindless_link_flags)
+# CMake's Linux vs_link_dll wrapper cannot reliably run the manifest phase with
+# lld-link/llvm-mt. Application manifests are already embedded by the resource
+# scripts, so suppress the linker's generated-manifest step for cross builds.
+set(_mindless_link_flags "${_mindless_link_flags} /MANIFEST:NO")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "${_mindless_link_flags}")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_mindless_link_flags}")
 set(CMAKE_MODULE_LINKER_FLAGS_INIT "${_mindless_link_flags}")
