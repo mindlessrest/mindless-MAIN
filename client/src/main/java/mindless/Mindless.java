@@ -91,6 +91,7 @@ public class Mindless {
         registerHandler(packetDelayService = new PacketDelayService(), false);
         registerHandler(new mindless.placement.PlacementLifecycle(), false);
         registerHandler(new mindless.helper.GameWinDetector(), false);
+        registerHandler(mindless.effect.EffectSystem.INSTANCE, true);
         AccountManager.init();
         registerHandler(new Events(), false);
 
