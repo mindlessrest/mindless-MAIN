@@ -271,6 +271,26 @@ public class ResourceDepositTest {
         Assert.assertEquals(0, fixture.controller.clicks.size());
     }
 
+    @Test
+    public void depositsOnceWhenASupportedChestOpens() throws Exception {
+        Fixture fixture = fixture(27, "container.chest");
+        fixture.player.inventory.mainInventory[9] = new ItemStack(Items.gold_ingot, 4);
+        ResourceDeposit module = enabledModule();
+
+        module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+        Assert.assertEquals(1, fixture.controller.clicks.size());
+        Assert.assertEquals(27, fixture.controller.clicks.get(0).slotId);
+        Assert.assertEquals(1, fixture.controller.clicks.get(0).mode);
+
+        module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+        Assert.assertEquals(1, fixture.controller.clicks.size());
+        Assert.assertFalse(passActive(module));
+
+        fixture.player.inventory.mainInventory[10] = new ItemStack(Items.iron_ingot, 4);
+        module.onTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+        Assert.assertEquals(1, fixture.controller.clicks.size());
+    }
+
     private ResourceDeposit enabledModule() {
         ResourceDeposit module = new ResourceDeposit();
         module.setEnabled(true);

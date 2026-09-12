@@ -946,7 +946,7 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont) {
             // the rasteriser fill rule gives each pixel to exactly one of them.
             fillRow(left - grow, rowTop - growTop, left + width + grow,
                     rowTop + rowHeight + growBottom,
-                    topLeft, topRight, bottomRight, bottomLeft, color);
+                    topLeft, topRight, bottomRight, bottomLeft, color, firstRow, lastRow);
         }
         endRowBatch();
     }
@@ -1001,20 +1001,51 @@ private static void beginRowBatch() {
         wr.pos(x2, y1, 0.0D).color(r, g, b, a).endVertex();
     }
 
+    /**
+     * One quarter disc, at the three degree step the rounded rect reference uses, optionally with
+     * a feathered ring outside it.
+     *
+     * Eight segments faceted visibly past a two pixel radius, and a hard arc edge aliases into a
+     * staircase of its own, which is what made the rounded corners read as chewed rather than
+     * round. The ring fades to zero alpha over CORNER_FEATHER pixels and gives the diagonal the
+     * coverage ramp the axis aligned edges never need.
+     *
+     * Only the corners on the outside of the whole list may be feathered. A ring drawn at a width
+     * change would fade out over the neighbouring row's fill, and blending it there a second time
+     * draws exactly the arc shaped seam the single batch exists to avoid.
+     */
     private static void emitCorner(WorldRenderer wr, float cx, float cy, float radius,
-                                   float startDeg, int r, int g, int b, int a) {
+                                   float startDeg, int r, int g, int b, int a, boolean feather) {
         if (radius <= 0.0f) {
             return;
         }
-        int segments = 8;
-        for (int i = 0; i < segments; i++) {
-            double t0 = Math.toRadians(startDeg + 90.0 * i / segments);
-            double t1 = Math.toRadians(startDeg + 90.0 * (i + 1) / segments);
+        float outer = radius + CORNER_FEATHER;
+        // Three degree steps at every radius is the reference's figure and costs ten thousand
+        // vertex writes a frame on a long list. Stepping per pixel of arc instead holds the same
+        // silhouette: a four pixel corner cannot show more than a dozen facets anyway.
+        int steps = Math.max(4, Math.min(CORNER_STEPS, Math.round(radius * 3.0f)));
+        for (int i = 0; i < steps; i++) {
+            double t0 = Math.toRadians(startDeg + 90.0 * i / steps);
+            double t1 = Math.toRadians(startDeg + 90.0 * (i + 1) / steps);
+            float sin0 = (float) Math.sin(t0);
+            float cos0 = (float) Math.cos(t0);
+            float sin1 = (float) Math.sin(t1);
+            float cos1 = (float) Math.cos(t1);
+
             wr.pos(cx, cy, 0.0D).color(r, g, b, a).endVertex();
-            wr.pos(cx + Math.sin(t0) * radius, cy - Math.cos(t0) * radius, 0.0D)
-                    .color(r, g, b, a).endVertex();
-            wr.pos(cx + Math.sin(t1) * radius, cy - Math.cos(t1) * radius, 0.0D)
-                    .color(r, g, b, a).endVertex();
+            wr.pos(cx + sin0 * radius, cy - cos0 * radius, 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(cx + sin1 * radius, cy - cos1 * radius, 0.0D).color(r, g, b, a).endVertex();
+
+            if (!feather) {
+                continue;
+            }
+            wr.pos(cx + sin0 * radius, cy - cos0 * radius, 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(cx + sin0 * outer, cy - cos0 * outer, 0.0D).color(r, g, b, 0).endVertex();
+            wr.pos(cx + sin1 * outer, cy - cos1 * outer, 0.0D).color(r, g, b, 0).endVertex();
+
+            wr.pos(cx + sin0 * radius, cy - cos0 * radius, 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(cx + sin1 * outer, cy - cos1 * outer, 0.0D).color(r, g, b, 0).endVertex();
+            wr.pos(cx + sin1 * radius, cy - cos1 * radius, 0.0D).color(r, g, b, a).endVertex();
         }
     }
 
@@ -1028,7 +1059,7 @@ private static void beginRowBatch() {
      */
     private static void fillRow(float x1, float y1, float x2, float y2,
                                 float topLeft, float topRight, float bottomRight, float bottomLeft,
-                                int color) {
+                                int color, boolean featherTop, boolean featherBottom) {
         if (x2 <= x1 || y2 <= y1) {
             return;
         }
@@ -1052,55 +1083,14 @@ private static void beginRowBatch() {
             emitQuad(wr, x1 + bottomLeft, y2 - bottomBand, x2 - bottomRight, y2, r, g, b, a);
         }
 
-        emitCorner(wr, x1 + topLeft, y1 + topLeft, topLeft, 270.0f, r, g, b, a);
-        emitCorner(wr, x2 - topRight, y1 + topRight, topRight, 0.0f, r, g, b, a);
-        emitCorner(wr, x2 - bottomRight, y2 - bottomRight, bottomRight, 90.0f, r, g, b, a);
-        emitCorner(wr, x1 + bottomLeft, y2 - bottomLeft, bottomLeft, 180.0f, r, g, b, a);
+        emitCorner(wr, x1 + topLeft, y1 + topLeft, topLeft, 270.0f, r, g, b, a, featherTop);
+        emitCorner(wr, x2 - topRight, y1 + topRight, topRight, 0.0f, r, g, b, a, featherTop);
+        emitCorner(wr, x2 - bottomRight, y2 - bottomRight, bottomRight, 90.0f, r, g, b, a, featherBottom);
+        emitCorner(wr, x1 + bottomLeft, y2 - bottomLeft, bottomLeft, 180.0f, r, g, b, a, featherBottom);
     }
 
 private static final float CORNER_FEATHER = 0.6f;
-
-    private static void quarterDisc(float cx, float cy, float radius, float startDeg, int color) {
-        if (radius <= 0.0f) {
-            return;
-        }
-        radialBand(cx, cy, 0.0f, 1.0f, radius, 1.0f, startDeg, color);
-        radialBand(cx, cy, radius, 1.0f, radius + CORNER_FEATHER, 0.0f, startDeg, color);
-    }
-private static void radialBand(float cx, float cy, float r0, float a0, float r1, float a1,
-                                   float startDeg, int color) {
-        int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
-        int alpha = (color >>> 24) & 0xFF;
-        int c0 = Math.round(alpha * a0), c1 = Math.round(alpha * a1);
-        if (c0 <= 0 && c1 <= 0) {
-            return;
-        }
-        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
-        GlStateManager.enableBlend();
-        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
-                GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GlStateManager.disableTexture2D();
-        GlStateManager.disableAlpha();
-        GlStateManager.disableCull();
-        GlStateManager.shadeModel(GL11.GL_SMOOTH);
-        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
-
-        Tessellator tessellator = Tessellator.getInstance();
-        WorldRenderer worldRenderer = tessellator.getWorldRenderer();
-        worldRenderer.begin(GL11.GL_TRIANGLE_STRIP, DefaultVertexFormats.POSITION_COLOR);
-        for (int i = 0; i <= 12; i++) {
-            double t = Math.toRadians(startDeg + 90.0 * i / 12.0);
-            double sin = Math.sin(t), cos = Math.cos(t);
-            worldRenderer.pos(cx + sin * r1, cy - cos * r1, 0.0D).color(r, g, b, c1).endVertex();
-            worldRenderer.pos(cx + sin * r0, cy - cos * r0, 0.0D).color(r, g, b, c0).endVertex();
-        }
-        tessellator.draw();
-        GlStateManager.shadeModel(GL11.GL_FLAT);
-        GlStateManager.enableCull();
-        GlStateManager.enableAlpha();
-        GlStateManager.enableTexture2D();
-
-    }
+    private static final int CORNER_STEPS = 30;
 
     private static int getBackgroundAlpha() {
         return Math.max(0, Math.min(255,

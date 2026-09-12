@@ -334,6 +334,9 @@ private final List<Card> cardPool = new ArrayList<Card>();
 
         float screenW = resolution.getScaledWidth();
         float screenH = resolution.getScaledHeight();
+        // A text pass turns fog off, and this still runs inside the world pass, so anything
+        // subscribed to RenderWorldLast after this module would inherit it.
+        boolean fog = GL11.glIsEnabled(GL11.GL_FOG);
 
         measureCards(text, icon, padding, gap, fontHeight, drawCount, drawName, drawDistance);
         // Merging changes the counts, which changes the widths, which can bring further cards into
@@ -370,6 +373,15 @@ private final List<Card> cardPool = new ArrayList<Card>();
                 drawIcon(card.icon, left + padding, card.screenY - icon / 2f, scale);
             }
 
+            // The panel behind the card comes from the rounded rect shader and the icon from the
+            // item renderer, and both leave the alpha test, the blend function and the bound
+            // program where a glyph batch draws nothing at all. That is why the card and its icon
+            // appeared while the count never did. A text pass owns its own state; establish it
+            // per card, because the next card's icon pulls it apart again.
+            if (drawCount || drawName || drawDistance) {
+                RenderUtils.beginTextPass();
+            }
+
             if (drawCount && !card.label.isEmpty()) {
                 text.drawString(card.label, left + padding + icon + gap,
                         card.screenY - fontHeight / 2f, 0xFF000000 | countColor.getRGB(), true);
@@ -386,6 +398,9 @@ private final List<Card> cardPool = new ArrayList<Card>();
             }
         }
 
+        if (fog) {
+            GlStateManager.enableFog();
+        }
         GlStateManager.color(1f, 1f, 1f, 1f);
     }
 

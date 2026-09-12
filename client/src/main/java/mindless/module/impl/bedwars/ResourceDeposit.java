@@ -3,6 +3,7 @@ package mindless.module.impl.bedwars;
 import mindless.event.GuiUpdateEvent;
 import mindless.event.ReceivePacketEvent;
 import mindless.module.Module;
+import mindless.module.setting.impl.ButtonSetting;
 import mindless.utility.HypixelLanguage;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.inventory.GuiChest;
@@ -30,15 +31,19 @@ public class ResourceDeposit extends Module {
     private static final int SINGLE_CHEST_SIZE = 27;
     private static final int LARGE_CHEST_SIZE = 54;
 
+    private ButtonSetting depositOnOpen;
+
     private GuiChest boundScreen;
     private EntityPlayer boundPlayer;
     private volatile ContainerChest boundContainer;
     private volatile int boundWindowId = -1;
     private volatile boolean passActive;
     private boolean withdrawing;
+    private boolean autoDeposited;
 
     public ResourceDeposit() {
-        super("Resource Deposit", "Scroll up to deposit resources; scroll down to withdraw them.", category.bedwars);
+        super("Resource Deposit", "Deposits resources when a chest opens; scroll down to withdraw them.", category.bedwars);
+        this.registerSetting(depositOnOpen = new ButtonSetting("Deposit on open", true));
     }
 
     @Override
@@ -83,7 +88,10 @@ public class ResourceDeposit extends Module {
             return;
         }
         if (boundScreen == null) {
-            return;
+            beginAutoDeposit();
+            if (boundScreen == null) {
+                return;
+            }
         }
         if (!isBoundChestCurrent()) {
             clearState();
@@ -148,9 +156,43 @@ public class ResourceDeposit extends Module {
         });
     }
 
+    /**
+     * Opening the chest is the trigger the module is named for: the resources go in without being
+     * asked for them. Scrolling still starts a pass, and still chooses the direction, but it only
+     * has to be used to pull resources back out.
+     *
+     * Bound once per chest. The binding lives until the screen closes, so the automatic pass
+     * cannot restart itself every tick the chest stays open.
+     */
+    private void beginAutoDeposit() {
+        if (!isEnabled() || depositOnOpen == null || !depositOnOpen.isToggled() || autoDeposited) {
+            return;
+        }
+        if (mc == null || mc.theWorld == null || mc.thePlayer == null || mc.thePlayer.inventory == null
+                || mc.thePlayer.inventory.getItemStack() != null) {
+            return;
+        }
+
+        ContainerChest container = supportedContainer(mc.currentScreen);
+        if (container == null || mc.thePlayer.openContainer != container) {
+            return;
+        }
+
+        boundScreen = (GuiChest) mc.currentScreen;
+        boundPlayer = mc.thePlayer;
+        boundContainer = container;
+        boundWindowId = container.windowId;
+        withdrawing = false;
+        autoDeposited = true;
+        passActive = true;
+    }
+
     public void onManualInventoryInteraction() {
         if (boundScreen == null) {
-            return;
+            beginAutoDeposit();
+            if (boundScreen == null) {
+                return;
+            }
         }
         if (!isBoundChestCurrent()) {
             clearState();
@@ -338,6 +380,7 @@ public class ResourceDeposit extends Module {
 
     private void clearState() {
         passActive = false;
+        autoDeposited = false;
         boundScreen = null;
         boundPlayer = null;
         boundContainer = null;
