@@ -107,14 +107,6 @@ endif()
 add_library(MindlessNative SHARED
     dllmain.c
     "${CMAKE_CURRENT_BINARY_DIR}/payload.rc")
-if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-    if(CMAKE_C_LINK_MODE STREQUAL "LINKER")
-        set(CMAKE_C_USING_LINKER_MindlessLLD "${CMAKE_LINKER}")
-    else()
-        set(CMAKE_C_USING_LINKER_MindlessLLD "-fuse-ld=lld-link")
-    endif()
-    set_property(TARGET MindlessNative PROPERTY LINKER_TYPE MindlessLLD)
-endif()
 set_target_properties(MindlessNative PROPERTIES
     PREFIX ""
     OUTPUT_NAME "MindlessNative"
