@@ -212,7 +212,7 @@ if [ -z "${JAVA_HOME:-}" ]; then
 fi
 [ -n "${JAVA_HOME:-}" ] || {
     case "$package_manager" in
-        apt-get) packages=(openjdk-17-jdk) ;;
+        apt-get) packages=(temurin-17-jdk) ;;
         dnf|yum) packages=(java-17-openjdk-devel) ;;
         pacman)  packages=(jdk17-openjdk) ;;
         zypper)  packages=(java-17-openjdk-devel) ;;
