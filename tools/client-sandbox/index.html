@@ -6,9 +6,9 @@
 <title>Mindless client sandbox</title>
 <style>
     :root {
-        --chrome:   #0c0e15;
-        --chrome-2: #141823;
-        --edge:     #242b3c;
+        --chrome:   #0a0c13;
+        --chrome-2: #121623;
+        --edge:     #232a3c;
         --ink:      #e6e9f2;
         --ink-dim:  #8d95a8;
         --accent:   #ff4fa3;
@@ -24,55 +24,73 @@
         color: var(--ink);
         font: 13px/1.5 system-ui, sans-serif;
         overflow: hidden;
+        user-select: none;
     }
 
-    #shell {
+    #shell { display: flex; flex-direction: column; width: 100vw; height: 100vh; }
+
+    #stage {
         position: relative;
-        width: 100vw;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-    }
-
-    #game {
         flex: 1 1 auto;
-        position: relative;
         overflow: hidden;
-        background: #0a0d14;
-        cursor: none;
+        background: #000;
+        cursor: crosshair;
     }
 
-    #game.released { cursor: default; }
+    #world, #overlay {
+        position: absolute;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
 
-    #view { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+    #overlay { pointer-events: none; }
 
-    /* Click-to-play curtain: pointer lock cannot be taken without a gesture. */
     #curtain {
         position: absolute;
         inset: 0;
+        z-index: 5;
         display: grid;
         place-content: center;
-        gap: 10px;
         justify-items: center;
-        background: rgba(6, 8, 13, 0.82);
-        backdrop-filter: blur(3px);
+        gap: 14px;
+        padding: 24px;
         text-align: center;
+        background: rgba(6, 8, 13, 0.78);
+        backdrop-filter: blur(4px);
         cursor: pointer;
-        z-index: 5;
     }
 
     #curtain[hidden] { display: none !important; }
 
     #curtain h1 {
         margin: 0;
-        font-size: 22px;
+        font-size: 24px;
         font-weight: 600;
         letter-spacing: 0.01em;
     }
 
-    #curtain p { margin: 0; color: var(--ink-dim); max-width: 46ch; }
+    #curtain h1 span { color: var(--accent); }
 
-    #curtain kbd {
+    #curtain p { margin: 0; color: var(--ink-dim); max-width: 54ch; }
+
+    .keys {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 6px 22px;
+        max-width: 560px;
+        width: 100%;
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--ink-dim);
+        text-align: left;
+    }
+
+    .keys div { display: flex; gap: 8px; align-items: baseline; }
+    .keys b { color: var(--ink); font-weight: 500; margin-left: auto; }
+
+    kbd {
         font-family: var(--mono);
         font-size: 11px;
         background: var(--chrome-2);
@@ -87,7 +105,7 @@
         flex: 0 0 auto;
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 14px;
         padding: 6px 12px;
         background: var(--chrome-2);
         border-top: 1px solid var(--edge);
@@ -100,35 +118,48 @@
 
     #statusbar b { color: var(--ink); font-weight: 500; }
     #statusbar .sep { color: var(--edge); }
-    #statusbar .live { color: var(--accent); }
+    #statusbar .tip { color: var(--accent); margin-left: auto; }
 </style>
 </head>
 <body>
 <div id="shell">
-    <div id="game">
-        <canvas id="view" width="1280" height="720"></canvas>
+    <div id="stage">
+        <canvas id="world"></canvas>
+        <canvas id="overlay"></canvas>
         <div id="curtain">
-            <h1>Mindless client sandbox</h1>
+            <h1><span>mindless</span> client sandbox</h1>
             <p>
-                Click to capture the mouse. <kbd>WASD</kbd> move, <kbd>Space</kbd> jump,
-                <kbd>Shift</kbd> sneak, left click to swing, <kbd>Right Shift</kbd> opens the click
-                GUI, <kbd>Esc</kbd> releases the mouse.
+                Click to capture the mouse. The array list, the click GUI and the effects run the
+                same geometry the client does, so what is tuned here is what ships.
             </p>
-            <p>
-                The array list, the click GUI and the effects run the same geometry the client
-                does, so what is tuned here is what ships.
-            </p>
+            <div class="keys">
+                <div>Move <b><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></b></div>
+                <div>Jump <b><kbd>Space</kbd></b></div>
+                <div>Sneak <b><kbd>L Shift</kbd></b></div>
+                <div>Sprint <b><kbd>L Ctrl</kbd></b></div>
+                <div>Break / attack <b><kbd>Left click</kbd></b></div>
+                <div>Place <b><kbd>Right click</kbd></b></div>
+                <div>Hotbar <b><kbd>1</kbd>–<kbd>9</kbd>, wheel</b></div>
+                <div>Perspective <b><kbd>F5</kbd></b></div>
+                <div>Debug overlay <b><kbd>F3</kbd></b></div>
+                <div>Hide HUD <b><kbd>F1</kbd></b></div>
+                <div>Click GUI <b><kbd>R Shift</kbd></b></div>
+                <div>Release mouse <b><kbd>Esc</kbd></b></div>
+            </div>
         </div>
     </div>
     <div id="statusbar">
-        <span>fps <b id="s-fps">0</b></span><span class="sep">|</span>
-        <span>xyz <b id="s-pos">0 0 0</b></span><span class="sep">|</span>
-        <span>facing <b id="s-face">south</b></span><span class="sep">|</span>
-        <span>effects <b id="s-fx">0</b></span><span class="sep">|</span>
-        <span>modules <b id="s-mods">0</b></span><span class="sep">|</span>
-        <span class="live" id="s-hint">right shift for the click gui</span>
+        <span>mindless client sandbox</span><span class="sep">|</span>
+        <span>right click a module row to bind it</span><span class="sep">|</span>
+        <span>Client &rarr; Click GUI themes the panel</span>
+        <span class="tip">F3 for the numbers</span>
     </div>
 </div>
+<script src="gl.js"></script>
+<script src="world.js"></script>
+<script src="entity.js"></script>
+<script src="hud.js"></script>
+<script src="gui.js"></script>
 <script src="sandbox.js"></script>
 </body>
 </html>

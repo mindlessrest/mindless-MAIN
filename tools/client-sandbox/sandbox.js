@@ -1,105 +1,57 @@
 /*
  * Mindless client sandbox.
  *
- * A standing-in-a-world preview of the parts of the client that are tuned by eye: the array list
- * and its connected background, the click GUI, the bind list, and the effect presets. Everything
- * here that has a counterpart in Java is a transcription of that counterpart, not an impression of
- * it, so a radius or an easing curve settled here is settled for the client too.
+ * A playable stand-in for the game with the client's HUD and click GUI over it, so the parts that
+ * are judged by eye can be judged against something moving. What has a counterpart in Java is a
+ * transcription of it: the array list runs HUD.paintBackgroundShapes, and the effects use the
+ * lifetimes and easing in mindless/effect. A radius or a duration settled here is the number to
+ * put in the slider.
  *
- * The world itself is a grid raycaster. It is not trying to be Minecraft; it exists so the HUD is
- * seen over moving terrain at a believable field of view instead of over a flat colour, which is
- * the only way to judge a translucent panel honestly.
+ * The world is a real voxel grid with a real projection, which is what F5 and looking straight up
+ * both need. It is not trying to be Minecraft; it is trying to be honest about scale, occlusion
+ * and motion, because a HUD judged over a flat colour is not judged at all.
  */
-(function () {
+(function (MS) {
     "use strict";
 
-    var view = document.getElementById("view");
-    var ctx = view.getContext("2d", { alpha: false });
-    var game = document.getElementById("game");
+    var sandbox = MS.sandbox = {};
+
+    var glCanvas = document.getElementById("world");
+    var hudCanvas = document.getElementById("overlay");
+    var hud = hudCanvas.getContext("2d");
+    var stage = document.getElementById("stage");
     var curtain = document.getElementById("curtain");
 
     var W = 0, H = 0, DPR = 1;
+    var gl = MS.GL.init(glCanvas);
+    if (!gl) {
+        curtain.innerHTML = "<h1>WebGL unavailable</h1><p>This sandbox needs WebGL. "
+            + "Enable hardware acceleration and reload.</p>";
+        return;
+    }
+
+    MS.HUD.attach(hud);
+    MS.GUI.attach(hud);
 
     function resize() {
         DPR = Math.min(2, window.devicePixelRatio || 1);
-        var r = game.getBoundingClientRect();
-        W = Math.max(320, Math.floor(r.width));
-        H = Math.max(240, Math.floor(r.height));
-        view.width = Math.floor(W * DPR);
-        view.height = Math.floor(H * DPR);
-        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-        ctx.imageSmoothingEnabled = false;
+        var r = stage.getBoundingClientRect();
+        W = Math.max(480, Math.floor(r.width));
+        H = Math.max(320, Math.floor(r.height));
+        glCanvas.width = Math.floor(W * DPR);
+        glCanvas.height = Math.floor(H * DPR);
+        hudCanvas.width = Math.floor(W * DPR);
+        hudCanvas.height = Math.floor(H * DPR);
+        hud.setTransform(DPR, 0, 0, DPR, 0, 0);
+        MS.HUD.size(W, H);
+        MS.GUI.size(W, H);
     }
-
     window.addEventListener("resize", resize);
 
-    /* ------------------------------------------------------------------ world */
-
-    var MAP_W = 40, MAP_H = 40;
-    var map = new Uint8Array(MAP_W * MAP_H);
-
-    var BLOCKS = [
-        null,
-        { top: "#6f9b41", side: "#7a5a3a", name: "grass" },
-        { top: "#8d8d8d", side: "#7b7b7b", name: "stone" },
-        { top: "#c8b072", side: "#b79d61", name: "sand" },
-        { top: "#b23c3c", side: "#9c3333", name: "wool" },
-        { top: "#3f6fb5", side: "#36609e", name: "lapis" },
-        { top: "#d8d8d8", side: "#c4c4c4", name: "quartz" }
-    ];
-
-    function at(x, z) {
-        if (x < 0 || z < 0 || x >= MAP_W || z >= MAP_H) return 2;
-        return map[z * MAP_W + x];
-    }
-
-    function buildWorld() {
-        var x, z;
-        for (z = 0; z < MAP_H; z++) {
-            for (x = 0; x < MAP_W; x++) {
-                var border = x === 0 || z === 0 || x === MAP_W - 1 || z === MAP_H - 1;
-                map[z * MAP_W + x] = border ? 2 : 0;
-            }
-        }
-        // A handful of structures so there is something to walk around and something for the
-        // array list to sit in front of at different brightnesses.
-        function box(x0, z0, w, d, block) {
-            for (var zz = z0; zz < z0 + d; zz++) {
-                for (var xx = x0; xx < x0 + w; xx++) {
-                    if (zz === z0 || zz === z0 + d - 1 || xx === x0 || xx === x0 + w - 1) {
-                        map[zz * MAP_W + xx] = block;
-                    }
-                }
-            }
-        }
-        box(6, 6, 7, 7, 4);
-        box(24, 8, 6, 9, 5);
-        box(10, 24, 11, 8, 6);
-        box(28, 26, 5, 5, 3);
-        map[7 * MAP_W + 9] = 0;
-        map[12 * MAP_W + 9] = 0;
-        map[26 * MAP_W + 15] = 0;
-    }
-
-    /* ----------------------------------------------------------------- camera */
-
-    var cam = {
-        x: 20.5, z: 34.0,
-        yaw: -Math.PI / 2, pitch: 0,
-        eye: 1.62, vy: 0, y: 0,
-        onGround: true, sneaking: false, sprinting: false,
-        bob: 0
-    };
-
-    var FOV = Math.PI / 3;
-
-    var keys = Object.create(null);
-    var locked = false;
-
-    /* ---------------------------------------------------------------- modules */
+    /* --------------------------------------------------------------- settings */
 
     function S(label, type, value, extra) {
-        var s = { label: label, type: type, value: value, visible: true };
+        var s = { label: label, type: type, value: value };
         if (type === "slider") { s.min = extra[0]; s.max = extra[1]; s.step = extra[2]; s.unit = extra[3] || ""; }
         if (type === "mode") { s.options = extra; }
         return s;
@@ -110,12 +62,27 @@
             S("Draw background", "toggle", true),
             S("Background mode", "mode", 0, ["Connected", "Per line", "Panel"]),
             S("Rounded background", "toggle", true),
-            S("Corner radius", "slider", 4, [0, 20, 0.5, ""]),
+            S("Corner radius", "slider", 4, [0, 20, 0.5, "px"]),
             S("Step rounding", "slider", 100, [0, 100, 5, "%"]),
             S("Row separators", "toggle", true),
             S("Background opacity", "slider", 43, [0, 100, 1, "%"]),
+            S("Color mode", "mode", 2, ["Static", "Gradient", "Rainbow"]),
+            S("Color", "color", [255, 79, 163]),
+            S("Color 2", "color", [79, 216, 255]),
+            S("Wave speed", "slider", 1, [0.1, 4, 0.1, "x"]),
+            S("Font size", "slider", 1, [0.8, 1.6, 0.05, "x"]),
+            S("Line spacing", "slider", 0, [0, 6, 1, "px"]),
+            S("Text shadow", "toggle", true),
             S("Align right", "toggle", true),
             S("Lowercase", "toggle", false)
+        ] },
+        { name: "Click GUI", cat: "Client", on: true, key: 54, hidden: true, settings: [
+            S("Accent", "color", [255, 79, 163]),
+            S("Opacity", "slider", 94, [40, 100, 1, "%"]),
+            S("Rounding", "slider", 8, [0, 16, 1, "px"]),
+            S("Scale", "slider", 1, [0.8, 1.5, 0.05, "x"]),
+            S("Dim background", "slider", 38, [0, 80, 1, "%"]),
+            S("Border", "toggle", true)
         ] },
         { name: "Hit Effect", cat: "Render", on: true, key: 0, settings: [
             S("Mode", "mode", 0, ["Ripple", "Shockwave", "Both"]),
@@ -124,749 +91,313 @@
             S("Thickness", "slider", 0.18, [0.02, 1, 0.02, "b"]),
             S("Ripples", "slider", 3, [1, 6, 1, ""]),
             S("Sparks", "toggle", false),
-            S("Spark count", "slider", 18, [4, 80, 1, ""])
+            S("Spark count", "slider", 18, [4, 80, 1, ""]),
+            S("Color", "color", [79, 216, 255])
         ] },
         { name: "Jump Effect", cat: "Render", on: true, key: 0, settings: [
             S("Mode", "mode", 0, ["Ring", "Dust", "Both"]),
             S("Duration", "slider", 0.7, [0.2, 2, 0.05, "s"]),
             S("Radius", "slider", 1.8, [0.4, 5, 0.1, "b"]),
             S("Thickness", "slider", 0.14, [0.02, 0.8, 0.02, "b"]),
-            S("Dust count", "slider", 18, [4, 60, 1, ""])
+            S("Dust count", "slider", 18, [4, 60, 1, ""]),
+            S("Color", "color", [255, 79, 163])
         ] },
         { name: "Bind GUI", cat: "Render", on: true, key: 0, settings: [
             S("Show", "mode", 0, ["Bound", "Bound and enabled", "Everything"]),
-            S("Align", "mode", 0, ["Left", "Right"]),
+            S("Align", "mode", 1, ["Left", "Right"]),
             S("Background", "toggle", true)
         ] },
-        { name: "Keystrokes", cat: "Render", on: true, key: 0, settings: [] },
+        { name: "Keystrokes", cat: "Render", on: true, key: 0, settings: [
+            S("Show CPS", "toggle", true)
+        ] },
         { name: "Watermark", cat: "Render", on: true, key: 0, settings: [] },
         { name: "Crosshair", cat: "Render", on: true, key: 0, settings: [
             S("Gap", "slider", 3, [0, 10, 1, "px"]),
             S("Length", "slider", 5, [1, 14, 1, "px"]),
             S("React to hits", "toggle", true)
         ] },
-        { name: "Fullbright", cat: "Render", on: true, key: 0, settings: [] },
+        { name: "Fullbright", cat: "Render", on: false, key: 0, settings: [] },
+        { name: "Reach Ring", cat: "Render", on: false, key: 0, settings: [
+            S("Radius", "slider", 3, [1, 6, 0.05, "b"]),
+            S("Color", "color", [255, 120, 60])
+        ] },
         { name: "Chams", cat: "Render", on: false, key: 0, settings: [] },
         { name: "Kill Aura", cat: "Combat", on: true, key: 82, settings: [
             S("Range", "slider", 3.0, [1, 6, 0.05, "b"]),
             S("CPS", "slider", 12, [1, 20, 1, ""]),
             S("Through walls", "toggle", false)
-        ] },
+        ], suffix: function (s) { return " " + s.setting(s.module("Kill Aura"), "Range").value.toFixed(1); } },
         { name: "Autoblock", cat: "Combat", on: true, key: 0, settings: [] },
-        { name: "Reach", cat: "Combat", on: false, key: 0, settings: [] },
         { name: "Velocity", cat: "Combat", on: true, key: 0, settings: [] },
+        { name: "Reach", cat: "Combat", on: false, key: 0, settings: [] },
         { name: "Sprint", cat: "Movement", on: true, key: 0, settings: [] },
-        { name: "Speed", cat: "Movement", on: false, key: 86, settings: [] },
+        { name: "Speed", cat: "Movement", on: false, key: 86, settings: [
+            S("Multiplier", "slider", 1.4, [1, 3, 0.05, "x"])
+        ] },
         { name: "No Slow", cat: "Movement", on: true, key: 0, settings: [] },
+        { name: "Fly", cat: "Movement", on: false, key: 70, settings: [
+            S("Speed", "slider", 0.5, [0.1, 2, 0.05, "x"])
+        ] },
         { name: "Scaffold", cat: "Player", on: false, key: 33, settings: [] },
         { name: "Inventory Manager", cat: "Player", on: true, key: 0, settings: [] },
         { name: "Fast Place", cat: "Player", on: true, key: 0, settings: [] },
-        { name: "Resource Deposit", cat: "Bedwars", on: true, key: 0, settings: [] },
+        { name: "Resource Deposit", cat: "Bedwars", on: true, key: 0, settings: [
+            S("Deposit on open", "toggle", true)
+        ] },
         { name: "Bed ESP", cat: "Bedwars", on: true, key: 0, settings: [] },
         { name: "Auto GG", cat: "Bedwars", on: false, key: 0, settings: [] }
     ];
 
-    var CATEGORIES = ["Combat", "Render", "Movement", "Player", "Bedwars"];
+    var categories = ["Combat", "Render", "Movement", "Player", "Bedwars", "Client"];
 
-    function setting(mod, label) {
+    sandbox.modules = modules;
+    sandbox.categories = categories;
+    sandbox.user = "anthony";
+
+    sandbox.module = function (name) {
+        for (var i = 0; i < modules.length; i++) if (modules[i].name === name) return modules[i];
+        return null;
+    };
+
+    sandbox.setting = function (mod, label) {
+        if (!mod) return { value: 0 };
         for (var i = 0; i < mod.settings.length; i++) {
             if (mod.settings[i].label === label) return mod.settings[i];
         }
-        return null;
-    }
+        return { value: 0 };
+    };
 
-    function moduleByName(name) {
+    sandbox.modulesIn = function (cat, search) {
+        var out = [];
+        var q = (search || "").toLowerCase();
         for (var i = 0; i < modules.length; i++) {
-            if (modules[i].name === name) return modules[i];
+            var m = modules[i];
+            if (q) {
+                if (m.name.toLowerCase().indexOf(q) === -1) continue;
+            } else if (m.cat !== cat) {
+                continue;
+            }
+            out.push(m);
         }
-        return null;
-    }
+        return out;
+    };
 
-    function val(name, label, fallback) {
-        var m = moduleByName(name);
-        if (!m) return fallback;
-        var s = setting(m, label);
-        return s ? s.value : fallback;
-    }
+    sandbox.onToggle = function (mod) {
+        chat((mod.on ? "§aEnabled " : "§cDisabled ") + mod.name);
+    };
 
-    var hud = moduleByName("HUD");
+    var KEY_NAMES = { 82: "R", 86: "V", 70: "F", 33: "PRIOR", 54: "RSHIFT", 34: "NEXT", 71: "G", 88: "X" };
+    sandbox.keyName = function (code) {
+        return KEY_NAMES[code] || String.fromCharCode(code) || String(code);
+    };
+
+    /* ----------------------------------------------------------------- player */
+
+    var p = {
+        x: 48, y: 15, z: 52,
+        vy: 0, yaw: -Math.PI / 2, pitch: 0,
+        onGround: true, sneaking: false, sprinting: false,
+        limbSwing: 0, limbAmount: 0, bodyYaw: -Math.PI / 2
+    };
+
+    var perspective = 0;
+    var showDebug = false;
+    var swing = 0;
+    var swingUntil = 0;
+    var hurtUntil = 0;
+    var slot = 0;
+    var itemNameUntil = 0;
+    var health = 20, hunger = 18, armor = 12, xp = 0.42, level = 27;
+    var chatLines = [];
+    var clickTimes = [];
+
+    var hotbar = [
+        { name: "Diamond Sword", color: "#66d8dd", count: 1, block: 0 },
+        { name: "Oak Planks", color: "#a0793f", count: 64, block: 5 },
+        { name: "Cobblestone", color: "#8b8b8b", count: 64, block: 4 },
+        { name: "White Wool", color: "#e2e5e7", count: 32, block: 9 },
+        { name: "Red Wool", color: "#a53434", count: 32, block: 10 },
+        { name: "Blue Wool", color: "#3854a8", count: 32, block: 11 },
+        { name: "Glass", color: "#c6dfe8", count: 16, block: 13 },
+        { name: "Bricks", color: "#965442", count: 48, block: 8 },
+        { name: "Sand", color: "#dacea0", count: 64, block: 7 }
+    ];
+
+    function chat(text) {
+        chatLines.push({ text: text.replace(/§./g, ""), at: now });
+        if (chatLines.length > 60) chatLines.shift();
+    }
 
     /* ---------------------------------------------------------------- effects */
 
     var effects = [];
-    var TICK_MS = 50;
+    var effectMesh = MS.GL.createDynamicMesh();
 
-    function spawnEffect(e) {
+    function pushEffect(e) {
         while (effects.length >= 32) effects.shift();
         effects.push(e);
     }
 
     function easeOut(t) { var i = 1 - t; return 1 - i * i * i; }
 
-    function hitEffect(wx, wy, wz) {
-        var m = moduleByName("Hit Effect");
-        if (!m || !m.on) return;
-        var mode = setting(m, "Mode").value;
-        var dur = setting(m, "Duration").value * 1000;
+    function colorOf(mod, label) {
+        var c = sandbox.setting(mod, label).value;
+        return [c[0] / 255, c[1] / 255, c[2] / 255];
+    }
+
+    function hitEffect(x, y, z) {
+        var m = sandbox.module("Hit Effect");
+        if (!m.on) return;
+        var mode = sandbox.setting(m, "Mode").value;
+        var dur = sandbox.setting(m, "Duration").value * 1000;
+        var rgb = colorOf(m, "Color");
         if (mode !== 1) {
-            spawnEffect({ kind: "ripple", x: wx, y: wy, z: wz, born: now, life: dur,
-                radius: setting(m, "Radius").value,
-                thick: setting(m, "Thickness").value,
-                rings: setting(m, "Ripples").value, rgb: [79, 216, 255] });
+            pushEffect({ kind: "ripple", x: x, y: y + 0.02, z: z, born: now, life: dur,
+                radius: sandbox.setting(m, "Radius").value,
+                thick: sandbox.setting(m, "Thickness").value,
+                rings: sandbox.setting(m, "Ripples").value, rgb: rgb });
         }
         if (mode !== 0) {
-            spawnEffect({ kind: "shock", x: wx, y: wy + 1.0, z: wz, born: now, life: dur * 0.5,
-                radius: setting(m, "Radius").value * 0.7,
-                thick: setting(m, "Thickness").value, rgb: [79, 216, 255] });
+            pushEffect({ kind: "shock", x: x, y: y + 1.0, z: z, born: now, life: dur * 0.5,
+                radius: sandbox.setting(m, "Radius").value * 0.7,
+                thick: sandbox.setting(m, "Thickness").value, rgb: rgb });
         }
-        if (setting(m, "Sparks").value) {
-            spawnEffect(burst(wx, wy + 1.0, wz, dur, setting(m, "Spark count").value,
-                0.09, 0.10, [79, 216, 255]));
+        if (sandbox.setting(m, "Sparks").value) {
+            pushEffect(burst(x, y + 1.0, z, dur, sandbox.setting(m, "Spark count").value, 0.09, 0.10, rgb));
         }
     }
 
-    function jumpEffect(wx, wy, wz) {
-        var m = moduleByName("Jump Effect");
-        if (!m || !m.on) return;
-        var mode = setting(m, "Mode").value;
-        var dur = setting(m, "Duration").value * 1000;
+    function jumpEffect(x, y, z) {
+        var m = sandbox.module("Jump Effect");
+        if (!m.on) return;
+        var mode = sandbox.setting(m, "Mode").value;
+        var dur = sandbox.setting(m, "Duration").value * 1000;
+        var rgb = colorOf(m, "Color");
         if (mode !== 1) {
-            spawnEffect({ kind: "ripple", x: wx, y: wy, z: wz, born: now, life: dur,
-                radius: setting(m, "Radius").value,
-                thick: setting(m, "Thickness").value,
-                rings: 1, rgb: [255, 79, 163] });
+            pushEffect({ kind: "ripple", x: x, y: y + 0.02, z: z, born: now, life: dur,
+                radius: sandbox.setting(m, "Radius").value,
+                thick: sandbox.setting(m, "Thickness").value, rings: 1, rgb: rgb });
         }
         if (mode !== 0) {
-            spawnEffect(burst(wx, wy, wz, dur, setting(m, "Dust count").value,
-                0.06, 0.05, [255, 79, 163]));
+            pushEffect(burst(x, y, z, dur, sandbox.setting(m, "Dust count").value, 0.06, 0.05, rgb));
         }
     }
 
-    function burst(wx, wy, wz, life, count, speed, spread, rgb) {
+    function burst(x, y, z, life, count, speed, spread, rgb) {
         var parts = [];
         for (var i = 0; i < count; i++) {
             var a = Math.random() * Math.PI * 2;
             var h = (0.45 + Math.random() * 0.55) * speed;
             parts.push({ vx: Math.cos(a) * h, vz: Math.sin(a) * h, vy: Math.random() * spread });
         }
-        return { kind: "burst", x: wx, y: wy, z: wz, born: now, life: life, parts: parts, rgb: rgb };
+        return { kind: "burst", x: x, y: y, z: z, born: now, life: life, parts: parts, rgb: rgb };
     }
 
-    /* ------------------------------------------------------------- projection */
+    var effectData = [];
 
-    // Camera-relative projection. Returns null behind the near plane so a ring that straddles the
-    // camera does not fold back across the screen.
-    var focal = 1;
-
-    function project(wx, wy, wz) {
-        var dx = wx - cam.x, dz = wz - cam.z;
-        var s = Math.sin(cam.yaw), c = Math.cos(cam.yaw);
-        var rx = dx * c + dz * s;
-        var rz = -dx * s + dz * c;
-        if (rz < 0.08) return null;
-        var eyeY = cam.eye + cam.y - (cam.sneaking ? 0.22 : 0);
-        return {
-            x: W / 2 + (rx / rz) * focal,
-            y: H / 2 + horizonShift() + ((eyeY - wy) / rz) * focal,
-            d: rz,
-            k: focal / rz
-        };
-    }
-
-    function horizonShift() { return Math.tan(cam.pitch) * focal + cam.bob; }
-
-    /* ---------------------------------------------------------------- raycast */
-
-    function renderWorld() {
-        focal = (W / 2) / Math.tan(FOV / 2);
-        var horizon = H / 2 + horizonShift();
-
-        var sky = ctx.createLinearGradient(0, 0, 0, Math.max(1, horizon));
-        sky.addColorStop(0, "#5a86c8");
-        sky.addColorStop(1, "#a8c4e4");
-        ctx.fillStyle = sky;
-        ctx.fillRect(0, 0, W, Math.max(0, horizon));
-
-        var ground = ctx.createLinearGradient(0, horizon, 0, H);
-        ground.addColorStop(0, "#4a6a33");
-        ground.addColorStop(1, "#2f4322");
-        ctx.fillStyle = ground;
-        ctx.fillRect(0, Math.max(0, horizon), W, H - Math.max(0, horizon));
-
-        var columns = Math.max(160, Math.floor(W / 2));
-        var colW = W / columns;
-
-        for (var i = 0; i < columns; i++) {
-            var camX = (2 * i / columns) - 1;
-            var screenX = camX * Math.tan(FOV / 2);
-            var rayA = cam.yaw + Math.atan(screenX);
-            var rdx = Math.cos(rayA), rdz = Math.sin(rayA);
-
-            var mx = Math.floor(cam.x), mz = Math.floor(cam.z);
-            var ddx = Math.abs(1 / (rdx || 1e-9)), ddz = Math.abs(1 / (rdz || 1e-9));
-            var stepX, stepZ, sideX, sideZ;
-
-            if (rdx < 0) { stepX = -1; sideX = (cam.x - mx) * ddx; }
-            else { stepX = 1; sideX = (mx + 1 - cam.x) * ddx; }
-            if (rdz < 0) { stepZ = -1; sideZ = (cam.z - mz) * ddz; }
-            else { stepZ = 1; sideZ = (mz + 1 - cam.z) * ddz; }
-
-            var hit = 0, side = 0, guard = 0;
-            while (!hit && guard++ < 96) {
-                if (sideX < sideZ) { sideX += ddx; mx += stepX; side = 0; }
-                else { sideZ += ddz; mz += stepZ; side = 1; }
-                hit = at(mx, mz);
+    function ringBand(out, cx, cy, cz, inner, outer, rgb, alpha, vertical) {
+        var mid = (inner + outer) * 0.5;
+        var segments = Math.max(14, Math.min(56, Math.round(outer * 16)));
+        for (var band = 0; band < 2; band++) {
+            var r0 = band === 0 ? inner : mid, r1 = band === 0 ? mid : outer;
+            var a0 = band === 0 ? 0 : alpha, a1 = band === 0 ? alpha : 0;
+            for (var i = 0; i < segments; i++) {
+                var t0 = (i / segments) * Math.PI * 2, t1 = ((i + 1) / segments) * Math.PI * 2;
+                var q = [
+                    point(cx, cy, cz, t0, r0, vertical), point(cx, cy, cz, t1, r0, vertical),
+                    point(cx, cy, cz, t1, r1, vertical), point(cx, cy, cz, t0, r1, vertical)
+                ];
+                var av = [a0, a0, a1, a1];
+                var order = [0, 1, 2, 0, 2, 3];
+                for (var k = 0; k < 6; k++) {
+                    var idx = order[k];
+                    out.push(q[idx][0], q[idx][1], q[idx][2], rgb[0], rgb[1], rgb[2], av[idx]);
+                }
             }
-            if (!hit) continue;
-
-            var perp = side === 0 ? (sideX - ddx) : (sideZ - ddz);
-            perp *= Math.cos(rayA - cam.yaw);
-            if (perp < 0.02) perp = 0.02;
-
-            var wallH = focal / perp;
-            var eyeY = cam.eye + cam.y - (cam.sneaking ? 0.22 : 0);
-            var top = horizon - (1 - eyeY) * (focal / perp) - (wallH - wallH);
-            top = horizon - ((1 - eyeY) / perp) * focal - (1 / perp) * focal;
-            var bottom = horizon + (eyeY / perp) * focal;
-
-            var block = BLOCKS[hit];
-            var base = side === 0 ? block.side : block.top;
-            var shade = Math.max(0.32, 1 - perp / 26) * (side === 0 ? 0.82 : 1);
-            ctx.fillStyle = tint(base, shade);
-            ctx.fillRect(i * colW, top, colW + 1, bottom - top + 1);
         }
     }
 
-    function tint(hex, f) {
-        var r = parseInt(hex.slice(1, 3), 16) * f;
-        var g = parseInt(hex.slice(3, 5), 16) * f;
-        var b = parseInt(hex.slice(5, 7), 16) * f;
-        return "rgb(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + ")";
+    function point(cx, cy, cz, t, r, vertical) {
+        if (vertical) {
+            // Turned to face the camera on the horizontal axis only, which is enough: a
+            // shockwave is looked at from roughly level, and a full billboard costs a basis.
+            var s = Math.sin(t) * r, c = Math.cos(t) * r;
+            return [cx + Math.cos(p.yaw + Math.PI / 2) * s, cy + c, cz + Math.sin(p.yaw + Math.PI / 2) * s];
+        }
+        return [cx + Math.sin(t) * r, cy, cz + Math.cos(t) * r];
     }
 
-    /* ---------------------------------------------------------- effect render */
-
-    function renderEffects() {
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
+    function buildEffectMesh() {
+        effectData.length = 0;
         for (var i = 0; i < effects.length; i++) {
             var e = effects[i];
             var life = (now - e.born) / e.life;
-            if (life >= 1) continue;
-            if (e.kind === "ripple") drawRipple(e, life);
-            else if (e.kind === "shock") drawShock(e, life);
-            else drawBurst(e, life);
-        }
-        ctx.restore();
-    }
+            if (life >= 1 || life < 0) continue;
 
-    function ringPath(e, radius) {
-        var steps = 48, started = false;
-        ctx.beginPath();
-        for (var i = 0; i <= steps; i++) {
-            var t = (i / steps) * Math.PI * 2;
-            var p = project(e.x + Math.sin(t) * radius, e.y, e.z + Math.cos(t) * radius);
-            if (!p) { started = false; continue; }
-            if (!started) { ctx.moveTo(p.x, p.y); started = true; }
-            else ctx.lineTo(p.x, p.y);
-        }
-        return started;
-    }
-
-    function drawRipple(e, life) {
-        for (var r = 0; r < e.rings; r++) {
-            var offset = r * 0.16;
-            if (life <= offset) continue;
-            var local = (life - offset) / (1 - offset);
-            if (local >= 1) continue;
-            var travel = easeOut(local) * e.radius * (1 - r * 0.13);
-            var fade = (1 - local) * (1 - r * 0.22);
-            if (fade <= 0 || travel <= 0) continue;
-            var mid = project(e.x, e.y, e.z);
-            if (!mid) continue;
-            if (!ringPath(e, travel)) continue;
-            ctx.strokeStyle = "rgba(" + e.rgb[0] + "," + e.rgb[1] + "," + e.rgb[2] + "," + fade.toFixed(3) + ")";
-            ctx.lineWidth = Math.max(1, e.thick * mid.k * (1 - local * 0.45));
-            ctx.stroke();
-        }
-    }
-
-    function drawShock(e, life) {
-        var p = project(e.x, e.y, e.z);
-        if (!p) return;
-        var travel = easeOut(life) * e.radius;
-        var fade = 1 - life;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, travel * p.k, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(" + e.rgb[0] + "," + e.rgb[1] + "," + e.rgb[2] + "," + fade.toFixed(3) + ")";
-        ctx.lineWidth = Math.max(1, e.thick * p.k);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, travel * p.k * 0.82, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(255,255,255," + (fade * 0.35).toFixed(3) + ")";
-        ctx.lineWidth = Math.max(1, e.thick * p.k * 0.5);
-        ctx.stroke();
-    }
-
-    function drawBurst(e, life) {
-        var t = (now - e.born) / TICK_MS;
-        var alpha = 1 - life * life;
-        for (var i = 0; i < e.parts.length; i++) {
-            var q = e.parts[i];
-            var py = e.y + q.vy * t - 0.055 * t * t;
-            if (py < e.y) py = e.y;
-            var p = project(e.x + q.vx * t, py, e.z + q.vz * t);
-            if (!p) continue;
-            var size = Math.max(1, 0.05 * p.k);
-            ctx.fillStyle = "rgba(" + e.rgb[0] + "," + e.rgb[1] + "," + e.rgb[2] + "," + alpha.toFixed(3) + ")";
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-
-    /* ------------------------------------------------------------- array list */
-
-    // Transcribed from HUD.paintBackgroundShapes. A width change is one convex corner of the
-    // silhouette and one reflex one; the wider row keeps a quarter disc and the narrower row gets
-    // the corner square minus that disc, which is what stops the ragged edge biting notches.
-    function arrayListRows(font) {
-        var rows = [];
-        for (var i = 0; i < modules.length; i++) {
-            if (!modules[i].on) continue;
-            if (modules[i].name === "HUD") continue;
-            var label = modules[i].name;
-            if (val("HUD", "Lowercase", false)) label = label.toLowerCase();
-            rows.push({ text: label, w: Math.round(ctx.measureText(label).width) });
-        }
-        rows.sort(function (a, b) { return b.w - a.w; });
-        return rows;
-    }
-
-    function roundedPath(x1, y1, x2, y2, tl, tr, br, bl) {
-        ctx.beginPath();
-        ctx.moveTo(x1 + tl, y1);
-        ctx.lineTo(x2 - tr, y1);
-        if (tr > 0) ctx.arcTo(x2, y1, x2, y1 + tr, tr); else ctx.lineTo(x2, y1);
-        ctx.lineTo(x2, y2 - br);
-        if (br > 0) ctx.arcTo(x2, y2, x2 - br, y2, br); else ctx.lineTo(x2, y2);
-        ctx.lineTo(x1 + bl, y2);
-        if (bl > 0) ctx.arcTo(x1, y2, x1, y2 - bl, bl); else ctx.lineTo(x1, y2);
-        ctx.lineTo(x1, y1 + tl);
-        if (tl > 0) ctx.arcTo(x1, y1, x1 + tl, y1, tl); else ctx.lineTo(x1, y1);
-        ctx.closePath();
-    }
-
-    function inverseCorner(px, py, r, sx, sy) {
-        if (r <= 0) return;
-        var cx = px + sx * r, cy = py + sy * r;
-        ctx.beginPath();
-        ctx.moveTo(px, py);
-        for (var i = 0; i <= 10; i++) {
-            var t = (i / 10) * Math.PI / 2;
-            ctx.lineTo(cx - sx * r * Math.cos(t), cy - sy * r * Math.sin(t));
-        }
-        ctx.closePath();
-        ctx.fill();
-    }
-
-    function drawArrayList() {
-        if (!hud || !hud.on) return;
-        var pad = 3, rowH = 12;
-        ctx.font = "11px system-ui, sans-serif";
-        ctx.textBaseline = "top";
-        var rows = arrayListRows();
-        if (!rows.length) return;
-
-        var right = val("HUD", "Align right", true);
-        var anchorX = right ? W - 5 : 5;
-        var top = 40;
-
-        var drawBg = val("HUD", "Draw background", true);
-        var mode = val("HUD", "Background mode", 0);
-        var rounded = val("HUD", "Rounded background", true);
-        var radiusSetting = rounded ? val("HUD", "Corner radius", 4) : 0;
-        var stepPct = val("HUD", "Step rounding", 100) / 100;
-        var alpha = val("HUD", "Background opacity", 43) / 100;
-
-        var narrowest = Infinity;
-        for (var n = 0; n < rows.length; n++) narrowest = Math.min(narrowest, rows[n].w + pad * 2);
-        var radius = Math.max(0, Math.min(radiusSetting, Math.min(rowH, narrowest * 0.5)));
-        var transition = Math.min(radius * stepPct, rowH * 0.5);
-
-        if (drawBg) {
-            ctx.fillStyle = "rgba(0,0,0," + alpha.toFixed(3) + ")";
-            if (mode === 2) {
-                var maxW = 0;
-                for (var m2 = 0; m2 < rows.length; m2++) maxW = Math.max(maxW, rows[m2].w);
-                var pl = right ? anchorX - maxW - pad : anchorX - pad;
-                roundedPath(pl, top, pl + maxW + pad * 2, top + rows.length * rowH,
-                    radius, radius, radius, radius);
-                ctx.fill();
-            } else if (mode === 1) {
-                for (var j = 0; j < rows.length; j++) {
-                    var lw = rows[j].w + pad * 2;
-                    var lx = right ? anchorX - rows[j].w - pad : anchorX - pad;
-                    var rr = Math.max(0, Math.min(radiusSetting, Math.min(lw, rowH) * 0.5));
-                    roundedPath(lx, top + j * rowH, lx + lw, top + (j + 1) * rowH, rr, rr, rr, rr);
-                    ctx.fill();
+            if (e.kind === "ripple") {
+                for (var r = 0; r < e.rings; r++) {
+                    var offset = r * 0.16;
+                    if (life <= offset) continue;
+                    var local = (life - offset) / (1 - offset);
+                    if (local >= 1) continue;
+                    var travel = easeOut(local) * e.radius * (1 - r * 0.13);
+                    var fade = (1 - local) * (1 - r * 0.22);
+                    if (fade <= 0 || travel <= 0) continue;
+                    var half = e.thick * 0.5 * (1 - local * 0.45);
+                    ringBand(effectData, e.x, e.y, e.z, Math.max(0, travel - half), travel + half,
+                        e.rgb, fade, false);
                 }
+            } else if (e.kind === "shock") {
+                var t2 = easeOut(life) * e.radius;
+                var h2 = e.thick * 0.5 * (1 - life * 0.5);
+                ringBand(effectData, e.x, e.y, e.z, Math.max(0, t2 - h2), t2 + h2, e.rgb, 1 - life, true);
             } else {
-                for (var k = 0; k < rows.length; k++) {
-                    var w = rows[k].w + pad * 2;
-                    var x1 = right ? anchorX - rows[k].w - pad : anchorX - pad;
-                    var x2 = x1 + w;
-                    var y1 = top + k * rowH, y2 = y1 + rowH;
-                    var first = k === 0, last = k === rows.length - 1;
-
-                    var above = first ? 0 : rows[k].w - rows[k - 1].w;
-                    var below = last ? 0 : rows[k].w - rows[k + 1].w;
-                    var ragTop = first ? radius : (above > 1 ? Math.min(transition, above) : 0);
-                    var ragBot = last ? radius : (below > 1 ? Math.min(transition, below) : 0);
-                    var filTop = above < -1 ? Math.min(transition, -above) : 0;
-                    var filBot = below < -1 ? Math.min(transition, -below) : 0;
-                    var aliTop = first ? radius : 0;
-                    var aliBot = last ? radius : 0;
-
-                    roundedPath(x1, y1, x2, y2,
-                        right ? ragTop : aliTop, right ? aliTop : ragTop,
-                        right ? aliBot : ragBot, right ? ragBot : aliBot);
-                    ctx.fill();
-
-                    var ragX = right ? x1 : x2;
-                    var side = right ? -1 : 1;
-                    inverseCorner(ragX, y1, filTop, side, 1);
-                    inverseCorner(ragX, y2, filBot, side, -1);
-                }
-            }
-
-            if (val("HUD", "Row separators", true) && mode === 0 && rows.length > 1) {
-                ctx.fillStyle = "rgba(255,255,255,0.10)";
-                for (var s2 = 0; s2 + 1 < rows.length; s2++) {
-                    var shared = Math.min(rows[s2].w, rows[s2 + 1].w) + pad * 2;
-                    var sx = right ? anchorX + pad - shared : anchorX - pad;
-                    ctx.fillRect(sx, top + (s2 + 1) * rowH - 0.5, shared, 1);
+                var elapsed = (now - e.born) / 50;
+                var alpha = 1 - life * life;
+                for (var q = 0; q < e.parts.length; q++) {
+                    var part = e.parts[q];
+                    var py = e.y + part.vy * elapsed - 0.0055 * elapsed * elapsed;
+                    if (py < e.y) py = e.y;
+                    quadAt(effectData, e.x + part.vx * elapsed, py + 0.05, e.z + part.vz * elapsed,
+                        0.05, e.rgb, alpha);
                 }
             }
         }
 
-        for (var t2 = 0; t2 < rows.length; t2++) {
-            var hue = (now / 24 + t2 * 18) % 360;
-            ctx.fillStyle = "hsl(" + hue + ", 82%, 68%)";
-            var tx = right ? anchorX - rows[t2].w : anchorX;
-            ctx.fillText(rows[t2].text, tx, top + t2 * rowH + 1);
+        var reach = sandbox.module("Reach Ring");
+        if (reach.on) {
+            var rr = sandbox.setting(reach, "Radius").value;
+            var rgb = colorOf(reach, "Color");
+            var pulse = 0.4 + 0.1 * Math.sin(now * 0.003);
+            ringBand(effectData, dummy.x, dummy.y + 0.02, dummy.z, rr - 0.05, rr + 0.05, rgb, pulse, false);
+        }
+
+        MS.GL.uploadFlat(effectMesh, new Float32Array(effectData));
+    }
+
+    function quadAt(out, x, y, z, s, rgb, a) {
+        var rx = Math.cos(p.yaw + Math.PI / 2) * s, rz = Math.sin(p.yaw + Math.PI / 2) * s;
+        var corners = [
+            [x - rx, y - s, z - rz], [x + rx, y - s, z + rz],
+            [x + rx, y + s, z + rz], [x - rx, y + s, z - rz]
+        ];
+        var order = [0, 1, 2, 0, 2, 3];
+        for (var i = 0; i < 6; i++) {
+            var c = corners[order[i]];
+            out.push(c[0], c[1], c[2], rgb[0], rgb[1], rgb[2], a);
         }
     }
 
-    /* ------------------------------------------------------------------- hud */
+    /* ------------------------------------------------------------------ dummy */
 
-    function drawWatermark() {
-        if (!moduleByName("Watermark").on) return;
-        ctx.font = "600 15px system-ui, sans-serif";
-        ctx.textBaseline = "top";
-        ctx.fillStyle = "rgba(0,0,0,0.45)";
-        ctx.fillText("mindless", 6, 7);
-        ctx.fillStyle = "#ff4fa3";
-        ctx.fillText("mindless", 5, 6);
-    }
-
-    function drawBindList() {
-        var m = moduleByName("Bind GUI");
-        if (!m || !m.on) return;
-        var show = setting(m, "Show").value;
-        var rows = [];
-        for (var i = 0; i < modules.length; i++) {
-            var mod = modules[i];
-            if (mod.name === "Bind GUI") continue;
-            var bound = mod.key > 0;
-            if (show === 0 && !bound) continue;
-            if (show === 1 && !bound && !mod.on) continue;
-            rows.push({ name: mod.name, key: bound ? keyName(mod.key) : "-", on: mod.on, bound: bound });
-        }
-        // The point of the fix: an empty panel is indistinguishable from the module being off.
-        if (!rows.length) rows.push({ name: "No binds set", key: "-", on: false, bound: false });
-
-        ctx.font = "11px system-ui, sans-serif";
-        ctx.textBaseline = "top";
-        var widest = 0;
-        for (var j = 0; j < rows.length; j++) {
-            widest = Math.max(widest, ctx.measureText(rows[j].name + "  " + rows[j].key).width);
-        }
-        var pw = widest + 12;
-        var alignRight = setting(m, "Align").value === 1;
-        var x = alignRight ? W - pw - 5 : 5;
-        // Left-aligned it shares a corner with the keystrokes, so it stacks above them rather
-        // than through them. Right-aligned there is nothing to avoid.
-        var floorY = alignRight ? H - 46 : keystrokeTop() - 8;
-        var y = floorY - rows.length * 13 - 4;
-
-        if (setting(m, "Background").value) {
-            ctx.fillStyle = "rgba(12,14,18,0.58)";
-            ctx.fillRect(x, y, pw, rows.length * 13 + 4);
-        }
-        for (var k = 0; k < rows.length; k++) {
-            var r = rows[k];
-            ctx.fillStyle = r.on ? "#ffffff" : "#9aa1aa";
-            ctx.fillText(r.name, x + 4, y + 2 + k * 13);
-            ctx.fillStyle = r.bound ? "#4fd8ff" : "#5a616b";
-            var kw = ctx.measureText(r.key).width;
-            ctx.fillText(r.key, x + pw - 4 - kw, y + 2 + k * 13);
-        }
-    }
-
-    function keyName(code) {
-        var names = { 82: "R", 86: "V", 33: "PRIOR", 54: "RSHIFT" };
-        return names[code] || String(code);
-    }
-
-    var KEY_SIZE = 18, KEY_GAP = 2;
-
-    /** Top of the keystroke block, so anything else in that corner can sit clear of it. */
-    function keystrokeTop() {
-        if (!moduleByName("Keystrokes").on) {
-            return H - 46;
-        }
-        return H - 46 - (KEY_SIZE * 2 + KEY_GAP + Math.round(KEY_SIZE * 0.7) + 8);
-    }
-
-    var KEYSTROKE_LAYOUT = [
-        { k: "w", x: 1, y: 0 }, { k: "a", x: 0, y: 1 }, { k: "s", x: 1, y: 1 }, { k: "d", x: 2, y: 1 }
-    ];
-
-    function drawKeystrokes() {
-        if (!moduleByName("Keystrokes").on) return;
-        var size = KEY_SIZE, gap = KEY_GAP;
-        var ox = 6, oy = keystrokeTop() + 8;
-        ctx.font = "600 10px system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        for (var i = 0; i < KEYSTROKE_LAYOUT.length; i++) {
-            var s = KEYSTROKE_LAYOUT[i];
-            var down = !!keys["key" + s.k];
-            var bx = ox + s.x * (size + gap), by = oy + s.y * (size + gap);
-            ctx.fillStyle = down ? "rgba(255,79,163,0.85)" : "rgba(12,14,18,0.55)";
-            ctx.fillRect(bx, by, size, size);
-            ctx.fillStyle = down ? "#16060e" : "#e6e9f2";
-            ctx.fillText(s.k.toUpperCase(), bx + size / 2, by + size / 2 + 0.5);
-        }
-        var sw = size * 3 + gap * 2;
-        var downSpace = !!keys["space"];
-        ctx.fillStyle = downSpace ? "rgba(255,79,163,0.85)" : "rgba(12,14,18,0.55)";
-        ctx.fillRect(ox, oy + (size + gap) * 2, sw, size * 0.7);
-        ctx.textAlign = "left";
-    }
-
-    var swingUntil = 0;
-
-    function drawCrosshair() {
-        var m = moduleByName("Crosshair");
-        if (!m || !m.on) return;
-        var gap = setting(m, "Gap").value;
-        var len = setting(m, "Length").value;
-        var react = setting(m, "React to hits").value && now < swingUntil;
-        var grow = react ? 3 : 0;
-        ctx.strokeStyle = react ? "#ff4fa3" : "rgba(255,255,255,0.85)";
-        ctx.lineWidth = 2;
-        var cx = W / 2, cy = H / 2;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - gap - grow); ctx.lineTo(cx, cy - gap - grow - len);
-        ctx.moveTo(cx, cy + gap + grow); ctx.lineTo(cx, cy + gap + grow + len);
-        ctx.moveTo(cx - gap - grow, cy); ctx.lineTo(cx - gap - grow - len, cy);
-        ctx.moveTo(cx + gap + grow, cy); ctx.lineTo(cx + gap + grow + len, cy);
-        ctx.stroke();
-    }
-
-    function drawHotbar() {
-        var slots = 9, size = 20, gap = 2;
-        var total = slots * size + (slots - 1) * gap;
-        var x = (W - total) / 2, y = H - size - 8;
-        for (var i = 0; i < slots; i++) {
-            ctx.fillStyle = "rgba(12,14,18,0.5)";
-            ctx.fillRect(x + i * (size + gap), y, size, size);
-            ctx.strokeStyle = i === heldSlot ? "#ffffff" : "rgba(255,255,255,0.2)";
-            ctx.lineWidth = i === heldSlot ? 2 : 1;
-            ctx.strokeRect(x + i * (size + gap) + 0.5, y + 0.5, size - 1, size - 1);
-        }
-    }
-
-    var heldSlot = 0;
-
-    /* -------------------------------------------------------------- click gui */
-
-    var gui = {
-        open: false,
-        x: 60, y: 60,
-        cat: "Render",
-        expanded: Object.create(null),
-        drag: null,
-        mouseX: 0, mouseY: 0,
-        hot: null
-    };
-
-    var GUI_W = 340, GUI_HEAD = 30, GUI_TAB = 24, GUI_ROW = 22, GUI_SET = 20;
-
-    function guiModules() {
-        var out = [];
-        for (var i = 0; i < modules.length; i++) {
-            if (modules[i].cat === gui.cat) out.push(modules[i]);
-        }
-        return out;
-    }
-
-    function drawClickGui() {
-        if (!gui.open) return;
-        var list = guiModules();
-        var height = GUI_HEAD + GUI_TAB + 8;
-        for (var i = 0; i < list.length; i++) {
-            height += GUI_ROW;
-            if (gui.expanded[list[i].name]) {
-                height += list[i].settings.length * GUI_SET + 4;
-            }
-        }
-        height += 6;
-
-        gui.hot = null;
-
-        // Panel
-        ctx.fillStyle = "rgba(10,12,19,0.94)";
-        roundedPath(gui.x, gui.y, gui.x + GUI_W, gui.y + height, 8, 8, 8, 8);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255,79,163,0.35)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        // Header
-        ctx.font = "600 13px system-ui, sans-serif";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = "#ff4fa3";
-        ctx.fillText("mindless", gui.x + 12, gui.y + GUI_HEAD / 2);
-        ctx.font = "10px system-ui, sans-serif";
-        ctx.fillStyle = "#6b7489";
-        ctx.fillText("right shift to close", gui.x + 78, gui.y + GUI_HEAD / 2 + 1);
-
-        // Category tabs
-        var tabW = GUI_W / CATEGORIES.length;
-        for (var c = 0; c < CATEGORIES.length; c++) {
-            var tx = gui.x + c * tabW, ty = gui.y + GUI_HEAD;
-            var active = CATEGORIES[c] === gui.cat;
-            if (active) {
-                ctx.fillStyle = "rgba(255,79,163,0.16)";
-                ctx.fillRect(tx, ty, tabW, GUI_TAB);
-                ctx.fillStyle = "#ff4fa3";
-                ctx.fillRect(tx + 6, ty + GUI_TAB - 2, tabW - 12, 2);
-            }
-            ctx.font = "600 11px system-ui, sans-serif";
-            ctx.fillStyle = active ? "#e6e9f2" : "#7b8499";
-            ctx.textAlign = "center";
-            ctx.fillText(CATEGORIES[c], tx + tabW / 2, ty + GUI_TAB / 2);
-            ctx.textAlign = "left";
-            hotspot(tx, ty, tabW, GUI_TAB, { type: "cat", value: CATEGORIES[c] });
-        }
-
-        // Module rows
-        var y = gui.y + GUI_HEAD + GUI_TAB + 4;
-        for (var m = 0; m < list.length; m++) {
-            var mod = list[m];
-            var hovered = inside(gui.x, y, GUI_W, GUI_ROW);
-            if (hovered) {
-                ctx.fillStyle = "rgba(255,255,255,0.04)";
-                ctx.fillRect(gui.x + 4, y, GUI_W - 8, GUI_ROW);
-            }
-            ctx.font = "12px system-ui, sans-serif";
-            ctx.fillStyle = mod.on ? "#e6e9f2" : "#79839a";
-            ctx.fillText(mod.name, gui.x + 14, y + GUI_ROW / 2);
-
-            // Toggle pill
-            var pw = 26, ph = 13, px = gui.x + GUI_W - pw - 30, py = y + (GUI_ROW - ph) / 2;
-            ctx.fillStyle = mod.on ? "#ff4fa3" : "rgba(255,255,255,0.12)";
-            roundedPath(px, py, px + pw, py + ph, ph / 2, ph / 2, ph / 2, ph / 2);
-            ctx.fill();
-            ctx.fillStyle = mod.on ? "#16060e" : "#8d95a8";
-            ctx.beginPath();
-            ctx.arc(mod.on ? px + pw - ph / 2 : px + ph / 2, py + ph / 2, ph / 2 - 2, 0, Math.PI * 2);
-            ctx.fill();
-
-            if (mod.settings.length) {
-                ctx.fillStyle = "#6b7489";
-                ctx.font = "9px system-ui, sans-serif";
-                ctx.fillText(gui.expanded[mod.name] ? "▾" : "▸", gui.x + GUI_W - 20, y + GUI_ROW / 2 + 1);
-                hotspot(gui.x + GUI_W - 26, y, 22, GUI_ROW, { type: "expand", mod: mod });
-            }
-            hotspot(gui.x, y, GUI_W - 30, GUI_ROW, { type: "toggle", mod: mod });
-            y += GUI_ROW;
-
-            if (gui.expanded[mod.name]) {
-                for (var s = 0; s < mod.settings.length; s++) {
-                    drawSetting(mod.settings[s], gui.x + 22, y, GUI_W - 44);
-                    y += GUI_SET;
-                }
-                y += 4;
-            }
-        }
-    }
-
-    function drawSetting(s, x, y, w) {
-        ctx.font = "11px system-ui, sans-serif";
-        ctx.textBaseline = "middle";
-        var mid = y + GUI_SET / 2;
-
-        if (s.type === "toggle") {
-            ctx.fillStyle = "#9ba4ba";
-            ctx.fillText(s.label, x, mid);
-            var bx = x + w - 12;
-            ctx.strokeStyle = s.value ? "#ff4fa3" : "rgba(255,255,255,0.22)";
-            ctx.lineWidth = 1;
-            ctx.strokeRect(bx + 0.5, mid - 5.5, 11, 11);
-            if (s.value) {
-                ctx.fillStyle = "#ff4fa3";
-                ctx.fillRect(bx + 3, mid - 3, 6, 6);
-            }
-            hotspot(x, y, w, GUI_SET, { type: "set-toggle", setting: s });
-            return;
-        }
-
-        if (s.type === "mode") {
-            ctx.fillStyle = "#9ba4ba";
-            ctx.fillText(s.label, x, mid);
-            var text = s.options[s.value];
-            var tw = ctx.measureText(text).width;
-            ctx.fillStyle = "#ff4fa3";
-            ctx.fillText(text, x + w - tw, mid);
-            hotspot(x, y, w, GUI_SET, { type: "set-mode", setting: s });
-            return;
-        }
-
-        var label = s.label;
-        var shown = (Math.round(s.value * 100) / 100) + (s.unit ? " " + s.unit : "");
-        ctx.fillStyle = "#9ba4ba";
-        ctx.fillText(label, x, mid - 5);
-        var vw = ctx.measureText(shown).width;
-        ctx.fillStyle = "#e6e9f2";
-        ctx.fillText(shown, x + w - vw, mid - 5);
-
-        var trackY = mid + 5;
-        ctx.fillStyle = "rgba(255,255,255,0.12)";
-        ctx.fillRect(x, trackY - 1, w, 2);
-        var frac = (s.value - s.min) / (s.max - s.min);
-        ctx.fillStyle = "#ff4fa3";
-        ctx.fillRect(x, trackY - 1, w * frac, 2);
-        ctx.beginPath();
-        ctx.arc(x + w * frac, trackY, 4, 0, Math.PI * 2);
-        ctx.fill();
-        hotspot(x, y, w, GUI_SET, { type: "set-slider", setting: s, x: x, w: w });
-    }
-
-    function inside(x, y, w, h) {
-        return gui.mouseX >= x && gui.mouseX <= x + w && gui.mouseY >= y && gui.mouseY <= y + h;
-    }
-
-    function hotspot(x, y, w, h, payload) {
-        if (inside(x, y, w, h)) gui.hot = payload;
-    }
+    var dummy = { x: 48, y: 14, z: 46, yaw: Math.PI / 2, hurt: 0 };
 
     /* ------------------------------------------------------------------ input */
 
-    function code(e) {
+    var keys = Object.create(null);
+    var locked = false;
+
+    function codeOf(e) {
         if (e.code === "Space") return "space";
         if (e.code.indexOf("Key") === 0) return "key" + e.code.slice(3).toLowerCase();
         if (e.code === "ShiftLeft") return "sneak";
@@ -875,153 +406,244 @@
     }
 
     window.addEventListener("keydown", function (e) {
+        if (MS.GUI.key(e)) { e.preventDefault(); return; }
+
         if (e.code === "ShiftRight") {
-            gui.open = !gui.open;
-            if (gui.open) document.exitPointerLock();
+            MS.GUI.state.open = !MS.GUI.state.open;
+            if (MS.GUI.state.open) document.exitPointerLock();
+            curtain.hidden = MS.GUI.state.open || locked;
             e.preventDefault();
             return;
         }
-        if (e.code === "Escape" && gui.open) { gui.open = false; e.preventDefault(); return; }
+        if (e.code === "Escape") {
+            if (MS.GUI.state.open) { MS.GUI.state.open = false; e.preventDefault(); }
+            return;
+        }
+        if (e.code === "F5") { perspective = (perspective + 1) % 3; e.preventDefault(); return; }
+        if (e.code === "F3") { showDebug = !showDebug; e.preventDefault(); return; }
+        if (e.code === "F1") {
+            var hudMod = sandbox.module("HUD");
+            hudMod.on = !hudMod.on;
+            e.preventDefault();
+            return;
+        }
         if (e.code.indexOf("Digit") === 0) {
             var n = parseInt(e.code.slice(5), 10);
-            if (n >= 1 && n <= 9) heldSlot = n - 1;
+            if (n >= 1 && n <= 9) { slot = n - 1; itemNameUntil = now + 1600; }
         }
-        keys[code(e)] = true;
-        if (e.code === "Space" || e.code.indexOf("Key") === 0) e.preventDefault();
+
+        // Module binds, the way the client reads them: any key, any time the GUI is closed.
+        for (var i = 0; i < modules.length; i++) {
+            if (modules[i].key && modules[i].key === e.keyCode) {
+                modules[i].on = !modules[i].on;
+                sandbox.onToggle(modules[i]);
+            }
+        }
+
+        keys[codeOf(e)] = true;
+        if (e.code === "Space" || e.code.indexOf("Key") === 0 || e.code === "Tab") e.preventDefault();
     });
 
-    window.addEventListener("keyup", function (e) { keys[code(e)] = false; });
+    window.addEventListener("keyup", function (e) { keys[codeOf(e)] = false; });
 
-    game.addEventListener("click", function () {
-        if (gui.open) return;
-        if (!locked) view.requestPointerLock();
+    stage.addEventListener("mousedown", function (e) {
+        if (MS.GUI.state.open) return;
+        if (!locked) { glCanvas.requestPointerLock(); return; }
+        if (e.button === 0) attack();
+        else if (e.button === 2) place();
     });
+
+    window.addEventListener("mousedown", function (e) {
+        if (MS.GUI.state.open) {
+            MS.GUI.mouseDown(e.button);
+            e.preventDefault();
+        }
+    });
+
+    window.addEventListener("mouseup", function () { MS.GUI.mouseUp(); });
+    window.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+    window.addEventListener("wheel", function (e) {
+        if (MS.GUI.state.open) { MS.GUI.wheel(e.deltaY * 0.5); e.preventDefault(); return; }
+        slot = (slot + (e.deltaY > 0 ? 1 : 8)) % 9;
+        itemNameUntil = now + 1600;
+    }, { passive: false });
 
     document.addEventListener("pointerlockchange", function () {
-        locked = document.pointerLockElement === view;
-        curtain.hidden = locked || gui.open;
-        game.classList.toggle("released", !locked);
+        locked = document.pointerLockElement === glCanvas;
+        curtain.hidden = locked || MS.GUI.state.open;
     });
 
     document.addEventListener("mousemove", function (e) {
-        if (locked && !gui.open) {
-            cam.yaw += e.movementX * 0.0022;
-            cam.pitch -= e.movementY * 0.0022;
-            var lim = Math.PI / 2.6;
-            if (cam.pitch > lim) cam.pitch = lim;
-            if (cam.pitch < -lim) cam.pitch = -lim;
+        if (MS.GUI.state.open) {
+            var r = hudCanvas.getBoundingClientRect();
+            MS.GUI.mouseMove((e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height));
+            return;
         }
-        var r = view.getBoundingClientRect();
-        gui.mouseX = (e.clientX - r.left) * (W / r.width);
-        gui.mouseY = (e.clientY - r.top) * (H / r.height);
-        if (gui.drag) {
-            if (gui.drag.type === "panel") {
-                gui.x = gui.mouseX - gui.drag.dx;
-                gui.y = gui.mouseY - gui.drag.dy;
-            } else if (gui.drag.type === "slider") {
-                applySlider(gui.drag.payload, gui.mouseX);
-            }
-        }
+        if (!locked) return;
+        var sens = 0.0022;
+        p.yaw += e.movementX * sens;
+        p.pitch -= e.movementY * sens;
+        var lim = Math.PI / 2 - 0.01;
+        if (p.pitch > lim) p.pitch = lim;
+        if (p.pitch < -lim) p.pitch = -lim;
     });
 
-    function applySlider(p, mx) {
-        var s = p.setting;
-        var frac = Math.max(0, Math.min(1, (mx - p.x) / p.w));
-        var raw = s.min + frac * (s.max - s.min);
-        s.value = Math.round(raw / s.step) * s.step;
-        s.value = Math.max(s.min, Math.min(s.max, Math.round(s.value * 1000) / 1000));
+    /* ---------------------------------------------------------------- actions */
+
+    function lookVector() {
+        return [
+            Math.cos(p.pitch) * Math.cos(p.yaw),
+            Math.sin(p.pitch),
+            Math.cos(p.pitch) * Math.sin(p.yaw)
+        ];
     }
 
-    window.addEventListener("mousedown", function (e) {
-        if (!gui.open) {
-            if (locked && e.button === 0) swing();
+    function eyeY() {
+        return p.y + (p.sneaking ? 1.54 : 1.62);
+    }
+
+    function attack() {
+        swing = 1;
+        swingUntil = now + 220;
+        clickTimes.push(now);
+
+        // The dummy is hit first if it is inside reach and roughly in front, which is what makes
+        // the hit effect fire where a player would expect it to.
+        var reach = sandbox.setting(sandbox.module("Kill Aura"), "Range").value;
+        var dx = dummy.x - p.x, dz = dummy.z - p.z;
+        var dist = Math.hypot(dx, dz);
+        var toward = Math.atan2(dz, dx);
+        var delta = Math.abs(((toward - p.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        if (dist <= reach + 0.6 && delta < 0.9) {
+            dummy.hurt = now + 300;
+            hitEffect(dummy.x, dummy.y, dummy.z);
+            chat("§7hit dummy for 6.5");
             return;
         }
-        var hot = gui.hot;
-        if (!hot) {
-            if (inside(gui.x, gui.y, GUI_W, GUI_HEAD)) {
-                gui.drag = { type: "panel", dx: gui.mouseX - gui.x, dy: gui.mouseY - gui.y };
-            }
+
+        var v = lookVector();
+        var hit = MS.World.raycast(p.x, eyeY(), p.z, v[0], v[1], v[2], 5);
+        if (hit) {
+            MS.World.set(hit.x, hit.y, hit.z, 0);
+            hitEffect(hit.x + 0.5, hit.y, hit.z + 0.5);
+        }
+    }
+
+    function place() {
+        var v = lookVector();
+        var hit = MS.World.raycast(p.x, eyeY(), p.z, v[0], v[1], v[2], 5);
+        if (!hit) return;
+        var block = hotbar[slot].block;
+        if (!block) return;
+        var nx = hit.x + hit.nx, ny = hit.y + hit.ny, nz = hit.z + hit.nz;
+        // Refuse a block that would be placed inside the player, the way the game does.
+        var half = MS.World.PLAYER_HALF;
+        if (nx === Math.floor(p.x) && nz === Math.floor(p.z)
+            && ny >= Math.floor(p.y) && ny <= Math.floor(p.y + 1.7)) {
             return;
         }
-        if (hot.type === "cat") gui.cat = hot.value;
-        else if (hot.type === "expand") gui.expanded[hot.mod.name] = !gui.expanded[hot.mod.name];
-        else if (hot.type === "toggle") hot.mod.on = !hot.mod.on;
-        else if (hot.type === "set-toggle") hot.setting.value = !hot.setting.value;
-        else if (hot.type === "set-mode") {
-            var dir = e.button === 2 ? -1 : 1;
-            var len = hot.setting.options.length;
-            hot.setting.value = (hot.setting.value + dir + len) % len;
-        } else if (hot.type === "set-slider") {
-            gui.drag = { type: "slider", payload: hot };
-            applySlider(hot, gui.mouseX);
+        if (MS.World.set(nx, ny, nz, block)) {
+            swing = 1;
         }
-        e.preventDefault();
-    });
-
-    window.addEventListener("mouseup", function () { gui.drag = null; });
-    window.addEventListener("contextmenu", function (e) { if (gui.open) e.preventDefault(); });
-
-    function swing() {
-        swingUntil = now + 180;
-        // Fire the hit effect at whatever the crosshair is pointing at, three blocks out, which
-        // is close enough to vanilla reach for judging how the wave reads.
-        var reach = val("Kill Aura", "Range", 3.0);
-        var tx = cam.x + Math.cos(cam.yaw) * reach;
-        var tz = cam.z + Math.sin(cam.yaw) * reach;
-        hitEffect(tx, 0, tz);
+        void half;
     }
 
     /* ----------------------------------------------------------------- update */
 
     function update(dt) {
-        var speed = (cam.sprinting ? 5.6 : 4.3) * (cam.sneaking ? 0.3 : 1) * dt;
-        var fwd = (keys.keyw ? 1 : 0) - (keys.keys ? 1 : 0);
+        var m;
+        p.sneaking = !!keys.sneak && p.onGround;
+        var forward = (keys.keyw ? 1 : 0) - (keys.keys ? 1 : 0);
         var strafe = (keys.keyd ? 1 : 0) - (keys.keya ? 1 : 0);
-        cam.sneaking = !!keys.sneak;
-        cam.sprinting = !!keys.sprint && fwd > 0;
+        p.sprinting = (!!keys.sprint || false) && forward > 0 && !p.sneaking;
 
-        if (fwd || strafe) {
-            var len = Math.hypot(fwd, strafe);
-            var mx = (Math.cos(cam.yaw) * fwd - Math.sin(cam.yaw) * strafe) / len * speed;
-            var mz = (Math.sin(cam.yaw) * fwd + Math.cos(cam.yaw) * strafe) / len * speed;
-            if (!at(Math.floor(cam.x + mx * 3), Math.floor(cam.z))) cam.x += mx;
-            if (!at(Math.floor(cam.x), Math.floor(cam.z + mz * 3))) cam.z += mz;
-            cam.bob = Math.sin(now / 110) * (cam.sprinting ? 1.6 : 1.0);
+        var speed = 4.3;
+        if (p.sprinting) speed = 5.6;
+        if (p.sneaking) speed = 1.3;
+        m = sandbox.module("Speed");
+        if (m.on) speed *= sandbox.setting(m, "Multiplier").value;
+
+        var dx = 0, dz = 0;
+        if (forward || strafe) {
+            var len = Math.hypot(forward, strafe);
+            dx = (Math.cos(p.yaw) * forward - Math.sin(p.yaw) * strafe) / len * speed * dt;
+            dz = (Math.sin(p.yaw) * forward + Math.cos(p.yaw) * strafe) / len * speed * dt;
+            p.bodyYaw = Math.atan2(dz, dx);
+        }
+
+        var fly = sandbox.module("Fly");
+        if (fly.on) {
+            var fs = sandbox.setting(fly, "Speed").value * 9;
+            p.vy = 0;
+            if (keys.space) p.y += fs * dt;
+            if (keys.sneak) p.y -= fs * dt;
+            MS.World.move(p, dx, 0, dz, false);
+            p.onGround = false;
         } else {
-            cam.bob *= 0.85;
+            if (keys.space && p.onGround) {
+                p.vy = 8.6;
+                p.onGround = false;
+                jumpEffect(p.x, p.y, p.z);
+            }
+            p.vy -= 27 * dt;
+            if (p.vy < -40) p.vy = -40;
+            p.onGround = MS.World.move(p, dx, p.vy * dt, dz, true);
+            if (p.onGround && p.vy < 0) p.vy = 0;
         }
 
-        if (keys.space && cam.onGround) {
-            cam.vy = 8.4;
-            cam.onGround = false;
-            jumpEffect(cam.x, 0, cam.z);
-        }
-        if (!cam.onGround) {
-            cam.vy -= 26 * dt;
-            cam.y += cam.vy * dt;
-            if (cam.y <= 0) { cam.y = 0; cam.vy = 0; cam.onGround = true; }
+        var moved = Math.hypot(dx, dz);
+        p.limbSwing += moved * 14;
+        p.limbAmount += (Math.min(1, moved * 22) - p.limbAmount) * 0.28;
+
+        if (swing > 0) {
+            swing -= dt * 4.6;
+            if (swing < 0) swing = 0;
         }
 
         for (var i = effects.length - 1; i >= 0; i--) {
             if (now - effects[i].born > effects[i].life) effects.splice(i, 1);
         }
+        while (clickTimes.length && now - clickTimes[0] > 1000) clickTimes.shift();
+
+        // A fall that would hurt flashes the screen, which is the cheapest way the world feels
+        // like it is being interacted with rather than flown over.
+        if (p.onGround && p.vy === 0 && fallStart - p.y > 4) {
+            hurtUntil = now + 450;
+            health = Math.max(2, health - 2);
+            chat("§cyou hit the ground too hard");
+        }
+        if (p.onGround) fallStart = p.y;
+        else fallStart = Math.max(fallStart, p.y);
+
+        dummy.yaw = Math.atan2(p.z - dummy.z, p.x - dummy.x);
     }
 
-    /* ------------------------------------------------------------------- loop */
+    var fallStart = 15;
 
+    /* ------------------------------------------------------------------ frame */
+
+    var worldMesh = MS.GL.createMesh();
+    var selectionMesh = null;
     var now = performance.now();
     var last = now;
     var frames = 0, fpsAt = now, fps = 0;
 
-    var elFps = document.getElementById("s-fps");
-    var elPos = document.getElementById("s-pos");
-    var elFace = document.getElementById("s-face");
-    var elFx = document.getElementById("s-fx");
-    var elMods = document.getElementById("s-mods");
+    function buildSelectionMesh() {
+        var e = [
+            [0, 0, 0, 1, 0, 0], [1, 0, 0, 1, 1, 0], [1, 1, 0, 0, 1, 0], [0, 1, 0, 0, 0, 0],
+            [0, 0, 1, 1, 0, 1], [1, 0, 1, 1, 1, 1], [1, 1, 1, 0, 1, 1], [0, 1, 1, 0, 0, 1],
+            [0, 0, 0, 0, 0, 1], [1, 0, 0, 1, 0, 1], [1, 1, 0, 1, 1, 1], [0, 1, 0, 0, 1, 1]
+        ];
+        var data = [];
+        for (var i = 0; i < e.length; i++) {
+            data.push(e[i][0], e[i][1], e[i][2], e[i][3], e[i][4], e[i][5]);
+        }
+        selectionMesh = MS.GL.createLineMesh(new Float32Array(data));
+    }
 
-    function facing() {
-        var d = ((cam.yaw * 180 / Math.PI) % 360 + 360) % 360;
+    function facingName() {
+        var d = ((p.yaw * 180 / Math.PI) % 360 + 360) % 360;
         if (d < 45 || d >= 315) return "east";
         if (d < 135) return "south";
         if (d < 225) return "west";
@@ -1033,39 +655,128 @@
         var dt = Math.min(0.05, (ts - last) / 1000);
         last = ts;
 
-        update(dt);
+        if (!MS.GUI.state.open) update(dt);
 
-        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-        renderWorld();
-        renderEffects();
+        if (MS.World.dirty) MS.World.buildMesh(worldMesh);
 
-        ctx.textAlign = "left";
-        drawWatermark();
-        drawArrayList();
-        drawBindList();
-        drawKeystrokes();
-        drawHotbar();
-        drawCrosshair();
-        drawClickGui();
+        var mat = MS.GL.mat;
+        var aspect = W / H;
+        var fovBoost = p.sprinting ? 0.06 : 0;
+        var proj = mat.perspective(Math.PI / 3 + fovBoost, aspect, 0.05, 260);
+
+        // Third person pulls the camera back along the view ray and stops at whatever it meets,
+        // so the view never ends up inside a wall.
+        var camX = p.x, camY = eyeY(), camZ = p.z;
+        var camYaw = p.yaw, camPitch = p.pitch;
+        if (perspective !== 0) {
+            var back = perspective === 1 ? 1 : -1;
+            if (perspective === 2) { camYaw = p.yaw + Math.PI; camPitch = -p.pitch; }
+            var dir = [
+                -Math.cos(p.pitch) * Math.cos(p.yaw) * back,
+                -Math.sin(p.pitch) * back,
+                -Math.cos(p.pitch) * Math.sin(p.yaw) * back
+            ];
+            var want = 4.2;
+            var hitBack = MS.World.raycast(p.x, camY, p.z, dir[0], dir[1], dir[2], want);
+            var dist = hitBack ? Math.max(0.6, hitBack.dist - 0.25) : want;
+            camX = p.x + dir[0] * dist;
+            camY = camY + dir[1] * dist;
+            camZ = p.z + dir[2] * dist;
+        }
+
+        var bright = sandbox.module("Fullbright").on ? 0.75 : 0;
+        var view = mat.view(camX, camY, camZ, camYaw, camPitch);
+        var fog = [0.62, 0.74, 0.92];
+
+        MS.GL.beginFrame(glCanvas.width, glCanvas.height, proj, view, fog, bright);
+        MS.GL.drawMesh(worldMesh, null, null);
+
+        // The dummy, and the player themselves when the camera is not in their head.
+        var hurtTint = dummy.hurt > now ? new Float32Array([1, 0.25, 0.25, 0.55]) : null;
+        MS.Entity.drawHumanoid(dummy.x, dummy.y, dummy.z, dummy.yaw, dummy.yaw, 0, 0, 0, 0, hurtTint, false);
+        if (perspective !== 0) {
+            MS.Entity.drawHumanoid(p.x, p.y, p.z, p.bodyYaw, p.yaw, p.pitch,
+                p.limbSwing, p.limbAmount, swing, null, true);
+        }
+
+        if (!selectionMesh) buildSelectionMesh();
+        var v = lookVector();
+        var look = MS.World.raycast(p.x, eyeY(), p.z, v[0], v[1], v[2], 5);
+        var lookingAt = null;
+        if (look) {
+            lookingAt = MS.World.TYPES[MS.World.get(look.x, look.y, look.z)].name
+                + " (" + look.x + " " + look.y + " " + look.z + ")";
+            MS.GL.drawLines(selectionMesh,
+                mat.multiply(new Float32Array(16),
+                    mat.translation(look.x - 0.002, look.y - 0.002, look.z - 0.002),
+                    mat.scaling(1.004, 1.004, 1.004)),
+                new Float32Array([0, 0, 0, 0.45]), 2);
+        }
+
+        buildEffectMesh();
+        MS.GL.drawFlat(effectMesh);
+
+        if (perspective === 0) {
+            // The hand is parented to the camera, so it gets its own near projection and an
+            // identity view; drawn last so the world can never poke through it.
+            var handProj = mat.perspective(Math.PI / 3, aspect, 0.01, 6);
+            MS.GL.setCamera(handProj, mat.identity(), fog, bright);
+            MS.GL.ctx.clear(MS.GL.ctx.DEPTH_BUFFER_BIT);
+            MS.Entity.drawFirstPersonItem(swing, p.sneaking,
+                Math.sin(p.limbSwing * 0.5) * p.limbAmount,
+                Math.abs(Math.cos(p.limbSwing * 0.5)) * p.limbAmount);
+        }
+
+        /* ---- overlay ---- */
+        hud.setTransform(DPR, 0, 0, DPR, 0, 0);
+        hud.clearRect(0, 0, W, H);
+        hud.textAlign = "left";
+        hud.textBaseline = "top";
+
+        var enabled = 0;
+        for (var i2 = 0; i2 < modules.length; i2++) if (modules[i2].on && !modules[i2].hidden) enabled++;
+
+        var state = {
+            now: now, fps: fps, p: p, modules: modules, keys: keys,
+            module: sandbox.module, setting: sandbox.setting, keyName: sandbox.keyName,
+            user: sandbox.user, perspective: perspective, swingUntil: swingUntil,
+            hurtUntil: hurtUntil, chat: chatLines, chatOpen: false,
+            health: health, hunger: hunger, armor: armor, xp: xp, level: level,
+            hotbar: hotbar, slot: slot, itemNameUntil: itemNameUntil,
+            cps: clickTimes.length, effectCount: effects.length, enabledCount: enabled,
+            triangles: MS.World.triangles || 0, facing: facingName(),
+            yawDeg: (p.yaw * 180 / Math.PI) % 360, pitchDeg: p.pitch * 180 / Math.PI,
+            looking: lookingAt
+        };
+        state.keystrokeTop = MS.HUD.keystrokeTop(state);
+
+        MS.HUD.drawOverlayTint(state);
+        MS.HUD.drawVanilla(state);
+        MS.HUD.drawCrosshair(state);
+        MS.HUD.drawWatermark(state);
+        MS.HUD.drawArrayList(state);
+        MS.HUD.drawBindList(state);
+        MS.HUD.drawKeystrokes(state);
+        MS.HUD.drawChat(state);
+        if (showDebug) MS.HUD.drawDebug(state);
+        MS.GUI.draw(sandbox);
+
+        sandbox.now = now;
 
         frames++;
         if (ts - fpsAt > 500) {
             fps = Math.round(frames * 1000 / (ts - fpsAt));
             frames = 0;
             fpsAt = ts;
-            elFps.textContent = fps;
-            elPos.textContent = cam.x.toFixed(1) + " " + (cam.y + 1).toFixed(1) + " " + cam.z.toFixed(1);
-            elFace.textContent = facing();
-            elFx.textContent = effects.length;
-            var on = 0;
-            for (var i = 0; i < modules.length; i++) if (modules[i].on) on++;
-            elMods.textContent = on + " / " + modules.length;
         }
 
         requestAnimationFrame(frame);
     }
 
-    buildWorld();
+    MS.World.generate();
+    MS.Entity.init();
     resize();
+    chat("§dmindless §7sandbox ready");
+    chat("§7f5 perspective, f3 debug, f1 hud, right shift gui");
     requestAnimationFrame(frame);
-}());
+}(window.MS = window.MS || {}));
