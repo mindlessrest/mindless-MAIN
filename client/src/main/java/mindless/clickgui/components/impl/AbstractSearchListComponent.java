@@ -350,6 +350,12 @@ public abstract class AbstractSearchListComponent extends AbstractTextInputCompo
         GlStateManager.enableBlend();
         RenderHelper.disableStandardItemLighting();
         GlStateManager.popMatrix();
+        GlStateManager.disableLighting();
+        GlStateManager.disableDepth();
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableAlpha();
+        GlStateManager.enableBlend();
+        GlStateManager.color(1f, 1f, 1f, 1f);
     }
 
     protected final boolean isMouseOverDropdown(float mouseX, float mouseY) {
@@ -384,8 +390,9 @@ public abstract class AbstractSearchListComponent extends AbstractTextInputCompo
 
     private float computeDropdownTarget() {
         int rows = getDropdownRowCount();
-        if (isSearchFocused() && rows > 0) {
-            return Math.min(MAX_VISIBLE_RESULTS, rows) * ROW_HEIGHT;
+        if (isSearchFocused()) {
+            if (rows > 0) return Math.min(MAX_VISIBLE_RESULTS, rows) * ROW_HEIGHT;
+            if (!getTextField().getText().trim().isEmpty()) return ROW_HEIGHT;
         }
         return 0f;
     }
@@ -394,12 +401,19 @@ public abstract class AbstractSearchListComponent extends AbstractTextInputCompo
         int rowCount = getDropdownRowCount();
         float dropdownHeight = getAnimatedDropdownHeight();
         float scrollOffset = moduleComponent.categoryComponent.moduleY - layout.cy;
-        if (dropdownHeight <= 0f || rowCount == 0) {
+        if (dropdownHeight <= 0f) {
             return;
         }
 
         float dropdownTopScreen = layout.contentTop + scrollOffset;
         RenderUtils.scissorPushGui(layout.left, dropdownTopScreen, layout.right - layout.left, dropdownHeight);
+        if (rowCount == 0) {
+            RenderUtils.drawRect(layout.left, layout.contentTop, layout.right,
+                    layout.contentTop + ROW_HEIGHT - 1f, 0xFF1A1A2A);
+            drawListRowText("No matches", layout.left + 4f, layout.contentTop, 0xFF8F96A3);
+            RenderUtils.scissorPop();
+            return;
+        }
         float offsetPx = dropdownScrollAnim.getValue();
         int firstRow = (int) (offsetPx / ROW_HEIGHT);
         int end = Math.min(firstRow + MAX_VISIBLE_RESULTS + 1, rowCount);

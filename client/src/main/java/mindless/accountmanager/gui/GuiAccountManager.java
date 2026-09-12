@@ -33,6 +33,7 @@ import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.Session;
+import org.lwjgl.input.Mouse;
 import org.apache.commons.lang3.StringUtils;
 import org.lwjgl.input.Keyboard;
 
@@ -400,6 +401,13 @@ public class GuiAccountManager extends GuiScreen {
 
     @Override
     public void handleMouseInput() throws IOException {
+        int wheel = Mouse.getEventDWheel();
+        int mx = (int) Math.floor(Mouse.getEventX() * width / (double) mc.displayWidth);
+        int my = (int) Math.floor(height - Mouse.getEventY() * height / (double) mc.displayHeight - 1);
+        if (previewW > 0 && skinPreview.mouseScrolled(wheel, mx, my, previewX, previewY, previewW, previewH)) {
+            super.handleMouseInput();
+            return;
+        }
         if (guiAccountList != null) guiAccountList.handleMouseInput();
         super.handleMouseInput();
     }
@@ -444,13 +452,12 @@ public class GuiAccountManager extends GuiScreen {
         fr.drawString(name, previewX + 8f, previewY + 7f, C_TEXT, false);
 
         ResourceLocation skin = mindless.accountmanager.PlayerSkinCache.get(name);
+        skinPreview.draw(skin, skin != null && mindless.accountmanager.PlayerSkinCache.isSlim(name),
+                previewX + 6, previewY + 20, previewW - 12, previewH - 28, mx, my);
         if (skin == null) {
             fr.drawString("Loading skin...", previewX + 8f, previewY + 22f, C_DIM, false);
-            return;
         }
-        skinPreview.draw(skin, mindless.accountmanager.PlayerSkinCache.isSlim(name),
-                previewX + 6, previewY + 20, previewW - 12, previewH - 28, mx, my);
-        fr.drawString("Drag to turn", previewX + 8f, previewY + previewH - 12f, C_DIM, false);
+        fr.drawString("Drag | wheel | 2x reset", previewX + 8f, previewY + previewH - 12f, C_DIM, false);
     }
 
     @Override

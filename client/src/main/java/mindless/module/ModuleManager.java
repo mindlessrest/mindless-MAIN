@@ -111,6 +111,7 @@ public class ModuleManager {
     public static LadderClutch ladderClutch;
     public static Sprint sprint;
     public static Weather weather;
+    public static ItemEffects itemEffects;
     public static ChatCommands chatCommands;
     public static AutoBlockin autoBlockin;
     public static Relationships relationships;
@@ -275,6 +276,7 @@ public class ModuleManager {
         this.addModule(new Notifications());
         this.addModule(new Indicators());
         this.addModule(new ItemESP());
+        this.addModule(itemEffects = new ItemEffects());
         this.addModule(new ItemPhysics());
         this.addModule(mobESP = new MobESP());
         this.addModule(nametags = new Nametags());

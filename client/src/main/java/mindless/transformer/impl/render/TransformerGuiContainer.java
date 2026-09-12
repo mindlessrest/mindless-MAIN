@@ -1,8 +1,10 @@
 package mindless.transformer.impl.render;
 
 import mindless.module.ModuleManager;
+import mindless.runtime.ItemEffectRenderer;
 import net.lenni0451.classtransform.InjectionCallback;
 import net.lenni0451.classtransform.annotations.CInline;
+import net.lenni0451.classtransform.annotations.CShadow;
 import net.lenni0451.classtransform.annotations.CTarget;
 import net.lenni0451.classtransform.annotations.CTransformer;
 import net.lenni0451.classtransform.annotations.injection.CInject;
@@ -11,6 +13,16 @@ import net.minecraft.inventory.Slot;
 
 @CTransformer(GuiContainer.class)
 public class TransformerGuiContainer {
+    @CShadow private int guiLeft;
+    @CShadow private int guiTop;
+
+    @CInline
+    @CInject(method = "drawScreen", target = @CTarget("RETURN"))
+    private void mindless$renderInventoryItemEffects(int mouseX, int mouseY, float partialTicks,
+                                                      InjectionCallback callbackInfo) {
+        ItemEffectRenderer.renderInventory((GuiContainer) (Object) this, guiLeft, guiTop);
+    }
+
     @CInline
     @CInject(method = "mouseClicked", target = @CTarget("HEAD"), cancellable = true)
     private void mindless$cancelManagedInventoryMouseClick(int mouseX, int mouseY, int mouseButton, InjectionCallback callbackInfo) {

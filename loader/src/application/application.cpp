@@ -10,6 +10,8 @@
 #include <authclient/authclient.hpp>
 #include <authclient/crypto.hpp>
 #include <authclient/hwid.hpp>
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <curl/curl.h>
@@ -29,11 +31,162 @@ struct SoftwareFile
     std::string name;
 };
 
+struct LocalProfilePayload
+{
+    std::string json;
+    std::string username;
+    std::vector<uint8_t> avatar;
+};
+
 static size_t append_response(void* data, size_t size, size_t count, void* output)
 {
     size_t total = size * count;
     static_cast<std::string*>(output)->append(static_cast<char*>(data), total);
     return total;
+}
+
+struct BoundedResponse
+{
+    std::string bytes;
+    size_t maximum;
+};
+
+static size_t append_bounded_response(void* data, size_t size, size_t count, void* output)
+{
+    if (count != 0 && size > SIZE_MAX / count) return 0;
+    size_t total = size * count;
+    auto* response = static_cast<BoundedResponse*>(output);
+    if (total > response->maximum - std::min(response->maximum, response->bytes.size())) return 0;
+    response->bytes.append(static_cast<char*>(data), total);
+    return total;
+}
+
+static std::string http_get(const std::string& url, curl_slist* headers, size_t maximum)
+{
+    CURL* curl = curl_easy_init();
+    if (!curl) throw std::runtime_error("Unable to initialize profile request");
+    BoundedResponse response{{}, maximum};
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_bounded_response);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    if (headers) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    CURLcode result = curl_easy_perform(curl);
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl);
+    if (result != CURLE_OK) {
+        if (result == CURLE_WRITE_ERROR) throw std::runtime_error("Profile response is too large");
+        throw std::runtime_error(curl_easy_strerror(result));
+    }
+    if (status < 200 || status >= 300)
+        throw std::runtime_error("Profile request failed with HTTP " + std::to_string(status));
+    return std::move(response.bytes);
+}
+
+static bool safe_cdn_part(const std::string& value, bool digitsOnly)
+{
+    if (value.empty() || value.size() > 128) return false;
+    for (unsigned char c : value)
+    {
+        if (digitsOnly ? (c < '0' || c > '9')
+                       : !(std::isalnum(c) || c == '_')) return false;
+    }
+    return true;
+}
+
+static std::string profile_text(const nlohmann::json& object, const char* key, size_t maximum,
+                                bool digitsOnly = false)
+{
+    if (!object.is_object() || !object.contains(key) || !object[key].is_string()) return {};
+    const std::string source = object[key].get<std::string>();
+    std::string result;
+    result.reserve(std::min(source.size(), maximum));
+    for (size_t i = 0; i < source.size() && result.size() < maximum;)
+    {
+        unsigned char c = static_cast<unsigned char>(source[i]);
+        size_t sequence = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+        if (i + sequence > source.size() || result.size() + sequence > maximum) break;
+        if (digitsOnly)
+        {
+            if (sequence == 1 && c >= '0' && c <= '9') result.push_back(static_cast<char>(c));
+        }
+        else if (sequence > 1 || (c >= 32 && c != 127))
+        {
+            result.append(source, i, sequence);
+        }
+        i += sequence;
+    }
+    return result;
+}
+
+static LocalProfilePayload fetch_local_profile(const std::string& api,
+                                               const std::string& token,
+                                               const std::string& hwid)
+{
+    auto nonce = authclient::crypto::toHex(authclient::crypto::randomBytes(32));
+    auto now = std::chrono::system_clock::now();
+    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+    curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, ("Authorization: Bearer " + token).c_str());
+    headers = curl_slist_append(headers, "X-Client-Type: software");
+    headers = curl_slist_append(headers, ("X-HWID: " + hwid).c_str());
+    headers = curl_slist_append(headers, ("X-Request-Nonce: " + nonce).c_str());
+    headers = curl_slist_append(headers, ("X-Request-Timestamp: " + std::to_string(timestamp)).c_str());
+    std::string response;
+    try
+    {
+        response = http_get(api + "/auth/me", headers, 64 * 1024);
+    }
+    catch (...)
+    {
+        curl_slist_free_all(headers);
+        throw;
+    }
+    curl_slist_free_all(headers);
+
+    auto body = nlohmann::json::parse(response, nullptr, false);
+    if (!body.is_object() || !body.contains("data") || !body["data"].is_object())
+        throw std::runtime_error("Invalid profile response");
+    const auto& data = body["data"];
+    nlohmann::json local = nlohmann::json::object();
+    std::string username = profile_text(data, "username", 32);
+    local["username"] = username;
+
+    std::string discordId;
+    std::string avatarHash;
+    if (data.contains("discord") && data["discord"].is_object())
+    {
+        const auto& discord = data["discord"];
+        local["discord_display_name"] = profile_text(discord, "discord_global_name", 128);
+        local["discord_username"] = profile_text(discord, "discord_username", 128);
+        discordId = profile_text(discord, "discord_user_id", 32, true);
+        avatarHash = profile_text(discord, "discord_avatar", 128);
+        local["discord_id"] = discordId;
+    }
+
+    LocalProfilePayload payload;
+    payload.json = local.dump();
+    payload.username = username;
+    if (safe_cdn_part(discordId, true) && safe_cdn_part(avatarHash, false))
+    {
+        try
+        {
+            std::string avatarUrl = "https://cdn.discordapp.com/avatars/" + discordId + "/"
+                + avatarHash + ".png?size=128";
+            std::string bytes = http_get(avatarUrl, nullptr, 2 * 1024 * 1024);
+            static const unsigned char png[] = {137, 80, 78, 71, 13, 10, 26, 10};
+            if (bytes.size() >= sizeof(png)
+                && std::equal(std::begin(png), std::end(png),
+                              reinterpret_cast<const unsigned char*>(bytes.data())))
+                payload.avatar.assign(bytes.begin(), bytes.end());
+        }
+        catch (...) {}
+    }
+    return payload;
 }
 
 static std::vector<SoftwareFile> list_software_files(const std::string& api,
@@ -191,6 +344,10 @@ void Application::start_auth()
     pendingAuthHwid_.clear();
     pendingAuthError_.clear();
     pendingAuthComplete_ = false;
+    pendingProfileJson_.clear();
+    pendingProfileUsername_.clear();
+    pendingAvatarBytes_.clear();
+    pendingProfileReady_ = false;
 
     std::string user = state_.username.text;
     std::string pass = state_.password.text;
@@ -224,6 +381,18 @@ void Application::start_auth()
 
             pendingAuthToken_ = login.token;
             pendingAuthHwid_ = hwid;
+            try
+            {
+                LocalProfilePayload profile = fetch_local_profile(api, login.token, hwid);
+                pendingProfileJson_ = std::move(profile.json);
+                pendingProfileUsername_ = std::move(profile.username);
+                pendingAvatarBytes_ = std::move(profile.avatar);
+                pendingProfileReady_ = true;
+            }
+            catch (const std::exception& e)
+            {
+                OutputDebugStringA((std::string("[MindlessLoader] Profile sync failed: ") + e.what() + "\n").c_str());
+            }
             pendingAuthComplete_ = true;
         }
         catch (const authclient::AuthException& e)
@@ -418,7 +587,12 @@ int Application::run()
                         {
                             protection::startWatchdog();
                             save_credentials(state_.username.text, state_.password.text, state_.rememberMe);
-                            mindless::save_session_username(state_.username.text);
+                            mindless::save_session_username(pendingProfileReady_ && !pendingProfileUsername_.empty()
+                                ? pendingProfileUsername_ : state_.username.text);
+                            if (pendingProfileReady_)
+                                mindless::save_local_profile(pendingProfileJson_, pendingAvatarBytes_);
+                            else
+                                mindless::clear_local_profile();
                             state_.release_process_icons();
                             state_.processes = enumerate_targets(renderer_.device());
                             state_.refreshAccum = 0.0f;

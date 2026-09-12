@@ -31,6 +31,7 @@ public class Gui extends Module {
     public static ButtonSetting hideWatermark;
     public static ButtonSetting rainBowOutlines;
     public static ButtonSetting loadGuiPositions;
+    public static ButtonSetting showDiscordId;
 
     public Gui() {
         super("Gui", "The click GUI and how it looks.", category.client, 54);
@@ -45,6 +46,7 @@ public class Gui extends Module {
         this.registerSetting(hidePlayerModel = new ButtonSetting("Remove player model", false));
         this.registerSetting(hideWatermark = new ButtonSetting("Remove watermark", false));
         this.registerSetting(loadGuiPositions = new ButtonSetting("Save category positions", false));
+        this.registerSetting(showDiscordId = new ButtonSetting("Show Discord ID", false));
         this.registerSetting(new DescriptionSetting("Colors"));
         this.registerSetting(enabledColor = new ColorSetting("Enabled color", 24, 154, 255));
         this.registerSetting(disabledColor = new ColorSetting("Disabled color", 192, 192, 192));

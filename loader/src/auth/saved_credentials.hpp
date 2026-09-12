@@ -36,6 +36,66 @@ inline std::wstring get_session_file_path()
     return L"session.txt";
 }
 
+inline std::wstring get_local_data_file_path(const wchar_t* name)
+{
+    wchar_t appdata[MAX_PATH] = {};
+    if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, appdata)))
+    {
+        std::wstring dir = std::wstring(appdata) + L"\\Mindless";
+        CreateDirectoryW(dir.c_str(), nullptr);
+        return dir + L"\\" + name;
+    }
+    return name;
+}
+
+inline bool atomic_write_local_file(const std::wstring& path, const void* data, size_t size)
+{
+    std::wstring temporary = path + L".tmp";
+    HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr,
+                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    bool ok = size <= MAXDWORD
+        && WriteFile(file, data, static_cast<DWORD>(size), &written, nullptr)
+        && written == size
+        && FlushFileBuffers(file);
+    CloseHandle(file);
+    if (!ok)
+    {
+        DeleteFileW(temporary.c_str());
+        return false;
+    }
+    if (!MoveFileExW(temporary.c_str(), path.c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    {
+        DeleteFileW(temporary.c_str());
+        return false;
+    }
+    return true;
+}
+
+inline bool save_local_profile(const std::string& json, const std::vector<uint8_t>& avatar)
+{
+    std::wstring profilePath = get_local_data_file_path(L"profile.json");
+    std::wstring avatarPath = get_local_data_file_path(L"avatar.png");
+    if (json.empty())
+    {
+        DeleteFileW(profilePath.c_str());
+        DeleteFileW(avatarPath.c_str());
+        return true;
+    }
+    if (!atomic_write_local_file(profilePath, json.data(), json.size())) return false;
+    if (avatar.empty()) DeleteFileW(avatarPath.c_str());
+    else if (!atomic_write_local_file(avatarPath, avatar.data(), avatar.size())) return false;
+    return true;
+}
+
+inline void clear_local_profile()
+{
+    DeleteFileW(get_local_data_file_path(L"profile.json").c_str());
+    DeleteFileW(get_local_data_file_path(L"avatar.png").c_str());
+}
+
 // The signed-in name, in plain text and on its own.
 //
 // auth.dat is DPAPI-encrypted and holds the password, so the injected client has no business

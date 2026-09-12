@@ -23,6 +23,10 @@ private static final int BLUR_DIVISOR = 2;
         return pass.isValid();
     }
 public void render(Framebuffer silhouette, float radius, float intensity, int r, int g, int b) {
+        render(silhouette, radius, intensity, r, g, b, false);
+    }
+public void render(Framebuffer silhouette, float radius, float intensity, int r, int g, int b,
+                   boolean includeInterior) {
         if (!pass.isValid() || silhouette == null || radius <= 0.0f) return;
 
         Diagnostics.gl("glow: entering (errors from earlier passes)");
@@ -39,6 +43,7 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
         pass.use();
         pass.setTint(r, g, b);
         pass.setShape(radius, intensity);
+        pass.setIncludeInterior(includeInterior);
         pass.setTexelSize(silhouette.framebufferWidth, silhouette.framebufferHeight);
         pass.setDirection(1.0f, 0.0f, MODE_BLUR);
         Diagnostics.gl("glow: horizontal uniforms set");
@@ -50,6 +55,7 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
         pass.use();
         pass.setTint(r, g, b);
         pass.setShape(radius, intensity);
+        pass.setIncludeInterior(includeInterior);
         pass.setTexelSize(horizontal.framebufferWidth, horizontal.framebufferHeight);
         pass.setDirection(0.0f, 1.0f, MODE_BLUR);
         RenderUtils.drawFramebufferFullscreen(horizontal);
@@ -61,6 +67,7 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
         pass.use();
         pass.setTint(r, g, b);
         pass.setShape(radius, intensity);
+        pass.setIncludeInterior(includeInterior);
         pass.setDirection(0.0f, 0.0f, MODE_COMPOSITE);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE2);
         RenderUtils.bindTexture(silhouette.framebufferTexture);
@@ -99,13 +106,14 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
                 "uniform vec2 direction;\n" +
                 "uniform float radius;\n" +
                 "uniform float intensity;\n" +
-                "uniform vec3 tint;\n" +
+            "uniform vec3 tint;\n" +
+            "uniform int includeInterior;\n" +
                 "uniform int mode;\n" +
                 "void main() {\n" +
                 "  vec2 uv = gl_TexCoord[0].xy;\n" +
                 "  if (mode == 1) {\n" +
                 "    float glow = texture2D(tex, uv).a;\n" +
-                "    float mask = 1.0 - texture2D(original, uv).a;\n" +
+            "    float mask = includeInterior == 1 ? 1.0 : 1.0 - texture2D(original, uv).a;\n" +
                 "    glow *= mask;\n" +
                 "    glow = pow(clamp(glow * intensity, 0.0, 1.0), 1.4) * 0.7;\n" +
                 "    gl_FragColor = vec4(tint, glow);\n" +
@@ -136,6 +144,7 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
             cacheUniform("intensity");
             cacheUniform("tint");
             cacheUniform("mode");
+            cacheUniform("includeInterior");
         }
 
         @Override
@@ -173,6 +182,11 @@ public void render(Framebuffer silhouette, float radius, float intensity, int r,
             if (location >= 0) GL20.glUniform2f(location, x, y);
             location = uniform("mode");
             if (location >= 0) GL20.glUniform1i(location, mode);
+        }
+
+        private void setIncludeInterior(boolean includeInterior) {
+            int location = uniform("includeInterior");
+            if (location >= 0) GL20.glUniform1i(location, includeInterior ? 1 : 0);
         }
     }
 }

@@ -48,6 +48,10 @@ private:
     std::string pendingAuthHwid_;
     std::string pendingAuthError_;
     bool pendingAuthComplete_ = false;
+    std::string pendingProfileJson_;
+    std::string pendingProfileUsername_;
+    std::vector<uint8_t> pendingAvatarBytes_;
+    bool pendingProfileReady_ = false;
     HANDLE authSection_ = nullptr;
 
     // DLL download (deferred to injection time)

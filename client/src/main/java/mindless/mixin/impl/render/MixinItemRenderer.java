@@ -3,6 +3,7 @@ package mindless.mixin.impl.render;
 import mindless.mixin.interfaces.IMixinItemRenderer;
 import mindless.module.impl.render.AlwaysBlock;
 import mindless.runtime.ItemRendererState;
+import mindless.runtime.ItemEffectRenderer;
 import mindless.utility.Utils;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.renderer.ItemRenderer;
@@ -38,6 +39,13 @@ public class MixinItemRenderer implements IMixinItemRenderer {
     @Inject(method = "renderItemInFirstPerson", at = @At("RETURN"))
     private void modifyRenderItemPost(float p_renderItemInFirstPerson_1_, CallbackInfo info) {
         itemToRender = originalItemToRender;
+    }
+
+    @Inject(method = "renderItem(Lnet/minecraft/entity/EntityLivingBase;Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/renderer/block/model/ItemCameraTransforms$TransformType;)V", at = @At("RETURN"))
+    private void mindless$renderHeldItemEffect(EntityLivingBase entity, ItemStack stack,
+                                                ItemCameraTransforms.TransformType transform,
+                                                CallbackInfo info) {
+        ItemEffectRenderer.renderHeld((ItemRenderer) (Object) this, entity, stack, transform);
     }
 
     @Redirect(method = "renderItemInFirstPerson",

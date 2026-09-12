@@ -17,6 +17,10 @@ public class SeparableOutlineShader {
     }
 
     public void render(Framebuffer source) {
+        render(source, 1.0f);
+    }
+
+    public void render(Framebuffer source, float thickness) {
         framebuffer = RenderUtils.createFrameBuffer(framebuffer, false);
         if (framebuffer == null) return;
 
@@ -25,6 +29,7 @@ public class SeparableOutlineShader {
         GlStateManager.disableBlend();
         RenderUtils.setAlphaLimit(0.0f);
         shader.use();
+        shader.setThickness(thickness);
         shader.setPass(0.0f, 1.0f, false);
         RenderUtils.drawFramebufferFullscreen(source);
         shader.stop();
@@ -33,6 +38,7 @@ public class SeparableOutlineShader {
         GlStateManager.enableBlend();
         GlStateManager.blendFunc(770, 771);
         shader.use();
+        shader.setThickness(thickness);
         shader.setPass(1.0f, 0.0f, true);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE2);
         RenderUtils.bindTexture(source.framebufferTexture);
@@ -54,13 +60,14 @@ public class SeparableOutlineShader {
                 "uniform vec2 texelSize;\n" +
                 "uniform vec2 direction;\n" +
                 "uniform int finalPass;\n" +
+                "uniform float thickness;\n" +
                 "void main() {\n" +
                 "  vec2 uv = gl_TexCoord[0].xy;\n" +
                 "  if (finalPass == 1 && texture2D(original, uv).a > 0.0) { gl_FragColor = vec4(0.0); return; }\n" +
                 "  float bestAlpha = 0.0;\n" +
                 "  vec3 bestColor = vec3(0.0);\n" +
                 "  for (float offset = -2.0; offset <= 2.0; offset += 1.0) {\n" +
-                "    vec4 s = texture2D(tex, uv + direction * texelSize * offset);\n" +
+                "    vec4 s = texture2D(tex, uv + direction * texelSize * offset * thickness);\n" +
                 "    float w = s.a * (1.0 - abs(offset) / 3.0);\n" +
                 "    if (w > bestAlpha) { bestAlpha = w; bestColor = s.rgb; }\n" +
                 "  }\n" +
@@ -78,6 +85,7 @@ public class SeparableOutlineShader {
             cacheUniform("texelSize");
             cacheUniform("direction");
             cacheUniform("finalPass");
+            cacheUniform("thickness");
         }
 
         @Override
@@ -96,6 +104,18 @@ public class SeparableOutlineShader {
             if (location >= 0) GL20.glUniform2f(location, x, y);
             location = uniform("finalPass");
             if (location >= 0) GL20.glUniform1i(location, finalPass ? 1 : 0);
+        }
+
+        private void setThickness(float thickness) {
+            int location = uniform("thickness");
+            if (location >= 0) GL20.glUniform1f(location, Math.max(0.25f, Math.min(4.0f, thickness)));
+        }
+    }
+
+    public void delete() {
+        if (framebuffer != null) {
+            framebuffer.deleteFramebuffer();
+            framebuffer = null;
         }
     }
 }

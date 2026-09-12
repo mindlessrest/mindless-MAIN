@@ -277,6 +277,8 @@ private static void ring(float cx, float cy, float radius, float thickness, int 
         GlStateManager.enableCull();
         GlStateManager.enableAlpha();
         GlStateManager.enableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.color(1f, 1f, 1f, 1f);
 
     }
 
@@ -345,14 +347,14 @@ private static void ring(float cx, float cy, float radius, float thickness, int 
                 && mouseY >= sqTop && mouseY <= sqBottom) {
             cacheHSB();
             dragMode = 1;
-            return false;
+            return true;
         }
 
         if (mouseX >= hueLeft - 2 && mouseX <= hueRight + 2
                 && mouseY >= sqTop && mouseY <= sqBottom) {
             cacheHSB();
             dragMode = 2;
-            return false;
+            return true;
         }
 
         if (colorSetting.hasAlpha()) {
@@ -362,7 +364,7 @@ private static void ring(float cx, float cy, float radius, float thickness, int 
                     && mouseY >= sqTop && mouseY <= sqBottom) {
                 cacheHSB();
                 dragMode = 3;
-                return false;
+                return true;
             }
         }
 

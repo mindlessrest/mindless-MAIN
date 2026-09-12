@@ -5,6 +5,7 @@ import net.minecraft.client.model.ModelPlayer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.opengl.GL11;
 
@@ -22,12 +23,16 @@ import org.lwjgl.opengl.GL11;
  */
 public final class SkinPreview {
     private static final float MODEL_SCALE = 0.0625f;
+    private static final float MIN_ZOOM = 0.7f;
+    private static final float MAX_ZOOM = 1.55f;
 
     private ModelPlayer classic;
     private ModelPlayer slim;
 
     private float yaw = 20.0f;
     private float pitch = 0.0f;
+    private float zoom = 1.0f;
+    private long lastClick;
     /** Where the drag started, and the rotation it started from. */
     private boolean dragging;
     private int dragFromX;
@@ -77,6 +82,7 @@ public final class SkinPreview {
         dragging = false;
         yaw = 20.0f;
         pitch = 0.0f;
+        zoom = 1.0f;
     }
 
     /**
@@ -86,15 +92,28 @@ public final class SkinPreview {
         if (mouseX < x || mouseX > x + width || mouseY < y || mouseY > y + height) {
             return false;
         }
+        long now = System.currentTimeMillis();
+        if (now - lastClick <= 325L) {
+            reset();
+            lastClick = 0L;
+            return true;
+        }
+        lastClick = now;
         beginDrag(mouseX, mouseY);
+        return true;
+    }
+
+    public boolean mouseScrolled(int wheel, int mouseX, int mouseY, int x, int y, int width, int height) {
+        if (wheel == 0 || mouseX < x || mouseX > x + width || mouseY < y || mouseY > y + height) {
+            return false;
+        }
+        zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + (wheel > 0 ? 0.1f : -0.1f)));
         return true;
     }
 
     public void draw(ResourceLocation skin, boolean slimModel, int x, int y, int width, int height,
                      int mouseX, int mouseY) {
-        if (skin == null) {
-            return;
-        }
+        if (skin == null) skin = DefaultPlayerSkin.getDefaultSkinLegacy();
         Minecraft mc = Minecraft.getMinecraft();
 
         long now = System.currentTimeMillis();
@@ -119,7 +138,7 @@ public final class SkinPreview {
 
         // The model is two units tall once ModelRenderer applies its 1/16 scale. Width is
         // capped too, or a short wide panel would push the arms outside it.
-        float scale = Math.min(height / 2.2f, width / 1.3f);
+        float scale = Math.min(height / 2.2f, width / 1.3f) * zoom;
         float centerX = x + width / 2.0f;
         // Vanilla stands the doll on its feet rather than on its middle, so this is where
         // the feet have to land for the body to sit centred in the panel.

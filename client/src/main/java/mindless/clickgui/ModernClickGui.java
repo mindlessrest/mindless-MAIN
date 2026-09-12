@@ -11,6 +11,7 @@ import mindless.module.setting.impl.*;
 import mindless.module.impl.client.Gui;
 import mindless.utility.BlockSearchIndex;
 import mindless.utility.ItemSearchIndex;
+import mindless.utility.MindlessAccount;
 import mindless.utility.PlayerRelationsManager;
 import mindless.utility.PotionSearchIndex;
 import mindless.utility.RenderUtils;
@@ -452,7 +453,7 @@ private float aboutOpenProgress = 0f;
         // panels keep exactly the width they had before the column existed.
         if (coreW + usedByPreview > available) coreW = Math.max(0f, available - usedByPreview);
         float totalW = coreW + usedByPreview;
-        panelH = Math.max(326f, Math.min(356f, height - 18f));
+        panelH = Math.max(384f, Math.min(414f, height - 18f));
         sideW = Math.max(104f, coreW * .16f);
         float detailWFull = Math.max(238f, coreW * .35f);
         float t = detailPanelOpen;
@@ -637,6 +638,42 @@ private float aboutOpenProgress = 0f;
         y = drawCategory(Module.category.profiles, y, mx, my);
         y = drawCategory(Module.category.scripts, y, mx, my);
         y = drawCategory(Module.category.theme, y, mx, my);
+        drawAccountCard();
+    }
+
+    private void drawAccountCard() {
+        MindlessAccount.Profile account = MindlessAccount.profile();
+        float left = baseX + 7f;
+        float right = baseX + sideW - 7f;
+        float top = baseY + panelH - 65f;
+        float bottom = baseY + panelH - 8f;
+        rounded(left, top, right, bottom, 7f, 0xFF11151D);
+        line(left + 7f, top, right - 7f, top, withAlpha(DIVIDER, 52));
+
+        float avatarX = left + 7f;
+        float avatarY = top + 9f;
+        float avatarSize = 27f;
+        rounded(avatarX - 1f, avatarY - 1f, avatarX + avatarSize + 1f,
+                avatarY + avatarSize + 1f, 5f, withAlpha(ACCENT, 120));
+        if (account.avatar() != null) {
+            drawTextureRegion(account.avatar(), avatarX, avatarY, avatarSize, avatarSize,
+                    0, 0, 1, 1, 1, 1, 1f, 1f, 1f, 1f);
+        } else {
+            rounded(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize, 4f, 0xFF202838);
+            String initial = account.username() == null || account.username().isEmpty()
+                    ? "?" : account.username().substring(0, 1).toUpperCase();
+            drawCentered(initial, avatarX, avatarX + avatarSize, avatarY + 7f, ACCENT, .82f, true);
+        }
+
+        float textX = avatarX + avatarSize + 6f;
+        float textW = Math.max(10f, right - textX - 5f);
+        drawText(trim(account.username(), textW, .62f, true), textX, top + 10f, TEXT, .62f, true);
+        String discord = account.discordDisplayName() != null ? account.discordDisplayName()
+                : account.discordUsername() != null ? account.discordUsername() : "Discord not linked";
+        drawText(trim(discord, textW, .49f, false), textX, top + 25f, MUTED, .49f, false);
+        String status = Gui.showDiscordId != null && Gui.showDiscordId.isToggled() && account.discordId() != null
+                ? account.discordId() : MindlessAccount.isAuthenticated() ? "Mindless account" : "Local session";
+        drawText(trim(status, right - left - 14f, .45f, false), left + 7f, bottom - 12f, DIM, .45f, false);
     }
 private static boolean isPinnedCategory(Module.category category) {
         return category == Module.category.profiles
@@ -1025,19 +1062,21 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
         visualPreviewW = Math.max(48, Math.round(right - left - 28f));
         visualPreviewH = Math.max(72, Math.round(stageBottom - stageTop - 78f));
 
-        if (mc.thePlayer instanceof AbstractClientPlayer) {
-            AbstractClientPlayer player = (AbstractClientPlayer) mc.thePlayer;
+        {
+            AbstractClientPlayer player = mc.thePlayer instanceof AbstractClientPlayer
+                    ? (AbstractClientPlayer) mc.thePlayer : null;
             // Clipped to the stage. What the modules draw is sized for a screen, not for a
             // column this narrow, and a target panel that is wider than the stage would
             // otherwise run straight over the settings next to it.
             scissor(left, stageTop, right, stageBottom, true);
-            visualPreview.draw(player.getLocationSkin(), "slim".equals(player.getSkinType()),
+            visualPreview.draw(player != null ? player.getLocationSkin() : null,
+                    player != null && "slim".equals(player.getSkinType()),
                     visualPreviewX, visualPreviewY, visualPreviewW, visualPreviewH, mouseX, mouseY);
             drawPreviewOverlay(alpha);
             scissor(0, 0, 0, 0, false);
         }
 
-        drawCentered("drag to rotate", left, right, baseY + panelH - 24f,
+        drawCentered("drag | wheel zoom | double-click reset", left, right, baseY + panelH - 24f,
                 withAlpha(DIM, (int) (220f * alpha)), .52f, false);
         resetTextRenderState();
     }
@@ -1092,6 +1131,14 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
             rounded(x1, y1, x1 + w + 14f, y1 + 15f, 4f, withAlpha(0x0B0E13, (int) (230f * alpha)));
             rounded(x1, y1 + 3f, x1 + 1.5f, y1 + 12f, .75f, withAlpha(ACCENT, full));
             drawCentered(name, x1, x1 + w + 14f, y1 + 3.5f, withAlpha(TEXT, full), .62f, true);
+        }
+        else if (selectedModule instanceof mindless.module.impl.render.Chams) {
+            drawCentered("in-world material", previewX + 12f, previewX + previewW - 12f,
+                    top - 17f, withAlpha(MUTED, full), .5f, false);
+        }
+        else if (selectedModule instanceof mindless.module.impl.render.Wings) {
+            drawCentered("in-world wings", previewX + 12f, previewX + previewW - 12f,
+                    top - 17f, withAlpha(MUTED, full), .5f, false);
         }
     }
 
@@ -1926,6 +1973,8 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         computeLayout();
         int mx = (int) Math.floor(Mouse.getEventX() * width / (double) mc.displayWidth);
         int my = (int) Math.floor(height - Mouse.getEventY() * height / (double) mc.displayHeight - 1);
+        if (supportsVisualPreview() && visualPreview.mouseScrolled(wheel, mx, my,
+                visualPreviewX, visualPreviewY, visualPreviewW, visualPreviewH)) return;
         float speed = Gui.scrollSpeed == null ? 28f : (float) Math.max(8d, Math.min(90d, Gui.scrollSpeed.getInput()));
         float amount = wheel > 0 ? speed : -speed;
         if (overDropdown(mx, my)) {

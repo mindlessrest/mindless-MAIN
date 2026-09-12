@@ -36,10 +36,14 @@ public class Weather extends Module {
     public ButtonSetting colorFilter;
     public ColorSetting filterColor;
     public ButtonSetting nebulaSky;
+    public SliderSetting skyPreset;
     public ColorSetting nebulaColor;
     public ColorSetting nebulaColor2;
     public SliderSetting nebulaStars;
     public SliderSetting nebulaBrightness;
+    public ButtonSetting celestialDiscs;
+    public ButtonSetting horizonHaze;
+    public SliderSetting horizonHazeStrength;
     public ButtonSetting postProcessing;
     public ColorSetting gradeTint;
     public SliderSetting tintStrength;
@@ -73,11 +77,17 @@ public class Weather extends Module {
 
         GroupSetting skyEffects = new GroupSetting("Sky effects");
         this.registerSetting(skyEffects);
-        this.registerSetting(nebulaSky = new ButtonSetting(skyEffects, "Nebula sky", false));
+        this.registerSetting(nebulaSky = new ButtonSetting(skyEffects, "Procedural sky", false,
+                "Sky effects.Nebula sky", "Nebula sky"));
+        this.registerSetting(skyPreset = new SliderSetting(skyEffects, "Sky preset", 0,
+                new String[]{"Custom", "Clear day", "Golden hour", "Night", "Overcast"}));
         this.registerSetting(nebulaColor = new ColorSetting(skyEffects, "Nebula dark", 18, 35, 84));
         this.registerSetting(nebulaColor2 = new ColorSetting(skyEffects, "Nebula bright", 105, 70, 190));
         this.registerSetting(nebulaStars = new SliderSetting(skyEffects, "Star density", 190, 40, 420, 10));
         this.registerSetting(nebulaBrightness = new SliderSetting(skyEffects, "Sky brightness", 1.0, 0.4, 1.8, 0.05));
+        this.registerSetting(celestialDiscs = new ButtonSetting(skyEffects, "Sun and moon", true));
+        this.registerSetting(horizonHaze = new ButtonSetting(skyEffects, "Horizon haze", true));
+        this.registerSetting(horizonHazeStrength = new SliderSetting(skyEffects, "Haze strength", 0.28, 0.0, 0.8, 0.02));
 
         GroupSetting grading = new GroupSetting("World grading");
         this.registerSetting(grading);
@@ -141,7 +151,7 @@ public class Weather extends Module {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRenderWorld(RenderWorldLastEvent event) {
         if (!Utils.nullCheck()) return;
-        NebulaSkyRenderer.render(this);
+        NebulaSkyRenderer.render(this, event.partialTicks);
         AtmospherePostProcessor.render(this);
     }
 
