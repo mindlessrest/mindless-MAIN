@@ -899,56 +899,105 @@ private static int[] collectRowWidths(MindlessFontRenderer hudFont) {
         // its own translucent shape meant every shared edge was blended twice, which outlined
         // each row and made the list read as separate chips instead of one connected panel.
         beginRowBatch();
+        WorldRenderer wr = Tessellator.getInstance().getWorldRenderer();
         for (int i = 0; i < widths.length; i++) {
             float width = widths[i] + horizontalTextPadding * 2f;
             float left = right ? posX - widths[i] - horizontalTextPadding : posX - horizontalTextPadding;
             float rowTop = top + i * rowHeight;
             boolean firstRow = i == 0;
             boolean lastRow = i == widths.length - 1;
-            // A step is any change of width, in either direction. Both sides of one get a
-            // corner now: rounding only the protruding row left every second corner square,
-            // which is why the staircase read as a rectangle with a few nicks taken out of it
-            // instead of the rounded rows the per-line mode gives.
-            boolean stepAbove = !firstRow && Math.abs(widths[i] - widths[i - 1]) > 1;
-            boolean stepBelow = !lastRow && Math.abs(widths[i] - widths[i + 1]) > 1;
             float roundedRadius = radius <= 0.0f ? 0.0f : radius + grow;
             float roundedTransition = transitionRadius <= 0.0f ? 0.0f : transitionRadius + grow;
 
-            // The ragged edge is rounded wherever the width changes and at both ends, so every
-            // row reads as rounded on the side that shows. The aligned edge is only rounded at
-            // the very top and bottom, because everything between it is one continuous side --
-            // that is what keeps the list a single shape rather than a stack of separate ones.
-            float topLeft;
-            float topRight;
-            float bottomRight;
-            float bottomLeft;
-            if (right) {
-                topLeft = firstRow ? roundedRadius : stepAbove ? roundedTransition : 0.0f;
-                bottomLeft = lastRow ? roundedRadius : stepBelow ? roundedTransition : 0.0f;
-                topRight = firstRow ? roundedRadius : 0.0f;
-                bottomRight = lastRow ? roundedRadius : 0.0f;
-            }
-            else {
-                topLeft = firstRow ? roundedRadius : 0.0f;
-                bottomLeft = lastRow ? roundedRadius : 0.0f;
-                topRight = firstRow ? roundedRadius : stepAbove ? roundedTransition : 0.0f;
-                bottomRight = lastRow ? roundedRadius : stepBelow ? roundedTransition : 0.0f;
-            }
+            // A width change is one convex corner and one reflex one, never two convex ones.
+            // Where the neighbour is the wider row the outline wraps around the join, and a
+            // quarter disc there removes material instead of rounding it: it bites a notch out
+            // of the silhouette. Rounding both sides put one of those notches at every step,
+            // alternating which row it came out of, which is what made the staircase look chewed
+            // rather than rounded.
+            //
+            // So the wider row keeps the quarter disc and the narrower row gets an inverse
+            // fillet, the corner square minus the disc, filling the crook the way a connected
+            // list is meant to read. Both are capped at the step itself; a fillet deeper than
+            // the width change would reach past the neighbour and poke out of the shape.
+            float stepAbove = firstRow ? 0.0f : widths[i] - widths[i - 1];
+            float stepBelow = lastRow ? 0.0f : widths[i] - widths[i + 1];
+            float raggedTop = firstRow ? roundedRadius
+                    : stepAbove > 1.0f ? Math.min(roundedTransition, stepAbove) : 0.0f;
+            float raggedBottom = lastRow ? roundedRadius
+                    : stepBelow > 1.0f ? Math.min(roundedTransition, stepBelow) : 0.0f;
+            float filletTop = stepAbove < -1.0f ? Math.min(roundedTransition, -stepAbove) : 0.0f;
+            float filletBottom = stepBelow < -1.0f ? Math.min(roundedTransition, -stepBelow) : 0.0f;
+
+            // The aligned edge is only rounded at the very top and bottom, because everything
+            // between is one continuous side -- that is what keeps the list a single shape
+            // rather than a stack of separate ones.
+            float alignedTop = firstRow ? roundedRadius : 0.0f;
+            float alignedBottom = lastRow ? roundedRadius : 0.0f;
+            float topLeft = right ? raggedTop : alignedTop;
+            float bottomLeft = right ? raggedBottom : alignedBottom;
+            float topRight = right ? alignedTop : raggedTop;
+            float bottomRight = right ? alignedBottom : raggedBottom;
 
             // Only the outer edges grow; growing the shared horizontal seams would draw the
             // border straight through the middle of the list.
             float growTop = firstRow ? grow : 0.0f;
             float growBottom = lastRow ? grow : 0.0f;
+            float x1 = left - grow;
+            float x2 = left + width + grow;
+            float y1 = rowTop - growTop;
+            float y2 = rowTop + rowHeight + growBottom;
             // Rows abut exactly. They must not overlap: batching removes the draw call, not the
             // blending, so a translucent row lapping half a pixel over the next one is still
             // composited twice there and draws a darker line across every seam -- which is the
             // banding this was meant to avoid. Two abutting triangles cannot leave a gap either;
             // the rasteriser fill rule gives each pixel to exactly one of them.
-            fillRow(left - grow, rowTop - growTop, left + width + grow,
-                    rowTop + rowHeight + growBottom,
-                    topLeft, topRight, bottomRight, bottomLeft, color, firstRow, lastRow);
+            fillRow(x1, y1, x2, y2, topLeft, topRight, bottomRight, bottomLeft,
+                    color, firstRow, lastRow);
+
+            // A fillet sits beyond the ragged edge but inside this row's own band, so it meets
+            // the neighbour without ever lying on top of it.
+            float raggedX = right ? x1 : x2;
+            float side = right ? -1.0f : 1.0f;
+            emitInverseCorner(wr, raggedX, y1, filletTop, side, 1.0f, color);
+            emitInverseCorner(wr, raggedX, y2, filletBottom, side, -1.0f, color);
         }
         endRowBatch();
+    }
+
+    /**
+     * The crook of a reflex corner: the corner square with a quarter disc taken out of it.
+     *
+     * Drawn as a fan about the corner point, which lies outside the arc, so the piece emitted is
+     * exactly the material a convex corner would have wrongly removed. Left unfeathered on
+     * purpose: the arc runs tangent to both rows at its ends, and a ramp there would fade out
+     * over the neighbouring row's fill and blend it a second time.
+     */
+    private static void emitInverseCorner(WorldRenderer wr, float px, float py, float radius,
+                                          float sx, float sy, int color) {
+        if (radius <= 0.0f) {
+            return;
+        }
+        int a = (color >>> 24) & 0xFF;
+        if (a <= 0) {
+            return;
+        }
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+
+        int steps = Math.max(4, Math.min(CORNER_STEPS, Math.round(radius * 3.0f)));
+        float cx = px + sx * radius;
+        float cy = py + sy * radius;
+        for (int i = 0; i < steps; i++) {
+            double t0 = Math.toRadians(90.0 * i / steps);
+            double t1 = Math.toRadians(90.0 * (i + 1) / steps);
+            wr.pos(px, py, 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(cx - sx * radius * Math.cos(t0), cy - sy * radius * Math.sin(t0), 0.0D)
+                    .color(r, g, b, a).endVertex();
+            wr.pos(cx - sx * radius * Math.cos(t1), cy - sy * radius * Math.sin(t1), 0.0D)
+                    .color(r, g, b, a).endVertex();
+        }
     }
 
     private static void paintRoundedRect(float left, float top, float width, float height,
@@ -1071,6 +1120,20 @@ private static void beginRowBatch() {
             return;
         }
 
+        // Bands may not overlap. The outer radius is deliberately allowed to run a whole row
+        // deep, so an end row that also carries a step corner can ask for more rounding than the
+        // row is tall, and the two bands would then be composited over each other as a stripe.
+        float fit = Math.min(scaleFactor(x2 - x1, topLeft + topRight),
+                scaleFactor(x2 - x1, bottomLeft + bottomRight));
+        fit = Math.min(fit, Math.min(scaleFactor(y2 - y1, topLeft + bottomLeft),
+                scaleFactor(y2 - y1, topRight + bottomRight)));
+        if (fit < 1.0f) {
+            topLeft *= fit;
+            topRight *= fit;
+            bottomRight *= fit;
+            bottomLeft *= fit;
+        }
+
         WorldRenderer wr = Tessellator.getInstance().getWorldRenderer();
         float topBand = Math.max(topLeft, topRight);
         float bottomBand = Math.max(bottomLeft, bottomRight);
@@ -1087,6 +1150,11 @@ private static void beginRowBatch() {
         emitCorner(wr, x2 - topRight, y1 + topRight, topRight, 0.0f, r, g, b, a, featherTop);
         emitCorner(wr, x2 - bottomRight, y2 - bottomRight, bottomRight, 90.0f, r, g, b, a, featherBottom);
         emitCorner(wr, x1 + bottomLeft, y2 - bottomLeft, bottomLeft, 180.0f, r, g, b, a, featherBottom);
+    }
+
+    /** How far a pair of corner radii has to be pulled in to fit the side they share. */
+    private static float scaleFactor(float available, float requested) {
+        return requested <= available || requested <= 0.0f ? 1.0f : available / requested;
     }
 
 private static final float CORNER_FEATHER = 0.6f;
