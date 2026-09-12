@@ -27,9 +27,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_DIR="$ROOT/client"
 NATIVE_DIR="$CLIENT_DIR/native"
-NATIVE_BUILD_DIR="$CLIENT_DIR/native_build"
 LOADER_DIR="$ROOT/loader"
-LOADER_BUILD_DIR="$LOADER_DIR/out/build/linux-cross"
 OBF_DIR="$ROOT/tools/obf"
 CROSS_DIR="$ROOT/tools/cross"
 
@@ -41,11 +39,16 @@ LUNAR_JAR_OBF="$CLIENT_DIR/build/intermediates/mindless-lunar-mcp-with-forge-obf
 FORGE_MAPPING="$CLIENT_DIR/build/mappings/forge.json"
 LUNAR_MAPPING="$CLIENT_DIR/build/mappings/lunar.json"
 OBF_JAR="$OBF_DIR/build/libs/mindless-obf.jar"
-NATIVE_DLL_OUT="$NATIVE_BUILD_DIR/dist/MindlessNative.dll"
+NATIVE_DLL_OUT="$CLIENT_DIR/native_build/dist/MindlessNative.dll"
 LOADER_RUNTIME="$LOADER_DIR/assets/runtime/MindlessNative.dll"
 OUTPUT_EXE="$ROOT/MindlessLoader.exe"
 
 CACHE="${MINDLESS_CACHE:-$HOME/.cache/mindless}"
+BUILD_CACHE="${MINDLESS_BUILD_CACHE:-$CACHE/build}"
+NATIVE_BUILD_DIR="$BUILD_CACHE/native"
+LOADER_BUILD_DIR="$BUILD_CACHE/loader"
+NATIVE_BUILT_DLL="$NATIVE_BUILD_DIR/dist/MindlessNative.dll"
+OBF_CACHE_DIR="$CACHE/obf"
 XWIN_ROOT="${XWIN_ROOT:-$CACHE/xwin}"
 WIN_JDK="${MINDLESS_WIN_JDK:-$CACHE/jdk-win}"
 FETCHCONTENT_BASE_DIR="${MINDLESS_FETCHCONTENT_DIR:-$CACHE/sources}"
@@ -244,6 +247,7 @@ java_major="$("$JAVA_HOME/bin/javac" -version 2>&1 | sed -E 's/javac ([0-9]+).*/
 ok "JAVA_HOME = $JAVA_HOME"
 
 mkdir -p "$CACHE"
+mkdir -p "$BUILD_CACHE" "$OBF_CACHE_DIR"
 
 # --- Windows SDK and MSVC CRT ------------------------------------------------
 # xwin moves extracted files into its output tree. Keep its cache and staged output beside
@@ -305,7 +309,7 @@ configure_loader() {
         -DMINDLESS_FETCH_DEPS=ON \
         -DXWIN_ROOT="$XWIN_ROOT" \
         -DMINDLESS_PRODUCTION="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)" \
-        -DMINDLESS_PRIVATE_PDB="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)"
+        -DMINDLESS_PRIVATE_PDB=OFF
 }
 
 if [ "$DEPS_ONLY" -eq 1 ]; then
@@ -322,8 +326,7 @@ fi
 if [ "$LOADER_ONLY" -eq 0 ]; then
     section "Client - gradle build"
     chmod +x "$GRADLEW" 2>/dev/null || true
-    ( cd "$CLIENT_DIR" && ./gradlew build lunarPayloadJar \
-        -x test -x compileTestJava \
+    ( cd "$CLIENT_DIR" && ./gradlew remapJar lunarPayloadJar \
         --parallel --build-cache --warning-mode=none "--max-workers=$JOBS" )
     [ -s "$FORGE_JAR" ] || die "Forge jar missing after the build: $FORGE_JAR"
     [ -s "$LUNAR_JAR" ] || die "Lunar jar missing after the build: $LUNAR_JAR"
@@ -331,22 +334,38 @@ if [ "$LOADER_ONLY" -eq 0 ]; then
 
     if [ "$PROD" -eq 1 ]; then
         section "Building MindlessObf"
-        # tools/obf has no wrapper of its own; build.py runs the client's from that directory.
-        ( cd "$OBF_DIR" && "$GRADLEW" jar --warning-mode=none )
+        obf_key="$({ find "$OBF_DIR/src" -type f -print0; printf '%s\0' "$OBF_DIR/build.gradle.kts" "$OBF_DIR/settings.gradle.kts"; } | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+        cached_obf="$OBF_CACHE_DIR/$obf_key.jar"
+        if [ -s "$cached_obf" ]; then
+            mkdir -p "$(dirname "$OBF_JAR")"
+            cp -f "$cached_obf" "$OBF_JAR"
+            ok "MindlessObf restored from cache"
+        else
+            ( cd "$OBF_DIR" && "$GRADLEW" jar --build-cache --warning-mode=none )
+            [ -s "$OBF_JAR" ] || die "MindlessObf jar missing: $OBF_JAR"
+            cp -f "$OBF_JAR" "$cached_obf"
+            ok "MindlessObf cached"
+        fi
         [ -s "$OBF_JAR" ] || die "MindlessObf jar missing: $OBF_JAR"
-        ok "MindlessObf built"
 
         section "JAR obfuscation"
         mkdir -p "$(dirname "$FORGE_MAPPING")"
-        for pair in "forge:$FORGE_JAR:$FORGE_JAR_OBF:$FORGE_MAPPING" \
-                    "lunar:$LUNAR_JAR:$LUNAR_JAR_OBF:$LUNAR_MAPPING"; do
-            IFS=: read -r label input output mapping <<<"$pair"
+        obfuscate() {
+            local label="$1" input="$2" output="$3" mapping="$4"
             info "obfuscating $label"
             rm -f "$output"
             "$JAVA_HOME/bin/java" -jar "$OBF_JAR" "$input" "$output" --mapping "$mapping"
             [ -s "$output" ] || die "$label obfuscation produced nothing"
             ok "$label obfuscated ($(( $(stat -c%s "$output") / 1024 )) KB)"
-        done
+        }
+        obfuscate forge "$FORGE_JAR" "$FORGE_JAR_OBF" "$FORGE_MAPPING" &
+        forge_obf_pid=$!
+        obfuscate lunar "$LUNAR_JAR" "$LUNAR_JAR_OBF" "$LUNAR_MAPPING" &
+        lunar_obf_pid=$!
+        obf_status=0
+        wait "$forge_obf_pid" || obf_status=$?
+        wait "$lunar_obf_pid" || obf_status=$?
+        [ "$obf_status" -eq 0 ] || die "payload obfuscation failed"
     fi
 fi
 
@@ -374,54 +393,53 @@ fi
 [ -s "$payload_forge" ] || die "Forge payload missing, run without --loader-only first"
 [ -s "$payload_lunar" ] || die "Lunar payload missing, run without --loader-only first"
 
-# The resource script embeds the payload jars, so a stale .res silently ships the old client.
-find "$NATIVE_BUILD_DIR" -name 'payload.rc.res' -delete 2>/dev/null || true
-rm -f "$NATIVE_DLL_OUT"
-
-cmake -S "$NATIVE_DIR" -B "$NATIVE_BUILD_DIR" -G Ninja \
-    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
-    -DXWIN_ROOT="$XWIN_ROOT" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DMINDLESS_JAVA_HOME="$WIN_JDK" \
-    -DMINDLESS_FORGE_PAYLOAD_JAR="$payload_forge" \
-    -DMINDLESS_LUNAR_PAYLOAD_JAR="$payload_lunar" \
-    -DMINDLESS_PRODUCTION="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)" \
-    -DMINDLESS_DEBUG_LOGS="$([ "${MINDLESS_DEBUG_LOGS:-0}" = "1" ] && echo ON || echo OFF)"
-
-cmake --build "$NATIVE_BUILD_DIR" --config Release --parallel "$JOBS"
-[ -s "$NATIVE_DLL_OUT" ] || die "MindlessNative.dll not produced"
-mkdir -p "$(dirname "$LOADER_RUNTIME")"
-cp -f "$NATIVE_DLL_OUT" "$LOADER_RUNTIME"
-ok "MindlessNative.dll -> $LOADER_RUNTIME"
-
-# ---------------------------------------------------------------------------
-# Loader
-# ---------------------------------------------------------------------------
-section "Loader - configure"
-
-# Not `cmake --preset windows-clang`: that preset is guarded on a Windows host and pins
-# absolute Windows tool paths. The cache variables it would have set are passed here instead,
-# so CMakePresets.json stays exactly as the Windows build left it.
-configure_loader
-ok "configured"
-
-section "Loader - build"
 if [ "$DEV_TARGET" -eq 1 ]; then
     target="MindlessDev"; exe_name="dev.exe"; output="$ROOT/dev.exe"
 else
     target="MindlessLoader"; exe_name="MindlessLoader.exe"; output="$OUTPUT_EXE"
 fi
 
-rm -f "$LOADER_BUILD_DIR/resources_gen.res" "$LOADER_BUILD_DIR/Release/$exe_name"
-cmake --build "$LOADER_BUILD_DIR" --config Release --target "$target" --parallel "$JOBS"
+build_native() {
+    find "$NATIVE_BUILD_DIR" -name 'payload.rc.res' -delete 2>/dev/null || true
+    rm -f "$NATIVE_BUILT_DLL"
+    cmake -S "$NATIVE_DIR" -B "$NATIVE_BUILD_DIR" -G Ninja \
+        -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+        -DXWIN_ROOT="$XWIN_ROOT" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DMINDLESS_JAVA_HOME="$WIN_JDK" \
+        -DMINDLESS_FORGE_PAYLOAD_JAR="$payload_forge" \
+        -DMINDLESS_LUNAR_PAYLOAD_JAR="$payload_lunar" \
+        -DMINDLESS_PRODUCTION="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)" \
+        -DMINDLESS_DEBUG_LOGS="$([ "${MINDLESS_DEBUG_LOGS:-0}" = "1" ] && echo ON || echo OFF)"
+    cmake --build "$NATIVE_BUILD_DIR" --config Release --parallel "$JOBS"
+    [ -s "$NATIVE_BUILT_DLL" ] || return 1
+    mkdir -p "$(dirname "$NATIVE_DLL_OUT")" "$(dirname "$LOADER_RUNTIME")"
+    cp -f "$NATIVE_BUILT_DLL" "$NATIVE_DLL_OUT"
+    cp -f "$NATIVE_BUILT_DLL" "$LOADER_RUNTIME"
+    ok "MindlessNative.dll -> $NATIVE_DLL_OUT"
+}
 
-built=""
-for candidate in "$LOADER_DIR/$exe_name" "$LOADER_BUILD_DIR/Release/$exe_name" "$LOADER_BUILD_DIR/$exe_name"; do
-    [ -s "$candidate" ] && { built="$candidate"; break; }
-done
-[ -n "$built" ] || die "$exe_name not found after the build"
-cp -f "$built" "$output"
-ok "EXE -> $output"
+build_loader() {
+    configure_loader
+    cmake --build "$LOADER_BUILD_DIR" --config Release --target "$target" --parallel "$JOBS"
+    local built="" candidate
+    for candidate in "$LOADER_DIR/$exe_name" "$LOADER_BUILD_DIR/Release/$exe_name" "$LOADER_BUILD_DIR/$exe_name"; do
+        [ -s "$candidate" ] && { built="$candidate"; break; }
+    done
+    [ -n "$built" ] || return 1
+    cp -f "$built" "$output"
+    ok "EXE -> $output"
+}
+
+section "Native and loader - parallel build"
+build_native &
+native_pid=$!
+build_loader &
+loader_pid=$!
+build_status=0
+wait "$native_pid" || build_status=$?
+wait "$loader_pid" || build_status=$?
+[ "$build_status" -eq 0 ] || die "native or loader build failed"
 
 # ---------------------------------------------------------------------------
 section "Done"

@@ -256,12 +256,9 @@ public void endSwap(Entity e) {
         e.prevRotationPitch = this.savedPrevPitch;
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onPostInput(PostPlayerInputEvent event) {
-        if (!fixMovement() || this.serverYawSource == RotationSource.KILL_AURA
-                && !ModuleManager.killAura.usesSilentMoveFix()
-                || this.serverYawSource == RotationSource.SCAFFOLD && ModuleManager.scaffold != null
-                && !ModuleManager.scaffold.usesSilentMoveFix()) {
+        if (!fixMovement()) {
             return;
         }
 
@@ -271,7 +268,6 @@ public void endSwap(Entity e) {
 
         float sneakMultiplier = mc.thePlayer.movementInput.sneak ? 0.3F : 1F;
 
-        float yaw = this.serverYaw;
         float forward = mc.thePlayer.movementInput.moveForward;
         float strafe = mc.thePlayer.movementInput.moveStrafe;
 
@@ -279,32 +275,11 @@ public void endSwap(Entity e) {
             return;
         }
 
-        double angle = MathHelper.wrapAngleTo180_double(Math.toDegrees(getDirection(mc.thePlayer.rotationYaw, forward, strafe)));
-
-        float closestForward = 0, closestStrafe = 0, closestDifference = Float.MAX_VALUE;
-
-        for (float pfRaw = -1F; pfRaw <= 1F; pfRaw += 1F) {
-            for (float psRaw = -1F; psRaw <= 1F; psRaw += 1F) {
-                if (pfRaw == 0 && psRaw == 0) {
-                    continue;
-                }
-
-                float predictedForward = pfRaw * sneakMultiplier;
-                float predictedStrafe = psRaw * sneakMultiplier;
-
-                double predictedAngle = MathHelper.wrapAngleTo180_double(Math.toDegrees(getDirection(yaw, predictedForward, predictedStrafe)));
-                double difference = Math.abs(MathHelper.wrapAngleTo180_double(angle - predictedAngle));
-
-                if (difference < closestDifference) {
-                    closestDifference = (float) difference;
-                    closestForward = predictedForward;
-                    closestStrafe = predictedStrafe;
-                }
-            }
-        }
-
-        mc.thePlayer.movementInput.moveForward = closestForward;
-        mc.thePlayer.movementInput.moveStrafe  = closestStrafe;
+        boolean strict = ModuleManager.movementFix != null && ModuleManager.movementFix.isStrict();
+        float[] fixed = remapMovement(mc.thePlayer.rotationYaw, this.serverYaw,
+                forward, strafe, strict, sneakMultiplier);
+        mc.thePlayer.movementInput.moveForward = fixed[0];
+        mc.thePlayer.movementInput.moveStrafe = fixed[1];
     }
 
     @SubscribeEvent
@@ -322,11 +297,47 @@ public void endSwap(Entity e) {
     }
 
     public boolean fixMovement() {
-        if (this.serverYawSource == RotationSource.SCAFFOLD) return this.serverYaw != null && this.setRotations;
-        if (this.serverYawSource == RotationSource.KILL_AURA) return this.serverYaw != null
-                && ModuleManager.killAura != null && ModuleManager.killAura.usesMovementYaw();
         return ((ModuleManager.movementFix != null && ModuleManager.movementFix.isEnabled()) || this.forceMovementFix)
-                && this.setRotations;
+                && this.serverYaw != null && this.setRotations;
+    }
+
+    public static float[] remapMovement(float cameraYaw, float movementYaw, float forward,
+                                        float strafe, boolean strict, float inputMagnitude) {
+        if (!strict) {
+            double delta = Math.toRadians(cameraYaw - movementYaw);
+            double cosine = Math.cos(delta);
+            double sine = Math.sin(delta);
+            float fixedForward = (float) (forward * cosine + strafe * sine);
+            float fixedStrafe = (float) (strafe * cosine - forward * sine);
+            if (Math.abs(fixedForward) < 1.0E-5F) fixedForward = 0.0F;
+            if (Math.abs(fixedStrafe) < 1.0E-5F) fixedStrafe = 0.0F;
+            return new float[]{fixedForward, fixedStrafe};
+        }
+
+        double angle = MathHelper.wrapAngleTo180_double(
+                Math.toDegrees(getDirection(cameraYaw, forward, strafe)));
+        float closestForward = 0.0F;
+        float closestStrafe = 0.0F;
+        float closestDifference = Float.MAX_VALUE;
+        for (float predictedForwardRaw = -1.0F; predictedForwardRaw <= 1.0F;
+             predictedForwardRaw += 1.0F) {
+            for (float predictedStrafeRaw = -1.0F; predictedStrafeRaw <= 1.0F;
+                 predictedStrafeRaw += 1.0F) {
+                if (predictedForwardRaw == 0.0F && predictedStrafeRaw == 0.0F) continue;
+                float predictedForward = predictedForwardRaw * inputMagnitude;
+                float predictedStrafe = predictedStrafeRaw * inputMagnitude;
+                double predictedAngle = MathHelper.wrapAngleTo180_double(
+                        Math.toDegrees(getDirection(movementYaw, predictedForward, predictedStrafe)));
+                float difference = (float) Math.abs(MathHelper.wrapAngleTo180_double(
+                        angle - predictedAngle));
+                if (difference < closestDifference) {
+                    closestDifference = difference;
+                    closestForward = predictedForward;
+                    closestStrafe = predictedStrafe;
+                }
+            }
+        }
+        return new float[]{closestForward, closestStrafe};
     }
 
     public static double getDirection(float rotationYaw, double moveForward, double moveStrafing) {

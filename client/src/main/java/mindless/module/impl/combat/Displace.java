@@ -1717,7 +1717,7 @@ private boolean isTerrainBlocking(AxisAlignedBB box) {
         displaceThisTick = false;
     }
 
-    @SubscribeEvent(priority = EventPriority.LOWEST)
+    @SubscribeEvent(priority = EventPriority.LOW)
     public void onPostInput(PostPlayerInputEvent e) {
         if (isOverrideAttackEnabled()) {
             compensateNextTick = false;

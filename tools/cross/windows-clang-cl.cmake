@@ -56,6 +56,8 @@ list(JOIN _mindless_includes " " _mindless_include_flags)
 set(_mindless_flags "--target=x86_64-pc-windows-msvc ${_mindless_include_flags} -Wno-unused-command-line-argument")
 set(CMAKE_C_FLAGS_INIT "${_mindless_flags}")
 set(CMAKE_CXX_FLAGS_INIT "${_mindless_flags}")
+set(CMAKE_C_FLAGS_RELEASE_INIT "/O1 /Ob2 /Oi /Gy /Gw /DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE_INIT "/O1 /Ob2 /Oi /Gy /Gw /DNDEBUG")
 set(CMAKE_RC_FLAGS_INIT "-I\"${XWIN_ROOT}/sdk/include/um\" -I\"${XWIN_ROOT}/sdk/include/shared\"")
 
 set(_mindless_libpaths
@@ -67,8 +69,8 @@ list(JOIN _mindless_libpaths " " _mindless_link_flags)
 # lld-link/llvm-mt. Application manifests are already embedded by the resource
 # scripts, so suppress the linker's generated-manifest step for cross builds.
 set(_mindless_link_flags "${_mindless_link_flags} /MANIFEST:NO")
-set(CMAKE_EXE_LINKER_FLAGS_INIT "${_mindless_link_flags}")
-set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_mindless_link_flags}")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "${_mindless_link_flags} /OPT:REF /OPT:ICF /RELEASE")
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_mindless_link_flags} /OPT:REF /OPT:ICF /RELEASE")
 set(CMAKE_MODULE_LINKER_FLAGS_INIT "${_mindless_link_flags}")
 
 # Host tools stay on the host; libraries and headers come from the sysroot and from vcpkg.

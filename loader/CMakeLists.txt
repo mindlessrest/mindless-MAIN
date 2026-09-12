@@ -266,7 +266,7 @@ target_precompile_headers(MindlessLoader PRIVATE
 )
 
 set_target_properties(MindlessLoader PROPERTIES
-    LINK_FLAGS "/MANIFEST:NO /INCREMENTAL:NO"
+    LINK_FLAGS "/MANIFEST:NO /INCREMENTAL:NO /OPT:REF /OPT:ICF /RELEASE"
 )
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -304,14 +304,16 @@ target_compile_definitions(MindlessLoader PRIVATE
 )
 
 add_custom_command(TARGET MindlessLoader POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/assets"
-        "$<TARGET_FILE_DIR:MindlessLoader>/assets"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:MindlessLoader>"
-        "${CMAKE_SOURCE_DIR}/MindlessLoader.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:MindlessLoader>"
         "${CMAKE_SOURCE_DIR}/../MindlessLoader.exe"
-    COMMENT "Copying assets and deploying exe"
+    COMMENT "Deploying loader"
 )
+if (NOT MINDLESS_PRODUCTION)
+    add_custom_command(TARGET MindlessLoader POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:MindlessLoader>/assets"
+        COMMENT "Copying development assets"
+    )
+endif()
