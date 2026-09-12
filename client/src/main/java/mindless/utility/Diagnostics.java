@@ -285,17 +285,23 @@ public final class Diagnostics {
             if (before.program != after.program) {
                 leaks.add("shader program " + before.program + " -> " + after.program);
             }
-            if (before.red != after.red || before.green != after.green
-                    || before.blue != after.blue || before.alpha != after.alpha) {
+            // Three of these used to fire on a section putting the 2D contract BACK, which is the
+            // state audit() demands two hundred lines above. Between them they were fifty thousand
+            // of the seventy thousand leak lines in a one-hour recording, and a real leak in that
+            // haystack may as well not be logged at all. Only departures from the contract count.
+            boolean white = after.red == 1.0F && after.green == 1.0F
+                    && after.blue == 1.0F && after.alpha == 1.0F;
+            if (!white && (before.red != after.red || before.green != after.green
+                    || before.blue != after.blue || before.alpha != after.alpha)) {
                 leaks.add(String.format(Locale.ROOT, "colour %.2f/%.2f/%.2f/%.2f -> %.2f/%.2f/%.2f/%.2f",
                         before.red, before.green, before.blue, before.alpha,
                         after.red, after.green, after.blue, after.alpha));
             }
-            if (before.alphaTest != after.alphaTest) leaks.add("alpha test " + before.alphaTest + " -> " + after.alphaTest);
+            if (before.alphaTest && !after.alphaTest) leaks.add("alpha test true -> false");
             if (before.alphaRef != after.alphaRef) {
                 leaks.add(String.format(Locale.ROOT, "alpha ref %.3f -> %.3f", before.alphaRef, after.alphaRef));
             }
-            if (before.blend != after.blend) leaks.add("blend " + before.blend + " -> " + after.blend);
+            if (before.blend && !after.blend) leaks.add("blend true -> false");
             if (before.blendSrcRgb != after.blendSrcRgb || before.blendDstRgb != after.blendDstRgb) {
                 leaks.add("blend func " + before.blendSrcRgb + "/" + before.blendDstRgb
                         + " -> " + after.blendSrcRgb + "/" + after.blendDstRgb);

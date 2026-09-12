@@ -53,8 +53,8 @@ public class DynamicIsland extends Module {
     private static final int STATE_HIDDEN = 5;
     private static final int MAX_TOGGLES = 8;
     private static final float EQUALIZER_WIDTH = 9.0f;
-    /** The cover runs nearly the full height of the pill, unlike a module badge. */
-    private static final float SPOTIFY_ART = HEIGHT - 4.0f;
+    /** Cover size at 100%, which is the pill's height less its padding. */
+    private static final float SPOTIFY_ART_MAX = HEIGHT - 4.0f;
     /**
      * Height reserved along the bottom edge for the progress bar while a track is showing.
      *
@@ -77,6 +77,7 @@ public class DynamicIsland extends Module {
     private final GroupSetting spotifyGroup;
     private final SliderSetting spotifyTextScale;
     private final SliderSetting spotifyTextWidth;
+    private final SliderSetting spotifyArtSize;
     private final SliderSetting spotifyArtRounding;
     private final ButtonSetting spotifyArtist;
     private final ButtonSetting spotifyProgressBar;
@@ -144,9 +145,11 @@ public class DynamicIsland extends Module {
         // Under one: the title sat at the same size as a module toggle, which is far too loud for
         // something that is on screen for the length of a song rather than two seconds.
         this.registerSetting(spotifyTextScale = new SliderSetting(
-                spotifyGroup, "Text size", "x", 0.82, 0.6, 1.2, 0.02));
+                spotifyGroup, "Text size", "x", 0.92, 0.6, 1.2, 0.02));
         this.registerSetting(spotifyTextWidth = new SliderSetting(
                 spotifyGroup, "Text width", "px", 92.0, 40.0, 190.0, 2.0));
+        this.registerSetting(spotifyArtSize = new SliderSetting(
+                spotifyGroup, "Art size", "%", 78.0, 45.0, 100.0, 2.0));
         this.registerSetting(spotifyArtRounding = new SliderSetting(
                 spotifyGroup, "Art rounding", "%", 32.0, 0.0, 100.0, 2.0));
         this.registerSetting(spotifyProgressBar = new ButtonSetting(spotifyGroup, "Progress bar", true));
@@ -181,6 +184,7 @@ public class DynamicIsland extends Module {
         spotifyArtist.setVisible(spotify, this);
         spotifyTextScale.setVisible(spotify, this);
         spotifyTextWidth.setVisible(spotify, this);
+        spotifyArtSize.setVisible(spotify, this);
         spotifyArtRounding.setVisible(spotify, this);
         spotifyProgressBar.setVisible(spotify, this);
         spotifyProgressThickness.setVisible(spotify && spotifyProgressBar.isToggled(), this);
@@ -448,7 +452,7 @@ public class DynamicIsland extends Module {
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ZERO);
         boolean cover = islandState == STATE_SPOTIFY && stateArtwork != null;
-        float badge = (cover ? SPOTIFY_ART : BADGE_SIZE) * uiScale;
+        float badge = (cover ? spotifyArt() : BADGE_SIZE) * uiScale;
         float badgeX = x + PAD_X * uiScale;
         float badgeY = y + (height - badge) * 0.5f;
         int accent = ThemeManager.getWatermarkColor(0.0) & 0xFFFFFF;
@@ -476,7 +480,8 @@ public class DynamicIsland extends Module {
             labelScale = uiScale * spotifyTextScale();
             visibleLabel = fitText(text, spotifyLabel(), spotifyTextLimit());
             float barZone = spotifyBarZone() * uiScale;
-            textY = y + (height - barZone - text.getFontHeight() * labelScale) * 0.5f + slide;
+            textY = y + (height - barZone - text.getFontHeight() * labelScale) * 0.5f
+                    + 1.1f * uiScale + slide;
         }
         drawScaled(text, visibleLabel, labelX, textY, labelScale,
                 withAlpha(0xF1F1F5, contentAlpha));
@@ -544,11 +549,11 @@ public class DynamicIsland extends Module {
             }
         }
         if (islandState == STATE_SPOTIFY && spotifyEqualizer.isToggled()) {
-            // Sits on the title's centre line, not the pill's, or it hangs below the text it is
-            // meant to sit beside once the progress strip is accounted for.
+            // Centred on the pill, not on the text block. The bar stops short of it horizontally,
+            // so there is nothing under here for it to collide with, and a widget's meter reads as
+            // part of the pill rather than as something stuck to the title.
             drawEqualizer(x + width - (PAD_X + EQUALIZER_WIDTH) * uiScale,
-                    y + (height - (spotifyProgressBar.isToggled() ? spotifyBarZone() * uiScale : 0.0f)) * 0.5f + slide,
-                    uiScale, contentAlpha, accent, mediaPlaying);
+                    y + height * 0.5f + slide, uiScale, contentAlpha, accent, mediaPlaying);
         }
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
@@ -556,7 +561,7 @@ public class DynamicIsland extends Module {
     private float stateWidth(MindlessFontRenderer text) {
         float width = PAD_X * 2.0f + BADGE_SIZE + BADGE_GAP + text.getStringWidth(stateLabel);
         if (islandState == STATE_SPOTIFY) {
-            width = PAD_X * 2.0f + (stateArtwork != null ? SPOTIFY_ART : BADGE_SIZE) + BADGE_GAP
+            width = PAD_X * 2.0f + (stateArtwork != null ? spotifyArt() : BADGE_SIZE) + BADGE_GAP
                     + Math.min(spotifyTextLimit(), text.getStringWidth(spotifyLabel())) * spotifyTextScale()
                     + (spotifyEqualizer.isToggled() ? VALUE_GAP + EQUALIZER_WIDTH : 0.0f);
         }
@@ -577,6 +582,10 @@ public class DynamicIsland extends Module {
     /** Title width in font units, so the setting stays a screen measurement at any text size. */
     private float spotifyTextLimit() {
         return (float) (spotifyTextWidth.getInput() / Math.max(0.01, spotifyTextScale.getInput()));
+    }
+
+    private float spotifyArt() {
+        return SPOTIFY_ART_MAX * (float) (spotifyArtSize.getInput() / 100.0);
     }
 
     private float spotifyBarZone() {

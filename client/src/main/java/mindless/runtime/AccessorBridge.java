@@ -39,22 +39,31 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class AccessorBridge {
     private AccessorBridge() {}
 
-    private static final ConcurrentHashMap<String, Field> FIELDS = new ConcurrentHashMap<>();
+    // Keyed on the owner and then the field name, rather than on a string built from both. The
+    // old key was concatenated on every call, and these are called per packet and per frame: it
+    // was the largest single source of allocation attributable to the client in a JFR recording.
+    private static final ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, Field>> FIELDS =
+            new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Method> METHODS = new ConcurrentHashMap<>();
     private static volatile Field entityArrowInGroundField;
     private static volatile Method entityRendererSetupCameraTransformMethod;
     private static volatile Field minecraftTimerField;
 
     private static Field field(Class<?> owner, String... candidates) {
-        String key = owner.getName() + "#" + candidates[0];
-        Field cached = FIELDS.get(key);
+        ConcurrentHashMap<String, Field> byName = FIELDS.get(owner);
+        if (byName == null) {
+            byName = new ConcurrentHashMap<>();
+            ConcurrentHashMap<String, Field> raced = FIELDS.putIfAbsent(owner, byName);
+            if (raced != null) byName = raced;
+        }
+        Field cached = byName.get(candidates[0]);
         if (cached != null) return cached;
         NoSuchFieldException last = null;
         for (String name : candidates) {
             try {
                 Field f = owner.getDeclaredField(name);
                 f.setAccessible(true);
-                FIELDS.put(key, f);
+                byName.put(candidates[0], f);
                 return f;
             } catch (NoSuchFieldException e) {
                 last = e;

@@ -638,42 +638,156 @@ private float aboutOpenProgress = 0f;
         y = drawCategory(Module.category.profiles, y, mx, my);
         y = drawCategory(Module.category.scripts, y, mx, my);
         y = drawCategory(Module.category.theme, y, mx, my);
-        drawAccountCard();
+        drawAccountCard(mx, my);
     }
 
-    private void drawAccountCard() {
-        MindlessAccount.Profile account = MindlessAccount.profile();
-        float left = baseX + 7f;
-        float right = baseX + sideW - 7f;
-        float top = baseY + panelH - 65f;
-        float bottom = baseY + panelH - 8f;
-        rounded(left, top, right, bottom, 7f, 0xFF11151D);
-        line(left + 7f, top, right - 7f, top, withAlpha(DIVIDER, 52));
+    private static final float ACCOUNT_ROW_H = 46f;
+    private static final float ACCOUNT_DETAIL_H = 42f;
+    private boolean accountExpanded;
+    private final Object accountHoverKey = new Object();
+    private final Object accountExpandKey = new Object();
 
-        float avatarX = left + 7f;
-        float avatarY = top + 9f;
-        float avatarSize = 27f;
-        rounded(avatarX - 1f, avatarY - 1f, avatarX + avatarSize + 1f,
-                avatarY + avatarSize + 1f, 5f, withAlpha(ACCENT, 120));
+    /** The whole bubble, collapsed or open, so hit testing and drawing cannot drift apart. */
+    private float[] accountCardBounds() {
+        float open = accountExpanded ? ACCOUNT_DETAIL_H : 0f;
+        float bottom = baseY + panelH - 8f;
+        return new float[]{baseX + 7f, bottom - ACCOUNT_ROW_H - open, baseX + sideW - 7f, bottom};
+    }
+
+    /**
+     * Who is signed in, as a card of its own rather than a strip along the bottom of the panel.
+     *
+     * The avatar is a circle because a Discord avatar is one everywhere else it is shown, and a
+     * square crop of a round image is the single thing that makes a card like this look homemade.
+     * The ring around it is the only accent in the bubble; the two text rows are a name and one
+     * quiet line under it, which is as much as fits before it stops reading as an identity and
+     * starts reading as a table.
+     */
+    private void drawAccountCard(int mx, int my) {
+        MindlessAccount.Profile account = MindlessAccount.profile();
+        float[] bounds = accountCardBounds();
+        float left = bounds[0], top = bounds[1], right = bounds[2], bottom = bounds[3];
+        float rowBottom = top + ACCOUNT_ROW_H;
+
+        boolean hover = inside(mx, my, left, top, right, bottom);
+        float hoverAmount = animate(hoverAnimation, accountHoverKey, hover ? 1f : 0f, 15f);
+        float openAmount = animate(hoverAnimation, accountExpandKey, accountExpanded ? 1f : 0f, 14f);
+
+        rounded(left, top, right, bottom, 9f,
+                mixColor(argb(255, 19, 23, 31), argb(255, 27, 33, 44), hoverAmount));
+        outline(left, top, right, bottom, 9f,
+                withAlpha(ACCENT, (int) (18f + 42f * Math.max(hoverAmount, openAmount))));
+
+        float avatar = 26f;
+        float avatarX = left + 9f;
+        float avatarY = top + (ACCOUNT_ROW_H - avatar) * .5f;
+        float ring = 1.5f + hoverAmount * .6f;
+        rounded(avatarX - ring, avatarY - ring, avatarX + avatar + ring, avatarY + avatar + ring,
+                (avatar + ring * 2f) * .5f, withAlpha(ACCENT, (int) (140f + 80f * hoverAmount)));
         if (account.avatar() != null) {
-            drawTextureRegion(account.avatar(), avatarX, avatarY, avatarSize, avatarSize,
-                    0, 0, 1, 1, 1, 1, 1f, 1f, 1f, 1f);
+            roundedTexture(account.avatar(), avatarX, avatarY, avatar, avatar, avatar * .5f);
         } else {
-            rounded(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize, 4f, 0xFF202838);
+            rounded(avatarX, avatarY, avatarX + avatar, avatarY + avatar, avatar * .5f,
+                    argb(255, 30, 36, 48));
             String initial = account.username() == null || account.username().isEmpty()
                     ? "?" : account.username().substring(0, 1).toUpperCase();
-            drawCentered(initial, avatarX, avatarX + avatarSize, avatarY + 7f, ACCENT, .82f, true);
+            drawCenteredV(initial, avatarX, avatarX + avatar, avatarY, avatarY + avatar,
+                    ACCENT, .86f, true);
         }
 
-        float textX = avatarX + avatarSize + 6f;
-        float textW = Math.max(10f, right - textX - 5f);
-        drawText(trim(account.username(), textW, .62f, true), textX, top + 10f, TEXT, .62f, true);
+        float chevronX = right - 13f;
+        float textX = avatarX + avatar + 8f;
+        float textW = Math.max(10f, chevronX - textX - 8f);
+        String name = account.username() == null ? "guest" : account.username();
+        drawText(trim(name, textW, .68f, true), textX, top + 12f,
+                mixColor(TEXT, 0xFFFFFFFF, hoverAmount), .68f, true);
+
         String discord = account.discordDisplayName() != null ? account.discordDisplayName()
-                : account.discordUsername() != null ? account.discordUsername() : "Discord not linked";
-        drawText(trim(discord, textW, .49f, false), textX, top + 25f, MUTED, .49f, false);
-        String status = Gui.showDiscordId != null && Gui.showDiscordId.isToggled() && account.discordId() != null
-                ? account.discordId() : MindlessAccount.isAuthenticated() ? "Mindless account" : "Local session";
-        drawText(trim(status, right - left - 14f, .45f, false), left + 7f, bottom - 12f, DIM, .45f, false);
+                : account.discordUsername() != null ? account.discordUsername() : null;
+        String secondary = discord != null ? discord
+                : MindlessAccount.isAuthenticated() ? "Mindless account" : "Local session";
+        // A linked Discord gets the accent dot beside it, because that is the one piece of this
+        // card that is either connected or not and worth seeing without reading.
+        if (discord != null) {
+            rounded(textX, top + 27.5f, textX + 3.5f, top + 31f, 1.75f, withAlpha(ACCENT, 210));
+            textX += 6.5f;
+            textW -= 6.5f;
+        }
+        drawText(trim(secondary, textW, .54f, false), textX, top + 25f, MUTED, .54f, false);
+
+        chevron(chevronX, top + ACCOUNT_ROW_H * .5f, 3.4f, 1.3f, openAmount,
+                mixColor(DIM, TEXT, Math.max(hoverAmount, openAmount)));
+
+        if (openAmount <= .01f) return;
+        // Clipped to the part of the drawer that has actually opened, so the rows slide out from
+        // under the row above instead of appearing all at once at the end of the animation.
+        float revealed = ACCOUNT_DETAIL_H * openAmount;
+        RenderUtils.scissorPushGui(left, rowBottom, right - left, revealed);
+        line(left + 9f, rowBottom, right - 9f, rowBottom, withAlpha(DIVIDER, 60));
+        accountDetail("Discord", account.discordUsername() == null ? "Not linked" : account.discordUsername(),
+                left, right, rowBottom + 6f);
+        boolean reveal = Gui.showDiscordId != null && Gui.showDiscordId.isToggled();
+        accountDetail("ID", account.discordId() == null ? "\u2014" : reveal ? account.discordId() : "Hidden",
+                left, right, rowBottom + 21f);
+        RenderUtils.scissorPop();
+    }
+
+    private void accountDetail(String label, String value, float left, float right, float y) {
+        drawText(label, left + 9f, y, DIM, .5f, false);
+        float valueX = left + 46f;
+        drawText(trim(value, Math.max(10f, right - valueX - 9f), .5f, false), valueX, y, MUTED, .5f, false);
+    }
+
+    /**
+     * A chevron built from two bars rather than a glyph.
+     *
+     * The rounded-rect shader takes screen coordinates directly, so rotating the modelview leaves
+     * the rounding computed against the wrong rectangle; the arms are laid out in Java and drawn
+     * flat. Progress turns it from pointing right to pointing down as the drawer opens.
+     */
+    private void chevron(float cx, float cy, float size, float thickness, float progress, int color) {
+        double angle = Math.toRadians(90.0 * Math.max(0f, Math.min(1f, progress)));
+        double cos = Math.cos(angle), sin = Math.sin(angle);
+        // Arms at +-45 degrees from the chevron's own facing, meeting at the tip.
+        float tipX = cx + (float) (cos * size * .45), tipY = cy + (float) (sin * size * .45);
+        arm(tipX, tipY, angle + Math.toRadians(135.0), size, thickness, color);
+        arm(tipX, tipY, angle - Math.toRadians(135.0), size, thickness, color);
+    }
+
+    private void arm(float x, float y, double angle, float length, float thickness, int color) {
+        float dx = (float) Math.cos(angle) * length, dy = (float) Math.sin(angle) * length;
+        float nx = -dy / length * thickness * .5f, ny = dx / length * thickness * .5f;
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.disableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
+        GlStateManager.color(((color >> 16) & 255) / 255f, ((color >> 8) & 255) / 255f,
+                (color & 255) / 255f, ((color >>> 24) & 255) / 255f);
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glVertex2f(x + nx, y + ny);
+        GL11.glVertex2f(x - nx, y - ny);
+        GL11.glVertex2f(x + dx - nx, y + dy - ny);
+        GL11.glVertex2f(x + dx + nx, y + dy + ny);
+        GL11.glEnd();
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1f, 1f, 1f, 1f);
+    }
+
+    /** A texture cut to a rounded rectangle -- a circle when the radius is half the size. */
+    private void roundedTexture(ResourceLocation texture, float x, float y, float w, float h,
+                                float radius) {
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
+        mc.getTextureManager().bindTexture(texture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        RoundedUtils.drawRoundTextured(x, y, w, h, radius(radius, w, h), 1f);
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        GlStateManager.color(1f, 1f, 1f, 1f);
     }
 private static boolean isPinnedCategory(Module.category category) {
         return category == Module.category.profiles
@@ -1736,6 +1850,11 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.scripts); return; }
         cy += CATEGORY_ROW_STEP;
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.theme); return; }
+        float[] card = accountCardBounds();
+        if (inside(mx, my, card[0], card[1], card[2], card[3])) {
+            accountExpanded = !accountExpanded;
+            return;
+        }
         if (clickThemePanel(mx, my, mouseButton)) return;
 
 
@@ -2457,12 +2576,14 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
                         radius(7.5f, x2 - x1, y2 - y1), tinted);
                 break;
             case mindless.module.impl.theme.ThemeManager.SURFACE_FROSTED:
+                // Frosted, not translucent. It was thinned to just over half opacity with a bright
+                // bar across the top, which let whatever was behind the menu through as colour and
+                // read as a lit strip rather than as glass. Frost is a near-opaque panel with a
+                // cold veil over it: the blur behind still softens the edges, nothing shows hue.
                 rounded(x1, y1, x2, y2, 7.5f,
-                        withAlpha(tinted, Math.round(((tinted >>> 24) & 0xFF) * .55f)));
-                // A single bright line along the top edge is what reads as a pane of glass
-                // catching the light; without it a thin fill just looks unfinished.
-                rounded(x1 + 6, y1, x2 - 6, y1 + 1.2f, .6f, withAlpha(TEXT, 26));
-                outline(x1, y1, x2, y2, radius(7.5f, x2 - x1, y2 - y1), withAlpha(BORDER, 70));
+                        withAlpha(tinted, Math.round(((tinted >>> 24) & 0xFF) * .9f)));
+                rounded(x1, y1, x2, y2, 7.5f, argb(16, 232, 238, 255));
+                outline(x1, y1, x2, y2, radius(7.5f, x2 - x1, y2 - y1), withAlpha(BORDER, 40));
                 break;
             case mindless.module.impl.theme.ThemeManager.SURFACE_OUTLINE:
                 rounded(x1, y1, x2, y2, 7.5f,

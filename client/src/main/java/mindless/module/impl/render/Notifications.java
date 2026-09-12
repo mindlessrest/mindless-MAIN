@@ -31,7 +31,7 @@ public class Notifications extends Module {
     private final SliderSetting duration;
     private final ButtonSetting showEnabled;
     private final ButtonSetting showDisabled;
-    private final ButtonSetting deferToIsland;
+    private final ButtonSetting alongsideIsland;
     private final ButtonSetting showInGui;
 
     private final Map<Module, Boolean> moduleStates = new IdentityHashMap<>();
@@ -106,10 +106,10 @@ private static final float CLOCK_GAP = 10.0f;
         this.registerSetting(duration     = new SliderSetting("Duration", "s", 3.0, 0.5, 8.0, 0.1));
         this.registerSetting(showEnabled  = new ButtonSetting("Show enabled",  true));
         this.registerSetting(showDisabled = new ButtonSetting("Show disabled", true));
-        // The Dynamic Island shows the same toggles, so this module went silent whenever the
-        // island was up -- with no setting saying so, which reads as the module being broken
-        // rather than as one of two things drawing it. Default keeps the old behaviour.
-        this.registerSetting(deferToIsland = new ButtonSetting("Hide when island shows them", true));
+        // Enabling this module and seeing nothing is the wrong default. It used to go silent
+        // whenever the Dynamic Island was showing the same toggles, with nothing saying so; now
+        // it draws either way unless this is turned off.
+        this.registerSetting(alongsideIsland = new ButtonSetting("Show alongside island", true));
         this.registerSetting(showInGui = new ButtonSetting("Show in menus", false));
     }
 
@@ -282,7 +282,7 @@ public static void notifyScript(String title, boolean enabled) {
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent e) {
         if (e.phase != TickEvent.Phase.END || !Utils.nullCheck() || cards.isEmpty()) return;
-        if (deferToIsland.isToggled() && ModuleManager.dynamicIsland != null
+        if (!alongsideIsland.isToggled() && ModuleManager.dynamicIsland != null
                 && ModuleManager.dynamicIsland.handlesNotifications()) return;
         if (!showInGui.isToggled() && (mc.currentScreen != null || mc.gameSettings.showDebugInfo)) return;
 
