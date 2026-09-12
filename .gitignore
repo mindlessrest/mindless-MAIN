@@ -105,3 +105,6 @@ Xtools_Package_*/
 # Local visual development tools (never shipped with the client)
 tools/wing-sandbox/
 wing-sandbox.bat
+
+# Windows dependency tree packed by build.sh --pack-deps for the Linux cross build
+mindless-windows-deps.tar.*

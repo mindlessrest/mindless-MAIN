@@ -14,10 +14,18 @@
 #   ./build.sh --prod          obfuscated build, what ships
 #   ./build.sh --client-only   Gradle stages only
 #   ./build.sh --loader-only   native DLL and loader only, reusing existing jars
-#   ./build.sh --deps          install and cache the toolchain, build nothing
+#   ./build.sh --deps          cache the toolchain, build nothing
+#   ./build.sh --pack-deps     tar up loader/vcpkg_installed for another machine
+#
+# One dependency does not cross-build: OpenSSL. vcpkg drives nmake for it on a Windows
+# triplet and nmake does not exist here, and it cannot be dropped because the bundled auth
+# SDK calls EVP, HMAC and RAND directly. clang-cl emits the same MSVC ABI on either host,
+# though, so a loader/vcpkg_installed tree produced by a Windows build links here unchanged.
+# Run `build.bat` or `./build.sh --pack-deps` once on the Windows machine, copy the tarball
+# over, and this script uses it.
 #
 # Caches live under ~/.cache/mindless unless MINDLESS_CACHE says otherwise, so a second run
-# does not re-download the SDK or rebuild the vcpkg ports.
+# does not re-download the SDK.
 
 set -euo pipefail
 
@@ -44,8 +52,10 @@ OUTPUT_EXE="$ROOT/MindlessLoader.exe"
 
 CACHE="${MINDLESS_CACHE:-$HOME/.cache/mindless}"
 XWIN_ROOT="${XWIN_ROOT:-$CACHE/xwin}"
-VCPKG_ROOT="${VCPKG_ROOT:-$CACHE/vcpkg}"
 WIN_JDK="${MINDLESS_WIN_JDK:-$CACHE/jdk-win}"
+VCPKG_INSTALLED="${MINDLESS_VCPKG_INSTALLED:-$LOADER_DIR/vcpkg_installed}"
+VCPKG_TREE="$VCPKG_INSTALLED/x64-windows-static"
+DEPS_TARBALL="${MINDLESS_DEPS_TARBALL:-$ROOT/mindless-windows-deps.tar.zst}"
 
 # Only the headers are used, and only for jni.h and include/win32/jvmti.h. A Linux JDK ships
 # include/linux instead, and its jni_md.h declares JNIEXPORT the ELF way, so a Windows JDK
@@ -58,6 +68,7 @@ DEV_TARGET=0
 CLIENT_ONLY=0
 LOADER_ONLY=0
 DEPS_ONLY=0
+PACK_DEPS=0
 
 RESET=$'\033[0m'; BOLD=$'\033[1m'; GREEN=$'\033[92m'
 YELLOW=$'\033[93m'; RED=$'\033[91m'; CYAN=$'\033[96m'
@@ -74,7 +85,8 @@ for arg in "$@"; do
         --client-only) CLIENT_ONLY=1 ;;
         --loader-only) LOADER_ONLY=1 ;;
         --deps)        DEPS_ONLY=1 ;;
-        -h|--help)     sed -n '3,30p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \?//'; exit 0 ;;
+        --pack-deps)   PACK_DEPS=1 ;;
+        -h|--help)     sed -n '3,40p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \?//'; exit 0 ;;
         *)             die "unknown option: $arg" ;;
     esac
 done
@@ -82,6 +94,17 @@ done
 printf '\n%s%s%s\n' "$BOLD" "==================================================" "$RESET"
 printf '%s  Mindless United - cross build (linux -> windows x64)%s\n' "$BOLD" "$RESET"
 printf '%s%s%s\n' "$BOLD" "==================================================" "$RESET"
+
+if [ "$PACK_DEPS" -eq 1 ]; then
+    section "Packing the Windows dependency tree"
+    [ -d "$VCPKG_TREE/lib" ] || die "nothing to pack, $VCPKG_TREE does not exist"
+    compressor=(zstd -19 -T0); suffix=".tar.zst"
+    command -v zstd >/dev/null 2>&1 || { compressor=(gzip -9); suffix=".tar.gz"; DEPS_TARBALL="${DEPS_TARBALL%.tar.zst}.tar.gz"; }
+    tar -C "$VCPKG_INSTALLED/.." -cf - "$(basename "$VCPKG_INSTALLED")" | "${compressor[@]}" > "$DEPS_TARBALL"
+    ok "wrote $DEPS_TARBALL ($(( $(stat -c%s "$DEPS_TARBALL" 2>/dev/null || stat -f%z "$DEPS_TARBALL") / 1048576 )) MB)"
+    info "drop it in the repo root on the Linux box and build.sh unpacks it itself"
+    exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # Toolchain
@@ -151,15 +174,41 @@ else
     ok "Windows JDK headers cached at $WIN_JDK"
 fi
 
-# --- vcpkg -------------------------------------------------------------------
-if [ ! -x "$VCPKG_ROOT/vcpkg" ]; then
-    section "vcpkg - bootstrap"
-    [ -d "$VCPKG_ROOT/.git" ] || git clone --depth 1 https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
-    "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
-    ok "vcpkg ready"
-else
-    ok "vcpkg cached at $VCPKG_ROOT"
+# --- Windows dependency tree -------------------------------------------------
+# Not built here. vcpkg's OpenSSL port for a Windows triplet drives nmake, which does not
+# exist on Linux, and OpenSSL cannot be dropped: shared/authsdk/cpp/src/crypto.cpp calls
+# EVP, HMAC and RAND straight from it. Since clang-cl emits MSVC-ABI objects on either host,
+# the .lib files a Windows build already produced link here without being rebuilt.
+if [ ! -f "$VCPKG_TREE/lib/libcrypto.lib" ]; then
+    if [ -f "$DEPS_TARBALL" ]; then
+        section "Windows dependencies - unpack"
+        mkdir -p "$(dirname "$VCPKG_INSTALLED")"
+        tar -C "$(dirname "$VCPKG_INSTALLED")" -xf "$DEPS_TARBALL"
+        ok "unpacked $DEPS_TARBALL"
+    fi
 fi
+if [ ! -f "$VCPKG_TREE/lib/libcrypto.lib" ]; then
+    printf '\n'
+    die "$(cat <<EOF
+no prebuilt Windows dependencies at $VCPKG_TREE
+
+They cannot be built on Linux: vcpkg's OpenSSL port for a Windows triplet drives nmake,
+and the bundled auth SDK needs OpenSSL, so it cannot simply be left out.
+
+Produce them once on the Windows machine, where the normal build already does it:
+
+    python tools/build.py          (or build.bat)
+    bash build.sh --pack-deps      writes mindless-windows-deps.tar.zst
+
+Copy that file to this repo root and re-run. clang-cl targets the same ABI on both
+hosts, so the libraries link unchanged.
+EOF
+)"
+fi
+for lib in libcrypto libssl libcurl freetype; do
+    [ -f "$VCPKG_TREE/lib/$lib.lib" ] || die "$lib.lib missing from $VCPKG_TREE/lib"
+done
+ok "Windows dependencies at $VCPKG_TREE"
 
 TOOLCHAIN="$CROSS_DIR/windows-clang-cl.cmake"
 [ -f "$TOOLCHAIN" ] || die "missing $TOOLCHAIN"
@@ -257,11 +306,8 @@ section "Loader - configure"
 # absolute Windows tool paths. The cache variables it would have set are passed here instead,
 # so CMakePresets.json stays exactly as the Windows build left it.
 cmake -S "$LOADER_DIR" -B "$LOADER_BUILD_DIR" -G "Ninja Multi-Config" \
-    -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-    -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$TOOLCHAIN" \
-    -DVCPKG_OVERLAY_TRIPLETS="$CROSS_DIR/triplets" \
-    -DVCPKG_TARGET_TRIPLET=x64-windows-static \
-    -DVCPKG_INSTALLED_DIR="$LOADER_DIR/vcpkg_installed" \
+    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+    -DCMAKE_PREFIX_PATH="$VCPKG_TREE" \
     -DXWIN_ROOT="$XWIN_ROOT" \
     -DMINDLESS_PRODUCTION="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)" \
     -DMINDLESS_PRIVATE_PDB="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)"
