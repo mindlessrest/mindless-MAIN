@@ -30,7 +30,11 @@ public final class ItemRendererState {
             return true;
         }
         mindless.module.impl.player.AutoTool autoTool = mindless.module.ModuleManager.autoTool;
-        return autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem();
+        if (autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem()) {
+            return true;
+        }
+        mindless.module.impl.player.Scaffold scaffold = mindless.module.ModuleManager.scaffold;
+        return scaffold != null && scaffold.isEnabled() && scaffold.isSpoofingHeldItem();
     }
 
     public static void setForceSwordBlockAnimation(boolean value) {

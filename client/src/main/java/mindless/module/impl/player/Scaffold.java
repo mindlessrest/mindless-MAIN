@@ -101,13 +101,40 @@ public class Scaffold extends Module {
         this.registerSetting(multiPlace = new ButtonSetting("multi-place", false));
         this.registerSetting(safeWalk = new ButtonSetting("safe-walk", false));
         this.registerSetting(swing = new ButtonSetting("swing", true));
-        this.registerSetting(itemSpoof = new ButtonSetting("item-spoof", true));
+        this.registerSetting(itemSpoof = new ButtonSetting("Keep Original Item", true, "item-spoof"));
         this.registerSetting(blockCounter = new ButtonSetting("block-counter", true));
     }
 
     @Override
     public void guiUpdate() {
         keepYOnPress.setVisible((int) keepY.getInput() != KEEP_Y_NONE, this);
+    }
+
+    /**
+     * Whether the hand should still be showing what you were holding.
+     *
+     * The placement runtime writes inventory.currentItem straight through to put a block in
+     * your hand, so without this the setting only restored your slot when the module was
+     * switched off -- the one thing its name did not promise. Same two methods Bed Aura and
+     * Auto Tool expose, so the renderers already know what to do with them.
+     */
+    public boolean isSpoofingHeldItem() {
+        if (!itemSpoof.isToggled() || !Utils.nullCheck()) {
+            return false;
+        }
+        int chosen = previousHotbarSlot;
+        return chosen >= 0 && chosen < 9 && chosen != mc.thePlayer.inventory.currentItem;
+    }
+
+    public net.minecraft.item.ItemStack getOriginalVisualItem() {
+        if (!Utils.nullCheck()) {
+            return null;
+        }
+        int chosen = previousHotbarSlot;
+        if (chosen < 0 || chosen >= 9) {
+            return null;
+        }
+        return mc.thePlayer.inventory.mainInventory[chosen];
     }
 
     @Override

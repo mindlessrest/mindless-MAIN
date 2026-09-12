@@ -1660,6 +1660,10 @@ public static boolean isMining() {
         if (autoTool != null && autoTool.isEnabled() && autoTool.isSpoofingHeldItem()) {
             return autoTool.getOriginalVisualItem();
         }
+        mindless.module.impl.player.Scaffold scaffold = ModuleManager.scaffold;
+        if (scaffold != null && scaffold.isEnabled() && scaffold.isSpoofingHeldItem()) {
+            return scaffold.getOriginalVisualItem();
+        }
         return original;
     }
 
