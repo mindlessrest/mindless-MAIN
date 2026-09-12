@@ -30,15 +30,13 @@ find_program(MINDLESS_CLANG_CL NAMES clang-cl REQUIRED)
 find_program(MINDLESS_LLD_LINK NAMES lld-link REQUIRED)
 find_program(MINDLESS_LLVM_RC NAMES llvm-rc REQUIRED)
 find_program(MINDLESS_LLVM_LIB NAMES llvm-lib REQUIRED)
-find_program(MINDLESS_LLVM_MT NAMES llvm-mt)
+find_program(MINDLESS_LLVM_MT NAMES llvm-mt REQUIRED)
 
 set(CMAKE_C_COMPILER "${MINDLESS_CLANG_CL}")
 set(CMAKE_CXX_COMPILER "${MINDLESS_CLANG_CL}")
 set(CMAKE_LINKER "${MINDLESS_LLD_LINK}")
 set(CMAKE_AR "${MINDLESS_LLVM_LIB}")
-if(MINDLESS_LLVM_MT)
-    set(CMAKE_MT "${MINDLESS_LLVM_MT}")
-endif()
+set(CMAKE_MT "${MINDLESS_LLVM_MT}")
 
 # llvm-rc accepts the same /I flags used by the Windows resource compiler.
 set(CMAKE_RC_COMPILER "${MINDLESS_LLVM_RC}")

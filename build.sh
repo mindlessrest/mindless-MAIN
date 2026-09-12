@@ -154,7 +154,7 @@ done
 add_llvm_paths
 add_cargo_path
 missing=()
-for tool in clang-cl lld-link llvm-rc llvm-lib cmake ninja git curl unzip perl pkg-config; do
+for tool in clang-cl lld-link llvm-rc llvm-lib llvm-mt cmake ninja git curl unzip perl pkg-config; do
     if command -v "$tool" >/dev/null 2>&1; then
         ok "$tool"
     else
@@ -178,7 +178,7 @@ if [ "${#missing[@]}" -ne 0 ]; then
 fi
 
 missing=()
-for tool in clang-cl lld-link llvm-rc llvm-lib cmake ninja git curl unzip perl pkg-config; do
+for tool in clang-cl lld-link llvm-rc llvm-lib llvm-mt cmake ninja git curl unzip perl pkg-config; do
     command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
 [ "${#missing[@]}" -eq 0 ] || die "required tools are still missing after installation: ${missing[*]}"
