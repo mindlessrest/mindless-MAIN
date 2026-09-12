@@ -1,5 +1,8 @@
 package mindless.module.impl.render;
 
+import mindless.effect.EffectSystem;
+import mindless.effect.impl.BurstEffect;
+import mindless.effect.impl.ReassembleEffect;
 import mindless.event.PlayerKillEvent;
 import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
@@ -7,6 +10,8 @@ import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
 import mindless.utility.sound.ResourceMp3Player;
+import net.minecraft.client.entity.AbstractClientPlayer;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
@@ -28,10 +33,14 @@ import java.util.Random;
  * world or a packet.
  */
 public class KillEffect extends Module {
-    private static final String[] MODES = new String[]{"Blood", "Lightning", "Soul"};
+    // Appended, never reordered: a dropdown persists by index, so moving one of these silently
+    // changes what every saved profile means.
+    private static final String[] MODES = new String[]{"Blood", "Lightning", "Soul", "XP burst", "Reassemble"};
     private static final int MODE_BLOOD = 0;
     private static final int MODE_LIGHTNING = 1;
     private static final int MODE_SOUL = 2;
+    private static final int MODE_XP = 3;
+    private static final int MODE_REASSEMBLE = 4;
     private static final String[] KILL_SOUNDS = new String[]{"Mommy ASMR", "Off"};
 
     private static final int MAX_EFFECTS = 6;
@@ -44,6 +53,9 @@ public class KillEffect extends Module {
     private final SliderSetting killSoundVolume;
     private final ButtonSetting useCustomColor;
     private final ColorSetting customColor;
+    private final SliderSetting orbCount;
+    private final SliderSetting orbSize;
+    private final SliderSetting orbSpeed;
 
     private final Random random = new Random();
     private final List<Effect> effects = new ArrayList<Effect>();
@@ -59,12 +71,33 @@ public class KillEffect extends Module {
         this.registerSetting(killSoundVolume = new SliderSetting("Kill Sound Volume", "%", 35.0, 0.0, 100.0, 5.0));
         this.registerSetting(useCustomColor = new ButtonSetting("Custom color", false));
         this.registerSetting(customColor = new ColorSetting("Color", 220, 40, 40, 255));
+        this.registerSetting(orbCount = new SliderSetting("Orb count", 42, 6, 120, 1));
+        this.registerSetting(orbSize = new SliderSetting("Orb size", "blocks", 0.07, 0.02, 0.3, 0.01));
+        this.registerSetting(orbSpeed = new SliderSetting("Orb speed", 0.09, 0.02, 0.3, 0.01));
+    }
+
+    private boolean usesOrbs() {
+        int selected = (int) mode.getInput();
+        return selected == MODE_XP || selected == MODE_REASSEMBLE;
     }
 
     @Override
     public void guiUpdate() {
         if (customColor != null) {
             customColor.setVisible(useCustomColor != null && useCustomColor.isToggled(), this);
+        }
+        boolean orbs = usesOrbs();
+        if (orbCount != null) {
+            orbCount.setVisible(orbs, this);
+        }
+        if (orbSize != null) {
+            orbSize.setVisible(orbs, this);
+        }
+        if (orbSpeed != null) {
+            orbSpeed.setVisible(orbs, this);
+        }
+        if (size != null) {
+            size.setVisible(!orbs, this);
         }
     }
 
@@ -82,7 +115,7 @@ public class KillEffect extends Module {
 
     @SubscribeEvent
     public void onPlayerKill(PlayerKillEvent event) {
-        triggerEffect(event.entityId, event.x, event.y, event.z);
+        triggerEffect(event);
     }
 
     @SubscribeEvent
@@ -94,17 +127,63 @@ public class KillEffect extends Module {
         drawEffects();
     }
 
-    private void triggerEffect(int entityId, double x, double y, double z) {
+    private void triggerEffect(PlayerKillEvent event) {
         long now = System.currentTimeMillis();
-        if (entityId == lastEffectEntityId && now - lastEffectTimeMs < 2000L) {
+        if (event.entityId == lastEffectEntityId && now - lastEffectTimeMs < 2000L) {
             return;
         }
-        lastEffectEntityId = entityId;
+        lastEffectEntityId = event.entityId;
         lastEffectTimeMs = now;
         if ((int) killSound.getInput() == 0) {
             ResourceMp3Player.playMommyAsmr((float) killSoundVolume.getInput() / 100.0f);
         }
-        spawn(x, y, z);
+
+        if (usesOrbs()) {
+            spawnOrbs(event);
+            return;
+        }
+        spawn(event.x, event.y, event.z);
+    }
+
+    /**
+     * The two modes that run on the shared effect system.
+     *
+     * The skin is read here rather than when the figure is drawn: the entity is removed from the
+     * world the moment it dies, and by the time Reassemble reaches its last phase there is nothing
+     * left to ask. Without a skin it falls back to orbs alone, which is the honest degradation.
+     */
+    private void spawnOrbs(PlayerKillEvent event) {
+        int ticks = Math.max(1, (int) Math.round(duration.getInput() * 20.0));
+        int rgb = useCustomColor.isToggled() ? (customColor.getRGB() & 0xFFFFFF) : 0x6FE04A;
+        int count = (int) orbCount.getInput();
+        double speed = orbSpeed.getInput();
+        double orb = orbSize.getInput();
+
+        if ((int) mode.getInput() == MODE_XP) {
+            EffectSystem.spawn(new BurstEffect(event.x, event.y + 0.6, event.z, ticks,
+                    count, speed, speed * 1.6, orb, rgb, true, false, random));
+            return;
+        }
+
+        ResourceLocation skin = null;
+        boolean slim = false;
+        float yaw = 0.0f;
+        if (event.player instanceof AbstractClientPlayer) {
+            AbstractClientPlayer player = (AbstractClientPlayer) event.player;
+            try {
+                skin = player.getLocationSkin();
+                slim = "slim".equals(player.getSkinType());
+            }
+            catch (Throwable unavailable) {
+                skin = null;
+            }
+            yaw = player.rotationYaw;
+        }
+
+        // Reassemble is deliberately longer than the slider says: the scatter, the gather and the
+        // hold each need room, and a one second version of it reads as a glitch.
+        EffectSystem.spawn(new ReassembleEffect(event.x, event.y, event.z,
+                Math.max(ticks, 40), count, speed, orb, rgb, yaw, skin, slim, random));
     }
 
     private void spawn(double x, double y, double z) {

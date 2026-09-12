@@ -91,6 +91,7 @@ public class ModuleManager {
     public static mindless.module.impl.render.KillEffect killEffect;
     public static mindless.module.impl.render.HitEffect hitEffect;
     public static mindless.module.impl.render.JumpEffect jumpEffect;
+    public static mindless.module.impl.render.Trail trail;
     public static mindless.module.impl.render.TabGUI tabGui;
     public static mindless.module.impl.render.BindGUI bindGui;
     public static NoCameraClip noCameraClip;
@@ -227,6 +228,7 @@ public class ModuleManager {
         this.addModule(killEffect = new mindless.module.impl.render.KillEffect());
         this.addModule(hitEffect = new mindless.module.impl.render.HitEffect());
         this.addModule(jumpEffect = new mindless.module.impl.render.JumpEffect());
+        this.addModule(trail = new mindless.module.impl.render.Trail());
         this.addModule(tabGui = new mindless.module.impl.render.TabGUI());
         this.addModule(bindGui = new mindless.module.impl.render.BindGUI());
         this.addModule(noFall = new NoFall());
