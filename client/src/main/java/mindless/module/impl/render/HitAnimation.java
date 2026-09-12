@@ -8,6 +8,7 @@ import mindless.module.setting.impl.GroupSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.Utils;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
@@ -44,6 +45,8 @@ public class HitAnimation extends Module {
     private final SliderSetting amount;
     private final SliderSetting easing;
     private final ButtonSetting playersOnly;
+    private final ButtonSetting onlyDamage;
+    private final SliderSetting minimumGap;
     private final ButtonSetting alsoScale;
     private final SliderSetting scaleAmount;
 
@@ -64,6 +67,8 @@ public class HitAnimation extends Module {
         registerSetting(when);
         registerSetting(trigger = new SliderSetting(when, "Trigger", TRIGGER_HIT, TRIGGERS));
         registerSetting(playersOnly = new ButtonSetting(when, "Players only", true));
+        registerSetting(onlyDamage = new ButtonSetting(when, "Only when damage lands", true));
+        registerSetting(minimumGap = new SliderSetting(when, "Minimum gap", "ms", 200, 0, 800, 25));
 
         GroupSetting extra = new GroupSetting("Extra");
         registerSetting(extra);
@@ -83,8 +88,12 @@ public class HitAnimation extends Module {
         if (scaleAmount != null) {
             scaleAmount.setVisible(alsoScale != null && alsoScale.isToggled(), this);
         }
+        boolean onHit = trigger != null && (int) trigger.getInput() == TRIGGER_HIT;
         if (playersOnly != null) {
-            playersOnly.setVisible(trigger != null && (int) trigger.getInput() == TRIGGER_HIT, this);
+            playersOnly.setVisible(onHit, this);
+        }
+        if (onlyDamage != null) {
+            onlyDamage.setVisible(onHit, this);
         }
     }
 
@@ -102,6 +111,26 @@ public class HitAnimation extends Module {
         return instance != null && instance.isEnabled();
     }
 
+    /**
+     * Whether this attack will actually take health off the target.
+     *
+     * 1.8 gives an entity ten ticks of invulnerability after a hit, and during it a second hit is
+     * discarded unless it is strictly harder than the one that caused it. At the click rates this
+     * client is built for that is most of them: the animation fired twelve times a second while
+     * two of those hits did anything, which is the difference between feedback and a strobe. The
+     * client keeps its own copy of the timer -- the hurt animation sets it -- so this needs no
+     * packet listener and costs a field read.
+     *
+     * Read before the attack is sent, so the timer still describes the previous hit.
+     */
+    private static boolean willDealDamage(net.minecraft.entity.Entity target) {
+        if (!(target instanceof EntityLivingBase)) {
+            return true;
+        }
+        EntityLivingBase living = (EntityLivingBase) target;
+        return living.hurtResistantTime <= living.maxHurtResistantTime / 2;
+    }
+
     @SubscribeEvent
     public void onAttack(AttackEvent event) {
         if (event.isCanceled() || !Utils.nullCheck() || event.target == null) {
@@ -114,8 +143,17 @@ public class HitAnimation extends Module {
             if (event.target == mc.thePlayer) {
                 return;
             }
+            if (onlyDamage.isToggled() && !willDealDamage(event.target)) {
+                return;
+            }
         }
-        startedAt = System.currentTimeMillis();
+        // A floor under the restart rate, so Every swing is a fast animation rather than a frame
+        // of one repeated, and so a long duration is not cut to pieces by a burst of real hits.
+        long now = System.currentTimeMillis();
+        if (startedAt != 0L && now - startedAt < (long) minimumGap.getInput()) {
+            return;
+        }
+        startedAt = now;
 
         // The crosshair reacts to the same moment, so it is told here rather than subscribing to
         // the attack itself: two listeners on one event drift apart the first time one is gated.

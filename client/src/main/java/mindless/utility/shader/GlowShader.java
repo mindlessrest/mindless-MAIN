@@ -8,7 +8,12 @@ private static final String FRAG = "#version 120\n" +
             "uniform vec4 tint;\n" +
             "void main() {\n" +
             "  vec4 texel = texture2D(tex, gl_TexCoord[0].st);\n" +
-            "  if (texel.a < 0.1) discard;\n" +
+            // A twentieth, not a tenth. The threshold decides which texels count as part of the
+            // silhouette, and an item sampled from a mipmapped atlas at a fraction of its native
+            // size averages its transparent border into every texel it keeps: at a tenth, sparse
+            // textures -- a tool head on a stick, a thin blade -- fell under it and vanished while
+            // solid ones stayed, which is exactly the "works on some items" pattern.
+            "  if (texel.a < 0.05) discard;\n" +
             "  gl_FragColor = vec4(tint.rgb, tint.a * texel.a);\n" +
             "}";
 

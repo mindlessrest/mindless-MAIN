@@ -29,6 +29,8 @@ import org.lwjgl.opengl.GL11;
 
 public class DynamicIsland extends Module {
     private static final String[] ANCHORS = {"Top centre", "Top left", "Top right", "Custom"};
+    // Appended, never reordered: a saved profile stores the index, not the word.
+    private static final String[] LAYOUTS = {"Single", "Stacked"};
     private static final String LOGO_RESOURCE = "/assets/mindless/textures/gui/mindless_mark.png";
     private static final float LOGO_ASPECT = 32.0f / 22.0f;
     private static final float EDGE_MARGIN = 3.0f;
@@ -67,6 +69,7 @@ public class DynamicIsland extends Module {
 
     private final SliderSetting font;
     private final SliderSetting anchor;
+    private final SliderSetting layout;
     private final SliderSetting notificationDuration;
     private final GroupSetting contentGroup;
     private final ButtonSetting showNotifications;
@@ -127,12 +130,23 @@ public class DynamicIsland extends Module {
     private float blockValueBlend = 1.0f;
     private boolean blockValueSwapping;
 
+    private float lastDrawWidth;
+    private float lastDrawHeight;
+
+    /** Priority order, top row first; also the order single mode falls back through. */
+    private static final int[] STACK_ORDER = {
+            STATE_NOTIFICATION, STATE_BREAKER, STATE_SCAFFOLD, STATE_SPOTIFY, STATE_IDLE};
+    private final java.util.List<Lane> lanes = new java.util.ArrayList<Lane>();
+    private final java.util.Map<Integer, Lane> laneByState = new java.util.HashMap<Integer, Lane>();
+    private final Lane single = new Lane();
+
     public float islandPosX = -1.0f;
     public float islandPosY = -1.0f;
 
     public DynamicIsland() {
         super("Dynamic Island", "Shows notifications, combat, movement and media activity.", category.render);
         this.registerSetting(anchor = new SliderSetting("Anchor", 0, ANCHORS));
+        this.registerSetting(layout = new SliderSetting("Layout", 0, LAYOUTS));
         this.registerSetting(font = new SliderSetting("Font", 0, ModuleFont.options()));
         this.registerSetting(contentGroup = new GroupSetting("Content"));
         this.registerSetting(showNotifications = new ButtonSetting(contentGroup, "Notifications", true));
@@ -145,7 +159,7 @@ public class DynamicIsland extends Module {
         // Under one: the title sat at the same size as a module toggle, which is far too loud for
         // something that is on screen for the length of a song rather than two seconds.
         this.registerSetting(spotifyTextScale = new SliderSetting(
-                spotifyGroup, "Text size", "x", 0.92, 0.6, 1.2, 0.02));
+                spotifyGroup, "Text size", "x", 0.9, 0.6, 1.2, 0.05));
         this.registerSetting(spotifyTextWidth = new SliderSetting(
                 spotifyGroup, "Text width", "px", 92.0, 40.0, 190.0, 2.0));
         this.registerSetting(spotifyArtSize = new SliderSetting(
@@ -222,6 +236,10 @@ public class DynamicIsland extends Module {
         stateSubtitle = "";
         pendingSubtitle = "";
         resetBlockValueTransition();
+        lanes.clear();
+        laneByState.clear();
+        lastDrawWidth = 0.0f;
+        lastDrawHeight = 0.0f;
         toggleStates.clear();
         recentToggles.clear();
     }
@@ -243,10 +261,25 @@ public class DynamicIsland extends Module {
         MindlessFontRenderer text = islandFont();
         if (text == null) return;
         float delta = frameDelta();
-        resolveState(delta);
+        updateBlockValueTransition(delta);
+        collectLanes(delta, System.currentTimeMillis());
+        if (stacked()) {
+            renderStacked(text, delta);
+            return;
+        }
+        resolveState();
         if (islandState == STATE_HIDDEN) return;
         float uiScale = (float) scale.getInput();
-        float targetWidth = stateWidth(text) * uiScale;
+        single.state = islandState;
+        single.key = stateKey;
+        single.label = stateLabel;
+        single.value = stateValue;
+        single.subtitle = stateSubtitle;
+        single.icon = stateIcon;
+        single.artwork = stateArtwork;
+        single.mediaPlaying = mediaPlaying;
+        single.progress = laneProgress(islandState);
+        float targetWidth = laneWidth(text, single) * uiScale;
         float height = HEIGHT * uiScale;
         if (animatedWidth < 0.0f) {
             animatedWidth = targetWidth;
@@ -256,6 +289,8 @@ public class DynamicIsland extends Module {
         ScaledResolution resolution = ScaledResolutionCache.get();
         float x = anchoredX(resolution, animatedWidth);
         float y = anchoredY(resolution, height);
+        lastDrawWidth = animatedWidth;
+        lastDrawHeight = height;
         int alpha = Math.round(255.0f * (float) (opacity.getInput() / 100.0));
         float radius = height * 0.5f * (float) (roundness.getInput() / 100.0);
         drawBackdrop(x, y, animatedWidth, height, radius, alpha);
@@ -283,51 +318,157 @@ public class DynamicIsland extends Module {
             contentFade = approach(contentFade, 1.0f, CONTENT_RATE, delta);
             contentSlide = approach(contentSlide, 0.0f, CONTENT_RATE, delta);
         }
-        drawContent(text, x, y, animatedWidth, height, uiScale, alpha,
+        drawContent(text, single, x, y, animatedWidth, height, uiScale, alpha,
                 contentFade, contentSlide * uiScale);
     }
 
-    private void resolveState(float delta) {
-        updateBlockValueTransition(delta);
-        int nextState = STATE_IDLE;
-        String nextLabel = "Mindless";
-        String nextValue = "";
-        String nextKey = "idle";
-        ItemStack nextIcon = null;
-        ResourceLocation nextArtwork = null;
-        String nextSubtitle = "";
-        boolean nextMediaPlaying = false;
-        long now = System.currentTimeMillis();
+    private boolean stacked() {
+        return (int) layout.getInput() == 1;
+    }
+
+    /**
+     * Every active source at once, one row each, instead of the highest priority one.
+     *
+     * Single mode is a pill that swaps its contents, which is the right shape for a phone's
+     * island and the wrong one here: bridging while a track is playing meant the block count
+     * held the pill for as long as the bridge lasted and the track simply vanished. Rows grow
+     * and shrink rather than appear, so a notification arriving under a playing track pushes
+     * the stack open instead of replacing it.
+     */
+    private void renderStacked(MindlessFontRenderer text, float delta) {
+        float uiScale = (float) scale.getInput();
+        float rowHeight = HEIGHT * uiScale;
+        float targetWidth = 0.0f;
+        float totalHeight = 0.0f;
+        for (int i = 0; i < STACK_ORDER.length; i++) {
+            Lane lane = laneByState.get(STACK_ORDER[i]);
+            if (lane == null) continue;
+            lane.grown = approach(lane.grown, lanes.contains(lane) ? 1.0f : 0.0f, 14.0f, delta);
+            if (lane.grown <= 0.012f) {
+                lane.grown = 0.0f;
+                continue;
+            }
+            targetWidth = Math.max(targetWidth, laneWidth(text, lane) * uiScale);
+            totalHeight += rowHeight * lane.grown;
+        }
+        if (totalHeight <= 0.75f || targetWidth <= 0.0f) {
+            animatedWidth = -1.0f;
+            return;
+        }
+        if (animatedWidth < 0.0f) {
+            animatedWidth = targetWidth;
+            widthVelocity = 0.0f;
+        }
+        animatedWidth = spring(animatedWidth, targetWidth, WIDTH_SMOOTH_TIME, delta);
+
+        ScaledResolution resolution = ScaledResolutionCache.get();
+        float x = anchoredX(resolution, animatedWidth);
+        float y = anchoredY(resolution, totalHeight);
+        lastDrawWidth = animatedWidth;
+        lastDrawHeight = totalHeight;
+        int alpha = Math.round(255.0f * (float) (opacity.getInput() / 100.0));
+        // The corner follows one row, not the whole stack, or a three-row island turns into a
+        // capsule the height of the screen edge.
+        float radius = Math.min(rowHeight, totalHeight) * 0.5f
+                * (float) (roundness.getInput() / 100.0);
+        drawBackdrop(x, y, animatedWidth, totalHeight, radius, alpha);
+
+        float cursor = y;
+        boolean first = true;
+        for (int i = 0; i < STACK_ORDER.length; i++) {
+            Lane lane = laneByState.get(STACK_ORDER[i]);
+            if (lane == null || lane.grown <= 0.0f) continue;
+            float drawn = rowHeight * lane.grown;
+            if (!first && drawn > 2.0f) {
+                RoundedUtils.drawRound(x + 7.0f * uiScale, cursor, animatedWidth - 14.0f * uiScale,
+                        Math.max(0.5f, 0.6f * uiScale), 0.0f,
+                        withAlpha(0xFFFFFF, Math.round(alpha * lane.grown * 0.09f)));
+            }
+            first = false;
+            // Clipped to what has grown, and drawn at full row height anchored to the bottom of
+            // that slice, so a row slides out from under the one above rather than squashing.
+            RenderUtils.scissorPushGui(x, cursor, animatedWidth, drawn);
+            drawContent(text, lane, x, cursor + drawn - rowHeight, animatedWidth, rowHeight,
+                    uiScale, Math.round(alpha * lane.grown), lane.grown, 0.0f);
+            RenderUtils.scissorPop();
+            cursor += drawn;
+        }
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    private float laneProgress(int state) {
+        return state == STATE_BREAKER ? breakerProgress
+                : state == STATE_SCAFFOLD ? scaffoldProgress : spotifyProgress;
+    }
+
+    /** A row for this source, reused across frames so its grow animation survives. */
+    private Lane lane(int state) {
+        Lane lane = laneByState.get(state);
+        if (lane == null) {
+            lane = new Lane();
+            lane.state = state;
+            laneByState.put(state, lane);
+        }
+        lane.value = "";
+        lane.subtitle = "";
+        lane.icon = null;
+        lane.artwork = null;
+        lane.mediaPlaying = false;
+        lane.progress = 0.0f;
+        return lane;
+    }
+
+    /**
+     * What every source wants to show this frame, in priority order.
+     *
+     * Each source is tested on its own rather than in an else-if chain, because stacked mode
+     * needs all of them and single mode only needs the first. A source that is not running also
+     * has to put its own progress back here; it used to happen in the chain's final else, which
+     * never ran while anything at all was showing.
+     */
+    private void collectLanes(float delta, long now) {
+        lanes.clear();
         ItemStack islandBlock = ModuleManager.blockCounter == null
                 ? null : ModuleManager.blockCounter.islandBlock();
         Notifications.IslandNotification notification = showNotifications.isToggled()
                 ? Notifications.latestForIsland(now) : null;
         Toggle toggle = showNotifications.isToggled() ? latestToggle(now) : null;
         SystemMediaInfo mediaInfo = currentSpotifyInfo();
+
         if (notification != null) {
-            nextState = STATE_NOTIFICATION;
-            nextLabel = notification.title;
-            nextValue = notification.status;
-            nextKey = "notification:" + notification.bornAt;
+            Lane lane = lane(STATE_NOTIFICATION);
+            lane.label = notification.title;
+            lane.value = notification.status;
+            lane.key = "notification:" + notification.bornAt;
+            lanes.add(lane);
         } else if (toggle != null) {
-            nextState = STATE_NOTIFICATION;
-            nextLabel = toggle.name;
-            nextValue = toggle.enabled ? "ON" : "OFF";
-            nextKey = "notification:" + toggle.name + ':' + toggle.enabled + ':' + toggle.bornAt;
-        } else if (showBedAura.isToggled()
-                && ModuleManager.bedAura != null && ModuleManager.bedAura.isBreakingRoute()) {
-            nextState = STATE_BREAKER;
-            nextLabel = ModuleManager.bedAura.getAuraToolName();
+            Lane lane = lane(STATE_NOTIFICATION);
+            lane.label = toggle.name;
+            lane.value = toggle.enabled ? "ON" : "OFF";
+            lane.key = "notification:" + toggle.name + ':' + toggle.enabled + ':' + toggle.bornAt;
+            lanes.add(lane);
+        }
+
+        if (showBedAura.isToggled() && ModuleManager.bedAura != null
+                && ModuleManager.bedAura.isBreakingRoute()) {
+            Lane lane = lane(STATE_BREAKER);
+            lane.label = ModuleManager.bedAura.getAuraToolName();
             float target = Math.max(0.0f, Math.min(1.0f,
                     ModuleManager.bedAura.getAuraTotalProgress()));
             breakerProgress = approach(breakerProgress, target, 12.0f, delta);
-            nextValue = Math.round(breakerProgress * 100.0f) + "%";
-            nextIcon = ModuleManager.bedAura.getAuraToolStack();
-            nextKey = "breaker:" + nextLabel;
-        } else if (showScaffold.isToggled() && (islandBlock != null
+            lane.value = Math.round(breakerProgress * 100.0f) + "%";
+            lane.icon = ModuleManager.bedAura.getAuraToolStack();
+            lane.progress = breakerProgress;
+            lane.key = "breaker:" + lane.label;
+            lanes.add(lane);
+        } else {
+            breakerProgress = 0.0f;
+        }
+
+        if (showScaffold.isToggled() && (islandBlock != null
                 || ModuleManager.scaffold != null && ModuleManager.scaffold.isActivelyScaffolding())) {
-            nextState = STATE_SCAFFOLD;
-            nextLabel = "Blocks";
+            Lane lane = lane(STATE_SCAFFOLD);
+            lane.label = "Blocks";
             int blocks = ModuleManager.blockCounter == null
                     ? scaffoldBlockCount() : ModuleManager.blockCounter.islandCount();
             if (displayedBlockCount == Integer.MIN_VALUE) {
@@ -340,9 +481,9 @@ public class DynamicIsland extends Module {
                     blockValueSwapping = true;
                 }
             }
-            nextValue = Integer.toString(displayedBlockCount);
-            nextIcon = islandBlock;
-            nextKey = "scaffold:" + blockKey(islandBlock);
+            lane.value = Integer.toString(displayedBlockCount);
+            lane.icon = islandBlock;
+            lane.key = "scaffold:" + blockKey(islandBlock);
             if (scaffoldPeak == 0) {
                 scaffoldPeak = Math.max(1, blocks);
                 scaffoldProgress = blocks / (float) scaffoldPeak;
@@ -351,26 +492,46 @@ public class DynamicIsland extends Module {
                 float target = blocks / (float) Math.max(1, scaffoldPeak);
                 scaffoldProgress = approach(scaffoldProgress, target, 9.0f, delta);
             }
-        } else if (mediaInfo != null) {
-            nextState = STATE_SPOTIFY;
-            nextLabel = mediaInfo.getTitle();
-            nextSubtitle = mediaInfo.getArtist() == null ? "" : mediaInfo.getArtist().trim();
-            nextKey = "spotify:" + mediaInfo.getTitle() + ':' + mediaInfo.getArtist();
-            nextArtwork = SystemMediaClient.getInstance().getAlbumArtTextureLocation();
-            nextMediaPlaying = mediaInfo.isPlaying();
-            spotifyProgress = mediaInfo.getDurationMs() <= 0L ? 0.0f
-                    : Math.max(0.0f, Math.min(1.0f,
-                    mediaInfo.getLivePositionMs() / (float) mediaInfo.getDurationMs()));
-        } else if (!showIdle.isToggled()) {
-            nextState = STATE_HIDDEN;
-            nextLabel = "";
-            nextKey = "hidden";
+            lane.progress = scaffoldProgress;
+            lanes.add(lane);
         } else {
-            breakerProgress = 0.0f;
             scaffoldPeak = 0;
             scaffoldProgress = 0.0f;
             resetBlockValueTransition();
         }
+
+        if (mediaInfo != null) {
+            Lane lane = lane(STATE_SPOTIFY);
+            lane.label = mediaInfo.getTitle();
+            lane.subtitle = mediaInfo.getArtist() == null ? "" : mediaInfo.getArtist().trim();
+            lane.key = "spotify:" + mediaInfo.getTitle() + ':' + mediaInfo.getArtist();
+            lane.artwork = SystemMediaClient.getInstance().getAlbumArtTextureLocation();
+            lane.mediaPlaying = mediaInfo.isPlaying();
+            spotifyProgress = mediaInfo.getDurationMs() <= 0L ? 0.0f
+                    : Math.max(0.0f, Math.min(1.0f,
+                    mediaInfo.getLivePositionMs() / (float) mediaInfo.getDurationMs()));
+            lane.progress = spotifyProgress;
+            lanes.add(lane);
+        }
+
+        if (lanes.isEmpty() && showIdle.isToggled()) {
+            Lane lane = lane(STATE_IDLE);
+            lane.label = "Mindless";
+            lane.key = "idle";
+            lanes.add(lane);
+        }
+    }
+
+    private void resolveState() {
+        Lane next = lanes.isEmpty() ? null : lanes.get(0);
+        int nextState = next == null ? STATE_HIDDEN : next.state;
+        String nextLabel = next == null ? "" : next.label;
+        String nextValue = next == null ? "" : next.value;
+        String nextKey = next == null ? "hidden" : next.key;
+        ItemStack nextIcon = next == null ? null : next.icon;
+        ResourceLocation nextArtwork = next == null ? null : next.artwork;
+        String nextSubtitle = next == null ? "" : next.subtitle;
+        boolean nextMediaPlaying = next != null && next.mediaPlaying;
         // Compared against whatever is already on its way in, so a second toggle during a
         // swap replaces the queued content instead of starting the animation over.
         String showing = swapping ? pendingKey : stateKey;
@@ -442,7 +603,7 @@ public class DynamicIsland extends Module {
                 new java.awt.Color(22, 21, 27, alpha));
     }
 
-    private void drawContent(MindlessFontRenderer text, float x, float y, float width,
+    private void drawContent(MindlessFontRenderer text, Lane lane, float x, float y, float width,
                              float height, float uiScale, int alpha, float fade,
                              float slide) {
         // The mark is the one thing that never changes, so it keeps full opacity and holds
@@ -451,7 +612,7 @@ public class DynamicIsland extends Module {
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ZERO);
-        boolean cover = islandState == STATE_SPOTIFY && stateArtwork != null;
+        boolean cover = lane.state == STATE_SPOTIFY && lane.artwork != null;
         float badge = (cover ? spotifyArt() : BADGE_SIZE) * uiScale;
         float badgeX = x + PAD_X * uiScale;
         float badgeY = y + (height - badge) * 0.5f;
@@ -459,11 +620,11 @@ public class DynamicIsland extends Module {
         float markHeight = 7.8f * uiScale;
         float markWidth = markHeight * LOGO_ASPECT;
         if (cover) {
-            drawRoundedTexture(stateArtwork, badgeX, badgeY, badge,
+            drawRoundedTexture(lane.artwork, badgeX, badgeY, badge,
                     badge * 0.5f * (float) (spotifyArtRounding.getInput() / 100.0),
                     contentAlpha / 255.0f);
-        } else if ((islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) && stateIcon != null) {
-            drawItemIcon(stateIcon, badgeX, badgeY, badge, contentAlpha);
+        } else if ((lane.state == STATE_BREAKER || lane.state == STATE_SCAFFOLD) && lane.icon != null) {
+            drawItemIcon(lane.icon, badgeX, badgeY, badge, contentAlpha);
         } else {
             drawLogo(badgeX + (badge - markWidth) * 0.5f,
                     badgeY + (badge - markHeight) * 0.5f,
@@ -471,33 +632,33 @@ public class DynamicIsland extends Module {
         }
         float labelX = badgeX + badge + BADGE_GAP * uiScale;
         float textY = y + (height - text.getFontHeight() * uiScale) * 0.5f + slide;
-        if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
+        if (lane.state == STATE_BREAKER || lane.state == STATE_SCAFFOLD) {
             textY -= 1.15f * uiScale;
         }
-        String visibleLabel = stateLabel;
+        String visibleLabel = lane.label;
         float labelScale = uiScale;
-        if (islandState == STATE_SPOTIFY) {
+        if (lane.state == STATE_SPOTIFY) {
             labelScale = uiScale * spotifyTextScale();
-            visibleLabel = fitText(text, spotifyLabel(), spotifyTextLimit());
+            visibleLabel = fitText(text, spotifyLabel(lane), spotifyTextLimit());
             float barZone = spotifyBarZone() * uiScale;
             textY = y + (height - barZone - text.getFontHeight() * labelScale) * 0.5f
                     + 1.1f * uiScale + slide;
         }
         drawScaled(text, visibleLabel, labelX, textY, labelScale,
                 withAlpha(0xF1F1F5, contentAlpha));
-        if (!stateValue.isEmpty()) {
+        if (!lane.value.isEmpty()) {
             // On takes the theme colour, off goes quiet. The state is then readable from
             // the corner of the eye without reading the word.
             int valueRgb;
-            if (islandState == STATE_NOTIFICATION) {
-                valueRgb = "OFF".equals(stateValue) ? 0x8E8D96 : accent;
+            if (lane.state == STATE_NOTIFICATION) {
+                valueRgb = "OFF".equals(lane.value) ? 0x8E8D96 : accent;
             }
             else {
                 valueRgb = 0xF1F1F5;
             }
-            float valueWidth = text.getStringWidth(stateValue) * uiScale;
+            float valueWidth = text.getStringWidth(lane.value) * uiScale;
             float valueX = x + width - PAD_X * uiScale - valueWidth;
-            if (islandState == STATE_SCAFFOLD && blockValueSwapping) {
+            if (lane.state == STATE_SCAFFOLD && blockValueSwapping) {
                 float blend = smoothStep(blockValueBlend);
                 String incoming = Integer.toString(pendingBlockCount);
                 float incomingWidth = text.getStringWidth(incoming) * uiScale;
@@ -509,7 +670,7 @@ public class DynamicIsland extends Module {
                 float clipHeight = text.getFontHeight() * uiScale + 2.0f;
                 if (boundary < right - 0.01f) {
                     RenderUtils.scissorPushGui(boundary, clipY, right - boundary, clipHeight);
-                    drawScaled(text, stateValue, valueX, textY, uiScale,
+                    drawScaled(text, lane.value, valueX, textY, uiScale,
                             withAlpha(valueRgb, contentAlpha));
                     RenderUtils.scissorPop();
                 }
@@ -520,54 +681,52 @@ public class DynamicIsland extends Module {
                     RenderUtils.scissorPop();
                 }
             } else {
-                drawScaled(text, stateValue, valueX, textY, uiScale,
+                drawScaled(text, lane.value, valueX, textY, uiScale,
                         withAlpha(valueRgb, contentAlpha));
             }
         }
-        boolean spotifyBar = islandState == STATE_SPOTIFY && spotifyProgressBar.isToggled();
-        if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD || spotifyBar) {
+        boolean spotifyBar = lane.state == STATE_SPOTIFY && spotifyProgressBar.isToggled();
+        if (lane.state == STATE_BREAKER || lane.state == STATE_SCAFFOLD || spotifyBar) {
             float barX = labelX;
-            float barHeight = Math.max(1.0f, (islandState == STATE_SPOTIFY
+            float barHeight = Math.max(1.0f, (lane.state == STATE_SPOTIFY
                     ? (float) spotifyProgressThickness.getInput() : 1.65f) * uiScale);
             // Centred in the strip reserved for it rather than measured off the bottom edge, so
             // thickening the bar eats into the padding on both sides instead of only the top.
-            float barY = islandState == STATE_SPOTIFY
+            float barY = lane.state == STATE_SPOTIFY
                     ? y + height - (spotifyBarZone() * uiScale + barHeight) * 0.5f + slide
                     : y + height - 4.1f * uiScale + slide;
             float barWidth = Math.max(10.0f * uiScale,
                     width - (labelX - x) - PAD_X * uiScale
-                            - (islandState == STATE_SPOTIFY && spotifyEqualizer.isToggled()
+                            - (lane.state == STATE_SPOTIFY && spotifyEqualizer.isToggled()
                             ? (EQUALIZER_WIDTH + VALUE_GAP) * uiScale : 0.0f));
             RoundedUtils.drawRound(barX, barY, barWidth, barHeight, barHeight * 0.5f,
                     withAlpha(0xFFFFFF, Math.min(contentAlpha, 36)));
-            float progress = islandState == STATE_BREAKER ? breakerProgress
-                    : islandState == STATE_SCAFFOLD ? scaffoldProgress : spotifyProgress;
-            float fill = barWidth * Math.max(0.0f, Math.min(1.0f, progress));
+            float fill = barWidth * Math.max(0.0f, Math.min(1.0f, lane.progress));
             if (fill > 0.5f) {
                 RoundedUtils.drawRound(barX, barY, fill, barHeight, barHeight * 0.5f,
                         withAlpha(0xF1F1F5, contentAlpha));
             }
         }
-        if (islandState == STATE_SPOTIFY && spotifyEqualizer.isToggled()) {
+        if (lane.state == STATE_SPOTIFY && spotifyEqualizer.isToggled()) {
             // Centred on the pill, not on the text block. The bar stops short of it horizontally,
             // so there is nothing under here for it to collide with, and a widget's meter reads as
             // part of the pill rather than as something stuck to the title.
             drawEqualizer(x + width - (PAD_X + EQUALIZER_WIDTH) * uiScale,
-                    y + height * 0.5f + slide, uiScale, contentAlpha, accent, mediaPlaying);
+                    y + height * 0.5f + slide, uiScale, contentAlpha, accent, lane.mediaPlaying);
         }
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    private float stateWidth(MindlessFontRenderer text) {
-        float width = PAD_X * 2.0f + BADGE_SIZE + BADGE_GAP + text.getStringWidth(stateLabel);
-        if (islandState == STATE_SPOTIFY) {
-            width = PAD_X * 2.0f + (stateArtwork != null ? spotifyArt() : BADGE_SIZE) + BADGE_GAP
-                    + Math.min(spotifyTextLimit(), text.getStringWidth(spotifyLabel())) * spotifyTextScale()
+    private float laneWidth(MindlessFontRenderer text, Lane lane) {
+        float width = PAD_X * 2.0f + BADGE_SIZE + BADGE_GAP + text.getStringWidth(lane.label);
+        if (lane.state == STATE_SPOTIFY) {
+            width = PAD_X * 2.0f + (lane.artwork != null ? spotifyArt() : BADGE_SIZE) + BADGE_GAP
+                    + Math.min(spotifyTextLimit(), text.getStringWidth(spotifyLabel(lane))) * spotifyTextScale()
                     + (spotifyEqualizer.isToggled() ? VALUE_GAP + EQUALIZER_WIDTH : 0.0f);
         }
-        if (!stateValue.isEmpty()) {
-            float valueWidth = text.getStringWidth(stateValue);
-            if (islandState == STATE_SCAFFOLD) {
+        if (!lane.value.isEmpty()) {
+            float valueWidth = text.getStringWidth(lane.value);
+            if (lane.state == STATE_SCAFFOLD) {
                 valueWidth = Math.max(valueWidth, text.getStringWidth("888"));
             }
             width += VALUE_GAP + valueWidth;
@@ -592,11 +751,11 @@ public class DynamicIsland extends Module {
         return spotifyProgressBar.isToggled() ? SPOTIFY_BAR_ZONE : 0.0f;
     }
 
-    private String spotifyLabel() {
-        if (!spotifyArtist.isToggled() || stateSubtitle == null || stateSubtitle.isEmpty()) {
-            return stateLabel;
+    private String spotifyLabel(Lane lane) {
+        if (!spotifyArtist.isToggled() || lane.subtitle == null || lane.subtitle.isEmpty()) {
+            return lane.label;
         }
-        return stateLabel + " \u00b7 " + stateSubtitle;
+        return lane.label + " \u00b7 " + lane.subtitle;
     }
 
     /**
@@ -637,10 +796,6 @@ public class DynamicIsland extends Module {
         if (SpotifyMiniPlayer.hideWhenPaused != null
                 && SpotifyMiniPlayer.hideWhenPaused.isToggled() && info.isPaused()) return null;
         return info;
-    }
-
-    public boolean handlesNotifications() {
-        return isEnabled() && showNotifications.isToggled();
     }
 
     public boolean handlesSpotify() {
@@ -837,10 +992,25 @@ public class DynamicIsland extends Module {
         return logoTexture;
     }
 
+    /**
+     * Island text at a given multiple of the HUD font size.
+     *
+     * Rasterised at the size it will occupy rather than drawn at the base size under a modelview
+     * scale, which is what made every string in the island soft at any scale but exactly one.
+     * FontManager quantises the request to 0.05 and caches an atlas per size, so the island's
+     * scale slider and text-size slider between them cost a bounded handful of atlases. The
+     * matrix path stays as the fallback for a family that has no renderer at that size.
+     */
     private void drawScaled(MindlessFontRenderer text, String value, float x, float y,
                             float uiScale, int colour) {
         if (uiScale == 1.0f) {
             text.drawString(value, x, y, colour, false);
+            return;
+        }
+        MindlessFontRenderer sized = FontManager.getLargeHudRenderer(
+                ModuleFont.nameOf(font), HUD.getSelectedFontScale() * uiScale);
+        if (sized != null) {
+            sized.drawString(value, x, y, colour, false);
             return;
         }
         GlStateManager.pushMatrix();
@@ -858,8 +1028,10 @@ public class DynamicIsland extends Module {
         MindlessFontRenderer text = islandFont();
         if (text == null) return null;
         float uiScale = (float) scale.getInput();
-        float width = stateWidth(text) * uiScale;
-        float height = HEIGHT * uiScale;
+        // Whatever the last frame actually drew, because in stacked mode the height depends on
+        // how many rows are open and the editor's handle has to cover all of them.
+        float width = lastDrawWidth > 0.0f ? lastDrawWidth : laneWidth(text, single) * uiScale;
+        float height = lastDrawHeight > 0.0f ? lastDrawHeight : HEIGHT * uiScale;
         ScaledResolution resolution = ScaledResolutionCache.get();
         float x = anchoredX(resolution, width);
         float y = anchoredY(resolution, height);
@@ -938,6 +1110,21 @@ public class DynamicIsland extends Module {
 
     private static int withAlpha(int rgb, int alpha) {
         return (Math.max(0, Math.min(255, alpha)) << 24) | (rgb & 0xFFFFFF);
+    }
+
+    /** One source's row, resolved to exactly what it will draw. */
+    private static final class Lane {
+        private int state;
+        private String key = "idle";
+        private String label = "Mindless";
+        private String value = "";
+        private String subtitle = "";
+        private ItemStack icon;
+        private ResourceLocation artwork;
+        private boolean mediaPlaying;
+        private float progress;
+        /** Stacked mode: how far this row has opened, zero to one. */
+        private float grown;
     }
 
     private static final class Toggle {

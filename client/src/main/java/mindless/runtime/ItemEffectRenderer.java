@@ -48,6 +48,8 @@ public final class ItemEffectRenderer {
             for (EntityItem entity : candidates) {
                 silhouetteShader.use();
                 silhouetteShader.setColorFromARGB(module.color.getColor() | 0xFF000000);
+                GlStateManager.disableAlpha();
+                GlStateManager.disableLighting();
                 float pitch = entity.rotationPitch;
                 try {
                     mc.getRenderManager().renderEntityStatic(entity, partialTicks, true);
@@ -61,9 +63,15 @@ public final class ItemEffectRenderer {
     public static void renderHeld(ItemRenderer renderer, EntityLivingBase entity, ItemStack stack,
                                   ItemCameraTransforms.TransformType transform) {
         ItemEffects module = ModuleManager.itemEffects;
-        if (capturing || !available(module) || !module.held.isToggled()
-                || transform != ItemCameraTransforms.TransformType.FIRST_PERSON
-                || !module.matches(stack)) return;
+        if (capturing || !available(module) || stack == null || !module.matches(stack)) return;
+        boolean firstPerson = transform == ItemCameraTransforms.TransformType.FIRST_PERSON;
+        boolean thirdPerson = transform == ItemCameraTransforms.TransformType.THIRD_PERSON;
+        if (firstPerson ? !module.held.isToggled() : !(thirdPerson && module.heldThirdPerson.isToggled())) {
+            return;
+        }
+        // Re-running renderItem rather than re-running the model directly: it owns the push, the
+        // translucent-block depth mask and the pop, so the silhouette lands on exactly the same
+        // transform the real item was drawn with instead of one stage of it.
         capture(module, () -> renderer.renderItem(entity, stack, transform));
     }
 
@@ -87,6 +95,8 @@ public final class ItemEffectRenderer {
                 if (!slot.getHasStack() || !module.matches(stack)) continue;
                 silhouetteShader.use();
                 silhouetteShader.setColorFromARGB(module.color.getColor() | 0xFF000000);
+                GlStateManager.disableAlpha();
+                GlStateManager.disableLighting();
                 mc.getRenderItem().renderItemAndEffectIntoGUI(stack,
                         guiLeft + slot.xDisplayPosition, guiTop + slot.yDisplayPosition);
             }
@@ -108,6 +118,16 @@ public final class ItemEffectRenderer {
         silhouette.setFramebufferColor(0f, 0f, 0f, 0f);
         silhouette.setFramebufferFilter(GL11.GL_LINEAR);
 
+        // Mipmaps off for the pass. The silhouette is a texture-alpha test, and a mipmapped atlas
+        // sampled at a fraction of native size hands back the average of a texel and its
+        // transparent neighbours -- which is an item quietly failing the test rather than an item
+        // drawn slightly soft. Vanilla's own GUI item path does the same thing for the same
+        // reason. Restored through the texture manager's own stack below.
+        mc.getTextureManager().bindTexture(net.minecraft.client.renderer.texture.TextureMap.locationBlocksTexture);
+        net.minecraft.client.renderer.texture.ITextureObject atlas =
+                mc.getTextureManager().getTexture(net.minecraft.client.renderer.texture.TextureMap.locationBlocksTexture);
+        if (atlas != null) atlas.setBlurMipmap(false, false);
+
         int previousFramebuffer = GL11.glGetInteger(EXTFramebufferObject.GL_FRAMEBUFFER_BINDING_EXT);
         int previousMatrixMode = GL11.glGetInteger(GL11.GL_MATRIX_MODE);
         GlStateManager.matrixMode(GL11.GL_PROJECTION);
@@ -119,6 +139,22 @@ public final class ItemEffectRenderer {
             silhouette.framebufferClear();
             silhouette.bindFramebuffer(true);
             capturing = true;
+            // The pass owns its state rather than inheriting whatever drew last. Item rendering
+            // turns lighting on for block models, leaves the depth mask off for translucent ones
+            // and switches the blend function for enchanted ones; a silhouette that inherits any
+            // of that is an item that draws for some stacks and not others.
+            GlStateManager.disableLighting();
+            GlStateManager.disableFog();
+            GlStateManager.disableDepth();
+            GlStateManager.depthMask(false);
+            GlStateManager.disableCull();
+            GlStateManager.disableAlpha();
+            GlStateManager.enableTexture2D();
+            GlStateManager.enableBlend();
+            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                    GL11.GL_ONE, GL11.GL_ZERO);
+            GlStateManager.colorMask(true, true, true, true);
+            GlStateManager.color(1f, 1f, 1f, 1f);
             silhouetteShader.use();
             silhouetteShader.setColorFromARGB(module.color.getColor() | 0xFF000000);
             renderer.run();
@@ -147,6 +183,7 @@ public final class ItemEffectRenderer {
         } finally {
             capturing = false;
             silhouetteShader.stop();
+            if (atlas != null) atlas.restoreLastBlurMipmap();
             EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, previousFramebuffer);
             GL11.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
             GL11.glPopAttrib();

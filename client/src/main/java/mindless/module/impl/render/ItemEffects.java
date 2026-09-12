@@ -15,6 +15,7 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 public class ItemEffects extends Module {
     public final ButtonSetting dropped;
     public final ButtonSetting held;
+    public final ButtonSetting heldThirdPerson;
     public final ButtonSetting inventory;
     public final ButtonSetting glow;
     public final ButtonSetting outline;
@@ -34,7 +35,11 @@ public class ItemEffects extends Module {
         GroupSetting targets = new GroupSetting("Targets");
         registerSetting(targets);
         registerSetting(dropped = new ButtonSetting(targets, "Dropped items", true));
-        registerSetting(held = new ButtonSetting(targets, "Held item", true));
+        registerSetting(held = new ButtonSetting(targets, "Held item (hand)", true, "Held item",
+                "Targets.Held item"));
+        // The hand in first person and the arm in third are two different render passes, so the
+        // one toggle could never cover both; F5 used to drop the effect with nothing saying why.
+        registerSetting(heldThirdPerson = new ButtonSetting(targets, "Held item (third person)", true));
         registerSetting(inventory = new ButtonSetting(targets, "Inventory items", true));
         registerSetting(distance = new SliderSetting(targets, "Dropped distance", 48, 8, 128, 4));
 
