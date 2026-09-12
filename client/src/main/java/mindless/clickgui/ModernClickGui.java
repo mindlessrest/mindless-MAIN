@@ -783,7 +783,8 @@ private void drawThemePanel(int mx, int my) {
         float nameMax = w - 18f;
         drawTextVCentered(trim(mindless.module.impl.theme.ThemeManager.themeName(index), nameMax, .80f, true), textLeft,
                 splitY + 2f, splitY + 17f, selected ? TEXT : mixColor(MUTED, TEXT, .5f + hp * .5f), .80f, true);
-        drawTextVCentered(selected ? "Active" : "Right click to edit", textLeft, splitY + 15f, y2 - 3f,
+        drawTextVCentered(trim(selected ? "Active" : "Right click to edit", nameMax, .70f, false),
+                textLeft, splitY + 15f, y2 - 3f,
                 selected ? withAlpha(ACCENT, 235) : withAlpha(DIM, (int) (150 + 80 * hp)), .60f, false);
     }
 
@@ -1281,17 +1282,69 @@ private float overlayWidth() {
         return k;
     }
 
+    private static final float DESCRIPTION_SCALE = .72f;
+    private static final float DESCRIPTION_LINE_H = 11f;
+
+    /**
+     * A description broken to the column it is drawn in.
+     *
+     * It used to be one line at a fixed height, which the scissor then cut off mid-word with
+     * nothing to say it had: the longest strings in the whole menu were the ones most likely to
+     * be unreadable. Broken on spaces, and on characters only for a single word too long to fit,
+     * because hyphenating a module name helps nobody.
+     */
+    private java.util.List<String> descriptionLines(DescriptionSetting setting) {
+        java.util.List<String> lines = new java.util.ArrayList<String>();
+        String text = setting.getDesc();
+        if (text == null || text.isEmpty()) {
+            return lines;
+        }
+        float max = Math.max(40f, detailW - 34f);
+        StringBuilder current = new StringBuilder();
+        String[] words = text.split(" ");
+        for (int i = 0; i < words.length; i++) {
+            String candidate = current.length() == 0 ? words[i] : current + " " + words[i];
+            if (textWidth(candidate, DESCRIPTION_SCALE, false) <= max) {
+                current.setLength(0);
+                current.append(candidate);
+                continue;
+            }
+            if (current.length() > 0) {
+                lines.add(current.toString());
+                current.setLength(0);
+            }
+            String word = words[i];
+            while (textWidth(word, DESCRIPTION_SCALE, false) > max && word.length() > 1) {
+                int cut = word.length();
+                while (cut > 1 && textWidth(word.substring(0, cut), DESCRIPTION_SCALE, false) > max) {
+                    cut--;
+                }
+                lines.add(word.substring(0, cut));
+                word = word.substring(cut);
+            }
+            current.append(word);
+        }
+        if (current.length() > 0) {
+            lines.add(current.toString());
+        }
+        return lines;
+    }
+
     private void drawSetting(Setting setting, float y, float h, int mx, int my, float alpha,
                              boolean first) {
         float x1 = detailX + 15, x2 = detailX + detailW - 15;
         if (setting instanceof DescriptionSetting) {
             if (!first) line(x1, y + 6, x2, y + 6, fa(DIVIDER, alpha));
-            drawTextVCentered(((DescriptionSetting) setting).getDesc(), x1 + 2, y + 9, y + h,
-                    fa(MUTED, alpha), .72f, false);
+            java.util.List<String> lines = descriptionLines((DescriptionSetting) setting);
+            for (int i = 0; i < lines.size(); i++) {
+                drawText(lines.get(i), x1 + 2, y + 12f + i * DESCRIPTION_LINE_H,
+                        fa(MUTED, alpha), DESCRIPTION_SCALE, false);
+            }
         } else if (setting instanceof GroupSetting) {
             GroupSetting group = (GroupSetting) setting;
             rounded(x1, y, x2, y + h, 5f, fa(ROW, alpha));
-            drawTextVCentered(group.getName(), x1 + 10, y, y + h, fa(TEXT, alpha), .8f, true);
+            drawTextVCentered(trim(group.getName(), x2 - 22 - (x1 + 10), .8f, true),
+                    x1 + 10, y, y + h, fa(TEXT, alpha), .8f, true);
             drawTextVCentered(group.isOpened() ? "-" : "+", x2 - 15, y, y + h, fa(group.isOpened() ? GOLD : MUTED, alpha), .85f, true);
         } else if (setting instanceof ButtonSetting) {
             ButtonSetting button = (ButtonSetting) setting;
@@ -1430,7 +1483,8 @@ private float keyChipLeft(KeySetting key) {
     private void drawColor(ColorSetting color, float y, float h, int mx, int my, float alpha) {
         float x1 = detailX + 15, x2 = detailX + detailW - 15;
         float controlTop = y + (Math.min(h, 32f) - 18f) / 2f;
-        drawTextVCentered(color.getName(), x1 + 2, y, y + Math.min(h, 32f), fa(TEXT, alpha), .76f, false);
+        drawTextVCentered(trim(color.getName(), x2 - 44 - (x1 + 2), .76f, false),
+                x1 + 2, y, y + Math.min(h, 32f), fa(TEXT, alpha), .76f, false);
         outline(x2 - 38, controlTop, x2, controlTop + 18, 4f, fa(BORDER, alpha));
         rounded(x2 - 38, controlTop, x2, controlTop + 18, 4f, fa(color.getColor(), alpha));
         if (openColor != color) return;
@@ -1496,7 +1550,7 @@ private void drawAlphaStrip(ColorSetting color, float alpha) {
 
     private void drawInputSetting(TextSetting setting, String name, String value, String placeholder, float y, float h, int mx, int my, float alpha) {
         float x1 = detailX + 15, x2 = detailX + detailW - 15;
-        drawText(name, x1 + 10, y + 7, fa(TEXT, alpha), .72f, false);
+        drawText(trim(name, x2 - 10 - (x1 + 10), .72f, false), x1 + 10, y + 7, fa(TEXT, alpha), .72f, false);
         float iy = y + 20;
         float focus = animate(controlAnimation, setting, activeText == setting ? 1f : inside(mx, my, x1 + 8, iy, x2 - 8, y + h - 7) ? .5f : 0f, 17f);
         outline(x1 + 8, iy, x2 - 8, y + h - 7, 4f, fa(mixColor(BORDER, GOLD, focus), alpha));
@@ -1516,7 +1570,8 @@ private void drawAlphaStrip(ColorSetting color, float alpha) {
     private void drawListSetting(Setting setting, float y, float h, int mx, int my, float alpha) {
         float x1 = detailX + 15, x2 = detailX + detailW - 15;
         rounded(x1, y, x2, y + h, 5f, fa(ROW, alpha));
-        drawText(setting.getName(), x1 + 10, y + 8, fa(TEXT, alpha), .74f, false);
+        drawText(trim(setting.getName(), x2 - 10 - (x1 + 10), .74f, false),
+                x1 + 10, y + 8, fa(TEXT, alpha), .74f, false);
         float iy = y + 22;
         float focus = animate(controlAnimation, setting, activeList == setting ? 1f : inside(mx, my, x1 + 8, iy, x2 - 34, iy + 21) ? .5f : 0f, 17f);
         outline(x1 + 8, iy, x2 - 34, iy + 21, 4f, fa(mixColor(BORDER, GOLD, focus), alpha));
@@ -2188,7 +2243,10 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
     }
 
     private float settingHeight(Setting setting) {
-        if (setting instanceof DescriptionSetting) return 31;
+        // Has to agree with descriptionLines or the rows below overlap the text or float above it.
+        if (setting instanceof DescriptionSetting) {
+            return 20f + Math.max(1, descriptionLines((DescriptionSetting) setting).size()) * DESCRIPTION_LINE_H;
+        }
         if (setting instanceof GroupSetting) return 31;
         if (setting instanceof ButtonSetting && ((ButtonSetting) setting).isMethodButton) return 25;
         if (setting instanceof SliderSetting) {
@@ -2332,8 +2390,40 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         rounded(x - .25f, y, x + 2.25f, y + thumb, 1.25f, withAlpha(ACCENT, 170));
     }
 
+    /**
+     * The panel fill, in whichever style the theme asks for.
+     *
+     * Frosted is deliberately not a blur of its own. The menu already blurs everything behind it
+     * once per frame; blurring again per panel would cost four more full-screen passes to show
+     * the same pixels, so it thins the fill and lets that existing blur come through instead.
+     */
     private void panelSurface(float x1, float y1, float x2, float y2, int color) {
-        rounded(x1, y1, x2, y2, 7.5f, color);
+        int style = mindless.module.impl.theme.ThemeManager.surfaceStyle();
+        float opacity = mindless.module.impl.theme.ThemeManager.surfaceAlpha();
+        int tinted = withAlpha(color, Math.round(((color >>> 24) & 0xFF) * opacity));
+
+        switch (style) {
+            case mindless.module.impl.theme.ThemeManager.SURFACE_GLASS:
+                RoundedUtils.drawLiquidGlass(x1, y1, x2 - x1, y2 - y1,
+                        radius(7.5f, x2 - x1, y2 - y1), tinted);
+                break;
+            case mindless.module.impl.theme.ThemeManager.SURFACE_FROSTED:
+                rounded(x1, y1, x2, y2, 7.5f,
+                        withAlpha(tinted, Math.round(((tinted >>> 24) & 0xFF) * .55f)));
+                // A single bright line along the top edge is what reads as a pane of glass
+                // catching the light; without it a thin fill just looks unfinished.
+                rounded(x1 + 6, y1, x2 - 6, y1 + 1.2f, .6f, withAlpha(TEXT, 26));
+                outline(x1, y1, x2, y2, radius(7.5f, x2 - x1, y2 - y1), withAlpha(BORDER, 70));
+                break;
+            case mindless.module.impl.theme.ThemeManager.SURFACE_OUTLINE:
+                rounded(x1, y1, x2, y2, 7.5f,
+                        withAlpha(tinted, Math.round(((tinted >>> 24) & 0xFF) * .2f)));
+                outline(x1, y1, x2, y2, radius(7.5f, x2 - x1, y2 - y1), withAlpha(ACCENT, 150));
+                break;
+            default:
+                rounded(x1, y1, x2, y2, 7.5f, tinted);
+                break;
+        }
     }
 
     private void drawPanelShadow(float x, float y, float width, float height, float renderScale) {

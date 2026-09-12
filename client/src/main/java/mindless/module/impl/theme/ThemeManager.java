@@ -68,6 +68,16 @@ public static final int CUSTOM_INDEX = THEMES.length;
     public static SliderSetting guiScale;
     public static SliderSetting blurSize;
     public static SliderSetting rounding;
+    public static SliderSetting surface;
+    public static SliderSetting surfaceOpacity;
+
+    // How a panel is filled, separate from what colour it is filled with. Appended so a saved
+    // profile that never knew about it lands on Flat, which is what it already looked like.
+    private static final String[] SURFACES = new String[]{"Flat", "Glass", "Frosted", "Outline"};
+    public static final int SURFACE_FLAT = 0;
+    public static final int SURFACE_GLASS = 1;
+    public static final int SURFACE_FROSTED = 2;
+    public static final int SURFACE_OUTLINE = 3;
     public static ButtonSetting customizeHud;
     public static SliderSetting mascot;
     public static TextSetting mascotPath;
@@ -189,6 +199,8 @@ private static int appliedIndex = -1;
         this.registerSetting(font = new SliderSetting(appearance, "Font", defaultFontIndex(), FONT_OPTIONS));
         this.registerSetting(blurSize = new SliderSetting(appearance, "Blur size", "%", 0, 0, 100, 1));
         this.registerSetting(rounding = new SliderSetting(appearance, "Rounding", "%", 100, 0, 200, 5));
+        this.registerSetting(surface = new SliderSetting(appearance, "Surface", 0, SURFACES));
+        this.registerSetting(surfaceOpacity = new SliderSetting(appearance, "Surface opacity", "%", 100, 30, 100, 5));
 
         this.registerSetting(theme = new SliderSetting("Theme", 0, THEME_NAMES));
         this.registerSetting(gradientAccent = new ButtonSetting("Gradient accent", false));
@@ -415,6 +427,15 @@ private static void syncAppearance() {
         if (!isHudCustomized() || hudStatsValue == null) return 0xFFFFFFFF;
         return hudStatsValue.getRGB() | 0xFF000000;
     }
+    public static int surfaceStyle() {
+        return surface == null ? SURFACE_FLAT : (int) surface.getInput();
+    }
+
+    /** Multiplier on every panel's own alpha, so one slider thins the whole menu at once. */
+    public static float surfaceAlpha() {
+        return surfaceOpacity == null ? 1f : (float) Math.max(0.0, surfaceOpacity.getInput() / 100.0);
+    }
+
 public static float roundingScale() {
         return rounding == null ? 1f : (float) Math.max(0d, rounding.getInput() / 100d);
     }
