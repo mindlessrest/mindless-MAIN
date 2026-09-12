@@ -31,6 +31,8 @@ public class Notifications extends Module {
     private final SliderSetting duration;
     private final ButtonSetting showEnabled;
     private final ButtonSetting showDisabled;
+    private final ButtonSetting deferToIsland;
+    private final ButtonSetting showInGui;
 
     private final Map<Module, Boolean> moduleStates = new IdentityHashMap<>();
     private final List<Card> cards = new ArrayList<>();
@@ -104,6 +106,11 @@ private static final float CLOCK_GAP = 10.0f;
         this.registerSetting(duration     = new SliderSetting("Duration", "s", 3.0, 0.5, 8.0, 0.1));
         this.registerSetting(showEnabled  = new ButtonSetting("Show enabled",  true));
         this.registerSetting(showDisabled = new ButtonSetting("Show disabled", true));
+        // The Dynamic Island shows the same toggles, so this module went silent whenever the
+        // island was up -- with no setting saying so, which reads as the module being broken
+        // rather than as one of two things drawing it. Default keeps the old behaviour.
+        this.registerSetting(deferToIsland = new ButtonSetting("Hide when island shows them", true));
+        this.registerSetting(showInGui = new ButtonSetting("Show in menus", false));
     }
 
     @Override public void onEnable()  {
@@ -113,7 +120,14 @@ private static final float CLOCK_GAP = 10.0f;
         moduleStates.clear();
         cards.clear();
         synchronized (SUPPRESSED_SCRIPT_CHANGES) { SUPPRESSED_SCRIPT_CHANGES.clear(); }
-        for (Module m : ModuleManager.modules) moduleStates.put(m, m.isEnabled());
+        synchronized (ModuleManager.modules) {
+            for (Module m : ModuleManager.modules) moduleStates.put(m, m.isEnabled());
+        }
+        // Seeded as well, or the first toggle of any script after enabling this module is
+        // swallowed as a first sighting rather than shown as a change.
+        if (Mindless.scriptManager != null) {
+            for (Module m : Mindless.scriptManager.scripts.values()) moduleStates.put(m, m.isEnabled());
+        }
     }
     @Override public void onDisable() {
         lastCheck = 0L;
@@ -139,7 +153,11 @@ private static final float CLOCK_GAP = 10.0f;
             push("Mindless", true, dur, now);
         }
 
-        for (Module m : ModuleManager.modules) checkModuleState(m, now, dur);
+        // The Dynamic Island walks the same list under this lock every tick. Taking it here too
+        // is what stops a script registering a module mid-iteration from throwing.
+        synchronized (ModuleManager.modules) {
+            for (Module m : ModuleManager.modules) checkModuleState(m, now, dur);
+        }
         if (Mindless.scriptManager != null) {
             for (Module m : Mindless.scriptManager.scripts.values()) checkModuleState(m, now, dur);
         }
@@ -180,10 +198,18 @@ private static final float CLOCK_GAP = 10.0f;
 
     private void push(String title, boolean enabled, long dur, long now) {
         if (cards.size() >= MAX) cards.remove(0);
-        ScaledResolution sr = ScaledResolutionCache.get();
-        float baseY = sr.getScaledHeight() - MARGIN - H;
-        float startY = baseY - cards.size() * (H + GAP);
-        cards.add(new Card(title, enabled, now, dur, startY));
+        cards.add(new Card(title, enabled, now, dur, newCardY()));
+    }
+
+    /**
+     * Where a card starts, which is where it also ends up.
+     *
+     * The newest card takes the bottom slot and pushes the rest up, so starting one at the top of
+     * the stack made it slide down through every card above it while they slid up through it. It
+     * now arrives from the right only, which is the one movement the animation was written for.
+     */
+    private static float newCardY() {
+        return ScaledResolutionCache.get().getScaledHeight() - MARGIN - H;
     }
 private static float cardWidth(MindlessFontRenderer font, String title, String status, String clock) {
         float text = Math.max(font.getStringWidth(title), font.getStringWidth(status));
@@ -218,10 +244,7 @@ public static void notifyScript(String title, boolean enabled) {
         long now = System.currentTimeMillis();
         long dur = (long) (notifications.duration.getInput() * 1000.0);
         if (notifications.cards.size() >= MAX) notifications.cards.remove(0);
-        ScaledResolution sr = ScaledResolutionCache.get();
-        float baseY = sr.getScaledHeight() - MARGIN - H;
-        float startY = baseY - notifications.cards.size() * (H + GAP);
-        notifications.cards.add(new Card(title, status, positive, now, dur, startY));
+        notifications.cards.add(new Card(title, status, positive, now, dur, newCardY()));
     }
 
     public static IslandNotification latestForIsland(long now) {
@@ -259,8 +282,9 @@ public static void notifyScript(String title, boolean enabled) {
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent e) {
         if (e.phase != TickEvent.Phase.END || !Utils.nullCheck() || cards.isEmpty()) return;
-        if (ModuleManager.dynamicIsland != null
+        if (deferToIsland.isToggled() && ModuleManager.dynamicIsland != null
                 && ModuleManager.dynamicIsland.handlesNotifications()) return;
+        if (!showInGui.isToggled() && (mc.currentScreen != null || mc.gameSettings.showDebugInfo)) return;
 
         MindlessFontRenderer font = HUD.getHudFontRenderer();
         if (font == null) return;
@@ -324,9 +348,14 @@ public static void notifyScript(String title, boolean enabled) {
                 6.0f, new Color(0, 0, 0, (int) (34 * alpha)).getRGB());
         // Same surface as the Dynamic Island: the two appear together every time a module
         // is toggled, and a black card beside a lit panel looked like two different clients.
-        BlurUtils.prepareBlur(x, y, w, H);
-        RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
-        BlurUtils.blurEndRegion(2, 1.8f, 0.72f, x, y, w, H);
+        // Scaled by the card's own alpha. It was fixed, so a card that had faded its text and
+        // its panel out still left a hard blurred rectangle sitting on screen until it was
+        // removed -- the single most visible thing wrong with this module.
+        if (alpha > 0.02f) {
+            BlurUtils.prepareBlur(x, y, w, H);
+            RoundedUtils.drawRound(x, y, w, H, radius, new Color(0, 0, 0, 255));
+            BlurUtils.blurEndRegion(2, 1.8f, 0.72f * alpha, x, y, w, H);
+        }
         int panel = (int) (232 * alpha);
         RoundedUtils.drawGradientVertical(x, y, w, H, radius,
                 new Color(46, 45, 55, panel),

@@ -101,7 +101,7 @@ private static final double STACK_RADIUS_SQ = 9.0D;
     private RenderUtils.ProjectionContext projectionContext;
 
     public ItemESP() {
-        super("Resource ESP", "Shows dropped BedWars resources and utility items.", category.render);
+        super("Item ESP", "Shows dropped BedWars resources and utility items.", category.render);
         this.liteModule = true;
 
         GroupSetting items = new GroupSetting("Items");
@@ -337,6 +337,15 @@ private final List<Card> cardPool = new ArrayList<Card>();
         // A text pass turns fog off, and this still runs inside the world pass, so anything
         // subscribed to RenderWorldLast after this module would inherit it.
         boolean fog = GL11.glIsEnabled(GL11.GL_FOG);
+        boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        boolean depthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+        // The whole pass is flat overlay work over a world that has already been drawn. Leaving
+        // the world's depth test on is what hid every label: the card's panel is a shader quad
+        // that writes depth at the same plane the glyphs land on, so the count drawn on top of it
+        // was rejected before it reached the framebuffer. The panel and the icon survived because
+        // one is drawn first and the other renders with depth off of its own accord.
+        GlStateManager.disableDepth();
+        GlStateManager.depthMask(false);
 
         measureCards(text, icon, padding, gap, fontHeight, drawCount, drawName, drawDistance);
         // Merging changes the counts, which changes the widths, which can bring further cards into
@@ -388,8 +397,10 @@ private final List<Card> cardPool = new ArrayList<Card>();
             }
             if (drawName) {
                 String name = nameLabel(card.icon);
-                text.drawString(name, card.screenX - text.getStringWidth(name) / 2f,
-                        top - fontHeight - 1f, 0xFF000000 | nameColor.getRGB(), true);
+                if (!name.isEmpty()) {
+                    text.drawString(name, card.screenX - text.getStringWidth(name) / 2f,
+                            top - fontHeight - 1f, 0xFF000000 | nameColor.getRGB(), true);
+                }
             }
             if (drawDistance) {
                 String distance = ((int) card.distance) + "m";
@@ -400,6 +411,10 @@ private final List<Card> cardPool = new ArrayList<Card>();
 
         if (fog) {
             GlStateManager.enableFog();
+        }
+        GlStateManager.depthMask(depthMask);
+        if (depth) {
+            GlStateManager.enableDepth();
         }
         GlStateManager.color(1f, 1f, 1f, 1f);
     }
@@ -561,9 +576,7 @@ private final List<Card> cardPool = new ArrayList<Card>();
         }
     }
 private void drawIcon(ItemStack itemStack, float x, float y, float scale) {
-        boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
         boolean blend = GL11.glIsEnabled(GL11.GL_BLEND);
-        boolean depthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
 
         RenderUtils.prepareGuiTextureRenderState();
         net.minecraft.client.renderer.RenderHelper.enableGUIStandardItemLighting();
@@ -577,7 +590,8 @@ private void drawIcon(ItemStack itemStack, float x, float y, float scale) {
         }
         GlStateManager.popMatrix();
         net.minecraft.client.renderer.RenderHelper.disableStandardItemLighting();
-        RenderUtils.restoreGuiRenderState(depth, blend, depthMask);
+        // Depth stays off for the rest of the pass; only blending is handed back as found.
+        RenderUtils.restoreGuiRenderState(false, blend, false);
     }
 private static Category categoryOf(ItemStack itemStack) {
         Item item = itemStack.getItem();

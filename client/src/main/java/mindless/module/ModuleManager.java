@@ -275,7 +275,12 @@ public class ModuleManager {
         this.addModule(spotifyMiniPlayer = new SpotifyMiniPlayer());
         this.addModule(new Notifications());
         this.addModule(new Indicators());
-        this.addModule(new ItemESP());
+        ItemESP itemESP = new ItemESP();
+        this.addModule(itemESP);
+        // Was "Resource ESP". Profiles key module data by name, so without the old one still
+        // resolving every saved copy of this module's settings would be dropped on load.
+        modulesByName.put("Resource ESP", itemESP);
+        modulesByNormalizedName.put(normalizeModuleName("Resource ESP"), itemESP);
         this.addModule(itemEffects = new ItemEffects());
         this.addModule(new ItemPhysics());
         this.addModule(mobESP = new MobESP());

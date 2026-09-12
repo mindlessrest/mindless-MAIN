@@ -52,8 +52,18 @@ public class DynamicIsland extends Module {
     private static final int STATE_SPOTIFY = 4;
     private static final int STATE_HIDDEN = 5;
     private static final int MAX_TOGGLES = 8;
-    private static final float SPOTIFY_TEXT_WIDTH = 92.0f;
     private static final float EQUALIZER_WIDTH = 9.0f;
+    /** The cover runs nearly the full height of the pill, unlike a module badge. */
+    private static final float SPOTIFY_ART = HEIGHT - 4.0f;
+    /**
+     * Height reserved along the bottom edge for the progress bar while a track is showing.
+     *
+     * The bar used to be positioned from the bottom edge while the title stayed centred on the
+     * whole pill, which left them about a tenth of a pixel apart and read as one smeared block.
+     * The title is centred in what is left above this strip instead, so the gap is whatever is
+     * actually free rather than whatever happened to be left over.
+     */
+    private static final float SPOTIFY_BAR_ZONE = 5.2f;
 
     private final SliderSetting font;
     private final SliderSetting anchor;
@@ -64,6 +74,14 @@ public class DynamicIsland extends Module {
     private final ButtonSetting showScaffold;
     private final ButtonSetting showSpotify;
     private final ButtonSetting showIdle;
+    private final GroupSetting spotifyGroup;
+    private final SliderSetting spotifyTextScale;
+    private final SliderSetting spotifyTextWidth;
+    private final SliderSetting spotifyArtRounding;
+    private final ButtonSetting spotifyArtist;
+    private final ButtonSetting spotifyProgressBar;
+    private final SliderSetting spotifyProgressThickness;
+    private final ButtonSetting spotifyEqualizer;
     private final GroupSetting styleGroup;
     private final ButtonSetting blurBackdrop;
     private final ButtonSetting dropShadow;
@@ -101,6 +119,8 @@ public class DynamicIsland extends Module {
     private ResourceLocation stateArtwork;
     private boolean mediaPlaying;
     private float spotifyProgress;
+    private String stateSubtitle = "";
+    private String pendingSubtitle = "";
     private int displayedBlockCount = Integer.MIN_VALUE;
     private int pendingBlockCount = Integer.MIN_VALUE;
     private float blockValueBlend = 1.0f;
@@ -119,6 +139,20 @@ public class DynamicIsland extends Module {
         this.registerSetting(showScaffold = new ButtonSetting(contentGroup, "Scaffold", true));
         this.registerSetting(showSpotify = new ButtonSetting(contentGroup, "Spotify", true));
         this.registerSetting(showIdle = new ButtonSetting(contentGroup, "Idle logo", true));
+        this.registerSetting(spotifyGroup = new GroupSetting("Spotify"));
+        this.registerSetting(spotifyArtist = new ButtonSetting(spotifyGroup, "Show artist", false));
+        // Under one: the title sat at the same size as a module toggle, which is far too loud for
+        // something that is on screen for the length of a song rather than two seconds.
+        this.registerSetting(spotifyTextScale = new SliderSetting(
+                spotifyGroup, "Text size", "x", 0.82, 0.6, 1.2, 0.02));
+        this.registerSetting(spotifyTextWidth = new SliderSetting(
+                spotifyGroup, "Text width", "px", 92.0, 40.0, 190.0, 2.0));
+        this.registerSetting(spotifyArtRounding = new SliderSetting(
+                spotifyGroup, "Art rounding", "%", 32.0, 0.0, 100.0, 2.0));
+        this.registerSetting(spotifyProgressBar = new ButtonSetting(spotifyGroup, "Progress bar", true));
+        this.registerSetting(spotifyProgressThickness = new SliderSetting(
+                spotifyGroup, "Progress thickness", "px", 1.65, 1.0, 4.0, 0.05));
+        this.registerSetting(spotifyEqualizer = new ButtonSetting(spotifyGroup, "Equalizer", true));
         notificationDuration = new SliderSetting(
                 "Notification time", 2.5, 0.5, 8.0, 0.5,
                 "Toggle time", "Content.Toggle time");
@@ -142,6 +176,15 @@ public class DynamicIsland extends Module {
         anchor.setVisible(true, this);
         notificationDuration.setVisible(showNotifications.isToggled(), this);
         contentGroup.setVisible(true, this);
+        boolean spotify = showSpotify.isToggled();
+        spotifyGroup.setVisible(spotify, this);
+        spotifyArtist.setVisible(spotify, this);
+        spotifyTextScale.setVisible(spotify, this);
+        spotifyTextWidth.setVisible(spotify, this);
+        spotifyArtRounding.setVisible(spotify, this);
+        spotifyProgressBar.setVisible(spotify, this);
+        spotifyProgressThickness.setVisible(spotify && spotifyProgressBar.isToggled(), this);
+        spotifyEqualizer.setVisible(spotify, this);
         styleGroup.setVisible(true, this);
     }
 
@@ -172,6 +215,8 @@ public class DynamicIsland extends Module {
         stateArtwork = null;
         mediaPlaying = false;
         spotifyProgress = 0.0f;
+        stateSubtitle = "";
+        pendingSubtitle = "";
         resetBlockValueTransition();
         toggleStates.clear();
         recentToggles.clear();
@@ -223,6 +268,7 @@ public class DynamicIsland extends Module {
                 islandState = pendingState;
                 stateIcon = pendingIcon;
                 stateArtwork = pendingArtwork;
+                stateSubtitle = pendingSubtitle;
                 mediaPlaying = pendingMediaPlaying;
                 swapping = false;
                 contentFade = 0.0f;
@@ -245,6 +291,7 @@ public class DynamicIsland extends Module {
         String nextKey = "idle";
         ItemStack nextIcon = null;
         ResourceLocation nextArtwork = null;
+        String nextSubtitle = "";
         boolean nextMediaPlaying = false;
         long now = System.currentTimeMillis();
         ItemStack islandBlock = ModuleManager.blockCounter == null
@@ -303,6 +350,7 @@ public class DynamicIsland extends Module {
         } else if (mediaInfo != null) {
             nextState = STATE_SPOTIFY;
             nextLabel = mediaInfo.getTitle();
+            nextSubtitle = mediaInfo.getArtist() == null ? "" : mediaInfo.getArtist().trim();
             nextKey = "spotify:" + mediaInfo.getTitle() + ':' + mediaInfo.getArtist();
             nextArtwork = SystemMediaClient.getInstance().getAlbumArtTextureLocation();
             nextMediaPlaying = mediaInfo.isPlaying();
@@ -329,6 +377,7 @@ public class DynamicIsland extends Module {
             islandState = nextState;
             stateIcon = nextIcon;
             stateArtwork = nextArtwork;
+            stateSubtitle = nextSubtitle;
             mediaPlaying = nextMediaPlaying;
             pendingKey = nextKey;
             pendingLabel = nextLabel;
@@ -336,6 +385,7 @@ public class DynamicIsland extends Module {
             pendingState = nextState;
             pendingIcon = nextIcon;
             pendingArtwork = nextArtwork;
+            pendingSubtitle = nextSubtitle;
             pendingMediaPlaying = nextMediaPlaying;
             swapping = false;
             contentFade = 1.0f;
@@ -350,6 +400,7 @@ public class DynamicIsland extends Module {
             pendingState = nextState;
             pendingIcon = nextIcon;
             pendingArtwork = nextArtwork;
+            pendingSubtitle = nextSubtitle;
             pendingMediaPlaying = nextMediaPlaying;
             swapping = true;
             return;
@@ -362,6 +413,7 @@ public class DynamicIsland extends Module {
             stateValue = nextValue;
             stateIcon = nextIcon;
             stateArtwork = nextArtwork;
+            stateSubtitle = nextSubtitle;
             mediaPlaying = nextMediaPlaying;
         }
     }
@@ -395,15 +447,17 @@ public class DynamicIsland extends Module {
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ZERO);
-        float badge = BADGE_SIZE * uiScale;
+        boolean cover = islandState == STATE_SPOTIFY && stateArtwork != null;
+        float badge = (cover ? SPOTIFY_ART : BADGE_SIZE) * uiScale;
         float badgeX = x + PAD_X * uiScale;
         float badgeY = y + (height - badge) * 0.5f;
         int accent = ThemeManager.getWatermarkColor(0.0) & 0xFFFFFF;
         float markHeight = 7.8f * uiScale;
         float markWidth = markHeight * LOGO_ASPECT;
-        if (islandState == STATE_SPOTIFY && stateArtwork != null) {
-            drawTexture(stateArtwork, badgeX, badgeY, badge, badge,
-                    withAlpha(0xFFFFFF, contentAlpha));
+        if (cover) {
+            drawRoundedTexture(stateArtwork, badgeX, badgeY, badge,
+                    badge * 0.5f * (float) (spotifyArtRounding.getInput() / 100.0),
+                    contentAlpha / 255.0f);
         } else if ((islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) && stateIcon != null) {
             drawItemIcon(stateIcon, badgeX, badgeY, badge, contentAlpha);
         } else {
@@ -416,9 +470,16 @@ public class DynamicIsland extends Module {
         if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD) {
             textY -= 1.15f * uiScale;
         }
-        String visibleLabel = islandState == STATE_SPOTIFY
-                ? fitText(text, stateLabel, SPOTIFY_TEXT_WIDTH) : stateLabel;
-        drawScaled(text, visibleLabel, labelX, textY, uiScale, withAlpha(0xF1F1F5, contentAlpha));
+        String visibleLabel = stateLabel;
+        float labelScale = uiScale;
+        if (islandState == STATE_SPOTIFY) {
+            labelScale = uiScale * spotifyTextScale();
+            visibleLabel = fitText(text, spotifyLabel(), spotifyTextLimit());
+            float barZone = spotifyBarZone() * uiScale;
+            textY = y + (height - barZone - text.getFontHeight() * labelScale) * 0.5f + slide;
+        }
+        drawScaled(text, visibleLabel, labelX, textY, labelScale,
+                withAlpha(0xF1F1F5, contentAlpha));
         if (!stateValue.isEmpty()) {
             // On takes the theme colour, off goes quiet. The state is then readable from
             // the corner of the eye without reading the word.
@@ -458,14 +519,20 @@ public class DynamicIsland extends Module {
                         withAlpha(valueRgb, contentAlpha));
             }
         }
-        if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD
-                || islandState == STATE_SPOTIFY) {
+        boolean spotifyBar = islandState == STATE_SPOTIFY && spotifyProgressBar.isToggled();
+        if (islandState == STATE_BREAKER || islandState == STATE_SCAFFOLD || spotifyBar) {
             float barX = labelX;
-            float barY = y + height - 4.1f * uiScale + slide;
+            float barHeight = Math.max(1.0f, (islandState == STATE_SPOTIFY
+                    ? (float) spotifyProgressThickness.getInput() : 1.65f) * uiScale);
+            // Centred in the strip reserved for it rather than measured off the bottom edge, so
+            // thickening the bar eats into the padding on both sides instead of only the top.
+            float barY = islandState == STATE_SPOTIFY
+                    ? y + height - (spotifyBarZone() * uiScale + barHeight) * 0.5f + slide
+                    : y + height - 4.1f * uiScale + slide;
             float barWidth = Math.max(10.0f * uiScale,
                     width - (labelX - x) - PAD_X * uiScale
-                            - (islandState == STATE_SPOTIFY ? (EQUALIZER_WIDTH + VALUE_GAP) * uiScale : 0.0f));
-            float barHeight = Math.max(1.0f, 1.65f * uiScale);
+                            - (islandState == STATE_SPOTIFY && spotifyEqualizer.isToggled()
+                            ? (EQUALIZER_WIDTH + VALUE_GAP) * uiScale : 0.0f));
             RoundedUtils.drawRound(barX, barY, barWidth, barHeight, barHeight * 0.5f,
                     withAlpha(0xFFFFFF, Math.min(contentAlpha, 36)));
             float progress = islandState == STATE_BREAKER ? breakerProgress
@@ -476,9 +543,12 @@ public class DynamicIsland extends Module {
                         withAlpha(0xF1F1F5, contentAlpha));
             }
         }
-        if (islandState == STATE_SPOTIFY) {
+        if (islandState == STATE_SPOTIFY && spotifyEqualizer.isToggled()) {
+            // Sits on the title's centre line, not the pill's, or it hangs below the text it is
+            // meant to sit beside once the progress strip is accounted for.
             drawEqualizer(x + width - (PAD_X + EQUALIZER_WIDTH) * uiScale,
-                    y + height * 0.5f + slide, uiScale, contentAlpha, accent, mediaPlaying);
+                    y + (height - (spotifyProgressBar.isToggled() ? spotifyBarZone() * uiScale : 0.0f)) * 0.5f + slide,
+                    uiScale, contentAlpha, accent, mediaPlaying);
         }
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
@@ -486,9 +556,9 @@ public class DynamicIsland extends Module {
     private float stateWidth(MindlessFontRenderer text) {
         float width = PAD_X * 2.0f + BADGE_SIZE + BADGE_GAP + text.getStringWidth(stateLabel);
         if (islandState == STATE_SPOTIFY) {
-            width = PAD_X * 2.0f + BADGE_SIZE + BADGE_GAP
-                    + Math.min(SPOTIFY_TEXT_WIDTH, text.getStringWidth(stateLabel))
-                    + VALUE_GAP + EQUALIZER_WIDTH;
+            width = PAD_X * 2.0f + (stateArtwork != null ? SPOTIFY_ART : BADGE_SIZE) + BADGE_GAP
+                    + Math.min(spotifyTextLimit(), text.getStringWidth(spotifyLabel())) * spotifyTextScale()
+                    + (spotifyEqualizer.isToggled() ? VALUE_GAP + EQUALIZER_WIDTH : 0.0f);
         }
         if (!stateValue.isEmpty()) {
             float valueWidth = text.getStringWidth(stateValue);
@@ -498,6 +568,56 @@ public class DynamicIsland extends Module {
             width += VALUE_GAP + valueWidth;
         }
         return Math.max(42.0f, width);
+    }
+
+    private float spotifyTextScale() {
+        return (float) spotifyTextScale.getInput();
+    }
+
+    /** Title width in font units, so the setting stays a screen measurement at any text size. */
+    private float spotifyTextLimit() {
+        return (float) (spotifyTextWidth.getInput() / Math.max(0.01, spotifyTextScale.getInput()));
+    }
+
+    private float spotifyBarZone() {
+        return spotifyProgressBar.isToggled() ? SPOTIFY_BAR_ZONE : 0.0f;
+    }
+
+    private String spotifyLabel() {
+        if (!spotifyArtist.isToggled() || stateSubtitle == null || stateSubtitle.isEmpty()) {
+            return stateLabel;
+        }
+        return stateLabel + " \u00b7 " + stateSubtitle;
+    }
+
+    /**
+     * The cover, with the pill's own corner treatment.
+     *
+     * Album art arrives as a dynamic texture, which Minecraft uploads with nearest filtering; at
+     * roughly a seventh of its native size that turns a cover into aliased confetti, so the two
+     * filters are swapped for the draw and put back. The shader is what rounds it -- a scissor
+     * cannot cut a corner, and a stencil pass for one small square costs more than it saves.
+     */
+    private void drawRoundedTexture(ResourceLocation texture, float x, float y, float size,
+                                    float radius, float alpha) {
+        if (texture == null || alpha <= 0.0f) return;
+        if (radius < 0.35f) {
+            drawTexture(texture, x, y, size, size, withAlpha(0xFFFFFF, Math.round(alpha * 255.0f)));
+            return;
+        }
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                GL11.GL_ONE, GL11.GL_ZERO);
+        mc.getTextureManager().bindTexture(texture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE);
+        RoundedUtils.drawRoundTextured(x, y, size, size, radius, alpha);
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private SystemMediaInfo currentSpotifyInfo() {
