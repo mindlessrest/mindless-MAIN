@@ -18,21 +18,69 @@ endif()
 
 project(MindlessLoader
     VERSION 0.2.0
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if (NOT CMAKE_MSVC_RUNTIME_LIBRARY)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
-find_package(Freetype REQUIRED)
-find_package(Stb REQUIRED)
+option(MINDLESS_FETCH_DEPS "Build third-party dependencies from source" OFF)
+if (MINDLESS_FETCH_DEPS)
+    include(FetchContent)
+    set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+    set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
+    set(BUILD_LIBCURL_DOCS OFF CACHE BOOL "" FORCE)
+    set(BUILD_MISC_DOCS OFF CACHE BOOL "" FORCE)
+    set(CURL_ENABLE_SSL ON CACHE BOOL "" FORCE)
+    set(CURL_USE_SCHANNEL ON CACHE BOOL "" FORCE)
+    set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
+    set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
+    set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
+    set(CURL_USE_GSSAPI OFF CACHE BOOL "" FORCE)
+    set(CURL_ZLIB OFF CACHE BOOL "" FORCE)
+    set(CURL_BROTLI OFF CACHE BOOL "" FORCE)
+    set(CURL_ZSTD OFF CACHE BOOL "" FORCE)
+    set(HTTP_ONLY ON CACHE BOOL "" FORCE)
 
-# Auth SDK dependencies (installed via vcpkg)
-find_package(CURL REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
-find_package(OpenSSL REQUIRED)
+    FetchContent_Declare(freetype
+        GIT_REPOSITORY https://github.com/freetype/freetype.git
+        GIT_TAG VER-2-14-3
+        GIT_SHALLOW TRUE
+        SYSTEM)
+    FetchContent_Declare(curl
+        URL https://github.com/curl/curl/releases/download/curl-8_22_0/curl-8.22.0.tar.xz
+        URL_HASH SHA256=f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7
+        SYSTEM)
+    FetchContent_Declare(json
+        URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+        URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+        SYSTEM)
+    FetchContent_Declare(stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+        GIT_TAG 2c980bb59875b0d32144a71867fbdebb2f77cd20
+        SYSTEM)
+    FetchContent_MakeAvailable(freetype curl json stb)
+    if (NOT TARGET Freetype::Freetype)
+        add_library(Freetype::Freetype ALIAS freetype)
+    endif()
+    set(Stb_INCLUDE_DIR "${stb_SOURCE_DIR}")
+else()
+    find_package(Freetype REQUIRED)
+    find_package(Stb REQUIRED)
+    find_package(CURL REQUIRED)
+    find_package(nlohmann_json CONFIG REQUIRED)
+endif()
 
 # Auth SDK — build as a static library from the SDK source bundled in the repo.
 # Mirrors the Java SDK handling in client/build.gradle.kts: prefer the bundled
@@ -62,13 +110,12 @@ target_include_directories(authclient PUBLIC "${AUTHSDK_DIR}/include")
 target_link_libraries(authclient PUBLIC
     CURL::libcurl
     nlohmann_json::nlohmann_json
-    OpenSSL::SSL
-    OpenSSL::Crypto
+    bcrypt
     wbemuuid ole32 oleaut32
 )
 set_target_properties(authclient PROPERTIES
     CXX_STANDARD 17
-    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}"
 )
 
 set(SOURCES
@@ -97,15 +144,20 @@ configure_file(src/resources.rc.in "${CMAKE_CURRENT_BINARY_DIR}/resources_gen.rc
 
 # Compile the .rc using rc.exe directly — bypasses cmake_llvm_rc which breaks
 # when the CXX compiler is clang-cl.
-find_program(RC_EXE
-    NAMES rc.exe
-    PATHS
-        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
-        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64"
-        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64"
-        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.20348.0/x64"
-    NO_DEFAULT_PATH
-)
+if (CMAKE_RC_COMPILER)
+    set(RC_EXE "${CMAKE_RC_COMPILER}")
+else()
+    find_program(RC_EXE
+        NAMES rc.exe
+        PATHS
+            "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
+            "C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x64"
+            "C:/Program Files (x86)/Windows Kits/10/bin/10.0.19041.0/x64"
+            "C:/Program Files (x86)/Windows Kits/10/bin/10.0.20348.0/x64"
+        NO_DEFAULT_PATH
+        REQUIRED
+    )
+endif()
 
 set(RES_FILE "${CMAKE_CURRENT_BINARY_DIR}/resources_gen.res")
 add_custom_command(
@@ -177,8 +229,8 @@ target_include_directories(MindlessLoader
         ${CMAKE_SOURCE_DIR}/..
         ${CMAKE_SOURCE_DIR}/external
         ${CMAKE_CURRENT_BINARY_DIR}   # so resource.h is found from the generated .rc
-        ${Stb_INCLUDE_DIR}
 )
+target_include_directories(MindlessLoader SYSTEM PRIVATE ${Stb_INCLUDE_DIR})
 
 target_link_libraries(MindlessLoader
     PRIVATE

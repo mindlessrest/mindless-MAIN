@@ -20,7 +20,7 @@ bootstrap into the selected `java.exe`/`javaw.exe` process.
 - Windows x64
 - Visual Studio 2022 C++ x64 toolchain + Windows SDK
 - CMake 3.21+
-- A JDK exposing `include/jni.h` and `include/win32/jvmti.h` (JDK 8 works)
+- A JDK exposing `include/jni.h`, `include/jvmti.h`, and `include/win32/jni_md.h` (JDK 8 works)
 
 ## Build (via Gradle wrapper)
 

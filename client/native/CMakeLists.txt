@@ -13,14 +13,16 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # resolved against whichever vcruntime140.dll the game loaded first, which is
 # not necessarily ABI-compatible with the one used to build this DLL.
 if(MSVC)
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    if(NOT CMAKE_MSVC_RUNTIME_LIBRARY)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
 endif()
 
 option(MINDLESS_PRODUCTION "Disable diagnostic logging in production builds" OFF)
 option(MINDLESS_DEBUG_LOGS "Write native diagnostics to OutputDebugString" OFF)
 
 # ---------------------------------------------------------------------------
-# Locate the JDK headers (jni.h / jvmti.h).
+# Locate the JDK headers (jni.h / jvmti.h / win32/jni_md.h).
 # Pass -DMINDLESS_JAVA_HOME=... or set JAVA_HOME in the environment.
 # ---------------------------------------------------------------------------
 if(NOT DEFINED MINDLESS_JAVA_HOME)
@@ -31,13 +33,13 @@ endif()
 if(NOT DEFINED MINDLESS_JAVA_HOME OR MINDLESS_JAVA_HOME STREQUAL "")
     message(FATAL_ERROR
         "Set -DMINDLESS_JAVA_HOME=<jdk> (or export JAVA_HOME). "
-        "The JDK must provide include/jni.h and include/win32/jvmti.h.")
+        "The JDK must provide include/jni.h, include/jvmti.h, and include/win32/jni_md.h.")
 endif()
 
 set(JNI_INCLUDE_DIRS
     "${MINDLESS_JAVA_HOME}/include"
     "${MINDLESS_JAVA_HOME}/include/win32")
-foreach(header jni.h jvmti.h)
+foreach(header jni.h jvmti.h jni_md.h)
     unset(_found CACHE)
     find_file(_found ${header} PATHS ${JNI_INCLUDE_DIRS} NO_DEFAULT_PATH)
     if(NOT _found)

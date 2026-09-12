@@ -14,15 +14,10 @@
 #   ./build.sh --prod          obfuscated build, what ships
 #   ./build.sh --client-only   Gradle stages only
 #   ./build.sh --loader-only   native DLL and loader only, reusing existing jars
-#   ./build.sh --deps          cache the toolchain, build nothing
-#   ./build.sh --pack-deps     tar up loader/vcpkg_installed for another machine
+#   ./build.sh --deps          fetch the toolchain and third-party sources, build nothing
 #
-# One dependency does not cross-build: OpenSSL. vcpkg drives nmake for it on a Windows
-# triplet and nmake does not exist here, and it cannot be dropped because the bundled auth
-# SDK calls EVP, HMAC and RAND directly. clang-cl emits the same MSVC ABI on either host,
-# though, so a loader/vcpkg_installed tree produced by a Windows build links here unchanged.
-# Run `build.bat` or `./build.sh --pack-deps` once on the Windows machine, copy the tarball
-# over, and this script uses it.
+# Missing host packages are installed through the detected package manager. Set
+# MINDLESS_AUTO_INSTALL=0 to require manual provisioning instead.
 #
 # Caches live under ~/.cache/mindless unless MINDLESS_CACHE says otherwise, so a second run
 # does not re-download the SDK.
@@ -53,22 +48,20 @@ OUTPUT_EXE="$ROOT/MindlessLoader.exe"
 CACHE="${MINDLESS_CACHE:-$HOME/.cache/mindless}"
 XWIN_ROOT="${XWIN_ROOT:-$CACHE/xwin}"
 WIN_JDK="${MINDLESS_WIN_JDK:-$CACHE/jdk-win}"
-VCPKG_INSTALLED="${MINDLESS_VCPKG_INSTALLED:-$LOADER_DIR/vcpkg_installed}"
-VCPKG_TREE="$VCPKG_INSTALLED/x64-windows-static"
-DEPS_TARBALL="${MINDLESS_DEPS_TARBALL:-$ROOT/mindless-windows-deps.tar.zst}"
+FETCHCONTENT_BASE_DIR="${MINDLESS_FETCHCONTENT_DIR:-$CACHE/sources}"
 
-# Only the headers are used, and only for jni.h and include/win32/jvmti.h. A Linux JDK ships
-# include/linux instead, and its jni_md.h declares JNIEXPORT the ELF way, so a Windows JDK
-# has to supply them even though nothing here ever runs it.
+# Only the headers are used: include/jni.h, include/jvmti.h, and the Windows-specific
+# include/win32/jni_md.h. A Linux JDK's jni_md.h declares JNIEXPORT the ELF way, so a
+# Windows JDK has to supply them even though nothing here ever runs it.
 WIN_JDK_URL="${MINDLESS_WIN_JDK_URL:-https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse}"
 
 JOBS="$(nproc 2>/dev/null || echo 4)"
+AUTO_INSTALL="${MINDLESS_AUTO_INSTALL:-1}"
 PROD=0
 DEV_TARGET=0
 CLIENT_ONLY=0
 LOADER_ONLY=0
 DEPS_ONLY=0
-PACK_DEPS=0
 
 RESET=$'\033[0m'; BOLD=$'\033[1m'; GREEN=$'\033[92m'
 YELLOW=$'\033[93m'; RED=$'\033[91m'; CYAN=$'\033[96m'
@@ -85,7 +78,6 @@ for arg in "$@"; do
         --client-only) CLIENT_ONLY=1 ;;
         --loader-only) LOADER_ONLY=1 ;;
         --deps)        DEPS_ONLY=1 ;;
-        --pack-deps)   PACK_DEPS=1 ;;
         -h|--help)     sed -n '3,40p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \?//'; exit 0 ;;
         *)             die "unknown option: $arg" ;;
     esac
@@ -95,24 +87,76 @@ printf '\n%s%s%s\n' "$BOLD" "=================================================="
 printf '%s  Mindless United - cross build (linux -> windows x64)%s\n' "$BOLD" "$RESET"
 printf '%s%s%s\n' "$BOLD" "==================================================" "$RESET"
 
-if [ "$PACK_DEPS" -eq 1 ]; then
-    section "Packing the Windows dependency tree"
-    [ -d "$VCPKG_TREE/lib" ] || die "nothing to pack, $VCPKG_TREE does not exist"
-    compressor=(zstd -19 -T0); suffix=".tar.zst"
-    command -v zstd >/dev/null 2>&1 || { compressor=(gzip -9); suffix=".tar.gz"; DEPS_TARBALL="${DEPS_TARBALL%.tar.zst}.tar.gz"; }
-    tar -C "$VCPKG_INSTALLED/.." -cf - "$(basename "$VCPKG_INSTALLED")" | "${compressor[@]}" > "$DEPS_TARBALL"
-    ok "wrote $DEPS_TARBALL ($(( $(stat -c%s "$DEPS_TARBALL" 2>/dev/null || stat -f%z "$DEPS_TARBALL") / 1048576 )) MB)"
-    info "drop it in the repo root on the Linux box and build.sh unpacks it itself"
-    exit 0
-fi
-
 # ---------------------------------------------------------------------------
 # Toolchain
 # ---------------------------------------------------------------------------
 section "Detecting tools"
 
+run_root() {
+    if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        die "root privileges are required to install packages; install sudo or run as root"
+    fi
+}
+
+add_llvm_paths() {
+    local llvm_dir
+    for llvm_dir in /usr/lib/llvm-*/bin /usr/local/opt/llvm/bin /opt/homebrew/opt/llvm/bin; do
+        [ -d "$llvm_dir" ] || continue
+        case ":$PATH:" in
+            *":$llvm_dir:"*) ;;
+            *) PATH="$llvm_dir:$PATH"; export PATH ;;
+        esac
+    done
+}
+
+add_cargo_path() {
+    local cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+    if [ -x "$cargo_bin" ]; then
+        case ":$PATH:" in
+            *":$cargo_bin:"*) ;;
+            *) PATH="$cargo_bin:$PATH"; export PATH ;;
+        esac
+    fi
+}
+
+install_packages() {
+    local manager="$1"
+    shift
+    local packages=("$@")
+    [ "$AUTO_INSTALL" = 1 ] || die "missing tools: ${missing[*]} (automatic installation disabled by MINDLESS_AUTO_INSTALL=0)"
+    section "Installing host dependencies"
+    info "$manager: ${packages[*]}"
+    case "$manager" in
+        apt-get)
+            run_root apt-get update
+            run_root env DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
+            ;;
+        dnf)    run_root dnf install -y "${packages[@]}" ;;
+        yum)    run_root yum install -y "${packages[@]}" ;;
+        pacman) run_root pacman -Sy --needed --noconfirm "${packages[@]}" ;;
+        zypper) run_root zypper --non-interactive install --no-recommends "${packages[@]}" ;;
+        apk)    run_root apk add --no-cache "${packages[@]}" ;;
+        brew)   brew install "${packages[@]}" ;;
+        *)      die "no supported package manager found; install: ${packages[*]}" ;;
+    esac
+}
+
+package_manager=""
+for candidate in apt-get dnf yum pacman zypper apk brew; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        package_manager="$candidate"
+        break
+    fi
+done
+
+add_llvm_paths
+add_cargo_path
 missing=()
-for tool in clang-cl lld-link llvm-rc llvm-lib cmake ninja git curl unzip; do
+for tool in clang-cl lld-link llvm-rc llvm-lib cmake ninja git curl unzip perl pkg-config; do
     if command -v "$tool" >/dev/null 2>&1; then
         ok "$tool"
     else
@@ -122,18 +166,67 @@ for tool in clang-cl lld-link llvm-rc llvm-lib cmake ninja git curl unzip; do
 done
 
 if [ "${#missing[@]}" -ne 0 ]; then
-    if command -v pacman >/dev/null 2>&1; then
-        die "install them first:  sudo pacman -S --needed llvm clang lld cmake ninja git curl unzip"
-    fi
-    die "missing required tools: ${missing[*]}"
+    case "$package_manager" in
+        apt-get) packages=(llvm clang lld cmake ninja-build git curl unzip perl pkg-config cargo ca-certificates xz-utils) ;;
+        dnf|yum) packages=(llvm clang lld cmake ninja-build git curl unzip perl pkgconf-pkg-config cargo ca-certificates xz) ;;
+        pacman)  packages=(llvm clang lld cmake ninja git curl unzip perl pkgconf rust ca-certificates xz) ;;
+        zypper)  packages=(llvm clang lld cmake ninja git curl unzip perl pkg-config cargo ca-certificates xz) ;;
+        apk)     packages=(llvm clang lld cmake ninja git curl unzip perl pkgconf cargo ca-certificates xz) ;;
+        brew)    packages=(llvm lld cmake ninja git curl unzip perl pkg-config rust ca-certificates xz) ;;
+        *)       packages=(llvm clang lld cmake ninja git curl unzip perl pkg-config cargo ca-certificates xz) ;;
+    esac
+    install_packages "$package_manager" "${packages[@]}"
+    add_llvm_paths
 fi
 
+missing=()
+for tool in clang-cl lld-link llvm-rc llvm-lib cmake ninja git curl unzip perl pkg-config; do
+    command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+done
+[ "${#missing[@]}" -eq 0 ] || die "required tools are still missing after installation: ${missing[*]}"
+
+if ! command -v xwin >/dev/null 2>&1; then
+    if ! command -v cargo >/dev/null 2>&1; then
+        case "$package_manager" in
+            apt-get|dnf|yum|zypper|apk) packages=(cargo) ;;
+            pacman|brew) packages=(rust) ;;
+            *) packages=(cargo) ;;
+        esac
+        install_packages "$package_manager" "${packages[@]}"
+    fi
+    command -v cargo >/dev/null 2>&1 || die "cargo is required to install xwin"
+    [ "$AUTO_INSTALL" = 1 ] || die "xwin not found (automatic installation disabled by MINDLESS_AUTO_INSTALL=0)"
+    section "Installing xwin"
+    cargo install --locked xwin
+    add_cargo_path
+fi
+
+if [ -n "${JAVA_HOME:-}" ] && [ ! -x "$JAVA_HOME/bin/javac" ]; then
+    warn "JAVA_HOME has no javac: $JAVA_HOME"
+    unset JAVA_HOME
+fi
 if [ -z "${JAVA_HOME:-}" ]; then
     for candidate in /usr/lib/jvm/java-17-openjdk /usr/lib/jvm/java-17-temurin; do
         [ -x "$candidate/bin/javac" ] && { export JAVA_HOME="$candidate"; break; }
     done
 fi
-[ -n "${JAVA_HOME:-}" ] || die "set JAVA_HOME to a JDK 17 (pacman -S jdk17-openjdk)"
+[ -n "${JAVA_HOME:-}" ] || {
+    case "$package_manager" in
+        apt-get) packages=(openjdk-17-jdk) ;;
+        dnf|yum) packages=(java-17-openjdk-devel) ;;
+        pacman)  packages=(jdk17-openjdk) ;;
+        zypper)  packages=(java-17-openjdk-devel) ;;
+        apk)     packages=(openjdk17-jdk) ;;
+        brew)    packages=(openjdk@17) ;;
+        *)       packages=(openjdk-17) ;;
+    esac
+    install_packages "$package_manager" "${packages[@]}"
+    for candidate in /usr/lib/jvm/java-17-openjdk /usr/lib/jvm/java-17-temurin \
+                     /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/jdk-17; do
+        [ -x "$candidate/bin/javac" ] && { export JAVA_HOME="$candidate"; break; }
+    done
+}
+[ -n "${JAVA_HOME:-}" ] || die "Java 17 was not found after installation; set JAVA_HOME manually"
 [ -x "$JAVA_HOME/bin/javac" ] || die "JAVA_HOME has no javac: $JAVA_HOME"
 java_major="$("$JAVA_HOME/bin/javac" -version 2>&1 | sed -E 's/javac ([0-9]+).*/\1/')"
 [ "$java_major" = "17" ] || warn "JAVA_HOME is Java $java_major, the build expects 17"
@@ -142,12 +235,25 @@ ok "JAVA_HOME = $JAVA_HOME"
 mkdir -p "$CACHE"
 
 # --- Windows SDK and MSVC CRT ------------------------------------------------
-if [ ! -d "$XWIN_ROOT/crt/include" ]; then
+# xwin moves extracted files into its output tree. Keep its cache and staged output beside
+# the final sysroot so that rename(2) never has to cross from /tmp onto another filesystem.
+# Check representative files rather than a directory because an interrupted splat leaves
+# the directory structure behind.
+if [ ! -f "$XWIN_ROOT/crt/include/xloctime" ] ||
+   [ ! -f "$XWIN_ROOT/crt/lib/x86_64/libcmt.lib" ] ||
+   [ ! -f "$XWIN_ROOT/sdk/lib/um/x86_64/kernel32.lib" ]; then
     section "Windows SDK - fetch"
-    command -v xwin >/dev/null 2>&1 || die "xwin not found. Install it: cargo install xwin  (or pacman -S xwin from the AUR)"
+    command -v xwin >/dev/null 2>&1 || die "xwin is unavailable after installation; run: cargo install --locked xwin"
     info "downloading the MSVC CRT and Windows SDK into $XWIN_ROOT"
-    tmp="$(mktemp -d)"
-    xwin --accept-license --arch x86_64 --cache-dir "$tmp" splat --output "$XWIN_ROOT"
+    xwin_parent="$(dirname "$XWIN_ROOT")"
+    mkdir -p "$xwin_parent"
+    tmp="$(mktemp -d "$xwin_parent/.xwin-fetch.XXXXXX")"
+    if ! xwin --accept-license --arch x86_64 --cache-dir "$tmp/cache" splat --output "$tmp/sysroot"; then
+        rm -rf "$tmp"
+        die "xwin failed to fetch the Windows SDK"
+    fi
+    rm -rf "$XWIN_ROOT"
+    mv "$tmp/sysroot" "$XWIN_ROOT"
     rm -rf "$tmp"
     ok "sysroot ready"
 else
@@ -156,9 +262,11 @@ fi
 export XWIN_ROOT
 
 # --- Windows JDK headers -----------------------------------------------------
-if [ ! -f "$WIN_JDK/include/win32/jvmti.h" ]; then
+if [ ! -f "$WIN_JDK/include/jni.h" ] ||
+   [ ! -f "$WIN_JDK/include/jvmti.h" ] ||
+   [ ! -f "$WIN_JDK/include/win32/jni_md.h" ]; then
     section "Windows JDK headers - fetch"
-    info "the native DLL includes jni.h and include/win32/jvmti.h, which a Linux JDK does not ship"
+    info "the native DLL needs Windows JDK headers, including include/win32/jni_md.h"
     tmp="$(mktemp -d)"
     curl -fL --retry 3 -o "$tmp/jdk.zip" "$WIN_JDK_URL"
     unzip -q "$tmp/jdk.zip" -d "$tmp/x"
@@ -168,54 +276,32 @@ if [ ! -f "$WIN_JDK/include/win32/jvmti.h" ]; then
     mkdir -p "$(dirname "$WIN_JDK")"
     mv "$extracted" "$WIN_JDK"
     rm -rf "$tmp"
-    [ -f "$WIN_JDK/include/win32/jvmti.h" ] || die "no include/win32/jvmti.h in the downloaded JDK"
+    [ -f "$WIN_JDK/include/jni.h" ] || die "no include/jni.h in the downloaded JDK"
+    [ -f "$WIN_JDK/include/jvmti.h" ] || die "no include/jvmti.h in the downloaded JDK"
+    [ -f "$WIN_JDK/include/win32/jni_md.h" ] || die "no include/win32/jni_md.h in the downloaded JDK"
     ok "headers ready"
 else
     ok "Windows JDK headers cached at $WIN_JDK"
 fi
 
-# --- Windows dependency tree -------------------------------------------------
-# Not built here. vcpkg's OpenSSL port for a Windows triplet drives nmake, which does not
-# exist on Linux, and OpenSSL cannot be dropped: shared/authsdk/cpp/src/crypto.cpp calls
-# EVP, HMAC and RAND straight from it. Since clang-cl emits MSVC-ABI objects on either host,
-# the .lib files a Windows build already produced link here without being rebuilt.
-if [ ! -f "$VCPKG_TREE/lib/libcrypto.lib" ]; then
-    if [ -f "$DEPS_TARBALL" ]; then
-        section "Windows dependencies - unpack"
-        mkdir -p "$(dirname "$VCPKG_INSTALLED")"
-        tar -C "$(dirname "$VCPKG_INSTALLED")" -xf "$DEPS_TARBALL"
-        ok "unpacked $DEPS_TARBALL"
-    fi
-fi
-if [ ! -f "$VCPKG_TREE/lib/libcrypto.lib" ]; then
-    printf '\n'
-    die "$(cat <<EOF
-no prebuilt Windows dependencies at $VCPKG_TREE
-
-They cannot be built on Linux: vcpkg's OpenSSL port for a Windows triplet drives nmake,
-and the bundled auth SDK needs OpenSSL, so it cannot simply be left out.
-
-Produce them once on the Windows machine, where the normal build already does it:
-
-    python tools/build.py          (or build.bat)
-    bash build.sh --pack-deps      writes mindless-windows-deps.tar.zst
-
-Copy that file to this repo root and re-run. clang-cl targets the same ABI on both
-hosts, so the libraries link unchanged.
-EOF
-)"
-fi
-for lib in libcrypto libssl libcurl freetype; do
-    [ -f "$VCPKG_TREE/lib/$lib.lib" ] || die "$lib.lib missing from $VCPKG_TREE/lib"
-done
-ok "Windows dependencies at $VCPKG_TREE"
-
 TOOLCHAIN="$CROSS_DIR/windows-clang-cl.cmake"
 [ -f "$TOOLCHAIN" ] || die "missing $TOOLCHAIN"
 
+configure_loader() {
+    cmake -S "$LOADER_DIR" -B "$LOADER_BUILD_DIR" -G "Ninja Multi-Config" \
+        -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+        -DFETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" \
+        -DMINDLESS_FETCH_DEPS=ON \
+        -DXWIN_ROOT="$XWIN_ROOT" \
+        -DMINDLESS_PRODUCTION="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)" \
+        -DMINDLESS_PRIVATE_PDB="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)"
+}
+
 if [ "$DEPS_ONLY" -eq 1 ]; then
+    section "Windows dependencies - fetch"
+    configure_loader
     section "Done"
-    ok "toolchain cached, nothing built"
+    ok "toolchain and dependency sources cached, nothing built"
     exit 0
 fi
 
@@ -305,12 +391,7 @@ section "Loader - configure"
 # Not `cmake --preset windows-clang`: that preset is guarded on a Windows host and pins
 # absolute Windows tool paths. The cache variables it would have set are passed here instead,
 # so CMakePresets.json stays exactly as the Windows build left it.
-cmake -S "$LOADER_DIR" -B "$LOADER_BUILD_DIR" -G "Ninja Multi-Config" \
-    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
-    -DCMAKE_PREFIX_PATH="$VCPKG_TREE" \
-    -DXWIN_ROOT="$XWIN_ROOT" \
-    -DMINDLESS_PRODUCTION="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)" \
-    -DMINDLESS_PRIVATE_PDB="$([ "$PROD" -eq 1 ] && echo ON || echo OFF)"
+configure_loader
 ok "configured"
 
 section "Loader - build"

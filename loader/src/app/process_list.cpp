@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <cctype>
 
-#pragma comment(lib, "Psapi.lib")
+#pragma comment(lib, "psapi.lib")
 
 namespace mindless
 {

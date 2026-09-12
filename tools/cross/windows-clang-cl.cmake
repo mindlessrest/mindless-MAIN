@@ -18,6 +18,7 @@ if(NOT XWIN_ROOT)
         message(FATAL_ERROR "Set -DXWIN_ROOT=<xwin splat dir> or export XWIN_ROOT.")
     endif()
 endif()
+set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES XWIN_ROOT)
 
 foreach(_dir crt/include crt/lib/x86_64 sdk/include/um sdk/lib/um/x86_64)
     if(NOT IS_DIRECTORY "${XWIN_ROOT}/${_dir}")
@@ -39,12 +40,12 @@ if(MINDLESS_LLVM_MT)
     set(CMAKE_MT "${MINDLESS_LLVM_MT}")
 endif()
 
-# loader/CMakeLists.txt only hunts for rc.exe when this is undefined, so setting it here is
-# enough to keep that file untouched. llvm-rc takes the same /I it passes.
+# llvm-rc accepts the same /I flags used by the Windows resource compiler.
 set(CMAKE_RC_COMPILER "${MINDLESS_LLVM_RC}")
 
 set(CMAKE_C_COMPILER_TARGET x86_64-pc-windows-msvc)
 set(CMAKE_CXX_COMPILER_TARGET x86_64-pc-windows-msvc)
+set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
 
 set(_mindless_includes
     "/imsvc${XWIN_ROOT}/crt/include"

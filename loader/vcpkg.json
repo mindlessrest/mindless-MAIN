@@ -5,7 +5,6 @@
         "freetype",
         "stb",
         "curl",
-        "nlohmann-json",
-        "openssl"
+        "nlohmann-json"
     ]
 }

@@ -1,0 +1,58 @@
+name: Build client on Debian
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+
+concurrency:
+  group: linux-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The runner should be a Debian self-hosted runner with the standard
+    # self-hosted/linux/x64 labels. build.sh installs missing packages with apt.
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build Windows client and native components
+        env:
+          MINDLESS_AUTO_INSTALL: "1"
+        run: ./build.sh --prod
+
+      - name: Verify build outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            MindlessLoader.exe \
+            client/native_build/dist/MindlessNative.dll \
+            client/build/libs/mindless-obf.jar \
+            client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar; do
+            test -s "$file" || { echo "Missing or empty build output: $file" >&2; exit 1; }
+          done
+
+      - name: Upload Windows client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mindless-client-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            MindlessLoader.exe
+            client/native_build/dist/MindlessNative.dll
+            client/build/libs/mindless-obf.jar
+            client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar
+
