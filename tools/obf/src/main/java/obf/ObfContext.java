@@ -11,10 +11,16 @@ public class ObfContext {
     private final Map<String, String> classMapping = new HashMap<>();
     private final Map<String, String> fieldMapping = new HashMap<>();
     private final Map<String, String> methodMapping = new HashMap<>();
+    private final Map<String, String> reverseClassMapping = new HashMap<>();
+    private final List<String> includes;
+    private final List<String> excludes;
+    private int reverseClassMappingSize = -1;
     private Manifest manifest;
 
     public ObfContext(ObfConfig config) {
         this.config = config;
+        this.includes = normalize(config.includes);
+        this.excludes = normalize(config.excludes);
     }
 
     public Map<String, ClassNode> classes() { return classes; }
@@ -28,28 +34,33 @@ public class ObfContext {
     public void manifest(Manifest manifest) { this.manifest = manifest; }
 
     public boolean isExcluded(String className) {
-        String originalName = className;
-        for (Map.Entry<String, String> mapping : classMapping.entrySet()) {
-            if (mapping.getValue().equals(className)) {
-                originalName = mapping.getKey();
-                break;
+        if (reverseClassMappingSize != classMapping.size()) {
+            reverseClassMapping.clear();
+            for (Map.Entry<String, String> mapping : classMapping.entrySet()) {
+                reverseClassMapping.put(mapping.getValue(), mapping.getKey());
             }
+            reverseClassMappingSize = classMapping.size();
         }
-        boolean included = config.includes == null || config.includes.isEmpty();
+        String originalName = reverseClassMapping.getOrDefault(className, className);
+        boolean included = includes.isEmpty();
         if (!included) {
-            for (String prefix : config.includes) {
-                if (originalName.startsWith(prefix.replace('.', '/'))) {
+            for (String prefix : includes) {
+                if (originalName.startsWith(prefix)) {
                     included = true;
                     break;
                 }
             }
         }
         if (!included) return true;
-        for (String prefix : config.excludes) {
-            String normalized = prefix.replace('.', '/');
-            if (originalName.startsWith(normalized)) return true;
+        for (String prefix : excludes) {
+            if (originalName.startsWith(prefix)) return true;
         }
         return false;
+    }
+
+    private static List<String> normalize(List<String> prefixes) {
+        if (prefixes == null || prefixes.isEmpty()) return List.of();
+        return prefixes.stream().map(prefix -> prefix.replace('.', '/')).toList();
     }
 
     public boolean isLibrary(String className) {

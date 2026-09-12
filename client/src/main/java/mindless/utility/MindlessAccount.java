@@ -8,6 +8,10 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.util.ResourceLocation;
 
 import javax.imageio.ImageIO;
+import java.awt.AlphaComposite;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -69,20 +73,22 @@ public final class MindlessAccount {
         String username = displayName();
         File file = localFile("profile.json");
         if (file == null || !file.isFile() || file.length() <= 0L || file.length() > MAX_PROFILE_BYTES) {
-            return new Profile(username, null, null, null, avatarLocation);
+            return new Profile(username, null, null, null, null, avatarLocation);
         }
         try {
             String json = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
             JsonElement parsed = new JsonParser().parse(json);
-            if (!parsed.isJsonObject()) return new Profile(username, null, null, null, avatarLocation);
+            if (!parsed.isJsonObject()) return new Profile(username, null, null, null, null, avatarLocation);
             JsonObject object = parsed.getAsJsonObject();
             String loaderName = field(object, "username", MAX_NAME_LENGTH, false);
+            String uid = field(object, "uid", 20, true);
             String display = field(object, "discord_display_name", 64, false);
             String discordName = field(object, "discord_username", 64, false);
             String id = field(object, "discord_id", 32, true);
-            return new Profile(loaderName != null ? loaderName : username, display, discordName, id, avatarLocation);
+            return new Profile(loaderName != null ? loaderName : username, uid, display,
+                    discordName, id, avatarLocation);
         } catch (Throwable ignored) {
-            return new Profile(username, null, null, null, avatarLocation);
+            return new Profile(username, null, null, null, null, avatarLocation);
         }
     }
 
@@ -105,13 +111,31 @@ public final class MindlessAccount {
                 if (image != null && image.getWidth() > 0 && image.getHeight() > 0
                         && image.getWidth() <= 1024 && image.getHeight() <= 1024) {
                     avatarLocation = mc.getTextureManager().getDynamicTextureLocation(
-                            "mindless_account_avatar", new DynamicTexture(image));
+                            "mindless_account_avatar", new DynamicTexture(roundedAvatar(image)));
                 }
             } catch (Throwable ignored) {
                 avatarLocation = null;
             }
         }
         if (profile != null) profile.avatar = avatarLocation;
+    }
+
+    private static BufferedImage roundedAvatar(BufferedImage source) {
+        int size = Math.min(source.getWidth(), source.getHeight());
+        int sourceX = (source.getWidth() - size) / 2;
+        int sourceY = (source.getHeight() - size) / 2;
+        BufferedImage result = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = result.createGraphics();
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        graphics.drawImage(source, 0, 0, size, size, sourceX, sourceY,
+                sourceX + size, sourceY + size, null);
+        graphics.setComposite(AlphaComposite.DstIn);
+        graphics.setColor(Color.WHITE);
+        int arc = Math.max(2, Math.round(size * .46f));
+        graphics.fillRoundRect(0, 0, size, size, arc, arc);
+        graphics.dispose();
+        return result;
     }
 
     private static String field(JsonObject object, String name, int max, boolean digitsOnly) {
@@ -162,14 +186,16 @@ public final class MindlessAccount {
 
     public static final class Profile {
         private final String username;
+        private final String uid;
         private final String discordDisplayName;
         private final String discordUsername;
         private final String discordId;
         private ResourceLocation avatar;
 
-        private Profile(String username, String discordDisplayName, String discordUsername,
-                        String discordId, ResourceLocation avatar) {
+        private Profile(String username, String uid, String discordDisplayName,
+                        String discordUsername, String discordId, ResourceLocation avatar) {
             this.username = username;
+            this.uid = uid;
             this.discordDisplayName = discordDisplayName;
             this.discordUsername = discordUsername;
             this.discordId = discordId;
@@ -177,6 +203,7 @@ public final class MindlessAccount {
         }
 
         public String username() { return username; }
+        public String uid() { return uid; }
         public String discordDisplayName() { return discordDisplayName; }
         public String discordUsername() { return discordUsername; }
         public String discordId() { return discordId; }

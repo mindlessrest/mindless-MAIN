@@ -275,7 +275,7 @@ public void endSwap(Entity e) {
             return;
         }
 
-        boolean strict = ModuleManager.movementFix != null && ModuleManager.movementFix.isStrict();
+        boolean strict = useStrictMovementFix();
         float[] fixed = remapMovement(mc.thePlayer.rotationYaw, this.serverYaw,
                 forward, strafe, strict, sneakMultiplier);
         mc.thePlayer.movementInput.moveForward = fixed[0];
@@ -291,9 +291,13 @@ public void endSwap(Entity e) {
 
     @SubscribeEvent
     public void onJump(JumpEvent e) {
-        if (fixMovement()) {
+        if (fixMovement() && useStrictMovementFix()) {
             e.setYaw(this.serverYaw);
         }
+    }
+
+    private boolean useStrictMovementFix() {
+        return ModuleManager.movementFix != null && ModuleManager.movementFix.isStrict();
     }
 
     public boolean fixMovement() {
@@ -304,7 +308,7 @@ public void endSwap(Entity e) {
     public static float[] remapMovement(float cameraYaw, float movementYaw, float forward,
                                         float strafe, boolean strict, float inputMagnitude) {
         if (!strict) {
-            double delta = Math.toRadians(cameraYaw - movementYaw);
+            double delta = Math.toRadians(MathHelper.wrapAngleTo180_float(cameraYaw - movementYaw));
             double cosine = Math.cos(delta);
             double sine = Math.sin(delta);
             float fixedForward = (float) (forward * cosine + strafe * sine);

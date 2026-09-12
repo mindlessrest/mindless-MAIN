@@ -49,6 +49,8 @@ NATIVE_BUILD_DIR="$BUILD_CACHE/native"
 LOADER_BUILD_DIR="$BUILD_CACHE/loader"
 NATIVE_BUILT_DLL="$NATIVE_BUILD_DIR/dist/MindlessNative.dll"
 OBF_CACHE_DIR="$CACHE/obf"
+GRADLE_PROJECT_CACHE="${MINDLESS_GRADLE_PROJECT_CACHE:-$CACHE/gradle-project}"
+OBF_JAVA_OPTS="${MINDLESS_OBF_JAVA_OPTS:--Xms64m -Xmx1g -XX:+UseParallelGC}"
 XWIN_ROOT="${XWIN_ROOT:-$CACHE/xwin}"
 WIN_JDK="${MINDLESS_WIN_JDK:-$CACHE/jdk-win}"
 FETCHCONTENT_BASE_DIR="${MINDLESS_FETCHCONTENT_DIR:-$CACHE/sources}"
@@ -247,7 +249,7 @@ java_major="$("$JAVA_HOME/bin/javac" -version 2>&1 | sed -E 's/javac ([0-9]+).*/
 ok "JAVA_HOME = $JAVA_HOME"
 
 mkdir -p "$CACHE"
-mkdir -p "$BUILD_CACHE" "$OBF_CACHE_DIR"
+mkdir -p "$BUILD_CACHE" "$OBF_CACHE_DIR" "$GRADLE_PROJECT_CACHE/client" "$GRADLE_PROJECT_CACHE/obf"
 
 # --- Windows SDK and MSVC CRT ------------------------------------------------
 # xwin moves extracted files into its output tree. Keep its cache and staged output beside
@@ -327,21 +329,23 @@ if [ "$LOADER_ONLY" -eq 0 ]; then
     section "Client - gradle build"
     chmod +x "$GRADLEW" 2>/dev/null || true
     ( cd "$CLIENT_DIR" && ./gradlew remapJar lunarPayloadJar \
-        --parallel --build-cache --warning-mode=none "--max-workers=$JOBS" )
+        --parallel --build-cache --warning-mode=none "--max-workers=$JOBS" \
+        --project-cache-dir "$GRADLE_PROJECT_CACHE/client" )
     [ -s "$FORGE_JAR" ] || die "Forge jar missing after the build: $FORGE_JAR"
     [ -s "$LUNAR_JAR" ] || die "Lunar jar missing after the build: $LUNAR_JAR"
     ok "client built"
 
     if [ "$PROD" -eq 1 ]; then
         section "Building MindlessObf"
-        obf_key="$({ find "$OBF_DIR/src" -type f -print0; printf '%s\0' "$OBF_DIR/build.gradle.kts" "$OBF_DIR/settings.gradle.kts"; } | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+        obf_key="$({ find "$OBF_DIR/src/main" -type f -print0; printf '%s\0' "$OBF_DIR/build.gradle.kts" "$OBF_DIR/settings.gradle.kts" "$OBF_DIR/gradle.properties"; } | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
         cached_obf="$OBF_CACHE_DIR/$obf_key.jar"
         if [ -s "$cached_obf" ]; then
             mkdir -p "$(dirname "$OBF_JAR")"
             cp -f "$cached_obf" "$OBF_JAR"
             ok "MindlessObf restored from cache"
         else
-            ( cd "$OBF_DIR" && "$GRADLEW" jar --build-cache --warning-mode=none )
+            ( cd "$OBF_DIR" && "$GRADLEW" jar --build-cache --warning-mode=none \
+                --project-cache-dir "$GRADLE_PROJECT_CACHE/obf" )
             [ -s "$OBF_JAR" ] || die "MindlessObf jar missing: $OBF_JAR"
             cp -f "$OBF_JAR" "$cached_obf"
             ok "MindlessObf cached"
@@ -352,9 +356,12 @@ if [ "$LOADER_ONLY" -eq 0 ]; then
         mkdir -p "$(dirname "$FORGE_MAPPING")"
         obfuscate() {
             local label="$1" input="$2" output="$3" mapping="$4"
+            local -a obf_java_opts
             info "obfuscating $label"
             rm -f "$output"
-            "$JAVA_HOME/bin/java" -jar "$OBF_JAR" "$input" "$output" --mapping "$mapping"
+            read -r -a obf_java_opts <<<"$OBF_JAVA_OPTS"
+            "$JAVA_HOME/bin/java" "${obf_java_opts[@]}" -jar "$OBF_JAR" \
+                "$input" "$output" --mapping "$mapping"
             [ -s "$output" ] || die "$label obfuscation produced nothing"
             ok "$label obfuscated ($(( $(stat -c%s "$output") / 1024 )) KB)"
         }

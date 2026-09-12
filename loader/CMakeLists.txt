@@ -52,6 +52,9 @@ if (MINDLESS_FETCH_DEPS)
     set(CURL_BROTLI OFF CACHE BOOL "" FORCE)
     set(CURL_ZSTD OFF CACHE BOOL "" FORCE)
     set(HTTP_ONLY ON CACHE BOOL "" FORCE)
+    foreach(_protocol DICT FILE FTP GOPHER IMAP LDAP LDAPS MQTT POP3 RTSP SMB SMTP TELNET TFTP)
+        set(CURL_DISABLE_${_protocol} ON CACHE BOOL "" FORCE)
+    endforeach()
 
     FetchContent_Declare(freetype
         GIT_REPOSITORY https://github.com/freetype/freetype.git

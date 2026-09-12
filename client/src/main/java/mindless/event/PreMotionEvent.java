@@ -2,6 +2,7 @@ package mindless.event;
 
 import mindless.rotation.RotationArbiter;
 import mindless.rotation.RotationSource;
+import mindless.module.ModuleManager;
 import mindless.script.model.PlayerState;
 import net.minecraftforge.fml.common.eventhandler.Event;
 
@@ -132,7 +133,9 @@ public class PreMotionEvent extends Event {
     }
 
     public static boolean setRenderYaw() {
-        return setRenderYaw;
+        return setRenderYaw && (ModuleManager.movementFix == null
+                || !ModuleManager.movementFix.isEnabled()
+                || ModuleManager.movementFix.isStrict());
     }
 
     public static void setRenderYaw(boolean setYaw) {

@@ -702,17 +702,7 @@ private float aboutOpenProgress = 0f;
         drawText(trim(name, textW, .68f, true), textX, top + 12f,
                 mixColor(TEXT, 0xFFFFFFFF, hoverAmount), .68f, true);
 
-        String discord = account.discordDisplayName() != null ? account.discordDisplayName()
-                : account.discordUsername() != null ? account.discordUsername() : null;
-        String secondary = discord != null ? discord
-                : MindlessAccount.isAuthenticated() ? "Mindless account" : "Local session";
-        // A linked Discord gets the accent dot beside it, because that is the one piece of this
-        // card that is either connected or not and worth seeing without reading.
-        if (discord != null) {
-            rounded(textX, top + 27.5f, textX + 3.5f, top + 31f, 1.75f, withAlpha(ACCENT, 210));
-            textX += 6.5f;
-            textW -= 6.5f;
-        }
+        String secondary = account.uid() == null ? "Local session" : "UID " + account.uid();
         drawText(trim(secondary, textW, .54f, false), textX, top + 25f, MUTED, .54f, false);
 
         chevron(chevronX, top + ACCOUNT_ROW_H * .5f, 3.4f, 1.3f, openAmount,

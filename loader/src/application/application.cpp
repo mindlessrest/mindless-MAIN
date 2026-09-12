@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -155,6 +156,16 @@ static LocalProfilePayload fetch_local_profile(const std::string& api,
     nlohmann::json local = nlohmann::json::object();
     std::string username = profile_text(data, "username", 32);
     local["username"] = username;
+    if (data.contains("uid") && data["uid"].is_number_integer())
+    {
+        auto uid = data["uid"].get<std::int64_t>();
+        if (uid > 0) local["uid"] = std::to_string(uid);
+    }
+    else
+    {
+        std::string uid = profile_text(data, "uid", 20, true);
+        if (!uid.empty()) local["uid"] = uid;
+    }
 
     std::string discordId;
     std::string avatarHash;

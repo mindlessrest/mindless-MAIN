@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.jar.Attributes;
 
 public class Renamer implements Transform {
+    private static final String NO_MAPPING = "\u0000";
     private static final Set<String> TEXT_EXTENSIONS = Set.of(
             ".json", ".info", ".cfg", ".conf", ".properties", ".xml", ".txt", ".yml", ".yaml");
     private static final Gson JSON = new GsonBuilder().setPrettyPrinting().create();
@@ -61,7 +62,8 @@ public class Renamer implements Transform {
         if (cfg.renameMethods) buildMethodMappings(ctx, mixinClasses, reflectiveNames, methodMap);
 
         Remapper remapper = createRemapper(ctx);
-        remapStringConstants(ctx, classMap);
+        List<ClassNameReplacement> replacements = classNameReplacements(classMap);
+        remapStringConstants(ctx, replacements);
         Map<String, ClassNode> remapped = new LinkedHashMap<>();
         for (ClassNode original : ctx.classes().values()) {
             ClassNode renamed = new ClassNode();
@@ -72,8 +74,8 @@ public class Renamer implements Transform {
         ctx.classes().putAll(remapped);
 
         rewriteMixinConfigs(ctx, classMap);
-        rewriteResources(ctx, classMap);
-        rewriteManifest(ctx, classMap);
+        rewriteResources(ctx, classMap, replacements);
+        rewriteManifest(ctx, replacements);
 
         System.out.println("  [renamer] " + classMap.size() + " classes, "
                 + fieldMap.size() + " fields, " + methodMap.size() + " methods renamed");
@@ -128,6 +130,7 @@ public class Renamer implements Transform {
                 "main", "<init>", "<clinit>", "values", "valueOf", "readResolve", "writeReplace"));
         Map<String, List<MethodNode>> methodsBySignature = new LinkedHashMap<>();
         Map<MethodNode, ClassNode> owners = new HashMap<>();
+        Map<String, List<String>> hierarchyCache = new HashMap<>();
         for (ClassNode owner : ctx.classes().values()) {
             for (MethodNode method : owner.methods) {
                 methodsBySignature.computeIfAbsent(method.name + method.desc, ignored -> new ArrayList<>()).add(method);
@@ -147,7 +150,8 @@ public class Renamer implements Transform {
                     ClassNode currentOwner = owners.get(current);
                     for (MethodNode other : candidates) {
                         if (!family.contains(other)
-                                && isRelated(ctx, currentOwner.name, owners.get(other).name)) queue.add(other);
+                                && isRelated(ctx, currentOwner.name, owners.get(other).name,
+                                hierarchyCache)) queue.add(other);
                     }
                 }
                 remaining.removeAll(family);
@@ -180,28 +184,39 @@ public class Renamer implements Transform {
         return (visible != null && !visible.isEmpty()) || (invisible != null && !invisible.isEmpty());
     }
 
-    private boolean isRelated(ObfContext ctx, String first, String second) {
-        return first.equals(second) || isAncestor(ctx, first, second) || isAncestor(ctx, second, first);
+    private boolean isRelated(ObfContext ctx, String first, String second,
+                              Map<String, List<String>> hierarchyCache) {
+        return first.equals(second) || hierarchy(ctx, second, hierarchyCache).contains(first)
+                || hierarchy(ctx, first, hierarchyCache).contains(second);
     }
 
-    private boolean isAncestor(ObfContext ctx, String ancestor, String child) {
+    private List<String> hierarchy(ObfContext ctx, String child,
+                                   Map<String, List<String>> hierarchyCache) {
+        List<String> cached = hierarchyCache.get(child);
+        if (cached != null) return cached;
         Queue<String> queue = new ArrayDeque<>();
-        Set<String> visited = new HashSet<>();
+        Set<String> visited = new LinkedHashSet<>();
         queue.add(child);
         while (!queue.isEmpty()) {
             String current = queue.remove();
             if (!visited.add(current)) continue;
-            if (ancestor.equals(current)) return true;
             ClassNode node = ctx.classes().get(current);
             if (node == null) continue;
             if (node.superName != null) queue.add(node.superName);
             if (node.interfaces != null) queue.addAll(node.interfaces);
         }
-        return false;
+        List<String> result = List.copyOf(visited);
+        hierarchyCache.put(child, result);
+        return result;
     }
 
     private Remapper createRemapper(ObfContext ctx) {
         Map<String, String> classMap = ctx.classMapping();
+        Map<String, String> reverseClassMap = new HashMap<>(classMap.size() * 2);
+        classMap.forEach((original, mapped) -> reverseClassMap.put(mapped, original));
+        Map<String, List<String>> hierarchyCache = new HashMap<>();
+        Map<String, String> fieldLookupCache = new HashMap<>();
+        Map<String, String> methodLookupCache = new HashMap<>();
         return new Remapper() {
             @Override
             public String map(String internalName) {
@@ -210,66 +225,64 @@ public class Renamer implements Transform {
 
             @Override
             public String mapFieldName(String owner, String name, String descriptor) {
-                String mapped = findFieldMapping(ctx, owner, name);
+                String mapped = findFieldMapping(ctx, reverseClassMap, hierarchyCache,
+                        fieldLookupCache, owner, name);
                 return mapped == null ? name : mapped;
             }
 
             @Override
             public String mapMethodName(String owner, String name, String descriptor) {
                 if (name.startsWith("<")) return name;
-                String mapped = findMethodMapping(ctx, owner, name, descriptor);
+                String mapped = findMethodMapping(ctx, reverseClassMap, hierarchyCache,
+                        methodLookupCache, owner, name, descriptor);
                 return mapped == null ? name : mapped;
             }
         };
     }
 
-    private String findFieldMapping(ObfContext ctx, String owner, String name) {
-        Queue<String> queue = new ArrayDeque<>();
-        Set<String> visited = new HashSet<>();
-        queue.add(unmapClass(ctx, owner));
-        while (!queue.isEmpty()) {
-            String current = queue.remove();
-            if (!visited.add(current)) continue;
+    private String findFieldMapping(ObfContext ctx, Map<String, String> reverseClassMap,
+                                    Map<String, List<String>> hierarchyCache,
+                                    Map<String, String> lookupCache, String owner, String name) {
+        String originalOwner = reverseClassMap.getOrDefault(owner, owner);
+        String key = originalOwner + '.' + name;
+        String cached = lookupCache.get(key);
+        if (cached != null) return NO_MAPPING.equals(cached) ? null : cached;
+        for (String current : hierarchy(ctx, originalOwner, hierarchyCache)) {
             String mapped = ctx.fieldMapping().get(current + "." + name);
-            if (mapped != null) return mapped;
-            ClassNode node = ctx.classes().get(current);
-            if (node == null) continue;
-            if (node.superName != null) queue.add(node.superName);
-            if (node.interfaces != null) queue.addAll(node.interfaces);
+            if (mapped != null) {
+                lookupCache.put(key, mapped);
+                return mapped;
+            }
         }
+        lookupCache.put(key, NO_MAPPING);
         return null;
     }
 
-    private String findMethodMapping(ObfContext ctx, String owner, String name, String descriptor) {
-        Queue<String> queue = new ArrayDeque<>();
-        Set<String> visited = new HashSet<>();
-        queue.add(unmapClass(ctx, owner));
-        while (!queue.isEmpty()) {
-            String current = queue.remove();
-            if (!visited.add(current)) continue;
+    private String findMethodMapping(ObfContext ctx, Map<String, String> reverseClassMap,
+                                     Map<String, List<String>> hierarchyCache,
+                                     Map<String, String> lookupCache, String owner, String name,
+                                     String descriptor) {
+        String originalOwner = reverseClassMap.getOrDefault(owner, owner);
+        String key = originalOwner + '.' + name + descriptor;
+        String cached = lookupCache.get(key);
+        if (cached != null) return NO_MAPPING.equals(cached) ? null : cached;
+        for (String current : hierarchy(ctx, originalOwner, hierarchyCache)) {
             String mapped = ctx.methodMapping().get(current + "." + name + descriptor);
-            if (mapped != null) return mapped;
-            ClassNode node = ctx.classes().get(current);
-            if (node == null) continue;
-            if (node.superName != null) queue.add(node.superName);
-            if (node.interfaces != null) queue.addAll(node.interfaces);
+            if (mapped != null) {
+                lookupCache.put(key, mapped);
+                return mapped;
+            }
         }
+        lookupCache.put(key, NO_MAPPING);
         return null;
     }
 
-    private String unmapClass(ObfContext ctx, String name) {
-        for (Map.Entry<String, String> entry : ctx.classMapping().entrySet()) {
-            if (entry.getValue().equals(name)) return entry.getKey();
-        }
-        return name;
-    }
-
-    private void remapStringConstants(ObfContext ctx, Map<String, String> classMap) {
+    private void remapStringConstants(ObfContext ctx, List<ClassNameReplacement> replacements) {
         for (ClassNode owner : ctx.classes().values()) {
             for (MethodNode method : owner.methods) {
                 for (AbstractInsnNode instruction : method.instructions) {
                     if (instruction instanceof LdcInsnNode ldc && ldc.cst instanceof String value) {
-                        ldc.cst = replaceClassNames(value, classMap);
+                        ldc.cst = replaceClassNames(value, replacements);
                     }
                 }
             }
@@ -331,7 +344,8 @@ public class Renamer implements Transform {
         }
     }
 
-    private void rewriteResources(ObfContext ctx, Map<String, String> classMap) {
+    private void rewriteResources(ObfContext ctx, Map<String, String> classMap,
+                                  List<ClassNameReplacement> replacements) {
         Map<String, byte[]> rewritten = new LinkedHashMap<>();
         for (Map.Entry<String, byte[]> resource : ctx.resources().entrySet()) {
             String name = resource.getKey();
@@ -339,7 +353,7 @@ public class Renamer implements Transform {
             byte[] bytes = resource.getValue();
             if (isTextResource(name)) {
                 String text = new String(bytes, StandardCharsets.UTF_8);
-                bytes = replaceClassNames(text, classMap).getBytes(StandardCharsets.UTF_8);
+                bytes = replaceClassNames(text, replacements).getBytes(StandardCharsets.UTF_8);
             }
             if (name.startsWith("META-INF/services/")) {
                 String service = name.substring("META-INF/services/".length()).replace('.', '/');
@@ -352,30 +366,47 @@ public class Renamer implements Transform {
         ctx.resources().putAll(rewritten);
     }
 
-    private void rewriteManifest(ObfContext ctx, Map<String, String> classMap) {
+    private void rewriteManifest(ObfContext ctx, List<ClassNameReplacement> replacements) {
         if (ctx.manifest() == null) return;
-        rewriteAttributes(ctx.manifest().getMainAttributes(), classMap);
-        for (Attributes attributes : ctx.manifest().getEntries().values()) rewriteAttributes(attributes, classMap);
+        rewriteAttributes(ctx.manifest().getMainAttributes(), replacements);
+        for (Attributes attributes : ctx.manifest().getEntries().values()) rewriteAttributes(attributes, replacements);
         ctx.manifest().getMainAttributes().remove(new Attributes.Name("Signature-Version"));
     }
 
-    private void rewriteAttributes(Attributes attributes, Map<String, String> classMap) {
+    private void rewriteAttributes(Attributes attributes, List<ClassNameReplacement> replacements) {
         for (Map.Entry<Object, Object> attribute : attributes.entrySet()) {
             if (attribute.getValue() instanceof String value) {
-                attribute.setValue(replaceClassNames(value, classMap));
+                attribute.setValue(replaceClassNames(value, replacements));
             }
         }
     }
 
-    private String replaceClassNames(String value, Map<String, String> classMap) {
+    private List<ClassNameReplacement> classNameReplacements(Map<String, String> classMap) {
+        List<ClassNameReplacement> replacements = new ArrayList<>(classMap.size());
+        for (Map.Entry<String, String> mapping : classMap.entrySet()) {
+            replacements.add(new ClassNameReplacement(mapping.getKey(), mapping.getValue(),
+                    mapping.getKey().replace('/', '.'), mapping.getValue().replace('/', '.')));
+        }
+        replacements.sort(Comparator.comparingInt((ClassNameReplacement value) -> value.internalName.length())
+                .reversed());
+        return replacements;
+    }
+
+    private String replaceClassNames(String value, List<ClassNameReplacement> replacements) {
         String result = value;
-        List<Map.Entry<String, String>> mappings = new ArrayList<>(classMap.entrySet());
-        mappings.sort((a, b) -> Integer.compare(b.getKey().length(), a.getKey().length()));
-        for (Map.Entry<String, String> mapping : mappings) {
-            result = result.replace(mapping.getKey(), mapping.getValue());
-            result = result.replace(mapping.getKey().replace('/', '.'), mapping.getValue().replace('/', '.'));
+        for (ClassNameReplacement replacement : replacements) {
+            if (result.contains(replacement.internalName)) {
+                result = result.replace(replacement.internalName, replacement.mappedInternalName);
+            }
+            if (result.contains(replacement.binaryName)) {
+                result = result.replace(replacement.binaryName, replacement.mappedBinaryName);
+            }
         }
         return result;
+    }
+
+    private record ClassNameReplacement(String internalName, String mappedInternalName,
+                                        String binaryName, String mappedBinaryName) {
     }
 
     private Set<String> findMixinClasses(ObfContext ctx) {
