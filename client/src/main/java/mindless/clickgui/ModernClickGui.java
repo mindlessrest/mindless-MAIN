@@ -303,6 +303,31 @@ private float aboutOpenProgress = 0f;
         guiClosing = false;
         guiOpenProgress = 0f;
         clampScrolls();
+        appliedGuiScale = mindless.module.impl.theme.ThemeManager.getGuiScale();
+    }
+
+    private double appliedGuiScale = Double.NaN;
+    private float sliderPhysicalX1;
+    private float sliderPhysicalX2;
+
+    /**
+     * Applies the configured GUI scale the frame it changes, from any source.
+     *
+     * It only ever applied on releasing a drag of the scale slider, and a typed value, a profile
+     * load or a drag released outside the menu never applied until the menu was reopened. The
+     * layout rebuild re-runs initGui, which restarts the open animation, so the progress and the
+     * closing state are carried across it rather than letting the menu flash in again every frame
+     * the slider moves.
+     */
+    private void applyLiveGuiScale() {
+        double configured = mindless.module.impl.theme.ThemeManager.getGuiScale();
+        if (Double.compare(configured, appliedGuiScale) == 0) return;
+        float progress = guiOpenProgress;
+        boolean closing = guiClosing;
+        refreshLayoutForConfiguredScale();
+        guiOpenProgress = progress;
+        guiClosing = closing;
+        appliedGuiScale = configured;
     }
 
     @Override
@@ -332,6 +357,7 @@ private float aboutOpenProgress = 0f;
         RenderUtils.syncGlStateFromDriver();
         updateAnimationClock();
         updateThemePalette();
+        applyLiveGuiScale();
         double renderScale = getActiveRenderScale();
         int mx = (int) Math.floor(mouseX / renderScale);
         int my = (int) Math.floor(mouseY / renderScale);
@@ -996,16 +1022,14 @@ private boolean clickThemePanel(int mx, int my, int mouseButton) {
         if (scriptManager) rowColor = mixColor(rowColor, withAlpha(ACCENT, 62), .42f);
         rounded(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f, rowColor);
         if (scriptManager) outline(x1, y, x2, y + MODULE_ROW_HEIGHT, 5f, withAlpha(ACCENT, 68));
-        if (sp > .01f) {
-            float barTop = y + 5 + (1f - sp) * 4f;
-            float barBot = y + MODULE_ROW_HEIGHT - 5 - (1f - sp) * 4f;
-            roundedCorners(x1, barTop, x1 + 2.5f, barBot,
-                    0f, 1.25f, 1.25f, 0f, withAlpha(ACCENT, (int) (255 * sp)));
-        }
         boolean profile = module instanceof ProfileModule;
         boolean enabled = module.isEnabled() && !manager;
         float actionX = x2 - 88;
-        float availableTextWidth = Math.max(42f, x2 - 70f - x1);
+        // Text stops short of whatever sits on the right of this row. It used to stop at a fixed
+        // seventy pixels from the edge, which cleared the bind column but not the Load / Active /
+        // Create label, so a profile's description ran straight underneath it.
+        float textRight = profile || manager ? actionX - 14f : x2 - 58f;
+        float availableTextWidth = Math.max(42f, textRight - (x1 + 12f));
         drawText(trim(module.getName(), availableTextWidth, .73f, true),
                 x1 + 12, y + 7f, enabled ? TEXT : mixColor(MUTED, TEXT, Math.max(hp * .5f, sp)), .73f, enabled || sp > .5f);
         drawSmallText(trimSmall(moduleDescription(module), availableTextWidth),
@@ -1991,6 +2015,12 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
             } else if (mx >= bx1 - 5) {
                 draggingSlider = slider;
                 sliderRect.set(bx1, y, bx2, y + h);
+                // The scale slider rescales the layout it is drawn in while it is being dragged, so
+                // its track is pinned in screen pixels for the drag. Mapped in layout units, the
+                // track would move under the cursor with every step and the value would chase it.
+                float rs = (float) getActiveRenderScale();
+                sliderPhysicalX1 = bx1 * rs;
+                sliderPhysicalX2 = bx2 * rs;
                 setSliderFromMouse(slider, mx, bx1, bx2);
             }
         } else if (setting instanceof KeySetting) {
@@ -2061,7 +2091,7 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         draggingGui = false;
         draggingMascot = false;
         if (refreshScale) {
-            refreshLayoutForConfiguredScale();
+            applyLiveGuiScale();
         }
     }
 
@@ -2202,7 +2232,14 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
             mascotDragOffsetY = mascotDragStartOffsetY + (my - mascotDragStartMouseY);
         }
         if (draggingScrollbar != 0) updateScrollbarDrag(my);
-        if (draggingSlider != null) setSliderFromMouse(draggingSlider, mx, sliderRect.x1, sliderRect.x2);
+        if (draggingSlider != null) {
+            if (mindless.module.impl.theme.ThemeManager.isGuiScaleSetting(draggingSlider)) {
+                setSliderFromMouse(draggingSlider, mx * (float) getActiveRenderScale(),
+                        sliderPhysicalX1, sliderPhysicalX2);
+            } else {
+                setSliderFromMouse(draggingSlider, mx, sliderRect.x1, sliderRect.x2);
+            }
+        }
         if (openColor != null && colorDrag != 0) updateColor(mx, my);
     }
 
