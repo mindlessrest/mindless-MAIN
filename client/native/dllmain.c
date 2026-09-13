@@ -71,7 +71,7 @@ static void send_failure(DWORD error_code) {
 #define MINDLESS_LUNAR_PAYLOAD_RESOURCE_ID 422
 
 static int verify_payload_hash(const unsigned char *data, DWORD size,
-        int resource_id) {
+        int resource_id, char *actual_prefix, size_t actual_prefix_size) {
     const char *expected = resource_id == MINDLESS_FORGE_PAYLOAD_RESOURCE_ID
             ? MINDLESS_FORGE_PAYLOAD_SHA256 : MINDLESS_LUNAR_PAYLOAD_SHA256;
     HCRYPTPROV provider = 0;
@@ -93,6 +93,9 @@ static int verify_payload_hash(const unsigned char *data, DWORD size,
     }
     actual[64] = '\0';
     valid = _stricmp(actual, expected) == 0;
+    if (actual_prefix != NULL && actual_prefix_size > 0) {
+        strncpy_s(actual_prefix, actual_prefix_size, actual, _TRUNCATE);
+    }
 
 cleanup:
     if (hash != 0) CryptDestroyHash(hash);
@@ -205,6 +208,17 @@ jint mindless_initialize_jvmti(JavaVM *vm) {
     return JNI_OK;
 }
 
+/* Names a payload failure: the pending Java exception's text when there is one, the context
+   when there is not. Every branch below used to return a bare zero, surfacing as error 7 with
+   the last stage that happened to succeed. */
+static void report_payload_stage(JNIEnv *env, const char *context) {
+    if (env != NULL && (*env)->ExceptionCheck(env)) {
+        report_pending_exception(env, context, 0.59f);
+    } else {
+        send_progress(0.59f, context);
+    }
+}
+
 static int load_payload_from_memory(JNIEnv *env, jobject loader,
         int resource_id) {
     HRSRC resource;
@@ -232,10 +246,20 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
     jclass url_cls, ucl_cls;
     jmethodID url_init, add_url;
     jstring proto, host, path;
+    char stage[sizeof(((MindlessAuthSharedData *)0)->progress_status)];
+    char actual_hash[17];
+    const char *expected_hash = resource_id == MINDLESS_FORGE_PAYLOAD_RESOURCE_ID
+            ? MINDLESS_FORGE_PAYLOAD_SHA256 : MINDLESS_LUNAR_PAYLOAD_SHA256;
+    int entries_read = 0;
+    int entries_skipped = 0;
+    int read_failed = 0;
 
     resource = FindResourceW(g_module,
             MAKEINTRESOURCEW(resource_id), MAKEINTRESOURCEW(10));
     if (resource == NULL) {
+        _snprintf_s(stage, sizeof(stage), _TRUNCATE,
+                "Payload resource %d missing (error %lu)", resource_id, GetLastError());
+        send_progress(0.59f, stage);
         vape_log(L"embedded payload JAR resource %d is missing", resource_id);
         return 0;
     }
@@ -244,10 +268,21 @@ static int load_payload_from_memory(JNIEnv *env, jobject loader,
     jar_data = loaded_resource == NULL ? NULL
             : (const unsigned char *)LockResource(loaded_resource);
     if (jar_data == NULL || jar_size < 4 || jar_data[0] != 'P' || jar_data[1] != 'K') {
+        _snprintf_s(stage, sizeof(stage), _TRUNCATE,
+                "Payload resource %d is not a jar (%lu bytes)", resource_id, (unsigned long)jar_size);
+        send_progress(0.59f, stage);
         vape_log(L"embedded payload JAR resource is invalid");
         return 0;
     }
-    if (!verify_payload_hash(jar_data, jar_size, resource_id)) {
+    actual_hash[0] = '\0';
+    if (!verify_payload_hash(jar_data, jar_size, resource_id, actual_hash, sizeof(actual_hash))) {
+        /* Both prefixes, so a hash baked in from a different jar reads differently from bytes
+           that were damaged on the way into the resource. */
+        _snprintf_s(stage, sizeof(stage), _TRUNCATE,
+                "Payload %d failed hash check (%lu bytes, got %s, built for %.16s)",
+                resource_id, (unsigned long)jar_size,
+                actual_hash[0] != '\0' ? actual_hash : "no hash", expected_hash);
+        send_progress(0.59f, stage);
         vape_log(L"embedded payload JAR failed integrity validation");
         return 0;
     }
@@ -257,6 +292,7 @@ bais_cls = (*env)->FindClass(env, "java/io/ByteArrayInputStream");
     baos_cls = (*env)->FindClass(env, "java/io/ByteArrayOutputStream");
     map_cls  = (*env)->FindClass(env, "java/util/HashMap");
     if (!bais_cls || !zis_cls || !ze_cls || !baos_cls || !map_cls) {
+        report_payload_stage(env, "Payload ZIP classes unavailable");
         vape_log_pending_exception(env, L"resolve ZIP/IO classes for memory payload");
         return 0;
     }
@@ -276,7 +312,13 @@ bais_cls = (*env)->FindClass(env, "java/io/ByteArrayInputStream");
     map_put         = (*env)->GetMethodID(env, map_cls, "put",
             "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
 jar_bytes = (*env)->NewByteArray(env, (jsize)jar_size);
-    if (jar_bytes == NULL) { vape_log(L"OOM creating JAR byte array"); return 0; }
+    if (jar_bytes == NULL) {
+        _snprintf_s(stage, sizeof(stage), _TRUNCATE,
+                "Payload buffer allocation failed (%lu bytes)", (unsigned long)jar_size);
+        report_payload_stage(env, stage);
+        vape_log(L"OOM creating JAR byte array");
+        return 0;
+    }
     (*env)->SetByteArrayRegion(env, jar_bytes, 0, (jsize)jar_size,
             (const jbyte *)jar_data);
 bais = (*env)->NewObject(env, bais_cls, bais_init, jar_bytes);
@@ -284,6 +326,7 @@ bais = (*env)->NewObject(env, bais_cls, bais_init, jar_bytes);
     entries_map = (*env)->NewObject(env, map_cls, map_init);
     read_buf = (*env)->NewByteArray(env, 8192);
     if (!bais || !zis || !entries_map || !read_buf) {
+        report_payload_stage(env, "Payload ZIP reader setup failed");
         vape_log(L"OOM setting up ZIP reader");
         return 0;
     }
@@ -294,7 +337,12 @@ while ((entry = (*env)->CallObjectMethod(env, zis, zis_next)) != NULL) {
         const char *name_chars;
         jint n;
         if ((*env)->ExceptionCheck(env)) {
+            /* Kept as a break, not a return: whatever was read before the fault may still hold
+               the three helper classes. The reason is recorded now so the helper check below
+               does not overwrite it with a vaguer one. */
+            report_payload_stage(env, "Payload ZIP read stopped");
             vape_log_pending_exception(env, L"ZipInputStream.getNextEntry");
+            read_failed = 1;
             break;
         }
         if ((*env)->CallBooleanMethod(env, entry, ze_is_dir)) {
@@ -311,6 +359,7 @@ baos_obj = (*env)->NewObject(env, baos_cls, baos_init);
         }
         if ((*env)->ExceptionCheck(env)) {
             (*env)->ExceptionClear(env);
+            entries_skipped++;
             (*env)->DeleteLocalRef(env, baos_obj);
             (*env)->DeleteLocalRef(env, name_str);
             (*env)->DeleteLocalRef(env, entry);
@@ -338,10 +387,18 @@ name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
         (*env)->DeleteLocalRef(env, name_str);
         (*env)->DeleteLocalRef(env, entry);
         (*env)->CallVoidMethod(env, zis, zis_close_entry);
+        entries_read++;
     }
     (*env)->CallVoidMethod(env, zis, zis_close);
 
     if (!store_bytes_ref || !conn_bytes_ref || !handler_bytes_ref) {
+        if (!read_failed) {
+            _snprintf_s(stage, sizeof(stage), _TRUNCATE,
+                    "Payload helper classes missing (%d read, %d skipped, store=%d conn=%d handler=%d)",
+                    entries_read, entries_skipped, store_bytes_ref != NULL,
+                    conn_bytes_ref != NULL, handler_bytes_ref != NULL);
+            send_progress(0.59f, stage);
+        }
         vape_log(L"memory classloader helper classes not found in payload JAR");
         if (store_bytes_ref) (*env)->DeleteGlobalRef(env, store_bytes_ref);
         if (conn_bytes_ref)  (*env)->DeleteGlobalRef(env, conn_bytes_ref);
@@ -361,6 +418,7 @@ name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
                     loader, buf, len);
             (*env)->ReleaseByteArrayElements(env, store_bytes_ref, buf, JNI_ABORT);
             if (!store_cls || (*env)->ExceptionCheck(env)) {
+                report_payload_stage(env, "DefineClass MemoryResourceStore");
                 vape_log_pending_exception(env, L"DefineClass MemoryResourceStore");
                 (*env)->DeleteGlobalRef(env, store_bytes_ref);
                 (*env)->DeleteGlobalRef(env, conn_bytes_ref);
@@ -379,6 +437,7 @@ name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
                     loader, buf, len);
             (*env)->ReleaseByteArrayElements(env, conn_bytes_ref, buf, JNI_ABORT);
             if (!conn_cls || (*env)->ExceptionCheck(env)) {
+                report_payload_stage(env, "DefineClass MemoryURLConnection");
                 vape_log_pending_exception(env, L"DefineClass MemoryURLConnection");
                 (*env)->DeleteGlobalRef(env, conn_bytes_ref);
                 (*env)->DeleteGlobalRef(env, handler_bytes_ref);
@@ -396,6 +455,7 @@ name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
                     loader, buf, len);
             (*env)->ReleaseByteArrayElements(env, handler_bytes_ref, buf, JNI_ABORT);
             if (!handler_cls || (*env)->ExceptionCheck(env)) {
+                report_payload_stage(env, "DefineClass MemoryURLStreamHandler");
                 vape_log_pending_exception(env, L"DefineClass MemoryURLStreamHandler");
                 (*env)->DeleteGlobalRef(env, handler_bytes_ref);
                 if (loader_class != NULL) (*env)->DeleteLocalRef(env, loader_class);
@@ -408,17 +468,20 @@ name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
 store_initialize = (*env)->GetStaticMethodID(env, store_cls, "initialize",
             "(Ljava/util/Map;)V");
     if (!store_initialize) {
+        report_payload_stage(env, "MemoryResourceStore.initialize unavailable");
         vape_log_pending_exception(env, L"resolve MemoryResourceStore.initialize");
         return 0;
     }
     (*env)->CallStaticVoidMethod(env, store_cls, store_initialize, entries_map);
     if ((*env)->ExceptionCheck(env)) {
+        report_payload_stage(env, "MemoryResourceStore.initialize");
         vape_log_pending_exception(env, L"MemoryResourceStore.initialize");
         return 0;
     }
 handler_ctor = (*env)->GetMethodID(env, handler_cls, "<init>", "()V");
     handler_obj = (*env)->NewObject(env, handler_cls, handler_ctor);
     if (!handler_obj || (*env)->ExceptionCheck(env)) {
+        report_payload_stage(env, "Memory URL handler");
         vape_log_pending_exception(env, L"create MemoryURLStreamHandler instance");
         return 0;
     }
@@ -433,17 +496,20 @@ handler_ctor = (*env)->GetMethodID(env, handler_cls, "<init>", "()V");
     url_obj = (*env)->NewObject(env, url_cls, url_init,
             proto, host, (jint)-1, path, handler_obj);
     if (!url_obj || (*env)->ExceptionCheck(env)) {
+        report_payload_stage(env, "Memory URL");
         vape_log_pending_exception(env, L"create memory:// URL");
         return 0;
     }
 ucl_cls = (*env)->FindClass(env, "java/net/URLClassLoader");
     add_url = (*env)->GetMethodID(env, ucl_cls, "addURL", "(Ljava/net/URL;)V");
     if (!add_url) {
+        report_payload_stage(env, "URLClassLoader.addURL unavailable");
         vape_log_pending_exception(env, L"resolve URLClassLoader.addURL");
         return 0;
     }
     (*env)->CallVoidMethod(env, loader, add_url, url_obj);
     if ((*env)->ExceptionCheck(env)) {
+        report_payload_stage(env, "URLClassLoader.addURL");
         vape_log_pending_exception(env, L"URLClassLoader.addURL(memory)");
         return 0;
     }
