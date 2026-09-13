@@ -668,38 +668,64 @@ private float aboutOpenProgress = 0f;
     }
 
     private static final float ACCOUNT_ROW_H = 40f;
-    private static final float ACCOUNT_DETAIL_H = 38f;
+    private static final float ACCOUNT_DRAWER_ROW_H = 15f;
+    private static final float ACCOUNT_DRAWER_PAD = 4f;
+    private static final long ACCOUNT_COPIED_MS = 1200L;
     private static final int ACCOUNT_ONLINE = argb(255, 67, 181, 129);
     private boolean accountExpanded;
     private final Object accountHoverKey = new Object();
     private final Object accountExpandKey = new Object();
+    private int accountCopiedRow = -1;
+    private long accountCopiedAt;
 
-    /** The whole block, collapsed or open, so hit testing and drawing cannot drift apart. */
+    /** The account row itself. It stays put; the details open above it. */
     private float[] accountCardBounds() {
-        float open = accountExpanded ? ACCOUNT_DETAIL_H : 0f;
         float bottom = baseY + panelH - 8f;
-        return new float[]{baseX + 7f, bottom - ACCOUNT_ROW_H - open, baseX + sideW - 7f, bottom};
+        return new float[]{baseX + 7f, bottom - ACCOUNT_ROW_H, baseX + sideW - 7f, bottom};
+    }
+
+    private float[] accountDrawerBounds() {
+        float[] row = accountCardBounds();
+        float bottom = row[1] - 6f;
+        float height = ACCOUNT_DRAWER_ROW_H * 4 + ACCOUNT_DRAWER_PAD * 2f;
+        return new float[]{row[0], bottom - height, row[2], bottom};
+    }
+
+    /** Label, shown value and the value a click copies (null when nothing should be copied). */
+    private String[][] accountDetails(MindlessAccount.Profile account) {
+        String name = account.username() == null ? "guest" : account.username();
+        String uid = account.uid();
+        String discordShown = account.discordDisplayName() != null ? account.discordDisplayName()
+                : account.discordUsername() != null ? account.discordUsername() : "Not linked";
+        boolean reveal = Gui.showDiscordId != null && Gui.showDiscordId.isToggled();
+        String id = account.discordId();
+        return new String[][]{
+                {"Username", name, name},
+                {"UID", uid != null ? uid : "\u2014", uid},
+                {"Discord", discordShown, account.discordUsername()},
+                {"Discord ID", id == null ? "\u2014" : reveal ? id : "Hidden", reveal ? id : null}
+        };
     }
 
     /**
-     * Who is signed in, sitting on the sidebar itself rather than in a card of its own.
+     * Who is signed in, sitting on the sidebar itself, with its details a click away.
      *
-     * No fill and no edge at rest; hovering lights it the same way a category row lights, so it
-     * reads as the last row of the sidebar, set off by the sidebar's own section divider. The UID
-     * line is always there.
+     * The row never moves. It used to grow upward into a highlighted block that pushed the name
+     * away from where it was clicked, with the details as faint lines inside the same fill. The
+     * details are a small panel above the row now, each line a label and a value, and clicking a
+     * line copies it -- the UID and Discord name are the things people are asked for.
      */
     private void drawAccountCard(int mx, int my, float categoriesBottom) {
         MindlessAccount.Profile account = MindlessAccount.profile();
         float[] bounds = accountCardBounds();
         float left = bounds[0], top = bounds[1], right = bounds[2], bottom = bounds[3];
-        float rowBottom = top + ACCOUNT_ROW_H;
 
         boolean hover = inside(mx, my, left, top, right, bottom);
         float hoverAmount = animate(hoverAnimation, accountHoverKey, hover ? 1f : 0f, 15f);
-        float openAmount = animate(hoverAnimation, accountExpandKey, accountExpanded ? 1f : 0f, 14f);
-        float lift = Math.max(hoverAmount, openAmount);
+        float openAmount = animate(hoverAnimation, accountExpandKey, accountExpanded ? 1f : 0f, 16f);
+        float lift = Math.max(hoverAmount, openAmount * .6f);
         // The same divider the sidebar draws between its other sections. Held clear of the last
-        // category so an opened drawer on a short panel cannot rule a line through it.
+        // category on a short panel.
         float dividerY = Math.max(top - 5f, categoriesBottom + 2f);
         line(baseX + 10, dividerY, baseX + sideW - 10, dividerY, DIVIDER);
         if (lift > .01f) {
@@ -739,29 +765,69 @@ private float aboutOpenProgress = 0f;
                 mixColor(TEXT, 0xFFFFFFFF, lift), .76f, true);
         // Always shown. The value comes from profile.json, which only a loader built after the
         // backend started returning uid writes; until that loader has run once it reads as a dash.
-        drawTextVCentered(trim("UID " + (uid != null ? uid : "—"), Math.max(10f, right - 6f - textX), .6f, false),
+        drawTextVCentered(trim("UID " + (uid != null ? uid : "\u2014"), Math.max(10f, right - 6f - textX), .6f, false),
                 textX, middle + .5f, middle + 10.5f, MUTED, .6f, false);
-        chevron(chevronX, nameCenter, 2.8f, 1.2f, openAmount, mixColor(DIM, TEXT, lift));
+        // Up when closed, down when open: it points at where the details are.
+        chevron(chevronX, nameCenter, 2.8f, 1.2f, openAmount * 2f - 1f, mixColor(DIM, TEXT, lift));
 
         if (openAmount <= .01f) return;
-        // Clipped to the part of the drawer that has actually opened, so the rows slide out from
-        // under the row above instead of appearing all at once at the end of the animation.
-        float revealed = ACCOUNT_DETAIL_H * openAmount;
-        RenderUtils.scissorPushGui(left, rowBottom, right - left, revealed);
-        accountDetail("Discord", account.discordUsername() == null ? "Not linked" : account.discordUsername(),
-                left, right, rowBottom + 4f);
-        boolean reveal = Gui.showDiscordId != null && Gui.showDiscordId.isToggled();
-        accountDetail("ID", account.discordId() == null ? "—" : reveal ? account.discordId() : "Hidden",
-                left, right, rowBottom + 18f);
-        RenderUtils.scissorPop();
+        drawAccountDrawer(account, mx, my, openAmount);
     }
 
-    /** A label on the left and its value right-aligned, so a narrow sidebar never overlaps them. */
-    private void accountDetail(String label, String value, float left, float right, float y) {
-        drawTextVCentered(label, left + 8f, y, y + 12f, DIM, .56f, false);
-        float labelEnd = left + 8f + textWidth(label, .56f, false) + 8f;
-        String shown = trim(value, Math.max(10f, right - 8f - labelEnd), .58f, false);
-        drawTextVCentered(shown, right - 8f - textWidth(shown, .58f, false), y, y + 12f, TEXT, .58f, false);
+    private void drawAccountDrawer(MindlessAccount.Profile account, int mx, int my, float open) {
+        float[] d = accountDrawerBounds();
+        float slide = (1f - open) * 6f;
+        float left = d[0], top = d[1] + slide, right = d[2], bottom = d[3] + slide;
+        int surface = mixColor(withAlpha(PANEL, 255), 0xFFFFFFFF, .045f);
+        rounded(left, top, right, bottom, 7f, fa(surface, open));
+        outline(left, top, right, bottom, 7f, fa(withAlpha(BORDER, 60), open));
+
+        String[][] rows = accountDetails(account);
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < rows.length; i++) {
+            float rowTop = top + ACCOUNT_DRAWER_PAD + i * ACCOUNT_DRAWER_ROW_H;
+            float rowBottom = rowTop + ACCOUNT_DRAWER_ROW_H;
+            boolean copyable = rows[i][2] != null && !rows[i][2].isEmpty();
+            boolean rowHover = copyable && open > .9f && inside(mx, my, left + 3f, rowTop, right - 3f, rowBottom);
+            if (rowHover) {
+                rounded(left + 3f, rowTop, right - 3f, rowBottom, 4f, fa(withAlpha(ACCENT, 34), open));
+            }
+            if (i > 0) {
+                line(left + 8f, rowTop, right - 8f, rowTop, fa(withAlpha(DIVIDER, 40), open));
+            }
+            drawTextVCentered(rows[i][0], left + 8f, rowTop, rowBottom, fa(DIM, open), .56f, false);
+            boolean copied = accountCopiedRow == i && now - accountCopiedAt < ACCOUNT_COPIED_MS;
+            String value = copied ? "Copied" : rows[i][1];
+            float labelEnd = left + 8f + textWidth(rows[i][0], .56f, false) + 8f;
+            String shown = trim(value, Math.max(10f, right - 8f - labelEnd), .58f, false);
+            int valueColor = copied ? ACCENT : rowHover ? 0xFFFFFFFF : TEXT;
+            drawTextVCentered(shown, right - 8f - textWidth(shown, .58f, false), rowTop, rowBottom,
+                    fa(valueColor, open), .58f, false);
+        }
+    }
+
+    /** Handles a press on the account row or its drawer. True when it consumed the press. */
+    private boolean clickAccount(int mx, int my) {
+        float[] row = accountCardBounds();
+        if (inside(mx, my, row[0], row[1], row[2], row[3])) {
+            accountExpanded = !accountExpanded;
+            return true;
+        }
+        if (!accountExpanded) return false;
+        float[] d = accountDrawerBounds();
+        if (inside(mx, my, d[0], d[1], d[2], d[3])) {
+            String[][] rows = accountDetails(MindlessAccount.profile());
+            int index = (int) ((my - d[1] - ACCOUNT_DRAWER_PAD) / ACCOUNT_DRAWER_ROW_H);
+            if (index >= 0 && index < rows.length && rows[index][2] != null && !rows[index][2].isEmpty()) {
+                setClipboardString(rows[index][2]);
+                accountCopiedRow = index;
+                accountCopiedAt = System.currentTimeMillis();
+            }
+            return true;
+        }
+        // A press anywhere else puts the drawer away, and still does whatever it was aimed at.
+        accountExpanded = false;
+        return false;
     }
 
     private void disc(float cx, float cy, float radius, int color) {
@@ -773,10 +839,10 @@ private float aboutOpenProgress = 0f;
      *
      * The rounded-rect shader takes screen coordinates directly, so rotating the modelview leaves
      * the rounding computed against the wrong rectangle; the arms are laid out in Java and drawn
-     * flat. Progress turns it from pointing right to pointing down as the drawer opens.
+     * flat. Progress is a quarter turn per unit: -1 points up, 0 right, 1 down.
      */
     private void chevron(float cx, float cy, float size, float thickness, float progress, int color) {
-        double angle = Math.toRadians(90.0 * Math.max(0f, Math.min(1f, progress)));
+        double angle = Math.toRadians(90.0 * Math.max(-1f, Math.min(1f, progress)));
         double cos = Math.cos(angle), sin = Math.sin(angle);
         // Arms at +-45 degrees from the chevron's own facing, meeting at the tip.
         float tipX = cx + (float) (cos * size * .45), tipY = cy + (float) (sin * size * .45);
@@ -1866,6 +1932,8 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
             return;
         }
 
+        // Before the category rows: the open drawer sits over the bottom of that list.
+        if (mouseButton == 0 && clickAccount(mx, my)) return;
         float cy = baseY + 55f;
         for (Module.category category : Module.category.values()) {
             if (isPinnedCategory(category)) continue;
@@ -1878,11 +1946,6 @@ private void drawEditable(float x, float y1, float y2, float available, float sc
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.scripts); return; }
         cy += CATEGORY_ROW_STEP;
         if (inside(mx, my, baseX + 7, cy, baseX + sideW - 7, cy + CATEGORY_ROW_HEIGHT)) { selectCategory(Module.category.theme); return; }
-        float[] card = accountCardBounds();
-        if (inside(mx, my, card[0], card[1], card[2], card[3])) {
-            accountExpanded = !accountExpanded;
-            return;
-        }
         if (clickThemePanel(mx, my, mouseButton)) return;
 
 
