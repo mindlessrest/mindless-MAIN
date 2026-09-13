@@ -211,6 +211,17 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
 
 
     public static void drawRoundOutline(float x, float y, float width, float height, float radius, float outlineThickness, Color color, Color outlineColor) {
+        drawRoundOutline(x, y, width, height, radius, outlineThickness, color, outlineColor, 2.0f);
+    }
+
+    /**
+     * Outline with an explicit edge falloff, in device pixels.
+     *
+     * The stroke is centred one device pixel outside the rect's edge and fades over the falloff on
+     * both sides. At the long-standing two pixels a stroke can never look thinner than about four,
+     * whatever thickness is asked for; a one-pixel falloff lets a hairline read as one.
+     */
+    public static void drawRoundOutline(float x, float y, float width, float height, float radius, float outlineThickness, Color color, Color outlineColor, float edgeSoftness) {
         mindless.utility.Diagnostics.gl("before rounded: outline");
         RenderUtils.resetColor();
         GlStateManager.enableBlend();
@@ -222,6 +233,7 @@ public static void drawLiquidGlass(float x, float y, float width, float height,
         ScaledResolution sr = ScaledResolutionCache.get();
         setupRoundedRectUniforms(x, y, width, height, radius, roundedOutlineShader);
         roundedOutlineShader.setUniformf("outlineThickness", outlineThickness * sr.getScaleFactor());
+        roundedOutlineShader.setUniformf("edgeSoftness", Math.max(0.25f, edgeSoftness));
         roundedOutlineShader.setUniformf("color", color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, color.getAlpha() / 255f);
         roundedOutlineShader.setUniformf("outlineColor", outlineColor.getRed() / 255f, outlineColor.getGreen() / 255f, outlineColor.getBlue() / 255f, outlineColor.getAlpha() / 255f);
 

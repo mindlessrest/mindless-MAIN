@@ -24,7 +24,11 @@ import java.awt.Color;
 public class CustomHotbar extends Module {
 
     private static final float BASE_BAR_HEIGHT = 22.0f;
-    private static final float MIN_OUTLINE_THICKNESS = 0.1f;
+    private static final float MIN_OUTLINE_THICKNESS = 0.05f;
+    /** Device pixels the hotbar's strokes fade over; see RoundedUtils.drawRoundOutline. */
+    private static final float OUTLINE_SOFTNESS = 1.0f;
+    /** Device pixels of clear space kept between a stroke's inner fade and the selection. */
+    private static final float SELECTION_GAP = 0.75f;
     private final ItemStack[] overlayStacks = new ItemStack[9];
     private final int[] overlayX = new int[9];
     private final int[] overlayY = new int[9];
@@ -170,10 +174,11 @@ public class CustomHotbar extends Module {
         float borderThickness = clamp((float) outlineThickness.getInput() * uiScale,
                 MIN_OUTLINE_THICKNESS * uiScale,
                 Math.max(MIN_OUTLINE_THICKNESS * uiScale, outlineGeometry * 0.45f));
-        if (outline.isToggled() && !individualOutlines) {
+        boolean barOutline = outline.isToggled() && !individualOutlines;
+        if (barOutline) {
             RoundedUtils.drawRoundOutline(barLeft, barTop, barWidth, barHeight, radius,
                     borderThickness, new Color(background.getColor(), true),
-                    new Color(outlineColor.getColor(), true));
+                    strokeColor(borderThickness, scaleFactor), OUTLINE_SOFTNESS);
         }
         else {
             RenderUtils.drawRoundedRectangle(barLeft, barTop, barLeft + barWidth, barTop + barHeight,
@@ -202,31 +207,53 @@ public class CustomHotbar extends Module {
             }
         }
 
-        // the selection sits inside the per-slot stroke rather than under it: the outline
-        // shader centres its stroke on the rect edge, so a fill on the same rect shows
-        // through the inner half of the border and its rounded corners poke past it.
-        float selectionInset = individualOutlines ? borderThickness : 0.0f;
+        // The selection is laid out against the stroke it sits in, not against the slot. The outline
+        // shader puts its stroke a device pixel outside the rect and fades it over OUTLINE_SOFTNESS,
+        // so the stroke's inner edge is a fixed distance in from the rect whatever the thickness,
+        // and the rounded rect at that depth has a radius that shrinks with it. Drawn at the slot's
+        // own inset and radius -- the old layout -- the selection crossed that edge, and its corners
+        // poked past the stroke once rounding went above six pixels or the thickness dropped.
+        float strokeInner = (1.0f + OUTLINE_SOFTNESS + SELECTION_GAP) / scaleFactor;
+        float slotRadius = Math.min(radius, 6.0f * uiScale);
+        float selTop = barTop + inset;
+        float selBottom = barTop + barHeight - inset;
+        float selInsetX;
+        float selRadius;
+        if (individualOutlines) {
+            selInsetX = strokeInner;
+            selTop += strokeInner;
+            selBottom -= strokeInner;
+            selRadius = concentricRadius(slotRadius, strokeInner, borderThickness, scaleFactor, true);
+        } else {
+            // Against the bar: the slot box already sits `inset` in, and only moves further when that
+            // is shallower than the bar stroke's inner edge.
+            float depth = barOutline ? Math.max(inset, strokeInner) : inset;
+            float extra = depth - inset;
+            selInsetX = extra;
+            selTop += extra;
+            selBottom -= extra;
+            selRadius = concentricRadius(radius, depth, borderThickness, scaleFactor, barOutline);
+        }
         float targetSelX = barLeft + inset + slot * slotWidth + inset;
         if (animated.isToggled()) {
             selectionX = Float.isNaN(selectionX) ? targetSelX : lerp(selectionX, targetSelX, smoothing(dtMs));
         } else {
             selectionX = targetSelX;
         }
-        RenderUtils.drawRoundedRectangle(selectionX + selectionInset, barTop + inset + selectionInset,
-                selectionX + slotBoxWidth - selectionInset,
-                barTop + barHeight - inset - selectionInset,
-                Math.max(0.0f, Math.min(radius, 6.0f * uiScale) - selectionInset),
-                selectionColor.getColor());
+        float selLeft = selectionX + selInsetX;
+        float selRight = selectionX + slotBoxWidth - selInsetX;
+        selRadius = Math.min(selRadius, Math.min(selRight - selLeft, selBottom - selTop) * 0.5f);
+        RenderUtils.drawRoundedRectangle(selLeft, selTop, selRight, selBottom,
+                Math.max(0.0f, selRadius), selectionColor.getColor());
 
         if (individualOutlines) {
-            float slotRadius = Math.min(radius, 6.0f * uiScale);
             Color transparent = new Color(0, 0, 0, 0);
-            Color border = new Color(outlineColor.getColor(), true);
+            Color border = strokeColor(borderThickness, scaleFactor);
             for (int i = 0; i < 9; i++) {
                 float slotLeft = barLeft + inset + i * slotWidth + inset;
                 RoundedUtils.drawRoundOutline(slotLeft, barTop + inset,
                         slotBoxWidth, slotHeight,
-                        slotRadius, borderThickness, transparent, border);
+                        slotRadius, borderThickness, transparent, border, OUTLINE_SOFTNESS);
             }
         }
 
@@ -299,6 +326,33 @@ public class CustomHotbar extends Module {
 
     private float smoothing(float dtMs) {
         return Math.max(0.0f, Math.min(1.0f, (float) selectionSpeed.getInput() * dtMs / 16.6f));
+    }
+
+    /**
+     * Corner radius of the rounded rect lying `depth` inside another, so the pair stays concentric.
+     *
+     * For an outlined rect the shader rounds the shape a device pixel outside it with the stroke
+     * centred there, hence the half stroke and the pixel.
+     */
+    private static float concentricRadius(float radius, float depth, float stroke, float scaleFactor,
+                                          boolean outlined) {
+        float result = outlined
+                ? radius - depth - stroke * 0.5f + 1.0f / scaleFactor
+                : radius - depth;
+        return Math.max(0.0f, result);
+    }
+
+    /**
+     * The outline colour, fainter below a device pixel of thickness.
+     *
+     * A stroke cannot be drawn narrower than its falloff, so under a pixel it reads thinner only by
+     * reading lighter. At a pixel and above the colour is used as set.
+     */
+    private Color strokeColor(float thickness, float scaleFactor) {
+        int argb = outlineColor.getColor();
+        float coverage = Math.min(1.0f, 0.3f + thickness * scaleFactor * 0.7f);
+        int alpha = Math.round(((argb >>> 24) & 0xFF) * coverage);
+        return new Color((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, alpha);
     }
 
     private float lerp(float from, float to, float t) {
