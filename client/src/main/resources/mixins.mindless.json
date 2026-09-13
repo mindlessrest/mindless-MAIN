@@ -21,6 +21,7 @@
     "client.MixinGuiContainerShop",
     "client.MixinMinecraft",
     "render.MixinItemRenderer",
+    "render.MixinRenderItem",
     "render.MixinItemRendererAnimations",
     "render.MixinRenderGlobal",
     "world.MixinWorldInfo",

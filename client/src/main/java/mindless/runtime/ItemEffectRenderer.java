@@ -9,10 +9,8 @@ import mindless.utility.shader.SeparableOutlineShader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.renderer.ItemRenderer;
 import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
 import net.minecraft.client.shader.Framebuffer;
-import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
@@ -60,7 +58,8 @@ public final class ItemEffectRenderer {
         });
     }
 
-    public static void renderHeld(ItemRenderer renderer, EntityLivingBase entity, ItemStack stack,
+    public static void renderHeld(net.minecraft.client.renderer.entity.RenderItem renderer, ItemStack stack,
+                                  net.minecraft.client.resources.model.IBakedModel model,
                                   ItemCameraTransforms.TransformType transform) {
         ItemEffects module = ModuleManager.itemEffects;
         if (capturing || !available(module) || stack == null || !module.matches(stack)) return;
@@ -69,10 +68,16 @@ public final class ItemEffectRenderer {
         if (firstPerson ? !module.held.isToggled() : !(thirdPerson && module.heldThirdPerson.isToggled())) {
             return;
         }
-        // Re-running renderItem rather than re-running the model directly: it owns the push, the
-        // translucent-block depth mask and the pop, so the silhouette lands on exactly the same
-        // transform the real item was drawn with instead of one stage of it.
-        capture(module, () -> renderer.renderItem(entity, stack, transform));
+        // The same model draw again, under the same matrices: everything above this call -- the
+        // first-person or third-person placement, a 3D item's scale, Lunar's own adjustments --
+        // is already on the stack, so the silhouette cannot land anywhere the item does not.
+        capture(module, () -> {
+            try {
+                mindless.runtime.AccessorBridge.RenderItem_renderItemModelTransform(renderer, stack, model, transform);
+            } catch (RuntimeException unavailable) {
+                // No silhouette this frame rather than a crash every frame.
+            }
+        });
     }
 
     public static void renderInventory(GuiContainer gui, int guiLeft, int guiTop) {
@@ -186,7 +191,10 @@ public final class ItemEffectRenderer {
             if (atlas != null) atlas.restoreLastBlurMipmap();
             EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, previousFramebuffer);
             GL11.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
-            GL11.glPopAttrib();
+            // Popped through the helper so the state cache is re-read from the driver: the pass
+            // changes fog, lighting, depth and the lightmap through the cache, and a bare pop left
+            // it disagreeing with what the pop had just restored.
+            RenderUtils.popAttrib();
             GlStateManager.matrixMode(GL11.GL_MODELVIEW);
             GlStateManager.popMatrix();
             GlStateManager.matrixMode(GL11.GL_PROJECTION);

@@ -11,6 +11,7 @@ import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.*;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.RenderManager;
@@ -1616,15 +1617,32 @@ public static void syncGlStateFromDriver(int mask) {
             GlStateManager.shadeModel(GL11.glGetInteger(GL11.GL_SHADE_MODEL));
         }
 
+        if (enables || (mask & GL11.GL_FOG_BIT) != 0) {
+            if (GL11.glIsEnabled(GL11.GL_FOG)) GlStateManager.enableFog();
+            else GlStateManager.disableFog();
+        }
+
         if (enables || texture) {
+            // Both units Minecraft drives through the cache -- the default one and the lightmap --
+            // not only whichever happened to be active. A pass that switched the lightmap or fog off
+            // through the cache inside a push, then popped them back on, left the cache believing
+            // they were off; the game's own disableLightmap() and disableFog() before the HUD were
+            // then skipped as no-ops, and every HUD draw came out fogged and multiplied by the
+            // lightmap. That is the grey hotbar while a glowing item is held.
             int activeUnit = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
-            if (activeUnit >= GL13.GL_TEXTURE0 && activeUnit <= GL13.GL_TEXTURE7) {
-                GlStateManager.setActiveTexture(activeUnit);
+            int[] units = {OpenGlHelper.defaultTexUnit, OpenGlHelper.lightmapTexUnit};
+            for (int unit : units) {
+                OpenGlHelper.setActiveTexture(unit);
+                GlStateManager.setActiveTexture(unit);
                 if (GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) GlStateManager.enableTexture2D();
                 else GlStateManager.disableTexture2D();
                 if (texture) {
                     GlStateManager.bindTexture(GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D));
                 }
+            }
+            if (activeUnit >= GL13.GL_TEXTURE0 && activeUnit <= GL13.GL_TEXTURE7) {
+                OpenGlHelper.setActiveTexture(activeUnit);
+                GlStateManager.setActiveTexture(activeUnit);
             }
         }
     }

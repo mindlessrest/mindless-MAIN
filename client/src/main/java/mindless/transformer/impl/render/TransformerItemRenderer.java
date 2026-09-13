@@ -4,7 +4,6 @@ import mindless.module.impl.render.Animations;
 import mindless.module.impl.render.Slow;
 import mindless.runtime.ItemAnimationRuntime;
 import mindless.runtime.ItemRendererState;
-import mindless.runtime.ItemEffectRenderer;
 import mindless.utility.Utils;
 import net.lenni0451.classtransform.InjectionCallback;
 import net.lenni0451.classtransform.annotations.CInline;
@@ -15,8 +14,6 @@ import net.lenni0451.classtransform.annotations.injection.CInject;
 import net.lenni0451.classtransform.annotations.injection.CRedirect;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.renderer.ItemRenderer;
-import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
-import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.item.EnumAction;
 import net.minecraft.item.ItemStack;
 import org.lwjgl.opengl.GL11;
@@ -25,15 +22,6 @@ public abstract class TransformerItemRenderer {
     @CShadow private ItemStack itemToRender;
     @CShadow private float equippedProgress;
     @CShadow private float prevEquippedProgress;
-
-    @CInline
-    @CInject(method = "renderItem(Lnet/minecraft/entity/EntityLivingBase;Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/renderer/block/model/ItemCameraTransforms$TransformType;)V",
-            target = @CTarget("RETURN"))
-    private void mindless$renderHeldItemEffect(EntityLivingBase entity, ItemStack stack,
-                                                ItemCameraTransforms.TransformType transform,
-                                                InjectionCallback ci) {
-        ItemEffectRenderer.renderHeld((ItemRenderer) (Object) this, entity, stack, transform);
-    }
 
     @CInline
     @CInject(method = "renderItemInFirstPerson", target = @CTarget("HEAD"), cancellable = true)

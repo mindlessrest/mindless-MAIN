@@ -272,6 +272,20 @@ public final class AccessorBridge {
             method(Minecraft.class, new String[]{"clickMouse", "func_147116_af"}).invoke(mc);
         } catch (Exception t) { throw wrap("Minecraft_callClickMouse", t); }
     }
+    public static void RenderItem_renderItemModelTransform(net.minecraft.client.renderer.entity.RenderItem renderItem,
+                                                           ItemStack stack,
+                                                           net.minecraft.client.resources.model.IBakedModel model,
+                                                           net.minecraft.client.renderer.block.model.ItemCameraTransforms.TransformType transform) {
+        try {
+            method(net.minecraft.client.renderer.entity.RenderItem.class,
+                    new String[]{"renderItemModelTransform", "func_175040_a"},
+                    ItemStack.class, net.minecraft.client.resources.model.IBakedModel.class,
+                    net.minecraft.client.renderer.block.model.ItemCameraTransforms.TransformType.class)
+                    .invoke(renderItem, stack, model, transform);
+        }
+        catch (Exception t) { throw wrap("RenderItem_renderItemModelTransform", t); }
+    }
+
     public static Channel NetworkManager_getChannel(NetworkManager nm) {
         try { return (Channel) field(NetworkManager.class, "channel", "field_150746_k").get(nm); }
         catch (Exception t) { throw wrap("NetworkManager_getChannel", t); }
