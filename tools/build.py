@@ -569,8 +569,11 @@ def build_loader(cmake, extra_env, preset_text=None, preset_changed=True,
         loader_res.unlink()
     executable_name = "dev.exe" if target == "MindlessDev" else "MindlessLoader.exe"
     loader_exe_build = BUILD_DIR / "Release" / executable_name
-    if loader_exe_build.is_file():
-        loader_exe_build.unlink()
+    loader_exe_legacy = LOADER_DIR / executable_name
+    loader_candidates = [loader_exe_build, loader_exe_legacy]
+    for candidate in loader_candidates:
+        if candidate.is_file():
+            candidate.unlink()
 
     section("Loader - build")
     cmd = [str(cmake), "--build", str(BUILD_DIR), "--config", "Release", "--target", target,
@@ -580,15 +583,9 @@ def build_loader(cmake, extra_env, preset_text=None, preset_changed=True,
         return False
     ok("build complete")
 
-    built = LOADER_DIR / executable_name
-    if built.is_file():
+    built = next((candidate for candidate in loader_candidates if candidate.is_file()), None)
+    if built is not None:
         shutil.copy2(str(built), str(output))
-        ok(f"EXE -> {output}")
-        return True
-
-    alt = BUILD_DIR / "Release" / executable_name
-    if alt.is_file():
-        shutil.copy2(str(alt), str(output))
         ok(f"EXE -> {output}")
         return True
 
