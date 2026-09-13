@@ -11,6 +11,14 @@ import java.util.List;
 public final class GlyphAtlas {
     private static final int GL_CLAMP_TO_EDGE = 0x812F;
     private static final int PADDING = 2;
+    /**
+     * Mip levels kept on a mipmapped atlas, and the gutter that keeps them clean.
+     *
+     * Each level halves the gutter between glyphs, so three levels need eight pixels of it or the
+     * smallest levels start averaging neighbouring letters into each other.
+     */
+    private static final int MIP_LEVELS = 3;
+    private static final int MIP_PADDING = 1 << MIP_LEVELS;
     private static final int MIN_PAGE_SIZE = 64;
 private static final int MAX_PAGE_SIZE = 1024;
     private static final int BYTES_PER_PIXEL = 4;
@@ -33,12 +41,46 @@ public static final class Region {
 
     private final int pageWidth;
     private final int pageHeight;
+    private final boolean mipmapped;
+    private final int padding;
     private final List<Page> pages = new ArrayList<Page>();
     private final int[] slot = new int[2];
     private boolean finished;
 public GlyphAtlas(int[] pageSize) {
+        this(pageSize, false);
+    }
+
+    /**
+     * An atlas that can be sampled well below its native size.
+     *
+     * Text drawn in the world shrinks with distance. Sampled through a single linear level, a glyph
+     * shown at a fifth of the size it was rasterised at skips most of its texels, which is the
+     * shimmering, broken lettering on a name tag a few dozen blocks away. The mip chain is built
+     * once when the page is uploaded, so the cost is paid at font load and never per frame.
+     */
+    public GlyphAtlas(int[] pageSize, boolean mipmapped) {
         this.pageWidth = clampSide(pageSize[0]);
         this.pageHeight = clampSide(pageSize[1]);
+        this.mipmapped = mipmapped && mipmapsSupported();
+        this.padding = this.mipmapped ? MIP_PADDING : PADDING;
+    }
+
+    private static boolean mipmapsSupported() {
+        try {
+            org.lwjgl.opengl.ContextCapabilities caps = org.lwjgl.opengl.GLContext.getCapabilities();
+            return caps.OpenGL30 || caps.GL_EXT_framebuffer_object;
+        } catch (Throwable noContext) {
+            return false;
+        }
+    }
+
+    private static void generateMipmaps() {
+        org.lwjgl.opengl.ContextCapabilities caps = org.lwjgl.opengl.GLContext.getCapabilities();
+        if (caps.OpenGL30) {
+            org.lwjgl.opengl.GL30.glGenerateMipmap(GL11.GL_TEXTURE_2D);
+        } else {
+            org.lwjgl.opengl.EXTFramebufferObject.glGenerateMipmapEXT(GL11.GL_TEXTURE_2D);
+        }
     }
 public Region add(BufferedImage image) {
         int width = image.getWidth();
@@ -49,17 +91,17 @@ public Region add(BufferedImage image) {
 
         for (int i = 0; i < pages.size(); i++) {
             Page page = pages.get(i);
-            if (page.place(width + PADDING, height + PADDING, slot)) {
+            if (page.place(width + padding, height + padding, slot)) {
                 return page.write(image, slot[0], slot[1]);
             }
         }
 
-        Page page = new Page(pageWidth, pageHeight);
+        Page page = new Page(pageWidth, pageHeight, mipmapped, padding);
         pages.add(page);
         if (finished) {
             page.upload();
         }
-        if (!page.place(width + PADDING, height + PADDING, slot)) {
+        if (!page.place(width + padding, height + padding, slot)) {
             return null;
         }
 
@@ -81,14 +123,19 @@ public void finish() {
         pages.clear();
     }
 public static int[] chooseSize(List<int[]> glyphSizes) {
+        return chooseSize(glyphSizes, false);
+    }
+
+    public static int[] chooseSize(List<int[]> glyphSizes, boolean mipmapped) {
+        int gutter = mipmapped ? MIP_PADDING : PADDING;
         long area = 0;
         int widest = 1;
         int tallest = 1;
 
         for (int i = 0; i < glyphSizes.size(); i++) {
             int[] size = glyphSizes.get(i);
-            int width = size[0] + PADDING;
-            int height = size[1] + PADDING;
+            int width = size[0] + gutter;
+            int height = size[1] + gutter;
             area += (long) width * height;
             widest = Math.max(widest, width);
             tallest = Math.max(tallest, height);
@@ -115,15 +162,19 @@ public static int[] chooseSize(List<int[]> glyphSizes) {
     private static final class Page {
         private final int width;
         private final int height;
+        private final boolean mipmapped;
+        private final int gutter;
         private ByteBuffer staging;
         private int textureId;
         private int cursorX;
         private int shelfY;
         private int shelfHeight;
 
-        private Page(int width, int height) {
+        private Page(int width, int height, boolean mipmapped, int gutter) {
             this.width = width;
             this.height = height;
+            this.mipmapped = mipmapped;
+            this.gutter = gutter;
             this.staging = BufferUtils.createByteBuffer(width * height * BYTES_PER_PIXEL);
             this.textureId = GL11.glGenTextures();
         }
@@ -143,8 +194,10 @@ public static int[] chooseSize(List<int[]> glyphSizes) {
                 return false;
             }
 
-            out[0] = cursorX;
-            out[1] = shelfY;
+            // Offset into the slot by half the gutter, so a glyph has clear space on every side
+            // rather than only to its right and below.
+            out[0] = cursorX + gutter / 2;
+            out[1] = shelfY + gutter / 2;
             cursorX += slotWidth;
             shelfHeight = Math.max(shelfHeight, slotHeight);
             return true;
@@ -195,6 +248,7 @@ public static int[] chooseSize(List<int[]> glyphSizes) {
             GlStateManager.bindTexture(textureId);
             GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, x, y, image.getWidth(), image.getHeight(),
                     GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
+            if (mipmapped) generateMipmaps();
             mindless.utility.Diagnostics.gl("font: glyph upload at " + x + "," + y
                     + " " + image.getWidth() + "x" + image.getHeight()
                     + " into " + width + "x" + height);
@@ -228,9 +282,17 @@ public static int[] chooseSize(List<int[]> glyphSizes) {
             GlStateManager.bindTexture(textureId);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER,
+                    mipmapped ? GL11.GL_LINEAR_MIPMAP_LINEAR : GL11.GL_LINEAR);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+            if (mipmapped) {
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, org.lwjgl.opengl.GL12.GL_TEXTURE_MAX_LEVEL, MIP_LEVELS);
+                // A slight negative bias: pure trilinear picks the smaller level early and softens
+                // text that is only mildly minified, which is most name tags at fighting range.
+                GL11.glTexParameterf(GL11.GL_TEXTURE_2D, org.lwjgl.opengl.GL14.GL_TEXTURE_LOD_BIAS, -0.4f);
+            }
             GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, staging);
+            if (mipmapped) generateMipmaps();
             staging = null;
         }
 

@@ -131,7 +131,7 @@ public static MindlessFontRenderer getNametagRenderer(String family) {
                     return getMinecraftRenderer(fontSize);
                 }
 
-                return new GlyphFontRenderer(baseFont.deriveFont(fontSize), true, NAMETAG_ATLAS_BOOST);
+                return new GlyphFontRenderer(baseFont.deriveFont(fontSize), true, NAMETAG_ATLAS_BOOST, true);
             }
         });
     }

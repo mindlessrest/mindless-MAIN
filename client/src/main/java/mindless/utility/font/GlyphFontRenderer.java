@@ -53,6 +53,11 @@ private static final float MAX_RASTERISED_GLYPH_SIZE = 64.0f;
         this(sourceFont, antiAlias, 1.0f);
     }
 public GlyphFontRenderer(Font sourceFont, boolean antiAlias, float qualityBoost) {
+        this(sourceFont, antiAlias, qualityBoost, false);
+    }
+
+    /** @param mipmapped for text drawn at a size that changes with distance; see GlyphAtlas. */
+    public GlyphFontRenderer(Font sourceFont, boolean antiAlias, float qualityBoost, boolean mipmapped) {
         float renderScale = boostedRenderScale(sourceFont, qualityBoost);
         this.drawScale = 1.0f / renderScale;
         this.rawScale = renderScale;
@@ -70,7 +75,7 @@ public GlyphFontRenderer(Font sourceFont, boolean antiAlias, float qualityBoost)
             }
         }
 
-        this.atlas = new GlyphAtlas(GlyphAtlas.chooseSize(sizes));
+        this.atlas = new GlyphAtlas(GlyphAtlas.chooseSize(sizes, mipmapped), mipmapped);
 
         for (int codePoint = FIRST_GLYPH; codePoint <= LAST_GLYPH; codePoint++) {
             defaultGlyphs[codePoint] = commit(rasters[codePoint]);
