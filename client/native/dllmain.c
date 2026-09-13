@@ -164,6 +164,34 @@ void vape_log_pending_exception(JNIEnv *env, const wchar_t *context) {
 #endif
 }
 
+static void report_pending_exception(JNIEnv *env, const char *context, float progress) {
+    jthrowable exception;
+    jclass throwable_class;
+    jmethodID to_string;
+    jstring text;
+    const char *utf;
+    char status[sizeof(((MindlessAuthSharedData *)0)->progress_status)];
+    if (env == NULL || !(*env)->ExceptionCheck(env)) return;
+    exception = (*env)->ExceptionOccurred(env);
+    (*env)->ExceptionClear(env);
+    throwable_class = (*env)->FindClass(env, "java/lang/Throwable");
+    to_string = throwable_class == NULL ? NULL : (*env)->GetMethodID(env, throwable_class,
+            "toString", "()Ljava/lang/String;");
+    text = to_string == NULL ? NULL : (jstring)(*env)->CallObjectMethod(env, exception, to_string);
+    utf = text == NULL ? NULL : (*env)->GetStringUTFChars(env, text, NULL);
+    if (utf != NULL) {
+        _snprintf_s(status, sizeof(status), _TRUNCATE, "%s: %.110s", context, utf);
+        send_progress(progress, status);
+        (*env)->ReleaseStringUTFChars(env, text, utf);
+    } else {
+        send_progress(progress, context);
+    }
+    if (text != NULL) (*env)->DeleteLocalRef(env, text);
+    if (throwable_class != NULL) (*env)->DeleteLocalRef(env, throwable_class);
+    if (exception != NULL) (*env)->DeleteLocalRef(env, exception);
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+}
+
 jint mindless_initialize_jvmti(JavaVM *vm) {
     jint get_env_result;
     if (vm == NULL) return JNI_ERR;
@@ -1344,17 +1372,20 @@ static int prime_transformer_manager(JNIEnv *env, jobject class_loader,
     manager_class = load_class_via_loader(env, class_loader, load_class,
             "mindless.runtime.MindlessTransformerManager");
     if (manager_class == NULL) {
+        send_progress(0.77f, "Transformer manager class unavailable");
         vape_log(L"prime: MindlessTransformerManager not visible via loader");
         return 0;
     }
     get_instance = (*env)->GetStaticMethodID(env, manager_class,
             "get", "()Lmindless/runtime/MindlessTransformerManager;");
     if (get_instance == NULL) {
+        report_pending_exception(env, "Transformer manager method unavailable", 0.77f);
         vape_log_pending_exception(env, L"prime: resolve MindlessTransformerManager.get");
         return 0;
     }
     manager = (*env)->CallStaticObjectMethod(env, manager_class, get_instance);
     if (manager == NULL || (*env)->ExceptionCheck(env)) {
+        report_pending_exception(env, "Transformer manager initialization failed", 0.77f);
         vape_log_pending_exception(env, L"prime: MindlessTransformerManager.get()");
         return 0;
     }

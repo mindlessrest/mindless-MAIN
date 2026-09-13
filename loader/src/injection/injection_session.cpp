@@ -265,6 +265,11 @@ void InjectionSession::poll_progress()
     {
         inj_log("native reported FAILED, error=%ld status=%s", error, status);
         std::string stage = status[0] == '\0' ? "native bootstrap" : status;
+        if (stage.size() > 72)
+        {
+            stage.resize(69);
+            stage += "...";
+        }
         fail("Mindless failed to start",
              "Stopped during " + stage + " (error " + std::to_string(error) + "). Restart Minecraft and try again.");
         close_progress_channel();
