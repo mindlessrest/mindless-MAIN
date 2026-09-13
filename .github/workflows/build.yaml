@@ -36,24 +36,13 @@ jobs:
           for file in \
             MindlessLoader.exe \
             client/native_build/dist/MindlessNative.dll \
-            client/build/libs/mindless-obf.jar \
-            client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar \
-            client/build/mappings/forge.json \
-            client/build/mappings/lunar.json; do
+            client/build/libs/mindless.jar \
+            client/build/intermediates/mindless-lunar-mcp-with-forge.jar; do
             test -s "$file" || {
               echo "::error::Missing or empty build output: $file"
               exit 1
             }
           done
-
-      - name: Calculate release metadata
-        id: release-metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "forge-jar-sha256=$(sha256sum client/build/libs/mindless-obf.jar | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "lunar-jar-sha256=$(sha256sum client/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Verify deployment secrets
         env:
@@ -85,19 +74,15 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "MindlessLoader.exe,client/native_build/dist/MindlessNative.dll,client/build/mappings/forge.json,client/build/mappings/lunar.json"
+          source: "MindlessLoader.exe,client/native_build/dist/MindlessNative.dll"
           target: "/tmp/mindless-${{ github.sha }}"
 
       - name: Publish release to panel
         uses: appleboy/ssh-action@v1
-        env:
-          FORGE_SHA256: ${{ steps.release-metadata.outputs.forge-jar-sha256 }}
-          LUNAR_SHA256: ${{ steps.release-metadata.outputs.lunar-jar-sha256 }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: FORGE_SHA256,LUNAR_SHA256
           script: |
             set -eu
 
@@ -105,13 +90,8 @@ jobs:
 
             loader="$staging/MindlessLoader.exe"
             native="$staging/client/native_build/dist/MindlessNative.dll"
-            forge_mapping="$staging/client/build/mappings/forge.json"
-            lunar_mapping="$staging/client/build/mappings/lunar.json"
-
             test -s "$loader"
             test -s "$native"
-            test -s "$forge_mapping"
-            test -s "$lunar_mapping"
 
             cd /var/mindless/backend
 
@@ -121,11 +101,6 @@ jobs:
             go run ./cmd/promote-release \
               -config config.yaml \
               -loader "$loader" \
-              -native "$native" \
-              -build-id "${{ github.sha }}" \
-              -forge-mapping "$forge_mapping" \
-              -lunar-mapping "$lunar_mapping" \
-              -forge-jar-sha256 "$FORGE_SHA256" \
-              -lunar-jar-sha256 "$LUNAR_SHA256"
+              -native "$native"
 
             rm -rf "$staging"

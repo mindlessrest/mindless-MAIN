@@ -11,7 +11,7 @@
 # Windows SDK are present. xwin fetches those from Microsoft's own redistributables.
 #
 #   ./build.sh                 dev build
-#   ./build.sh --prod          obfuscated build, what ships
+#   ./build.sh --prod          production build, what ships
 #   ./build.sh --client-only   Gradle stages only
 #   ./build.sh --loader-only   native DLL and loader only, reusing existing jars
 #   ./build.sh --deps          fetch the toolchain and third-party sources, build nothing
@@ -28,17 +28,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT_DIR="$ROOT/client"
 NATIVE_DIR="$CLIENT_DIR/native"
 LOADER_DIR="$ROOT/loader"
-OBF_DIR="$ROOT/tools/obf"
 CROSS_DIR="$ROOT/tools/cross"
 
 GRADLEW="$CLIENT_DIR/gradlew"
 FORGE_JAR="$CLIENT_DIR/build/libs/mindless.jar"
 LUNAR_JAR="$CLIENT_DIR/build/intermediates/mindless-lunar-mcp-with-forge.jar"
-FORGE_JAR_OBF="$CLIENT_DIR/build/libs/mindless-obf.jar"
-LUNAR_JAR_OBF="$CLIENT_DIR/build/intermediates/mindless-lunar-mcp-with-forge-obf.jar"
-FORGE_MAPPING="$CLIENT_DIR/build/mappings/forge.json"
-LUNAR_MAPPING="$CLIENT_DIR/build/mappings/lunar.json"
-OBF_JAR="$OBF_DIR/build/libs/mindless-obf.jar"
 NATIVE_DLL_OUT="$CLIENT_DIR/native_build/dist/MindlessNative.dll"
 LOADER_RUNTIME="$LOADER_DIR/assets/runtime/MindlessNative.dll"
 OUTPUT_EXE="$ROOT/MindlessLoader.exe"
@@ -48,9 +42,7 @@ BUILD_CACHE="${MINDLESS_BUILD_CACHE:-$CACHE/build}"
 NATIVE_BUILD_DIR="$BUILD_CACHE/native"
 LOADER_BUILD_DIR="$BUILD_CACHE/loader"
 NATIVE_BUILT_DLL="$NATIVE_BUILD_DIR/dist/MindlessNative.dll"
-OBF_CACHE_DIR="$CACHE/obf"
 GRADLE_PROJECT_CACHE="${MINDLESS_GRADLE_PROJECT_CACHE:-$CACHE/gradle-project}"
-OBF_JAVA_OPTS="${MINDLESS_OBF_JAVA_OPTS:--Xms64m -Xmx1g -XX:+UseParallelGC}"
 XWIN_ROOT="${XWIN_ROOT:-$CACHE/xwin}"
 WIN_JDK="${MINDLESS_WIN_JDK:-$CACHE/jdk-win}"
 FETCHCONTENT_BASE_DIR="${MINDLESS_FETCHCONTENT_DIR:-$CACHE/sources}"
@@ -249,7 +241,7 @@ java_major="$("$JAVA_HOME/bin/javac" -version 2>&1 | sed -E 's/javac ([0-9]+).*/
 ok "JAVA_HOME = $JAVA_HOME"
 
 mkdir -p "$CACHE"
-mkdir -p "$BUILD_CACHE" "$OBF_CACHE_DIR" "$GRADLE_PROJECT_CACHE/client" "$GRADLE_PROJECT_CACHE/obf"
+mkdir -p "$BUILD_CACHE" "$GRADLE_PROJECT_CACHE/client"
 
 # --- Windows SDK and MSVC CRT ------------------------------------------------
 # xwin moves extracted files into its output tree. Keep its cache and staged output beside
@@ -334,46 +326,6 @@ if [ "$LOADER_ONLY" -eq 0 ]; then
     [ -s "$FORGE_JAR" ] || die "Forge jar missing after the build: $FORGE_JAR"
     [ -s "$LUNAR_JAR" ] || die "Lunar jar missing after the build: $LUNAR_JAR"
     ok "client built"
-
-    if [ "$PROD" -eq 1 ]; then
-        section "Building MindlessObf"
-        obf_key="$({ find "$OBF_DIR/src/main" -type f -print0; printf '%s\0' "$OBF_DIR/build.gradle.kts" "$OBF_DIR/settings.gradle.kts" "$OBF_DIR/gradle.properties"; } | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
-        cached_obf="$OBF_CACHE_DIR/$obf_key.jar"
-        if [ -s "$cached_obf" ]; then
-            mkdir -p "$(dirname "$OBF_JAR")"
-            cp -f "$cached_obf" "$OBF_JAR"
-            ok "MindlessObf restored from cache"
-        else
-            ( cd "$OBF_DIR" && "$GRADLEW" jar --build-cache --warning-mode=none \
-                --project-cache-dir "$GRADLE_PROJECT_CACHE/obf" )
-            [ -s "$OBF_JAR" ] || die "MindlessObf jar missing: $OBF_JAR"
-            cp -f "$OBF_JAR" "$cached_obf"
-            ok "MindlessObf cached"
-        fi
-        [ -s "$OBF_JAR" ] || die "MindlessObf jar missing: $OBF_JAR"
-
-        section "JAR obfuscation"
-        mkdir -p "$(dirname "$FORGE_MAPPING")"
-        obfuscate() {
-            local label="$1" input="$2" output="$3" mapping="$4"
-            local -a obf_java_opts
-            info "obfuscating $label"
-            rm -f "$output"
-            read -r -a obf_java_opts <<<"$OBF_JAVA_OPTS"
-            "$JAVA_HOME/bin/java" "${obf_java_opts[@]}" -jar "$OBF_JAR" \
-                "$input" "$output" --mapping "$mapping"
-            [ -s "$output" ] || die "$label obfuscation produced nothing"
-            ok "$label obfuscated ($(( $(stat -c%s "$output") / 1024 )) KB)"
-        }
-        obfuscate forge "$FORGE_JAR" "$FORGE_JAR_OBF" "$FORGE_MAPPING" &
-        forge_obf_pid=$!
-        obfuscate lunar "$LUNAR_JAR" "$LUNAR_JAR_OBF" "$LUNAR_MAPPING" &
-        lunar_obf_pid=$!
-        obf_status=0
-        wait "$forge_obf_pid" || obf_status=$?
-        wait "$lunar_obf_pid" || obf_status=$?
-        [ "$obf_status" -eq 0 ] || die "payload obfuscation failed"
-    fi
 fi
 
 if [ "$CLIENT_ONLY" -eq 1 ]; then
@@ -387,16 +339,8 @@ fi
 # ---------------------------------------------------------------------------
 section "MindlessNative.dll - build"
 
-if [ "$PROD" -eq 1 ] && [ -s "$FORGE_JAR_OBF" ]; then
-    payload_forge="$FORGE_JAR_OBF"; ok "using the obfuscated Forge jar"
-else
-    payload_forge="$FORGE_JAR"
-fi
-if [ "$PROD" -eq 1 ] && [ -s "$LUNAR_JAR_OBF" ]; then
-    payload_lunar="$LUNAR_JAR_OBF"; ok "using the obfuscated Lunar jar"
-else
-    payload_lunar="$LUNAR_JAR"
-fi
+payload_forge="$FORGE_JAR"
+payload_lunar="$LUNAR_JAR"
 [ -s "$payload_forge" ] || die "Forge payload missing, run without --loader-only first"
 [ -s "$payload_lunar" ] || die "Lunar payload missing, run without --loader-only first"
 
@@ -452,11 +396,6 @@ wait "$loader_pid" || build_status=$?
 section "Done"
 ok "$(basename "$output")   $(( $(stat -c%s "$output") / 1024 )) KB"
 ok "MindlessNative.dll      $(( $(stat -c%s "$NATIVE_DLL_OUT") / 1024 )) KB"
-if [ "$PROD" -eq 1 ]; then
-    [ -s "$FORGE_JAR_OBF" ] && ok "Forge jar (obfuscated)  $(( $(stat -c%s "$FORGE_JAR_OBF") / 1024 )) KB"
-    [ -s "$LUNAR_JAR_OBF" ] && ok "Lunar jar (obfuscated)  $(( $(stat -c%s "$LUNAR_JAR_OBF") / 1024 )) KB"
-else
-    ok "Forge jar               $(( $(stat -c%s "$FORGE_JAR") / 1024 )) KB"
-    ok "Lunar jar               $(( $(stat -c%s "$LUNAR_JAR") / 1024 )) KB"
-fi
+ok "Forge jar               $(( $(stat -c%s "$FORGE_JAR") / 1024 )) KB"
+ok "Lunar jar               $(( $(stat -c%s "$LUNAR_JAR") / 1024 )) KB"
 printf '\n'

@@ -34,18 +34,12 @@ CPU_COUNT = max(1, os.cpu_count() or 4)
 
 FORGE_JAR   = CLIENT_DIR / "build" / "libs" / "mindless.jar"
 LUNAR_JAR   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge.jar"
-FORGE_JAR_OBF   = CLIENT_DIR / "build" / "libs" / "mindless-obf.jar"
-LUNAR_JAR_OBF   = CLIENT_DIR / "build" / "intermediates" / "mindless-lunar-mcp-with-forge-obf.jar"
-FORGE_MAPPING   = CLIENT_DIR / "build" / "mappings" / "forge.json"
-LUNAR_MAPPING   = CLIENT_DIR / "build" / "mappings" / "lunar.json"
 NATIVE_BUILD_DIR = CLIENT_DIR / "native_build"
 NATIVE_DLL_OUT   = NATIVE_BUILD_DIR / "dist" / "MindlessNative.dll"
 NATIVE_TEST_LOADER_OUT = NATIVE_BUILD_DIR / "dist" / "MindlessTestLoader.exe"
 INJECTION_DIR = CLIENT_DIR / "build" / "injection"
 
 LOADER_RUNTIME   = LOADER_DIR / "assets" / "runtime" / "MindlessNative.dll"
-OBF_JAR          = ROOT / "tools" / "obf" / "build" / "libs" / "mindless-obf.jar"
-OBF_DIR          = ROOT / "tools" / "obf"
 
 VS_ROOTS = [
     r"C:\Program Files\Microsoft Visual Studio",
@@ -414,50 +408,6 @@ def update_preset(clang, lld, ninja, vcpkg, prod=False):
     return new_text, True
 
 
-def build_obf_jar(jdk):
-    if OBF_JAR.is_file() and os.environ.get("MINDLESS_OBF_CACHE_HIT") == "1":
-        ok("MindlessObf restored from cache")
-        return True
-    inputs = list((OBF_DIR / "src").rglob("*")) + [
-        OBF_DIR / "build.gradle.kts",
-        OBF_DIR / "settings.gradle.kts",
-    ]
-    inputs = [path for path in inputs if path.is_file()]
-    if OBF_JAR.is_file() and all(path.stat().st_mtime <= OBF_JAR.stat().st_mtime for path in inputs):
-        return True
-    section("Building MindlessObf")
-    gradlew = CLIENT_DIR / "gradlew.bat"
-    env = {}
-    if jdk:
-        env["JAVA_HOME"] = str(jdk)
-    cmd = [str(gradlew), "jar"]
-    if not run(cmd, OBF_DIR, env):
-        err("MindlessObf build failed")
-        return False
-    ok("MindlessObf built")
-    return True
-
-
-def obfuscate_jar(jdk, input_jar, output_jar, mapping_file, label):
-    if not OBF_JAR.is_file():
-        warn(f"MindlessObf jar not found, skipping {label} obfuscation")
-        return False
-    java = jdk / "bin" / "java.exe" if jdk else Path("java.exe")
-    cmd = [str(java), "-jar", str(OBF_JAR), str(input_jar), str(output_jar), "--mapping", str(mapping_file)]
-    info(f"Obfuscating {label}...")
-    if output_jar.is_file():
-        output_jar.unlink()
-    if not run(cmd, ROOT):
-        err(f"{label} obfuscation failed")
-        return False
-    if not output_jar.is_file() or output_jar.stat().st_size == 0:
-        err(f"{label} obfuscation did not produce an output JAR")
-        return False
-    size_kb = output_jar.stat().st_size // 1024
-    ok(f"{label} obfuscated ({size_kb} KB)")
-    return True
-
-
 def build_client(jdk17):
     section("Client - gradle build")
     gradlew = CLIENT_DIR / "gradlew.bat"
@@ -484,12 +434,8 @@ def build_client(jdk17):
 def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False, include_test_loader=False):
     section("MindlessNative.dll - build")
 
-    if prod:
-        forge_jar = FORGE_JAR_OBF if FORGE_JAR_OBF.is_file() else FORGE_JAR
-        lunar_jar = LUNAR_JAR_OBF if LUNAR_JAR_OBF.is_file() else LUNAR_JAR
-    else:
-        forge_jar = FORGE_JAR
-        lunar_jar = LUNAR_JAR
+    forge_jar = FORGE_JAR
+    lunar_jar = LUNAR_JAR
 
     if not forge_jar.is_file():
         err(f"Forge JAR missing: {forge_jar}")
@@ -499,11 +445,6 @@ def build_native_dll(cmake, clang, lld, ninja, jdk, prod=False, include_test_loa
         err(f"Lunar JAR missing: {lunar_jar}")
         err("Run client build first.")
         return False
-
-    if forge_jar == FORGE_JAR_OBF:
-        ok(f"Using obfuscated Forge JAR")
-    if lunar_jar == LUNAR_JAR_OBF:
-        ok(f"Using obfuscated Lunar JAR")
 
     native_clang = clang
 
@@ -778,24 +719,6 @@ def main():
             print(f"\n{BOLD}{RED}Build failed.{RESET}")
             sys.exit(1)
 
-        if prod_flag:
-            section("JAR obfuscation")
-            if not build_obf_jar(jdk17):
-                err("MindlessObf build failed")
-                sys.exit(1)
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                forge_future = pool.submit(
-                    obfuscate_jar, jdk17, FORGE_JAR, FORGE_JAR_OBF, FORGE_MAPPING, "Forge JAR"
-                ) if FORGE_JAR.is_file() else None
-                lunar_future = pool.submit(
-                    obfuscate_jar, jdk17, LUNAR_JAR, LUNAR_JAR_OBF, LUNAR_MAPPING, "Lunar JAR"
-                ) if LUNAR_JAR.is_file() else None
-                forge_obfuscated = forge_future.result() if forge_future else False
-                lunar_obfuscated = lunar_future.result() if lunar_future else False
-            if not forge_obfuscated or not lunar_obfuscated:
-                print(f"\n{BOLD}{RED}Production build failed during JAR obfuscation.{RESET}")
-                sys.exit(1)
-
         if jdk_any and llvm and cmake and ninja:
             if not build_native_dll(cmake, clang, lld, ninja, jdk_any, prod=prod_flag,
                                     include_test_loader=test_loader_flag):
@@ -819,10 +742,7 @@ def main():
     if success:
         print(f"{BOLD}{GREEN}All done.{RESET}")
         if prod_flag:
-            print(f"  {GREEN}[PROD BUILD]{RESET}", end="")
-            if FORGE_JAR_OBF.is_file():
-                print(f" JAR obfuscation applied", end="")
-            print()
+            print(f"  {GREEN}[PROD BUILD]{RESET}")
         final_output = DEV_OUTPUT_EXE if dev_flag else OUTPUT_EXE
         if final_output.is_file():
             size_mb = final_output.stat().st_size / (1024 * 1024)

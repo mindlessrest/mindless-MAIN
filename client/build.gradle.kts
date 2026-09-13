@@ -198,7 +198,7 @@ tasks.jar {
 
 tasks.shadowJar {
     destinationDirectory.set(layout.buildDirectory.dir("intermediates"))
-    archiveClassifier.set("non-obfuscated-with-deps")
+    archiveClassifier.set("with-deps")
     configurations = listOf(shadowImpl)
     entryCompression = ZipEntryCompression.STORED
 
