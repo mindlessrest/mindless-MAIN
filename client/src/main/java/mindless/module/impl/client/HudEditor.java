@@ -14,12 +14,10 @@ import mindless.module.setting.impl.SliderSetting;
 import mindless.runtime.GuiIngameState;
 import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
-import mindless.utility.gui.MindlessButton;
 import mindless.utility.media.MediaPlayerRenderer;
 import mindless.utility.shader.BlurUtils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.FontRenderer;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
@@ -46,7 +44,7 @@ public class HudEditor extends Module {
         super("HUD Editor", "Drag and resize your HUD elements.", category.client);
         this.liteModule = true;
         this.registerSetting(depthOfField = new ButtonSetting("Depth of field", true));
-        this.registerSetting(blurStrength = new SliderSetting("Blur strength", "%", 55.0, 0.0, 100.0, 5.0));
+        this.registerSetting(blurStrength = new SliderSetting("Blur strength", "%", 35.0, 0.0, 100.0, 5.0));
     }
 
     @Override
@@ -66,22 +64,34 @@ public class HudEditor extends Module {
         private static final int NW = 0, N = 1, NE = 2, E = 3, SE = 4, S = 5, SW = 6, W = 7;
 
         private static final float HANDLE_HALF = 2.5f;
-        private static final float GRAB_HALF = 6.0f;
+        /** Half the side of the square a handle answers the mouse in. */
+        private static final float GRAB_HALF = 5.0f;
+        /**
+         * How far inside an element's edge a handle still answers.
+         *
+         * Handles used to answer in a twelve-pixel square centred on the edge, so on an element
+         * twenty pixels tall the top and bottom rows of handles between them covered nearly all of
+         * it, and a press meant to drag started a resize instead. Now only a sliver inside the edge
+         * belongs to a handle; everything deeper is the element, and moves it.
+         */
+        private static final float GRAB_INSIDE = 2.0f;
+        /** Below this size an element gets its four corner handles and no edge ones. */
+        private static final float EDGE_HANDLE_MIN_WIDTH = 44.0f;
+        private static final float EDGE_HANDLE_MIN_HEIGHT = 28.0f;
         private static final float MIN_SPAN = 6.0f;
         private static final int GRID_SIZE = 8;
         private static final float GUIDE_THRESHOLD = 4.0f;
+        private static final float SCROLL_SCALE_STEP = 0.05f;
 
-        private static final int BACKDROP_BLUR_PASSES = 2;
-        private static final float BACKDROP_BLUR_RADIUS = 2.6f;
-        private static final int SCRIM = 0x42000000;
-        /** Height of the bar along the top, and the one along the bottom. */
-        private static final int TOP_BAR = 18;
-        private static final int BOTTOM_BAR = 16;
+        private static final int BACKDROP_BLUR_PASSES = 1;
+        private static final float BACKDROP_BLUR_RADIUS = 1.6f;
+        private static final int SCRIM = 0x2A000000;
+        private static final int GUIDE = 0xB07C6CFF;
+
+        private static final float TOOLBAR_HEIGHT = 18.0f;
+        private static final float TOOLBAR_MARGIN = 8.0f;
 
         private final List<Element> elements = new ArrayList<Element>();
-        private MindlessButton doneButton;
-        private MindlessButton resetAllButton;
-        private MindlessButton snapButton;
         private Element hovered;
         private Element selected;
         private Element dragging;
@@ -96,26 +106,32 @@ public class HudEditor extends Module {
         private float resizeAnchorX;
         private float resizeAnchorY;
         private boolean snapEnabled = true;
-        private boolean guideX;
-        private boolean guideY;
+        private final List<float[]> guides = new ArrayList<float[]>();
+
+        /** An element whose scale the wheel just changed, held at its centre until it redraws. */
+        private Element scrolled;
+        private float scrolledCenterX;
+        private float scrolledCenterY;
+
+        private float toolbarX = Float.NaN;
+        private float toolbarY = Float.NaN;
+        private float toolbarAlpha = 1.0f;
+        private final float[][] toolbarButtons = new float[3][];
 
         @Override
         public void initGui() {
             super.initGui();
             buildElements();
-            // Short and shallow, and no longer a bar across the whole width. A watermark or a
-            // stats panel parked at the top was being hidden by the editor meant to move it.
-            buttonList.add(doneButton = new MindlessButton(1, width - 48, 2, 44, 14, "Done"));
-            buttonList.add(resetAllButton = new MindlessButton(3, width - 98, 2, 46, 14, "Reset"));
-            buttonList.add(snapButton = new MindlessButton(2, width - 166, 2, 64, 14, snapLabel()));
+            toolbarX = Float.NaN;
         }
 
         @Override
         public void drawScreen(int mouseX, int mouseY, float partialTicks) {
             drawBackdrop();
-            drawGrid();
+            if (dragging != null && snapEnabled && !shiftDown()) drawGrid();
 
             if (elements.isEmpty()) buildElements();
+            guides.clear();
             if (dragging != null) {
                 moveDragged(mouseX - dragOffsetX, mouseY - dragOffsetY);
             }
@@ -125,6 +141,12 @@ public class HudEditor extends Module {
 
             for (Element element : elements) {
                 element.render();
+                if (element == scrolled) {
+                    float half = (element.right - element.left) * 0.5F;
+                    float halfHeight = (element.bottom - element.top) * 0.5F;
+                    element.moveTo(scrolledCenterX - half, scrolledCenterY - halfHeight);
+                    scrolled = null;
+                }
                 if (element != resizing) element.ensureOnScreen(width, height);
             }
             if (resizing != null) anchorResized();
@@ -136,52 +158,49 @@ public class HudEditor extends Module {
                 // Outlining those put empty rectangles over the screen and stacked them wherever
                 // zero happened to fall.
                 if (!element.hasBounds()) continue;
-                boolean active = element == selected || element == hovered || element == dragging || element == resizing;
-                drawOutline(element, active ? 0xE6FFFFFF : 0x26FFFFFF);
-                if (active) {
-                    drawLabel(element);
-                    if (element == selected || element == dragging || element == resizing) {
-                        drawHandles(element, mouseX, mouseY);
-                    }
-                }
+                boolean focused = element == selected || element == dragging || element == resizing;
+                boolean lit = focused || element == hovered;
+                drawOutline(element, focused ? 0xF07C6CFF : lit ? 0xB8FFFFFF : 0x30FFFFFF);
+                if (focused) drawHandles(element, mouseX, mouseY);
             }
+            for (float[] guide : guides) {
+                RenderUtils.drawRect(guide[0], guide[1], guide[2], guide[3], GUIDE);
+            }
+            Element labelled = dragging != null ? dragging : resizing != null ? resizing
+                    : hovered != null ? hovered : selected;
+            if (labelled != null && labelled.hasBounds()) drawLabel(labelled, labelled == selected);
 
-            if (guideX) RenderUtils.drawRect(width * 0.5F, TOP_BAR, width * 0.5F + 0.5F, height, 0x807C6CFF);
-            if (guideY) RenderUtils.drawRect(0.0F, height * 0.5F, width, height * 0.5F + 0.5F, 0x807C6CFF);
-
-            // Two chips rather than a band: only the width each actually needs is covered, so
-            // anything the player keeps along the top edge stays visible behind them.
-            int titleWidth = fontRendererObj.getStringWidth("HUD editor") + 12;
-            drawRect(0, 0, titleWidth, TOP_BAR, 0xD9101013);
-            drawRect(width - 170, 0, width, TOP_BAR, 0xD9101013);
-            fontRendererObj.drawString("HUD editor", 6, 5, 0xFFF2F2F5, false);
-            String hint = selected == null
-                    ? "Drag an element to reposition it"
-                    : selected.name + "  ·  Arrows nudge  ·  R resets  ·  Delete turns it off";
-            drawRect(0, height - BOTTOM_BAR, width, height, 0xD9101013);
-            fontRendererObj.drawString(hint, 6, height - BOTTOM_BAR + 4, 0xFF9898A3, false);
-
+            drawToolbar(mouseX, mouseY);
             super.drawScreen(mouseX, mouseY, partialTicks);
         }
 
         @Override
         protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
+            if (mouseButton == 0 && clickToolbar(mouseX, mouseY)) return;
             if (mouseButton == 0) {
-                int handle = hovered != null ? hovered.handleAt(mouseX, mouseY) : -1;
+                int handle = -1;
+                if (selected != null && selected.hasBounds()) handle = selected.handleAt(mouseX, mouseY);
                 if (handle >= 0) {
-                    selected = hovered;
-                    beginResize(hovered, handle);
+                    beginResize(selected, handle);
                 }
                 else {
-                    Element selected = findTopmost(mouseX, mouseY);
-                    if (selected != null) {
-                        this.selected = selected;
-                        dragging = selected;
-                        dragOffsetX = mouseX - selected.left;
-                        dragOffsetY = mouseY - selected.top;
-                    } else if (mouseY > TOP_BAR && mouseY < height - BOTTOM_BAR) {
-                        this.selected = null;
+                    Element target = findTopmost(mouseX, mouseY);
+                    if (target != null) {
+                        selected = target;
+                        dragging = target;
+                        dragOffsetX = mouseX - target.left;
+                        dragOffsetY = mouseY - target.top;
+                    } else {
+                        selected = null;
                     }
+                }
+            }
+            else if (mouseButton == 1) {
+                // Right click resets the element under the cursor, the same as R with it selected.
+                Element target = findTopmost(mouseX, mouseY);
+                if (target != null) {
+                    target.reset();
+                    selected = target;
                 }
             }
             super.mouseClicked(mouseX, mouseY, mouseButton);
@@ -194,31 +213,32 @@ public class HudEditor extends Module {
                 dragging = null;
                 resizing = null;
                 resizeHandle = -1;
-                guideX = false;
-                guideY = false;
+                guides.clear();
             }
         }
 
         @Override
-        protected void actionPerformed(GuiButton button) {
-            if (button == doneButton) {
-                mc.displayGuiScreen(null);
-            }
-            else if (button == snapButton) {
-                snapEnabled = !snapEnabled;
-                snapButton.displayString = snapLabel();
-            }
-            else if (button == resetAllButton) {
-                for (Element element : elements) element.reset();
-                selected = null;
-            }
+        public void handleMouseInput() throws IOException {
+            super.handleMouseInput();
+            int wheel = org.lwjgl.input.Mouse.getEventDWheel();
+            if (wheel == 0 || dragging != null || resizing != null) return;
+            Element target = hovered != null ? hovered : selected;
+            SliderSetting slider = target == null ? null : target.scaleSetting();
+            if (slider == null || !target.hasBounds()) return;
+            // The wheel resizes in place: the element keeps its centre rather than growing from
+            // its corner, which is what a handle does and is not what a scroll means.
+            scrolled = target;
+            scrolledCenterX = (target.left + target.right) * 0.5F;
+            scrolledCenterY = (target.top + target.bottom) * 0.5F;
+            double factor = wheel > 0 ? 1.0 + SCROLL_SCALE_STEP : 1.0 / (1.0 + SCROLL_SCALE_STEP);
+            slider.setValue(slider.getInput() * factor);
+            selected = target;
         }
 
         @Override
         protected void keyTyped(char typedChar, int keyCode) throws IOException {
             if (keyCode == Keyboard.KEY_G) {
                 snapEnabled = !snapEnabled;
-                snapButton.displayString = snapLabel();
                 return;
             }
             if (selected != null && keyCode == Keyboard.KEY_R) {
@@ -239,8 +259,7 @@ public class HudEditor extends Module {
             }
             if (selected != null && (keyCode == Keyboard.KEY_LEFT || keyCode == Keyboard.KEY_RIGHT
                     || keyCode == Keyboard.KEY_UP || keyCode == Keyboard.KEY_DOWN)) {
-                float step = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)
-                        ? GRID_SIZE : 1.0F;
+                float step = shiftDown() ? GRID_SIZE : 1.0F;
                 float x = selected.left;
                 float y = selected.top;
                 if (keyCode == Keyboard.KEY_LEFT) x -= step;
@@ -253,46 +272,192 @@ public class HudEditor extends Module {
             super.keyTyped(typedChar, keyCode);
         }
 
-        private String snapLabel() {
-            return snapEnabled ? "Snap 8px" : "Snap off";
+        private static boolean shiftDown() {
+            return Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
+        }
+
+        /**
+         * Snap, Reset all and Done, in a pill that stays out of the way of the layout being edited.
+         *
+         * It used to sit fixed in the top-right corner, which is exactly where array lists and
+         * watermarks live, so the controls covered the things they were for. It now takes whichever
+         * of four spots along the screen edges overlaps the fewest elements, glides there rather
+         * than jumping, and fades nearly out while something is being dragged or resized.
+         */
+        private void drawToolbar(int mouseX, int mouseY) {
+            String snap = snapEnabled ? "Snap on" : "Snap off";
+            String[] labels = {snap, "Reset all", "Done"};
+            float padding = 9.0F;
+            float gap = 2.0F;
+            float totalWidth = gap * 2.0F;
+            float[] widths = new float[labels.length];
+            for (int i = 0; i < labels.length; i++) {
+                widths[i] = fontRendererObj.getStringWidth(labels[i]) + padding * 2.0F;
+                totalWidth += widths[i] + (i > 0 ? gap : 0.0F);
+            }
+
+            if (dragging == null && resizing == null) {
+                float[] spot = quietestToolbarSpot(totalWidth);
+                if (Float.isNaN(toolbarX)) {
+                    toolbarX = spot[0];
+                    toolbarY = spot[1];
+                } else {
+                    toolbarX += (spot[0] - toolbarX) * 0.25F;
+                    toolbarY += (spot[1] - toolbarY) * 0.25F;
+                }
+            }
+            float busy = dragging != null || resizing != null ? 0.18F : 1.0F;
+            toolbarAlpha += (busy - toolbarAlpha) * 0.3F;
+            int alpha = Math.round(255 * toolbarAlpha);
+
+            float x = Math.round(toolbarX);
+            float y = Math.round(toolbarY);
+            RoundedUtils.drawRound(x, y, totalWidth, TOOLBAR_HEIGHT, TOOLBAR_HEIGHT * 0.5F,
+                    new Color(14, 14, 18, Math.round(215 * toolbarAlpha)));
+            float cursor = x + gap;
+            for (int i = 0; i < labels.length; i++) {
+                float bx = cursor, by = y + gap, bw = widths[i], bh = TOOLBAR_HEIGHT - gap * 2.0F;
+                toolbarButtons[i] = new float[]{bx, by, bx + bw, by + bh};
+                boolean hot = toolbarAlpha > 0.6F && mouseX >= bx && mouseX <= bx + bw
+                        && mouseY >= by && mouseY <= by + bh;
+                boolean primary = i == labels.length - 1;
+                if (primary || hot) {
+                    int fill = primary ? (hot ? 0x7C6CFF : 0x6A5BE0) : 0xFFFFFF;
+                    int fillAlpha = primary ? alpha : Math.round(28 * toolbarAlpha);
+                    RoundedUtils.drawRound(bx, by, bw, bh, bh * 0.5F,
+                            new Color((fill >> 16) & 255, (fill >> 8) & 255, fill & 255, fillAlpha));
+                }
+                int textColor = i == 0 && !snapEnabled ? 0x9898A3 : 0xF2F2F5;
+                fontRendererObj.drawString(labels[i], bx + padding,
+                        by + (bh - fontRendererObj.FONT_HEIGHT) * 0.5F + 1.0F,
+                        (Math.max(4, alpha) << 24) | textColor, false);
+                cursor += bw + gap;
+            }
+        }
+
+        /** Top, bottom, left or right of centre: the one covering the least of the layout. */
+        private float[] quietestToolbarSpot(float toolbarWidth) {
+            float[][] spots = {
+                    {(width - toolbarWidth) * 0.5F, TOOLBAR_MARGIN},
+                    {(width - toolbarWidth) * 0.5F, height - TOOLBAR_HEIGHT - 48.0F},
+                    {TOOLBAR_MARGIN, (height - TOOLBAR_HEIGHT) * 0.5F},
+                    {width - toolbarWidth - TOOLBAR_MARGIN, (height - TOOLBAR_HEIGHT) * 0.5F}
+            };
+            float[] best = spots[0];
+            float bestOverlap = Float.MAX_VALUE;
+            for (float[] spot : spots) {
+                float overlap = 0.0F;
+                for (Element element : elements) {
+                    if (!element.hasBounds()) continue;
+                    float ox = Math.min(spot[0] + toolbarWidth + 4.0F, element.right)
+                            - Math.max(spot[0] - 4.0F, element.left);
+                    float oy = Math.min(spot[1] + TOOLBAR_HEIGHT + 4.0F, element.bottom)
+                            - Math.max(spot[1] - 4.0F, element.top);
+                    if (ox > 0.0F && oy > 0.0F) overlap += ox * oy;
+                }
+                if (overlap < bestOverlap - 0.5F) {
+                    bestOverlap = overlap;
+                    best = spot;
+                }
+            }
+            return best;
+        }
+
+        private boolean clickToolbar(int mouseX, int mouseY) {
+            if (toolbarAlpha < 0.6F) return false;
+            for (int i = 0; i < toolbarButtons.length; i++) {
+                float[] b = toolbarButtons[i];
+                if (b == null || mouseX < b[0] || mouseX > b[2] || mouseY < b[1] || mouseY > b[3]) continue;
+                if (i == 0) {
+                    snapEnabled = !snapEnabled;
+                } else if (i == 1) {
+                    for (Element element : elements) element.reset();
+                    selected = null;
+                } else {
+                    mc.displayGuiScreen(null);
+                }
+                return true;
+            }
+            return false;
         }
 
         private void drawGrid() {
-            int minor = 0x0DFFFFFF;
-            int major = 0x16FFFFFF;
+            int minor = 0x0AFFFFFF;
+            int major = 0x14FFFFFF;
             for (int x = GRID_SIZE; x < width; x += GRID_SIZE) {
                 int color = x % (GRID_SIZE * 4) == 0 ? major : minor;
-                RenderUtils.drawRect(x, TOP_BAR, x + 0.5F, height - BOTTOM_BAR, color);
+                RenderUtils.drawRect(x, 0.0F, x + 0.5F, height, color);
             }
-            for (int y = TOP_BAR + 2; y < height - BOTTOM_BAR; y += GRID_SIZE) {
+            for (int y = GRID_SIZE; y < height; y += GRID_SIZE) {
                 int color = y % (GRID_SIZE * 4) == 0 ? major : minor;
                 RenderUtils.drawRect(0.0F, y, width, y + 0.5F, color);
             }
         }
 
+        /**
+         * Places the dragged element, snapping to the grid, the screen's centre lines and edges,
+         * and the edges and centres of the other elements.
+         *
+         * Alignment to neighbours is what the grid alone never gave: two panels could only be
+         * lined up by eye. Snaps within a few pixels win over the grid, and each one draws the
+         * guide it snapped to. Holding shift places freely.
+         */
         private void moveDragged(float requestedLeft, float requestedTop) {
-            guideX = false;
-            guideY = false;
             float elementWidth = dragging.right - dragging.left;
             float elementHeight = dragging.bottom - dragging.top;
-
-            if (snapEnabled && !Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)
-                    && !Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)) {
-                requestedLeft = Math.round(requestedLeft / GRID_SIZE) * GRID_SIZE;
-                requestedTop = Math.round(requestedTop / GRID_SIZE) * GRID_SIZE;
+            if (!snapEnabled || shiftDown()) {
+                dragging.moveClamped(requestedLeft, requestedTop, width, height);
+                return;
             }
 
-            float centeredLeft = (width - elementWidth) * 0.5F;
-            float centeredTop = (height - elementHeight) * 0.5F;
-            if (Math.abs(requestedLeft - centeredLeft) <= GUIDE_THRESHOLD) {
-                requestedLeft = centeredLeft;
-                guideX = true;
+            float left = Math.round(requestedLeft / GRID_SIZE) * GRID_SIZE;
+            float top = Math.round(requestedTop / GRID_SIZE) * GRID_SIZE;
+
+            List<Float> xTargets = new ArrayList<Float>();
+            List<Float> yTargets = new ArrayList<Float>();
+            xTargets.add(0.0F);
+            xTargets.add(width * 0.5F);
+            xTargets.add((float) width);
+            yTargets.add(0.0F);
+            yTargets.add(height * 0.5F);
+            yTargets.add((float) height);
+            for (Element other : elements) {
+                if (other == dragging || !other.hasBounds()) continue;
+                xTargets.add(other.left);
+                xTargets.add((other.left + other.right) * 0.5F);
+                xTargets.add(other.right);
+                yTargets.add(other.top);
+                yTargets.add((other.top + other.bottom) * 0.5F);
+                yTargets.add(other.bottom);
             }
-            if (Math.abs(requestedTop - centeredTop) <= GUIDE_THRESHOLD) {
-                requestedTop = centeredTop;
-                guideY = true;
+
+            float[] offsetsX = {0.0F, elementWidth * 0.5F, elementWidth};
+            float[] offsetsY = {0.0F, elementHeight * 0.5F, elementHeight};
+            float bestDx = GUIDE_THRESHOLD + 1.0F, snappedLeft = left, guideX = Float.NaN;
+            for (float target : xTargets) {
+                for (float offset : offsetsX) {
+                    float d = Math.abs(requestedLeft + offset - target);
+                    if (d <= GUIDE_THRESHOLD && d < bestDx) {
+                        bestDx = d;
+                        snappedLeft = target - offset;
+                        guideX = target;
+                    }
+                }
             }
-            dragging.moveClamped(requestedLeft, requestedTop, width, height);
+            float bestDy = GUIDE_THRESHOLD + 1.0F, snappedTop = top, guideY = Float.NaN;
+            for (float target : yTargets) {
+                for (float offset : offsetsY) {
+                    float d = Math.abs(requestedTop + offset - target);
+                    if (d <= GUIDE_THRESHOLD && d < bestDy) {
+                        bestDy = d;
+                        snappedTop = target - offset;
+                        guideY = target;
+                    }
+                }
+            }
+            if (!Float.isNaN(guideX)) guides.add(new float[]{guideX - 0.25F, 0.0F, guideX + 0.25F, height});
+            if (!Float.isNaN(guideY)) guides.add(new float[]{0.0F, guideY - 0.25F, width, guideY + 0.25F});
+            dragging.moveClamped(snappedLeft, snappedTop, width, height);
         }
 
         @Override
@@ -300,15 +465,22 @@ public class HudEditor extends Module {
             return false;
         }
 
+        /**
+         * A light blur behind the layout, not a frosted wall.
+         *
+         * Two passes at a wide radius smeared the world into a colour field, which made it hard to
+         * judge how an element would actually read over it. One narrow pass keeps the scene
+         * recognisable and still lifts the elements off it.
+         */
         private void drawBackdrop() {
             if (HudEditor.depthOfField == null || !HudEditor.depthOfField.isToggled()) {
-                drawRect(0, 0, width, height, 0x88000000);
+                drawRect(0, 0, width, height, 0x55000000);
                 return;
             }
 
             float strength = (float) (HudEditor.blurStrength.getInput() / 100.0);
             if (strength <= 0.01f) {
-                drawRect(0, 0, width, height, 0x88000000);
+                drawRect(0, 0, width, height, 0x55000000);
                 return;
             }
 
@@ -379,20 +551,17 @@ private void beginResize(Element element, int handle) {
 
         private void drawHandles(Element element, int mouseX, int mouseY) {
             if (element.scaleSetting() == null || !element.hasBounds()) return;
-
+            int hovering = resizing == null ? element.handleAt(mouseX, mouseY) : -1;
             for (int handle = 0; handle < 8; handle++) {
+                if (!element.showsHandle(handle)) continue;
                 float hx = element.handleX(handle);
                 float hy = element.handleY(handle);
-                boolean hot = (resizing == element && resizeHandle == handle)
-                        || (resizing == null && Math.abs(mouseX - hx) <= GRAB_HALF
-                                             && Math.abs(mouseY - hy) <= GRAB_HALF);
-
-                float half = hot ? HANDLE_HALF + 1.0f : HANDLE_HALF;
-                RoundedUtils.drawRound(hx - half, hy - half, half * 2.0f, half * 2.0f, 1.5f,
-                        new Color(0, 0, 0, 200));
-                RoundedUtils.drawRound(hx - half + 1.0f, hy - half + 1.0f,
-                        half * 2.0f - 2.0f, half * 2.0f - 2.0f, 1.0f,
-                        hot ? new Color(255, 255, 255) : new Color(222, 225, 234));
+                boolean hot = (resizing == element && resizeHandle == handle) || hovering == handle;
+                float half = hot ? HANDLE_HALF + 0.75f : HANDLE_HALF;
+                RoundedUtils.drawRound(hx - half - 0.75f, hy - half - 0.75f, (half + 0.75f) * 2.0f,
+                        (half + 0.75f) * 2.0f, half + 0.75f, new Color(0, 0, 0, 170));
+                RoundedUtils.drawRound(hx - half, hy - half, half * 2.0f, half * 2.0f, half,
+                        hot ? new Color(124, 108, 255) : new Color(242, 242, 245));
             }
         }
 
@@ -862,32 +1031,48 @@ private Element findTopmost(float mouseX, float mouseY) {
                 Element element = elements.get(i);
                 if (element.contains(mouseX, mouseY)) return element;
             }
-            for (int i = elements.size() - 1; i >= 0; i--) {
-                Element element = elements.get(i);
-                if (element.handleAt(mouseX, mouseY) >= 0) return element;
-            }
+            // Handles stick out past the edge, so the selected element still answers just outside it.
+            if (selected != null && selected.handleAt(mouseX, mouseY) >= 0) return selected;
             return null;
         }
 
         private void drawOutline(Element element, int color) {
             if (!element.hasBounds()) return;
-            RenderUtils.drawRect(element.left - 1.0F, element.top - 1.0F, element.right + 1.0F, element.top, color);
-            RenderUtils.drawRect(element.left - 1.0F, element.bottom, element.right + 1.0F, element.bottom + 1.0F, color);
-            RenderUtils.drawRect(element.left - 1.0F, element.top - 1.0F, element.left, element.bottom + 1.0F, color);
-            RenderUtils.drawRect(element.right, element.top - 1.0F, element.right + 1.0F, element.bottom + 1.0F, color);
+            float w = element.right - element.left;
+            float h = element.bottom - element.top;
+            RoundedUtils.drawRoundOutline(element.left - 1.0F, element.top - 1.0F, w + 2.0F, h + 2.0F,
+                    Math.min(3.0F, Math.min(w, h) * 0.5F), 0.5F, new Color(0, 0, 0, 0),
+                    new Color(color, true), 1.0F);
         }
 
-        private void drawLabel(Element element) {
+        /**
+         * Name and scale above the element, and on the selected one the few things it responds to.
+         *
+         * Those shortcuts used to live in a bar across the bottom of the screen for the whole
+         * session, over whatever was placed there. They only matter for the element in hand, so
+         * they sit with it.
+         */
+        private void drawLabel(Element element, boolean withHints) {
             String text = element.name;
             SliderSetting slider = element.scaleSetting();
             if (slider != null) {
                 text = text + "  " + String.format("%.2fx", slider.getInput());
             }
+            String hints = withHints
+                    ? (slider != null ? "Scroll resizes \u00b7 " : "") + "Arrows nudge \u00b7 R resets \u00b7 Del hides"
+                    : null;
             int textWidth = fontRendererObj.getStringWidth(text);
-            float labelTop = element.top >= 48.0F ? element.top - 14.0F : element.bottom + 4.0F;
-            RoundedUtils.drawRound(element.left - 3.0F, labelTop - 2.0F,
-                    textWidth + 6.0F, 12.0F, 4.0F, new Color(0, 0, 0, 190));
-            fontRendererObj.drawString(text, element.left, labelTop, 0xFFFFFFFF, true);
+            int hintWidth = hints == null ? 0 : fontRendererObj.getStringWidth(hints);
+            float chipWidth = Math.max(textWidth, hintWidth) + 10.0F;
+            float chipHeight = hints == null ? 13.0F : 24.0F;
+            float chipTop = element.top - chipHeight - 4.0F >= 2.0F
+                    ? element.top - chipHeight - 4.0F : element.bottom + 4.0F;
+            float chipLeft = Math.max(2.0F, Math.min(width - chipWidth - 2.0F, element.left - 1.0F));
+            RoundedUtils.drawRound(chipLeft, chipTop, chipWidth, chipHeight, 4.0F, new Color(12, 12, 16, 215));
+            fontRendererObj.drawString(text, chipLeft + 5.0F, chipTop + 3.0F, 0xFFF2F2F5, false);
+            if (hints != null) {
+                fontRendererObj.drawString(hints, chipLeft + 5.0F, chipTop + 14.0F, 0xFF8E8D99, false);
+            }
         }
 
         private abstract class Element {
@@ -967,13 +1152,24 @@ SliderSetting scaleSetting() {
 
             int handleAt(float mouseX, float mouseY) {
                 if (scaleSetting() == null || !hasBounds()) return -1;
+                // Deeper inside than the grab sliver is the element itself, whatever its size.
+                if (mouseX > left + GRAB_INSIDE && mouseX < right - GRAB_INSIDE
+                        && mouseY > top + GRAB_INSIDE && mouseY < bottom - GRAB_INSIDE) {
+                    return -1;
+                }
                 for (int handle = 0; handle < 8; handle++) {
-                    if (Math.abs(mouseX - handleX(handle)) <= GRAB_HALF
+                    if (showsHandle(handle)
+                            && Math.abs(mouseX - handleX(handle)) <= GRAB_HALF
                             && Math.abs(mouseY - handleY(handle)) <= GRAB_HALF) {
                         return handle;
                     }
                 }
                 return -1;
+            }
+
+            boolean showsHandle(int handle) {
+                boolean corner = handle == NW || handle == NE || handle == SE || handle == SW;
+                return corner || (right - left >= EDGE_HANDLE_MIN_WIDTH && bottom - top >= EDGE_HANDLE_MIN_HEIGHT);
             }
 
             void moveClamped(float requestedLeft, float requestedTop, int screenWidth, int screenHeight) {
