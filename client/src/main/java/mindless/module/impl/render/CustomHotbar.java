@@ -5,7 +5,6 @@ import mindless.module.ModuleManager;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
-import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
 import mindless.utility.shader.RoundedUtils;
 import net.minecraft.client.gui.ScaledResolution;
@@ -27,8 +26,6 @@ public class CustomHotbar extends Module {
     private static final float MIN_OUTLINE_THICKNESS = 0.05f;
     /** Device pixels the hotbar's strokes fade over; see RoundedUtils.drawRoundOutline. */
     private static final float OUTLINE_SOFTNESS = 1.0f;
-    /** Device pixels of clear space kept between a stroke's inner fade and the selection. */
-    private static final float SELECTION_GAP = 0.75f;
     private final ItemStack[] overlayStacks = new ItemStack[9];
     private final int[] overlayX = new int[9];
     private final int[] overlayY = new int[9];
@@ -181,8 +178,10 @@ public class CustomHotbar extends Module {
                     strokeColor(borderThickness, scaleFactor), OUTLINE_SOFTNESS);
         }
         else {
-            RenderUtils.drawRoundedRectangle(barLeft, barTop, barLeft + barWidth, barTop + barHeight,
-                    radius, background.getColor());
+            // Through the rounded-rect shader, which antialiases its edge. The polygon fan it replaces
+            // stepped its corners in three-degree chords with no smoothing, which is the jagged,
+            // low-quality roundness on the bar and the selection.
+            RoundedUtils.drawRound(barLeft, barTop, barWidth, barHeight, radius, background.getColor());
         }
 
         if (showXP.isToggled()) {
@@ -193,10 +192,10 @@ public class CustomHotbar extends Module {
             float xpR = Math.min(radius, 1.5f);
             float target = Math.max(0.0f, Math.min(1.0f, player.experience));
             xpProgress = Float.isNaN(xpProgress) ? target : lerp(xpProgress, target, smoothing(dtMs));
-            RenderUtils.drawRoundedRectangle(xpLeft, xpTop, xpLeft + xpW, xpTop + xpH, xpR, xpBackground.getColor());
+            RoundedUtils.drawRound(xpLeft, xpTop, xpW, xpH, xpR, xpBackground.getColor());
             if (xpProgress > 0.001f) {
-                RenderUtils.drawRoundedRectangle(xpLeft, xpTop, xpLeft + Math.max(xpR * 2.0f, xpW * xpProgress),
-                        xpTop + xpH, xpR, xpColor.getColor());
+                RoundedUtils.drawRound(xpLeft, xpTop, Math.max(xpR * 2.0f, xpW * xpProgress), xpH, xpR,
+                        xpColor.getColor());
             }
             if (showLevel.isToggled() && player.experienceLevel > 0) {
                 String level = String.valueOf(player.experienceLevel);
@@ -207,27 +206,30 @@ public class CustomHotbar extends Module {
             }
         }
 
-        // The selection is laid out against the stroke it sits in, not against the slot. The outline
-        // shader puts its stroke a device pixel outside the rect and fades it over OUTLINE_SOFTNESS,
-        // so the stroke's inner edge is a fixed distance in from the rect whatever the thickness,
-        // and the rounded rect at that depth has a radius that shrinks with it. Drawn at the slot's
-        // own inset and radius -- the old layout -- the selection crossed that edge, and its corners
-        // poked past the stroke once rounding went above six pixels or the thickness dropped.
-        float strokeInner = (1.0f + OUTLINE_SOFTNESS + SELECTION_GAP) / scaleFactor;
+        // The selection fills its slot right up to the outline's solid edge. The outline shader
+        // centres its stroke a device pixel outside the rect, so that edge is a device pixel in from
+        // the rect whatever the thickness, and a rounded rect there is concentric with the stroke.
+        // The selection's own antialiased edge reaches a pixel further out: against a stroke drawn
+        // over it (one per slot) that pixel sits under the stroke, and against one drawn beneath it
+        // (the whole bar) the selection stops a pixel short so the two never overlap. The previous
+        // layout left a visible gap all round, which read as a selection that was not filled.
+        float devicePixel = 1.0f / scaleFactor;
+        float strokeDevice = borderThickness * scaleFactor;
         float slotRadius = Math.min(radius, 6.0f * uiScale);
         float selTop = barTop + inset;
         float selBottom = barTop + barHeight - inset;
         float selInsetX;
         float selRadius;
         if (individualOutlines) {
-            selInsetX = strokeInner;
-            selTop += strokeInner;
-            selBottom -= strokeInner;
-            selRadius = concentricRadius(slotRadius, strokeInner, borderThickness, scaleFactor, true);
+            // A stroke thinner than a device pixel cannot cover the selection's edge, so the
+            // selection steps back by what the stroke is missing.
+            float depth = Math.max(1.0f, 2.0f - strokeDevice) * devicePixel;
+            selInsetX = depth;
+            selTop += depth;
+            selBottom -= depth;
+            selRadius = concentricRadius(slotRadius, depth, borderThickness, scaleFactor, true);
         } else {
-            // Against the bar: the slot box already sits `inset` in, and only moves further when that
-            // is shallower than the bar stroke's inner edge.
-            float depth = barOutline ? Math.max(inset, strokeInner) : inset;
+            float depth = barOutline ? Math.max(inset, 2.0f * devicePixel) : inset;
             float extra = depth - inset;
             selInsetX = extra;
             selTop += extra;
@@ -243,7 +245,7 @@ public class CustomHotbar extends Module {
         float selLeft = selectionX + selInsetX;
         float selRight = selectionX + slotBoxWidth - selInsetX;
         selRadius = Math.min(selRadius, Math.min(selRight - selLeft, selBottom - selTop) * 0.5f);
-        RenderUtils.drawRoundedRectangle(selLeft, selTop, selRight, selBottom,
+        RoundedUtils.drawRound(selLeft, selTop, selRight - selLeft, selBottom - selTop,
                 Math.max(0.0f, selRadius), selectionColor.getColor());
 
         if (individualOutlines) {

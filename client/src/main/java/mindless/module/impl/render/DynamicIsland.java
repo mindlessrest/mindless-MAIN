@@ -57,15 +57,6 @@ public class DynamicIsland extends Module {
     private static final float EQUALIZER_WIDTH = 9.0f;
     /** Cover size at 100%, which is the pill's height less its padding. */
     private static final float SPOTIFY_ART_MAX = HEIGHT - 4.0f;
-    /**
-     * Height reserved along the bottom edge for the progress bar while a track is showing.
-     *
-     * The bar used to be positioned from the bottom edge while the title stayed centred on the
-     * whole pill, which left them about a tenth of a pixel apart and read as one smeared block.
-     * The title is centred in what is left above this strip instead, so the gap is whatever is
-     * actually free rather than whatever happened to be left over.
-     */
-    private static final float SPOTIFY_BAR_ZONE = 5.2f;
 
     private final SliderSetting font;
     private final SliderSetting anchor;
@@ -163,12 +154,12 @@ public class DynamicIsland extends Module {
         this.registerSetting(spotifyTextWidth = new SliderSetting(
                 spotifyGroup, "Text width", "px", 92.0, 40.0, 190.0, 2.0));
         this.registerSetting(spotifyArtSize = new SliderSetting(
-                spotifyGroup, "Art size", "%", 78.0, 45.0, 100.0, 2.0));
+                spotifyGroup, "Art size", "%", 72.0, 45.0, 100.0, 2.0));
         this.registerSetting(spotifyArtRounding = new SliderSetting(
                 spotifyGroup, "Art rounding", "%", 32.0, 0.0, 100.0, 2.0));
         this.registerSetting(spotifyProgressBar = new ButtonSetting(spotifyGroup, "Progress bar", true));
         this.registerSetting(spotifyProgressThickness = new SliderSetting(
-                spotifyGroup, "Progress thickness", "px", 1.65, 1.0, 4.0, 0.05));
+                spotifyGroup, "Progress thickness", "px", 1.3, 1.0, 4.0, 0.05));
         this.registerSetting(spotifyEqualizer = new ButtonSetting(spotifyGroup, "Equalizer", true));
         notificationDuration = new SliderSetting(
                 "Notification time", 2.5, 0.5, 8.0, 0.5,
@@ -620,9 +611,10 @@ public class DynamicIsland extends Module {
         float markHeight = 7.8f * uiScale;
         float markWidth = markHeight * LOGO_ASPECT;
         if (cover) {
-            drawRoundedTexture(lane.artwork, badgeX, badgeY, badge,
-                    badge * 0.5f * (float) (spotifyArtRounding.getInput() / 100.0),
-                    contentAlpha / 255.0f);
+            float artRadius = badge * 0.5f * (float) (spotifyArtRounding.getInput() / 100.0);
+            RoundedUtils.drawRound(badgeX - 0.6f, badgeY - 0.6f, badge + 1.2f, badge + 1.2f,
+                    artRadius + 0.6f, withAlpha(0x000000, Math.round(contentAlpha * 0.55f)));
+            drawRoundedTexture(lane.artwork, badgeX, badgeY, badge, artRadius, contentAlpha / 255.0f);
         } else if ((lane.state == STATE_BREAKER || lane.state == STATE_SCAFFOLD) && lane.icon != null) {
             drawItemIcon(lane.icon, badgeX, badgeY, badge, contentAlpha);
         } else {
@@ -637,12 +629,24 @@ public class DynamicIsland extends Module {
         }
         String visibleLabel = lane.label;
         float labelScale = uiScale;
+        // Spotify lays out as one block: the title with the equaliser on its line, and the progress
+        // bar under both, centred together in the pill. The title and the equaliser used to be
+        // centred on different things -- the space above the bar and the whole pill -- so they sat
+        // a couple of pixels apart and the row read as uneven.
+        float spotifyLineCenter = 0.0f;
+        float spotifyBarY = 0.0f;
+        float spotifyBarHeight = 0.0f;
         if (lane.state == STATE_SPOTIFY) {
             labelScale = uiScale * spotifyTextScale();
             visibleLabel = fitText(text, spotifyLabel(lane), spotifyTextLimit());
-            float barZone = spotifyBarZone() * uiScale;
-            textY = y + (height - barZone - text.getFontHeight() * labelScale) * 0.5f
-                    + 1.1f * uiScale + slide;
+            float textHeight = text.getFontHeight() * labelScale;
+            boolean bar = spotifyProgressBar.isToggled();
+            spotifyBarHeight = bar ? Math.max(1.0f, (float) spotifyProgressThickness.getInput() * uiScale) : 0.0f;
+            float gap = bar ? 2.4f * uiScale : 0.0f;
+            float blockTop = y + (height - (textHeight + gap + spotifyBarHeight)) * 0.5f;
+            textY = blockTop + slide;
+            spotifyLineCenter = blockTop + textHeight * 0.5f + slide;
+            spotifyBarY = blockTop + textHeight + gap + slide;
         }
         drawScaled(text, visibleLabel, labelX, textY, labelScale,
                 withAlpha(0xF1F1F5, contentAlpha));
@@ -688,17 +692,10 @@ public class DynamicIsland extends Module {
         boolean spotifyBar = lane.state == STATE_SPOTIFY && spotifyProgressBar.isToggled();
         if (lane.state == STATE_BREAKER || lane.state == STATE_SCAFFOLD || spotifyBar) {
             float barX = labelX;
-            float barHeight = Math.max(1.0f, (lane.state == STATE_SPOTIFY
-                    ? (float) spotifyProgressThickness.getInput() : 1.65f) * uiScale);
-            // Centred in the strip reserved for it rather than measured off the bottom edge, so
-            // thickening the bar eats into the padding on both sides instead of only the top.
-            float barY = lane.state == STATE_SPOTIFY
-                    ? y + height - (spotifyBarZone() * uiScale + barHeight) * 0.5f + slide
-                    : y + height - 4.1f * uiScale + slide;
-            float barWidth = Math.max(10.0f * uiScale,
-                    width - (labelX - x) - PAD_X * uiScale
-                            - (lane.state == STATE_SPOTIFY && spotifyEqualizer.isToggled()
-                            ? (EQUALIZER_WIDTH + VALUE_GAP) * uiScale : 0.0f));
+            float barHeight = lane.state == STATE_SPOTIFY ? spotifyBarHeight : Math.max(1.0f, 1.65f * uiScale);
+            float barY = lane.state == STATE_SPOTIFY ? spotifyBarY : y + height - 4.1f * uiScale + slide;
+            // Under the title and the equaliser both, to the pill's padding.
+            float barWidth = Math.max(10.0f * uiScale, width - (labelX - x) - PAD_X * uiScale);
             RoundedUtils.drawRound(barX, barY, barWidth, barHeight, barHeight * 0.5f,
                     withAlpha(0xFFFFFF, Math.min(contentAlpha, 36)));
             float fill = barWidth * Math.max(0.0f, Math.min(1.0f, lane.progress));
@@ -708,11 +705,10 @@ public class DynamicIsland extends Module {
             }
         }
         if (lane.state == STATE_SPOTIFY && spotifyEqualizer.isToggled()) {
-            // Centred on the pill, not on the text block. The bar stops short of it horizontally,
-            // so there is nothing under here for it to collide with, and a widget's meter reads as
-            // part of the pill rather than as something stuck to the title.
+            // On the title's line. A font's height includes room for descenders, so the letters'
+            // own middle sits a little above the line's; the nudge puts the bars on the letters.
             drawEqualizer(x + width - (PAD_X + EQUALIZER_WIDTH) * uiScale,
-                    y + height * 0.5f + slide, uiScale, contentAlpha, accent, lane.mediaPlaying);
+                    spotifyLineCenter - 0.4f * uiScale, uiScale, contentAlpha, accent, lane.mediaPlaying);
         }
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
@@ -745,10 +741,6 @@ public class DynamicIsland extends Module {
 
     private float spotifyArt() {
         return SPOTIFY_ART_MAX * (float) (spotifyArtSize.getInput() / 100.0);
-    }
-
-    private float spotifyBarZone() {
-        return spotifyProgressBar.isToggled() ? SPOTIFY_BAR_ZONE : 0.0f;
     }
 
     private String spotifyLabel(Lane lane) {
