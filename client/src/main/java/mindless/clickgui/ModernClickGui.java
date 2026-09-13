@@ -648,7 +648,7 @@ private float aboutOpenProgress = 0f;
     private final Object accountHoverKey = new Object();
     private final Object accountExpandKey = new Object();
 
-    /** The whole bubble, collapsed or open, so hit testing and drawing cannot drift apart. */
+    /** The whole block, collapsed or open, so hit testing and drawing cannot drift apart. */
     private float[] accountCardBounds() {
         float open = accountExpanded ? ACCOUNT_DETAIL_H : 0f;
         float bottom = baseY + panelH - 8f;
@@ -656,14 +656,11 @@ private float aboutOpenProgress = 0f;
     }
 
     /**
-     * Who is signed in, as a compact identity row with a drawer under it.
+     * Who is signed in, sitting on the sidebar itself rather than in a card of its own.
      *
-     * Sized for the sidebar rather than scaled into it. The avatar was 26px inside a 90px column,
-     * which left the name and the session line about 34px and truncated both; at 22px with the
-     * chevron sharing only the name's line, the session line gets the full width under it and
-     * "Local session" fits whole. The surface follows the theme's row colours instead of a fixed
-     * navy, and its edge is drawn before the fill -- the outline helper paints a filled rect one
-     * pixel larger, so drawing it second had been tinting the entire card.
+     * No fill and no edge at rest; hovering lights it the same way a category row lights, so it
+     * reads as the last row of the sidebar. The second line appears only when there is something
+     * real to put on it -- a UID -- and otherwise the name centres on the avatar alone.
      */
     private void drawAccountCard(int mx, int my) {
         MindlessAccount.Profile account = MindlessAccount.profile();
@@ -675,46 +672,43 @@ private float aboutOpenProgress = 0f;
         float hoverAmount = animate(hoverAnimation, accountHoverKey, hover ? 1f : 0f, 15f);
         float openAmount = animate(hoverAnimation, accountExpandKey, accountExpanded ? 1f : 0f, 14f);
         float lift = Math.max(hoverAmount, openAmount);
+        if (lift > .01f) {
+            rounded(left, top, right, bottom, 6f, withAlpha(ACCENT, (int) (lift * 26f)));
+        }
 
-        int surface = withAlpha(mixColor(ROW, ROW_HOVER, hoverAmount), 255);
-        outline(left, top, right, bottom, 8f,
-                mixColor(withAlpha(BORDER, 46), withAlpha(ACCENT, 110), lift));
-        rounded(left, top, right, bottom, 8f, surface);
-
-        float avatar = 22f;
-        float avatarX = left + 8f;
+        float avatar = 24f;
+        float avatarX = left + 6f;
         float avatarY = top + (ACCOUNT_ROW_H - avatar) * .5f;
         float centerX = avatarX + avatar * .5f, centerY = avatarY + avatar * .5f;
-        // A hairline ring with a gap of card colour inside it, so the image reads as framed rather
-        // than as a disc glued to a coloured one.
-        disc(centerX, centerY, avatar * .5f + 1.2f, withAlpha(ACCENT, (int) (170f + 70f * hoverAmount)));
-        disc(centerX, centerY, avatar * .5f + .25f, surface);
+        disc(centerX, centerY, avatar * .5f + 1f, withAlpha(ACCENT, (int) (150f + 90f * lift)));
         if (account.avatar() != null) {
             roundedTexture(account.avatar(), avatarX, avatarY, avatar, avatar, avatar * .5f);
         } else {
-            disc(centerX, centerY, avatar * .5f, mixColor(surface, ACCENT, .18f));
+            disc(centerX, centerY, avatar * .5f, mixColor(withAlpha(PANEL, 255), ACCENT, .22f));
             String initial = account.username() == null || account.username().isEmpty()
                     ? "?" : account.username().substring(0, 1).toUpperCase();
             drawCenteredV(initial, avatarX, avatarX + avatar, avatarY, avatarY + avatar,
-                    TEXT, .8f, true);
+                    TEXT, .82f, true);
         }
-        // Signed in or local, readable without the second line: a cut-out dot on the avatar.
-        float dotX = avatarX + avatar - 2.5f, dotY = avatarY + avatar - 2.5f;
-        disc(dotX, dotY, 3.6f, surface);
-        disc(dotX, dotY, 2.4f, account.uid() != null ? ACCOUNT_ONLINE : DIM);
+        String uid = account.uid();
+        if (uid != null) {
+            float dotX = avatarX + avatar - 2.5f, dotY = avatarY + avatar - 2.5f;
+            disc(dotX, dotY, 3.6f, withAlpha(PANEL, 255));
+            disc(dotX, dotY, 2.4f, ACCOUNT_ONLINE);
+        }
 
-        float textX = avatarX + avatar + 7f;
-        float chevronX = right - 9f;
-        float nameCenter = top + ACCOUNT_ROW_H * .5f - 5f;
-        float subCenter = top + ACCOUNT_ROW_H * .5f + 5.5f;
+        float textX = avatarX + avatar + 8f;
+        float chevronX = right - 8f;
+        float middle = top + ACCOUNT_ROW_H * .5f;
+        float nameCenter = uid != null ? middle - 5f : middle;
         String name = account.username() == null ? "guest" : account.username();
-        drawTextVCentered(trim(name, Math.max(10f, chevronX - 6f - textX), .74f, true),
+        drawTextVCentered(trim(name, Math.max(10f, chevronX - 7f - textX), .76f, true),
                 textX, nameCenter - 6f, nameCenter + 6f,
-                mixColor(TEXT, 0xFFFFFFFF, hoverAmount), .74f, true);
-        String secondary = account.uid() == null ? "Local session" : "UID " + account.uid();
-        drawTextVCentered(trim(secondary, Math.max(10f, right - 8f - textX), .6f, false),
-                textX, subCenter - 5f, subCenter + 5f, MUTED, .6f, false);
-
+                mixColor(TEXT, 0xFFFFFFFF, lift), .76f, true);
+        if (uid != null) {
+            drawTextVCentered(trim("UID " + uid, Math.max(10f, right - 6f - textX), .6f, false),
+                    textX, middle + .5f, middle + 10.5f, MUTED, .6f, false);
+        }
         chevron(chevronX, nameCenter, 2.8f, 1.2f, openAmount, mixColor(DIM, TEXT, lift));
 
         if (openAmount <= .01f) return;
@@ -722,21 +716,20 @@ private float aboutOpenProgress = 0f;
         // under the row above instead of appearing all at once at the end of the animation.
         float revealed = ACCOUNT_DETAIL_H * openAmount;
         RenderUtils.scissorPushGui(left, rowBottom, right - left, revealed);
-        line(left + 8f, rowBottom, right - 8f, rowBottom, withAlpha(DIVIDER, 55));
         accountDetail("Discord", account.discordUsername() == null ? "Not linked" : account.discordUsername(),
-                left, right, rowBottom + 5f);
+                left, right, rowBottom + 4f);
         boolean reveal = Gui.showDiscordId != null && Gui.showDiscordId.isToggled();
         accountDetail("ID", account.discordId() == null ? "—" : reveal ? account.discordId() : "Hidden",
-                left, right, rowBottom + 19f);
+                left, right, rowBottom + 18f);
         RenderUtils.scissorPop();
     }
 
     /** A label on the left and its value right-aligned, so a narrow sidebar never overlaps them. */
     private void accountDetail(String label, String value, float left, float right, float y) {
-        drawTextVCentered(label, left + 9f, y, y + 12f, DIM, .56f, false);
-        float labelEnd = left + 9f + textWidth(label, .56f, false) + 8f;
-        String shown = trim(value, Math.max(10f, right - 9f - labelEnd), .58f, false);
-        drawTextVCentered(shown, right - 9f - textWidth(shown, .58f, false), y, y + 12f, TEXT, .58f, false);
+        drawTextVCentered(label, left + 8f, y, y + 12f, DIM, .56f, false);
+        float labelEnd = left + 8f + textWidth(label, .56f, false) + 8f;
+        String shown = trim(value, Math.max(10f, right - 8f - labelEnd), .58f, false);
+        drawTextVCentered(shown, right - 8f - textWidth(shown, .58f, false), y, y + 12f, TEXT, .58f, false);
     }
 
     private void disc(float cx, float cy, float radius, int color) {
