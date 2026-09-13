@@ -170,8 +170,9 @@ static LocalProfilePayload fetch_local_profile(const std::string& api,
     local["username"] = username;
     if (data.contains("uid") && data["uid"].is_number_integer())
     {
+        // Zero is a real UID: numbering starts there, so the first account ever made is uid 0.
         auto uid = data["uid"].get<std::int64_t>();
-        if (uid > 0) local["uid"] = std::to_string(uid);
+        if (uid >= 0) local["uid"] = std::to_string(uid);
     }
     else
     {
