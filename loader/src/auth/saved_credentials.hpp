@@ -74,7 +74,11 @@ inline bool atomic_write_local_file(const std::wstring& path, const void* data, 
     return true;
 }
 
-inline bool save_local_profile(const std::string& json, const std::vector<uint8_t>& avatar)
+// The avatar is only removed when the account has no Discord linked. A linked account whose picture
+// could not be fetched this time keeps the one cached from its last good login, and only an
+// account with nothing cached gets Discord's generated avatar instead.
+inline bool save_local_profile(const std::string& json, const std::vector<uint8_t>& avatar,
+                               const std::vector<uint8_t>& fallbackAvatar, bool discordLinked)
 {
     std::wstring profilePath = get_local_data_file_path(L"profile.json");
     std::wstring avatarPath = get_local_data_file_path(L"avatar.png");
@@ -85,8 +89,16 @@ inline bool save_local_profile(const std::string& json, const std::vector<uint8_
         return true;
     }
     if (!atomic_write_local_file(profilePath, json.data(), json.size())) return false;
-    if (avatar.empty()) DeleteFileW(avatarPath.c_str());
-    else if (!atomic_write_local_file(avatarPath, avatar.data(), avatar.size())) return false;
+    if (!avatar.empty())
+        return atomic_write_local_file(avatarPath, avatar.data(), avatar.size());
+    if (!discordLinked)
+    {
+        DeleteFileW(avatarPath.c_str());
+        return true;
+    }
+    if (GetFileAttributesW(avatarPath.c_str()) != INVALID_FILE_ATTRIBUTES) return true;
+    if (!fallbackAvatar.empty())
+        return atomic_write_local_file(avatarPath, fallbackAvatar.data(), fallbackAvatar.size());
     return true;
 }
 

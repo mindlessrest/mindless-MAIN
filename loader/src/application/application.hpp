@@ -51,6 +51,8 @@ private:
     std::string pendingProfileJson_;
     std::string pendingProfileUsername_;
     std::vector<uint8_t> pendingAvatarBytes_;
+    std::vector<uint8_t> pendingFallbackAvatarBytes_;
+    bool pendingDiscordLinked_ = false;
     bool pendingProfileReady_ = false;
     HANDLE authSection_ = nullptr;
 

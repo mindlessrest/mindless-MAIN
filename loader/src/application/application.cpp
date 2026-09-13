@@ -37,7 +37,19 @@ struct LocalProfilePayload
     std::string json;
     std::string username;
     std::vector<uint8_t> avatar;
+    // Discord's generated avatar for this account, used only when the real one cannot be fetched
+    // and nothing is cached from an earlier login.
+    std::vector<uint8_t> fallbackAvatar;
+    bool discordLinked = false;
 };
+
+static bool looks_like_png(const std::string& bytes)
+{
+    static const unsigned char png[] = {137, 80, 78, 71, 13, 10, 26, 10};
+    return bytes.size() >= sizeof(png)
+        && std::equal(std::begin(png), std::end(png),
+                      reinterpret_cast<const unsigned char*>(bytes.data()));
+}
 
 static size_t append_response(void* data, size_t size, size_t count, void* output)
 {
@@ -182,18 +194,32 @@ static LocalProfilePayload fetch_local_profile(const std::string& api,
     LocalProfilePayload payload;
     payload.json = local.dump();
     payload.username = username;
-    if (safe_cdn_part(discordId, true) && safe_cdn_part(avatarHash, false))
+    payload.discordLinked = safe_cdn_part(discordId, true);
+    if (payload.discordLinked && safe_cdn_part(avatarHash, false))
     {
         try
         {
             std::string avatarUrl = "https://cdn.discordapp.com/avatars/" + discordId + "/"
                 + avatarHash + ".png?size=128";
             std::string bytes = http_get(avatarUrl, nullptr, 2 * 1024 * 1024);
-            static const unsigned char png[] = {137, 80, 78, 71, 13, 10, 26, 10};
-            if (bytes.size() >= sizeof(png)
-                && std::equal(std::begin(png), std::end(png),
-                              reinterpret_cast<const unsigned char*>(bytes.data())))
-                payload.avatar.assign(bytes.begin(), bytes.end());
+            if (looks_like_png(bytes)) payload.avatar.assign(bytes.begin(), bytes.end());
+        }
+        catch (...) {}
+    }
+    // The backend stores the avatar hash from when the account was linked, so a picture changed on
+    // Discord since then is a 404 here. That, or a CDN timeout, used to leave the avatar empty,
+    // and saving then deleted the one cached from the last good login: the card fell back to an
+    // initial. Discord's generated avatar is fetched as a last resort for an account that has
+    // nothing cached at all; the account-id formula is the current one for migrated usernames.
+    if (payload.discordLinked && payload.avatar.empty())
+    {
+        try
+        {
+            std::uint64_t id = std::stoull(discordId);
+            std::string defaultUrl = "https://cdn.discordapp.com/embed/avatars/"
+                + std::to_string((id >> 22) % 6) + ".png";
+            std::string bytes = http_get(defaultUrl, nullptr, 256 * 1024);
+            if (looks_like_png(bytes)) payload.fallbackAvatar.assign(bytes.begin(), bytes.end());
         }
         catch (...) {}
     }
@@ -358,6 +384,8 @@ void Application::start_auth()
     pendingProfileJson_.clear();
     pendingProfileUsername_.clear();
     pendingAvatarBytes_.clear();
+    pendingFallbackAvatarBytes_.clear();
+    pendingDiscordLinked_ = false;
     pendingProfileReady_ = false;
 
     std::string user = state_.username.text;
@@ -398,6 +426,8 @@ void Application::start_auth()
                 pendingProfileJson_ = std::move(profile.json);
                 pendingProfileUsername_ = std::move(profile.username);
                 pendingAvatarBytes_ = std::move(profile.avatar);
+                pendingFallbackAvatarBytes_ = std::move(profile.fallbackAvatar);
+                pendingDiscordLinked_ = profile.discordLinked;
                 pendingProfileReady_ = true;
             }
             catch (const std::exception& e)
@@ -601,7 +631,8 @@ int Application::run()
                             mindless::save_session_username(pendingProfileReady_ && !pendingProfileUsername_.empty()
                                 ? pendingProfileUsername_ : state_.username.text);
                             if (pendingProfileReady_)
-                                mindless::save_local_profile(pendingProfileJson_, pendingAvatarBytes_);
+                                mindless::save_local_profile(pendingProfileJson_, pendingAvatarBytes_,
+                                                             pendingFallbackAvatarBytes_, pendingDiscordLinked_);
                             else
                                 mindless::clear_local_profile();
                             state_.release_process_icons();
