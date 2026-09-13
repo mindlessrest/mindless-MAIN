@@ -83,10 +83,6 @@ public class MixinPlayerControllerMP {
     )
     private float fastMineScaleHardness(Block block, EntityPlayer player, World worldIn, BlockPos pos) {
         float hardness = block.getPlayerRelativeBlockHardness(player, worldIn, pos);
-        BedAura bedAura = ModuleManager.bedAura;
-        if (bedAura != null && bedAura.shouldOverrideFastMine()) {
-            return hardness * bedAura.getBreakSpeedMultiplier();
-        }
         FastMine fm = ModuleManager.fastMine;
         if (fm == null) {
             return hardness;
@@ -95,14 +91,6 @@ public class MixinPlayerControllerMP {
     }
 @Unique
     private void mindless$fastMineApplyBreakDelaySlider() {
-        BedAura bedAura = ModuleManager.bedAura;
-        if (bedAura != null && bedAura.shouldOverrideFastMine()) {
-            int delay = bedAura.getBreakDelayTicks();
-            if (delay < 5) {
-                this.blockHitDelay = delay;
-            }
-            return;
-        }
         FastMine fm = ModuleManager.fastMine;
         if (fm == null) {
             return;

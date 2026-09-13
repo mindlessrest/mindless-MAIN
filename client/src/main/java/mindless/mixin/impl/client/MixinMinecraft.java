@@ -98,7 +98,7 @@ public class MixinMinecraft {
     )
     private void mindless$fastMinePassiveBlockHitDelay(CallbackInfo ci) {
         BedAura bedAura = ModuleManager.bedAura;
-        if (bedAura != null && (bedAura.shouldOverrideFastMine() || bedAura.shouldSuppressControllerMining())) {
+        if (bedAura != null && bedAura.shouldSuppressControllerMining()) {
             return;
         }
         FastMine fm = ModuleManager.fastMine;

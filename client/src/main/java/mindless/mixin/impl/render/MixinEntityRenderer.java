@@ -198,11 +198,6 @@ public class MixinEntityRenderer implements ISaturationRenderer {
 
     @Inject(method = "getMouseOver", at = @At(value = "INVOKE", target = "Lnet/minecraft/profiler/Profiler;endSection()V", shift = At.Shift.BEFORE))
     private void onGetMouseOverBeforeEndSection(float partialTicks, CallbackInfo ci) {
-        if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()) {
-            ModuleManager.bedAura.modifyMouseOverFromGetMouseOver(partialTicks);
-            return;
-        }
-
         if (ModuleManager.ghostHand != null && ModuleManager.ghostHand.shouldOverrideMouseOver()) {
             ModuleManager.ghostHand.modifyMouseOverFromGetMouseOver(partialTicks);
             return;

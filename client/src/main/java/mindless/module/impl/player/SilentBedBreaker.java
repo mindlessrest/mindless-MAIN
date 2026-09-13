@@ -535,11 +535,11 @@ final class SilentBedBreaker {
         return slot >= 0 ? slot : mc().thePlayer.inventory.currentItem;
     }
 
-    private boolean hasRequiredTool(Block block) {
+    static boolean hasRequiredTool(Block block) {
         Material material = block.getMaterial();
         if (material != Material.iron && material != Material.anvil && material != Material.rock) return true;
         for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = mc().thePlayer.inventory.getStackInSlot(slot);
+            ItemStack stack = net.minecraft.client.Minecraft.getMinecraft().thePlayer.inventory.getStackInSlot(slot);
             if (stack != null && stack.getItem() instanceof ItemPickaxe) return true;
         }
         return false;

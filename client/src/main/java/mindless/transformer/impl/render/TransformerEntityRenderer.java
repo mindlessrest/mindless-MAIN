@@ -90,12 +90,6 @@ public class TransformerEntityRenderer {
                     shift = CTarget.Shift.BEFORE,
                     optional = true))
     private void applyPiercingMouseOver(float partialTicks, InjectionCallback ci) {
-        if (ModuleManager.bedAura != null && ModuleManager.bedAura.shouldOverrideMouseOver()
-                && !ModuleManager.bedAura.isPrioritizingKillAura()) {
-            ModuleManager.bedAura.modifyMouseOverFromGetMouseOver(partialTicks);
-            return;
-        }
-
         if (ModuleManager.piercing != null && ModuleManager.piercing.shouldOverrideMouseOver()) {
             ModuleManager.piercing.modifyMouseOverFromGetMouseOver(partialTicks);
         }
