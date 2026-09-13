@@ -19,6 +19,7 @@ import mindless.utility.ScaledResolutionCache;
 import mindless.utility.font.FontManager;
 import mindless.utility.font.MindlessFontRenderer;
 import mindless.utility.font.ModuleFont;
+import mindless.utility.media.MascotMedia;
 import mindless.utility.profile.Manager;
 import mindless.utility.profile.Profile;
 import mindless.utility.profile.ProfileModule;
@@ -40,6 +41,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -48,6 +50,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 
 import javax.imageio.ImageIO;
 public final class ModernClickGui extends ClickGui {
@@ -275,12 +281,34 @@ private float aboutOpenProgress = 0f;
     private boolean mascotCatLoadAttempted;
     private boolean mascotMindlessLoadAttempted;
     private static ResourceLocation mascotTextureCustom;
+    private static DynamicTexture mascotCustomDynamicTexture;
+    private static MascotMedia mascotCustomMedia;
+    private static Future<MascotMedia> mascotCustomFuture;
+    private static int mascotCustomFrame = -1;
+    private static final ExecutorService MASCOT_DECODER = Executors.newSingleThreadExecutor(new ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "Mindless Mascot Decoder");
+            thread.setDaemon(true);
+            return thread;
+        }
+    });
     /** The path the custom texture was built from, so a new pick reloads it. */
     private static String mascotCustomLoadedFrom;
 
     /** Drop the cached custom image so the next frame picks up a newly chosen file. */
     public static void invalidateCustomMascot() {
+        if (mascotCustomFuture != null) {
+            mascotCustomFuture.cancel(true);
+        }
+        if (mascotTextureCustom != null && net.minecraft.client.Minecraft.getMinecraft() != null) {
+            net.minecraft.client.Minecraft.getMinecraft().getTextureManager().deleteTexture(mascotTextureCustom);
+        }
         mascotTextureCustom = null;
+        mascotCustomDynamicTexture = null;
+        mascotCustomMedia = null;
+        mascotCustomFuture = null;
+        mascotCustomFrame = -1;
         mascotCustomLoadedFrom = null;
     }
     private int categoryIconLoadIndex;
@@ -3021,31 +3049,49 @@ private static float corner(float radius, float w, float h) {
         if (path.isEmpty()) {
             return null;
         }
-        if (mascotTextureCustom != null && path.equals(mascotCustomLoadedFrom)) {
-            return mascotTextureCustom;
+        if (!path.equals(mascotCustomLoadedFrom)) {
+            invalidateCustomMascot();
+            mascotCustomLoadedFrom = path;
+            final File file = new File(path);
+            mascotCustomFuture = MASCOT_DECODER.submit(new java.util.concurrent.Callable<MascotMedia>() {
+                @Override
+                public MascotMedia call() throws Exception {
+                    return MascotMedia.load(file);
+                }
+            });
         }
-        // Remembered even on failure, so a missing or unreadable file is not retried every
-        // frame the GUI is open.
-        mascotCustomLoadedFrom = path;
-        mascotTextureCustom = null;
-        try {
-            java.io.File file = new java.io.File(path);
-            if (!file.isFile()) {
-                return null;
+        if (mascotCustomMedia == null && mascotCustomFuture != null && mascotCustomFuture.isDone()) {
+            try {
+                mascotCustomMedia = mascotCustomFuture.get();
+                mascotCustomAspect = mascotCustomMedia.aspect();
             }
-            BufferedImage image = ImageIO.read(file);
-            if (image == null) {
-                return null;
+            catch (Exception unreadable) {
+                mascotCustomMedia = null;
             }
-            mascotCustomAspect = image.getHeight() == 0
-                    ? 1.0f : (float) image.getWidth() / image.getHeight();
-            DynamicTexture texture = new DynamicTexture(image);
-            texture.setBlurMipmap(true, false);
-            mascotTextureCustom = mc.getTextureManager()
-                    .getDynamicTextureLocation("mindless_mascot_custom", texture);
+            mascotCustomFuture = null;
         }
-        catch (Exception unreadable) {
-            mascotTextureCustom = null;
+        if (mascotCustomMedia == null) {
+            return null;
+        }
+        int frameIndex = mascotCustomMedia.frameIndex(System.currentTimeMillis());
+        if (mascotTextureCustom == null || frameIndex != mascotCustomFrame) {
+            BufferedImage image = mascotCustomMedia.frame(frameIndex);
+            if (mascotCustomDynamicTexture == null
+                    || mascotCustomDynamicTexture.getTextureData().length != image.getWidth() * image.getHeight()) {
+                if (mascotTextureCustom != null) {
+                    mc.getTextureManager().deleteTexture(mascotTextureCustom);
+                }
+                mascotCustomDynamicTexture = new DynamicTexture(image);
+                mascotCustomDynamicTexture.setBlurMipmap(true, false);
+                mascotTextureCustom = mc.getTextureManager()
+                        .getDynamicTextureLocation("mindless_mascot_custom", mascotCustomDynamicTexture);
+            }
+            else {
+                image.getRGB(0, 0, image.getWidth(), image.getHeight(),
+                        mascotCustomDynamicTexture.getTextureData(), 0, image.getWidth());
+                mascotCustomDynamicTexture.updateDynamicTexture();
+            }
+            mascotCustomFrame = frameIndex;
         }
         return mascotTextureCustom;
     }

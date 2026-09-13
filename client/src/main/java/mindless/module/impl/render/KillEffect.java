@@ -8,6 +8,8 @@ import mindless.module.Module;
 import mindless.module.setting.impl.ButtonSetting;
 import mindless.module.setting.impl.ColorSetting;
 import mindless.module.setting.impl.SliderSetting;
+import mindless.module.setting.impl.TextSetting;
+import mindless.accountmanager.utils.ModernFileChooser;
 import mindless.utility.Utils;
 import mindless.utility.sound.ResourceMp3Player;
 import net.minecraft.client.entity.AbstractClientPlayer;
@@ -20,6 +22,10 @@ import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.opengl.GL11;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -41,7 +47,18 @@ public class KillEffect extends Module {
     private static final int MODE_SOUL = 2;
     private static final int MODE_XP = 3;
     private static final int MODE_REASSEMBLE = 4;
-    private static final String[] KILL_SOUNDS = new String[]{"Mommy ASMR", "Off"};
+    private static final String[] KILL_SOUNDS = new String[]{"Mommy ASMR", "Off", "Anime laugh", "Anime Giggle", "Anime Oi", "ohayou-gozaimassssssssu", "Custom"};
+    private static final String[] KILL_SOUND_RESOURCES = new String[]{
+            "/assets/mindless/sounds/mommy_asmr.mp3",
+            null,
+            "/assets/mindless/sounds/anime_laugh.mp3",
+            "/assets/mindless/sounds/anime_giggle.mp3",
+            "/assets/mindless/sounds/anime_oi.mp3",
+            "/assets/mindless/sounds/ohayou_gozaimasu.mp3",
+            null
+    };
+    private static final int KILL_SOUND_OFF = 1;
+    private static final int KILL_SOUND_CUSTOM = 6;
 
     private static final int MAX_EFFECTS = 6;
     private static final int PARTICLES_PER_EFFECT = 28;
@@ -51,6 +68,8 @@ public class KillEffect extends Module {
     private final SliderSetting size;
     private final SliderSetting killSound;
     private final SliderSetting killSoundVolume;
+    private final TextSetting customKillSoundName;
+    private final TextSetting customKillSoundPath;
     private final ButtonSetting useCustomColor;
     private final ColorSetting customColor;
     private final SliderSetting orbCount;
@@ -69,6 +88,14 @@ public class KillEffect extends Module {
         this.registerSetting(size = new SliderSetting("Size", 1.0, 0.3, 3.0, 0.05));
         this.registerSetting(killSound = new SliderSetting("Kill Sound", 0, KILL_SOUNDS));
         this.registerSetting(killSoundVolume = new SliderSetting("Kill Sound Volume", "%", 35.0, 0.0, 100.0, 5.0));
+        this.registerSetting(customKillSoundName = new TextSetting("Custom sound name", "Custom", "Preset name", 32));
+        this.registerSetting(customKillSoundPath = new TextSetting("Custom sound path", "", "Choose an MP3 or WAV", 260));
+        this.registerSetting(new ButtonSetting("Choose custom kill sound", new Runnable() {
+            @Override
+            public void run() {
+                chooseCustomKillSound();
+            }
+        }));
         this.registerSetting(useCustomColor = new ButtonSetting("Custom color", false));
         this.registerSetting(customColor = new ColorSetting("Color", 220, 40, 40, 255));
         this.registerSetting(orbCount = new SliderSetting("Orb count", 42, 6, 120, 1));
@@ -83,6 +110,18 @@ public class KillEffect extends Module {
 
     @Override
     public void guiUpdate() {
+        String customName = customKillSoundName == null ? "" : customKillSoundName.getText().trim();
+        KILL_SOUNDS[KILL_SOUND_CUSTOM] = customName.isEmpty() ? "Custom" : customName;
+        boolean customSound = killSound != null && (int) killSound.getInput() == KILL_SOUND_CUSTOM;
+        if (customKillSoundName != null) {
+            customKillSoundName.setVisible(customSound, this);
+        }
+        if (customKillSoundPath != null) {
+            customKillSoundPath.setVisible(customSound, this);
+        }
+        if (killSoundVolume != null) {
+            killSoundVolume.setVisible(killSound != null && (int) killSound.getInput() != KILL_SOUND_OFF, this);
+        }
         if (customColor != null) {
             customColor.setVisible(useCustomColor != null && useCustomColor.isToggled(), this);
         }
@@ -134,15 +173,81 @@ public class KillEffect extends Module {
         }
         lastEffectEntityId = event.entityId;
         lastEffectTimeMs = now;
-        if ((int) killSound.getInput() == 0) {
-            ResourceMp3Player.playMommyAsmr((float) killSoundVolume.getInput() / 100.0f);
-        }
+        playKillSound();
 
         if (usesOrbs()) {
             spawnOrbs(event);
             return;
         }
         spawn(event.x, event.y, event.z);
+    }
+
+    private void chooseCustomKillSound() {
+        ModernFileChooser.showOpenDialog(
+                "Select custom kill sound", null, "Audio (*.mp3, *.wav)", new String[]{"mp3", "wav"},
+                new java.util.function.Consumer<File>() {
+                    @Override
+                    public void accept(File file) {
+                        String currentName = customKillSoundName.getText().trim();
+                        if (currentName.isEmpty() || "Custom".equals(currentName)) {
+                            String fileName = file.getName();
+                            int dot = fileName.lastIndexOf('.');
+                            customKillSoundName.setText(dot > 0 ? fileName.substring(0, dot) : fileName);
+                        }
+                        try {
+                            file = installCustomKillSound(file);
+                        }
+                        catch (IOException error) {
+                            Utils.sendMessage("&cCould not save the custom kill sound locally.");
+                            return;
+                        }
+                        customKillSoundPath.setText(file.getAbsolutePath());
+                        KILL_SOUNDS[KILL_SOUND_CUSTOM] = customKillSoundName.getText().trim();
+                        killSound.setValueWithEvent(KILL_SOUND_CUSTOM);
+                        Utils.sendMessage("&aCustom kill sound added as " + KILL_SOUNDS[KILL_SOUND_CUSTOM] + ".");
+                    }
+                },
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        Utils.sendMessage("&7No custom kill sound chosen.");
+                    }
+                });
+    }
+
+    private File installCustomKillSound(File source) throws IOException {
+        File directory = new File(mc.mcDataDir, "mindless/custom-kill-sounds");
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw new IOException("Could not create custom sound directory");
+        }
+        String sourceName = source.getName();
+        int dot = sourceName.lastIndexOf('.');
+        String extension = dot >= 0 ? sourceName.substring(dot + 1).toLowerCase(java.util.Locale.ROOT) : "mp3";
+        String name = customKillSoundName.getText().trim().replaceAll("[^A-Za-z0-9._-]", "_");
+        if (name.isEmpty()) {
+            name = "custom";
+        }
+        File target = new File(directory, name + "." + extension);
+        if (!source.getCanonicalFile().equals(target.getCanonicalFile())) {
+            Files.copy(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+        return target;
+    }
+
+    private void playKillSound() {
+        int selected = (int) killSound.getInput();
+        float volume = (float) killSoundVolume.getInput() / 100.0f;
+        if (selected == KILL_SOUND_CUSTOM) {
+            String path = customKillSoundPath.getText().trim();
+            if (!path.isEmpty()) {
+                ResourceMp3Player.playFile(new File(path), volume);
+            }
+            return;
+        }
+        if (selected >= 0 && selected < KILL_SOUND_RESOURCES.length
+                && KILL_SOUND_RESOURCES[selected] != null) {
+            ResourceMp3Player.playResource(KILL_SOUND_RESOURCES[selected], volume);
+        }
     }
 
     /**

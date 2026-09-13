@@ -127,6 +127,8 @@ dependencies {
     shadowImpl("org.java-websocket:Java-WebSocket:1.6.0")
     shadowImpl("org.slf4j:slf4j-api:2.0.13")
     shadowImpl("net.java.dev.jna:jna:5.14.0")
+    shadowImpl("org.jcodec:jcodec:0.2.5")
+    shadowImpl("org.jcodec:jcodec-javase:0.2.5")
     shadowImpl("com.squareup.okhttp3:okhttp:4.12.0")
     shadowImpl("org.eclipse.jdt:ecj:3.24.0")
 

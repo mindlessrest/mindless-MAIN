@@ -133,7 +133,7 @@ private static int appliedIndex = -1;
         this.registerSetting(mascot = new SliderSetting(mascotGroup, "Mascot", 0,
                 new String[]{"Mindless", "Cat", "None", "Custom"}));
         // A method button has no grouped constructor, so this one sits at the top level.
-        this.registerSetting(new ButtonSetting("Choose mascot image", new Runnable() {
+        this.registerSetting(new ButtonSetting("Choose mascot media", new Runnable() {
             @Override
             public void run() {
                 chooseMascotImage();
@@ -143,7 +143,7 @@ private static int appliedIndex = -1;
         // that can open behind a fullscreen game, and pasting a path has to still work when
         // it does. Submitting the box applies it exactly as choosing a file would.
         this.registerSetting(mascotPath = new TextSetting(mascotGroup, "Image path", "",
-                "Paste a path, or use Choose mascot image", 260, new Runnable() {
+                "Image, GIF, or MP4 path", 260, new Runnable() {
             @Override
             public void run() {
                 applyMascotPath();
@@ -217,8 +217,8 @@ private static int appliedIndex = -1;
     /** Open the picker, and take the choice if one comes back. */
     private void chooseMascotImage() {
         mindless.accountmanager.utils.ModernFileChooser.showOpenDialog(
-                "Select mascot image", null, "Images (*.png, *.jpg, *.jpeg)",
-                new String[]{"png", "jpg", "jpeg"},
+                "Select mascot media", null, "Mascot media (*.png, *.jpg, *.jpeg, *.gif, *.bmp, *.mp4, *.mov, *.m4v)",
+                new String[]{"png", "jpg", "jpeg", "gif", "bmp", "mp4", "mov", "m4v"},
                 new java.util.function.Consumer<java.io.File>() {
                     @Override
                     public void accept(java.io.File file) {
@@ -231,7 +231,7 @@ private static int appliedIndex = -1;
                     public void run() {
                         // Said out loud, because the dialog can open behind a fullscreen game
                         // and silence is indistinguishable from the button doing nothing.
-                        mindless.utility.Utils.sendMessage("&7No image chosen. The picker can open behind the game -- alt-tab to it, or paste the path into Image path.");
+                        mindless.utility.Utils.sendMessage("&7No mascot media chosen. The picker can open behind the game -- alt-tab to it, or paste the path into Image path.");
                     }
                 });
     }
@@ -248,8 +248,13 @@ private static int appliedIndex = -1;
         if (path.isEmpty()) {
             return;
         }
-        if (!new java.io.File(path).isFile()) {
+        java.io.File file = new java.io.File(path);
+        if (!file.isFile()) {
             mindless.utility.Utils.sendMessage("&cNo file at " + path);
+            return;
+        }
+        if (!mindless.utility.media.MascotMedia.supports(file)) {
+            mindless.utility.Utils.sendMessage("&cUnsupported mascot format. Use PNG, JPG, GIF, BMP, MP4, MOV, or M4V.");
             return;
         }
         mascot.setValueWithEvent(3);
