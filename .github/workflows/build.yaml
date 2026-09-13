@@ -44,6 +44,47 @@ jobs:
             }
           done
 
+      # A jar can be present and still unusable: the native loader defines its class loader from
+      # these classes out of the embedded payload, and a payload without them fails every
+      # injection with bootstrap error 7. Check the jars that get embedded, not only that they
+      # exist, and never publish one that would not start.
+      - name: Verify payload contents
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          list_entries() {
+            if command -v unzip >/dev/null 2>&1; then
+              unzip -Z1 "$1"
+            else
+              python3 - "$1" <<'PY'
+          import sys, zipfile
+          for name in zipfile.ZipFile(sys.argv[1]).namelist():
+              print(name)
+          PY
+            fi
+          }
+
+          echo "compiled main classes: $(find client/build/classes/java/main -name '*.class' 2>/dev/null | wc -l)"
+          missing=0
+          for jar in client/build/libs/mindless.jar client/build/intermediates/mindless-lunar-mcp-with-forge.jar; do
+            list_entries "$jar" > entries.txt
+            echo "$jar: $(grep -vc '/$' entries.txt) files, $(grep -c '^mindless/' entries.txt || true) under mindless/"
+            for cls in \
+              mindless/runtime/MemoryResourceStore.class \
+              mindless/runtime/MemoryURLConnection.class \
+              mindless/runtime/MemoryURLStreamHandler.class \
+              mindless/runtime/NativeBootstrap.class \
+              mindless/runtime/MindlessTransformerManager.class; do
+              if ! grep -qxF "$cls" entries.txt; then
+                echo "::error::$jar is missing $cls"
+                missing=1
+              fi
+            done
+          done
+          rm -f entries.txt
+          test "$missing" -eq 0
+
       - name: Verify deployment secrets
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
