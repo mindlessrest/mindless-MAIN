@@ -638,7 +638,7 @@ private float aboutOpenProgress = 0f;
         y = drawCategory(Module.category.profiles, y, mx, my);
         y = drawCategory(Module.category.scripts, y, mx, my);
         y = drawCategory(Module.category.theme, y, mx, my);
-        drawAccountCard(mx, my);
+        drawAccountCard(mx, my, y);
     }
 
     private static final float ACCOUNT_ROW_H = 40f;
@@ -659,10 +659,10 @@ private float aboutOpenProgress = 0f;
      * Who is signed in, sitting on the sidebar itself rather than in a card of its own.
      *
      * No fill and no edge at rest; hovering lights it the same way a category row lights, so it
-     * reads as the last row of the sidebar. The second line appears only when there is something
-     * real to put on it -- a UID -- and otherwise the name centres on the avatar alone.
+     * reads as the last row of the sidebar, set off by the sidebar's own section divider. The UID
+     * line is always there.
      */
-    private void drawAccountCard(int mx, int my) {
+    private void drawAccountCard(int mx, int my, float categoriesBottom) {
         MindlessAccount.Profile account = MindlessAccount.profile();
         float[] bounds = accountCardBounds();
         float left = bounds[0], top = bounds[1], right = bounds[2], bottom = bounds[3];
@@ -672,6 +672,10 @@ private float aboutOpenProgress = 0f;
         float hoverAmount = animate(hoverAnimation, accountHoverKey, hover ? 1f : 0f, 15f);
         float openAmount = animate(hoverAnimation, accountExpandKey, accountExpanded ? 1f : 0f, 14f);
         float lift = Math.max(hoverAmount, openAmount);
+        // The same divider the sidebar draws between its other sections. Held clear of the last
+        // category so an opened drawer on a short panel cannot rule a line through it.
+        float dividerY = Math.max(top - 5f, categoriesBottom + 2f);
+        line(baseX + 10, dividerY, baseX + sideW - 10, dividerY, DIVIDER);
         if (lift > .01f) {
             rounded(left, top, right, bottom, 6f, withAlpha(ACCENT, (int) (lift * 26f)));
         }
@@ -702,15 +706,15 @@ private float aboutOpenProgress = 0f;
         float textX = avatarX + avatar + 8f;
         float chevronX = right - 8f;
         float middle = top + ACCOUNT_ROW_H * .5f;
-        float nameCenter = uid != null ? middle - 5f : middle;
+        float nameCenter = middle - 5f;
         String name = account.username() == null ? "guest" : account.username();
         drawTextVCentered(trim(name, Math.max(10f, chevronX - 7f - textX), .76f, true),
                 textX, nameCenter - 6f, nameCenter + 6f,
                 mixColor(TEXT, 0xFFFFFFFF, lift), .76f, true);
-        if (uid != null) {
-            drawTextVCentered(trim("UID " + uid, Math.max(10f, right - 6f - textX), .6f, false),
-                    textX, middle + .5f, middle + 10.5f, MUTED, .6f, false);
-        }
+        // Always shown. The value comes from profile.json, which only a loader built after the
+        // backend started returning uid writes; until that loader has run once it reads as a dash.
+        drawTextVCentered(trim("UID " + (uid != null ? uid : "—"), Math.max(10f, right - 6f - textX), .6f, false),
+                textX, middle + .5f, middle + 10.5f, MUTED, .6f, false);
         chevron(chevronX, nameCenter, 2.8f, 1.2f, openAmount, mixColor(DIM, TEXT, lift));
 
         if (openAmount <= .01f) return;
