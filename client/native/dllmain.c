@@ -394,9 +394,9 @@ name_chars = (*env)->GetStringUTFChars(env, name_str, NULL);
     if (!store_bytes_ref || !conn_bytes_ref || !handler_bytes_ref) {
         if (!read_failed) {
             _snprintf_s(stage, sizeof(stage), _TRUNCATE,
-                    "Payload helper classes missing (%d read, %d skipped, store=%d conn=%d handler=%d)",
-                    entries_read, entries_skipped, store_bytes_ref != NULL,
-                    conn_bytes_ref != NULL, handler_bytes_ref != NULL);
+                    "Payload %d helper classes missing (%lu bytes, %d read, %d skipped, store=%d conn=%d handler=%d)",
+                    resource_id, (unsigned long)jar_size, entries_read, entries_skipped,
+                    store_bytes_ref != NULL, conn_bytes_ref != NULL, handler_bytes_ref != NULL);
             send_progress(0.59f, stage);
         }
         vape_log(L"memory classloader helper classes not found in payload JAR");

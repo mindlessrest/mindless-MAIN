@@ -69,7 +69,7 @@ jobs:
           missing=0
           for jar in client/build/libs/mindless.jar client/build/intermediates/mindless-lunar-mcp-with-forge.jar; do
             list_entries "$jar" > entries.txt
-            echo "$jar: $(grep -vc '/$' entries.txt) files, $(grep -c '^mindless/' entries.txt || true) under mindless/"
+            echo "$jar: $(grep -vc '/$' entries.txt) files, $(grep -c '^mindless/' entries.txt || true) under mindless/, $(stat -c %s "$jar") bytes, sha256 $(sha256sum "$jar" | cut -c1-16)"
             for cls in \
               mindless/runtime/MemoryResourceStore.class \
               mindless/runtime/MemoryURLConnection.class \
@@ -83,6 +83,12 @@ jobs:
             done
           done
           rm -f entries.txt
+          # What the DLL was actually built from, to set against the jars above.
+          native_dir="${HOME}/.cache/mindless/build/native"
+          if [ -f "$native_dir/payload_hashes.h" ]; then
+            grep -o 'MINDLESS_[A-Z]*_PAYLOAD_SHA256 "[0-9a-f]*' "$native_dir/payload_hashes.h" | cut -c1-58
+          fi
+          echo "MindlessNative.dll: $(stat -c %s client/native_build/dist/MindlessNative.dll) bytes"
           test "$missing" -eq 0
 
       - name: Verify deployment secrets
