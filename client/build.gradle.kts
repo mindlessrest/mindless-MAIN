@@ -1,4 +1,5 @@
 import org.apache.commons.lang3.SystemUtils
+import org.gradle.api.tasks.bundling.ZipEntryCompression
 
 plugins {
     idea
@@ -184,20 +185,22 @@ tasks.processResources {
 
 val remapJar by tasks.named<net.fabricmc.loom.task.RemapJarTask>("remapJar") {
     archiveClassifier.set("")
-    from(tasks.shadowJar)
+    dependsOn(tasks.shadowJar)
     input.set(tasks.shadowJar.get().archiveFile)
+    entryCompression = ZipEntryCompression.STORED
 }
 
 tasks.jar {
     archiveClassifier.set("without-deps")
     destinationDirectory.set(layout.buildDirectory.dir("intermediates"))
+    enabled = mindlessBuildType == "forge"
 }
 
 tasks.shadowJar {
     destinationDirectory.set(layout.buildDirectory.dir("intermediates"))
     archiveClassifier.set("non-obfuscated-with-deps")
     configurations = listOf(shadowImpl)
-    from(sourceSets.main.get().output)
+    entryCompression = ZipEntryCompression.STORED
 
     exclude(
         "dummyThing",
@@ -242,6 +245,7 @@ val lunarPayloadJar by tasks.registering(org.gradle.jvm.tasks.Jar::class) {
     destinationDirectory.set(layout.buildDirectory.dir("intermediates"))
     archiveClassifier.set("lunar-mcp-with-forge")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    entryCompression = ZipEntryCompression.STORED
 
     from(lunarShim.output)
     from({ zipTree(tasks.shadowJar.get().archiveFile.get().asFile) }) {
