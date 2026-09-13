@@ -63,9 +63,6 @@ static void send_failure(DWORD error_code) {
     InterlockedIncrement(&g_progress_data->progress_sequence);
     g_progress_data->progress_state = MINDLESS_PROGRESS_FAILED;
     g_progress_data->error_code = (LONG)error_code;
-    strncpy_s(g_progress_data->progress_status,
-            sizeof(g_progress_data->progress_status),
-            "Mindless failed to start", _TRUNCATE);
     MemoryBarrier();
     InterlockedIncrement(&g_progress_data->progress_sequence);
 }
