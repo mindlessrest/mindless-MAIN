@@ -179,7 +179,11 @@ public static MindlessFontRenderer getClickGuiRenderer(String family, float pixe
             return getMinecraftRenderer(safeTargetHeight);
         }
 
-        String key = family + "#height#" + safeTargetHeight + "#" + getUiScale();
+        String key = heightKey(family, safeTargetHeight);
+        MindlessFontRenderer cached = peekCachedRenderer(key);
+        if (cached != null) {
+            return cached;
+        }
         return getCachedRenderer(key, new Supplier<MindlessFontRenderer>() {
             @Override
             public MindlessFontRenderer get() {
@@ -315,6 +319,49 @@ public static MindlessFontRenderer getClickGuiRenderer(String family, float pixe
         catch (IOException ignored) {
             return null;
         }
+    }
+
+    private static final Map<String, String[]> HEIGHT_KEYS = new HashMap<String, String[]>();
+    private static float heightKeysScale = Float.NaN;
+
+    /**
+     * The cache key for a family at a pixel height, built once rather than on every lookup.
+     *
+     * The click GUI asks for a renderer for every string it draws, and each ask concatenated two
+     * floats into a fresh key: in a JFR recording that string building, and the anonymous
+     * supplier created alongside it even on a cache hit, allocated more than any other part of the
+     * client apart from chat. Heights are already snapped to quarter pixels, so they index an
+     * array per family; the key text itself is unchanged, and the array is dropped whenever the
+     * UI scale that is part of it changes.
+     */
+    private static String heightKey(String family, float safeTargetHeight) {
+        float uiScale = getUiScale();
+        int quarter = Math.round(safeTargetHeight * 4.0f);
+        if (quarter < 0 || quarter >= 1024) {
+            return family + "#height#" + safeTargetHeight + "#" + uiScale;
+        }
+        synchronized (HEIGHT_KEYS) {
+            if (Float.compare(uiScale, heightKeysScale) != 0) {
+                HEIGHT_KEYS.clear();
+                heightKeysScale = uiScale;
+            }
+            String[] keys = HEIGHT_KEYS.get(family);
+            if (keys == null) {
+                keys = new String[1024];
+                HEIGHT_KEYS.put(family, keys);
+            }
+            String key = keys[quarter];
+            if (key == null) {
+                key = family + "#height#" + safeTargetHeight + "#" + uiScale;
+                keys[quarter] = key;
+            }
+            return key;
+        }
+    }
+
+    /** A cache hit without building a supplier; still a real get, so the LRU order is kept. */
+    private static synchronized MindlessFontRenderer peekCachedRenderer(String key) {
+        return FONT_CACHE.get(key);
     }
 
     private static synchronized MindlessFontRenderer getCachedRenderer(String key, Supplier<MindlessFontRenderer> rendererSupplier) {

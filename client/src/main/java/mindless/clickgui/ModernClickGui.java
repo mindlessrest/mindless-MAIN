@@ -641,8 +641,9 @@ private float aboutOpenProgress = 0f;
         drawAccountCard(mx, my);
     }
 
-    private static final float ACCOUNT_ROW_H = 46f;
-    private static final float ACCOUNT_DETAIL_H = 42f;
+    private static final float ACCOUNT_ROW_H = 40f;
+    private static final float ACCOUNT_DETAIL_H = 38f;
+    private static final int ACCOUNT_ONLINE = argb(255, 67, 181, 129);
     private boolean accountExpanded;
     private final Object accountHoverKey = new Object();
     private final Object accountExpandKey = new Object();
@@ -655,13 +656,14 @@ private float aboutOpenProgress = 0f;
     }
 
     /**
-     * Who is signed in, as a card of its own rather than a strip along the bottom of the panel.
+     * Who is signed in, as a compact identity row with a drawer under it.
      *
-     * The avatar is a circle because a Discord avatar is one everywhere else it is shown, and a
-     * square crop of a round image is the single thing that makes a card like this look homemade.
-     * The ring around it is the only accent in the bubble; the two text rows are a name and one
-     * quiet line under it, which is as much as fits before it stops reading as an identity and
-     * starts reading as a table.
+     * Sized for the sidebar rather than scaled into it. The avatar was 26px inside a 90px column,
+     * which left the name and the session line about 34px and truncated both; at 22px with the
+     * chevron sharing only the name's line, the session line gets the full width under it and
+     * "Local session" fits whole. The surface follows the theme's row colours instead of a fixed
+     * navy, and its edge is drawn before the fill -- the outline helper paints a filled rect one
+     * pixel larger, so drawing it second had been tinting the entire card.
      */
     private void drawAccountCard(int mx, int my) {
         MindlessAccount.Profile account = MindlessAccount.profile();
@@ -672,60 +674,73 @@ private float aboutOpenProgress = 0f;
         boolean hover = inside(mx, my, left, top, right, bottom);
         float hoverAmount = animate(hoverAnimation, accountHoverKey, hover ? 1f : 0f, 15f);
         float openAmount = animate(hoverAnimation, accountExpandKey, accountExpanded ? 1f : 0f, 14f);
+        float lift = Math.max(hoverAmount, openAmount);
 
-        rounded(left, top, right, bottom, 9f,
-                mixColor(argb(255, 19, 23, 31), argb(255, 27, 33, 44), hoverAmount));
-        outline(left, top, right, bottom, 9f,
-                withAlpha(ACCENT, (int) (18f + 42f * Math.max(hoverAmount, openAmount))));
+        int surface = withAlpha(mixColor(ROW, ROW_HOVER, hoverAmount), 255);
+        outline(left, top, right, bottom, 8f,
+                mixColor(withAlpha(BORDER, 46), withAlpha(ACCENT, 110), lift));
+        rounded(left, top, right, bottom, 8f, surface);
 
-        float avatar = 26f;
-        float avatarX = left + 9f;
+        float avatar = 22f;
+        float avatarX = left + 8f;
         float avatarY = top + (ACCOUNT_ROW_H - avatar) * .5f;
-        float ring = 1.5f + hoverAmount * .6f;
-        rounded(avatarX - ring, avatarY - ring, avatarX + avatar + ring, avatarY + avatar + ring,
-                (avatar + ring * 2f) * .5f, withAlpha(ACCENT, (int) (140f + 80f * hoverAmount)));
+        float centerX = avatarX + avatar * .5f, centerY = avatarY + avatar * .5f;
+        // A hairline ring with a gap of card colour inside it, so the image reads as framed rather
+        // than as a disc glued to a coloured one.
+        disc(centerX, centerY, avatar * .5f + 1.2f, withAlpha(ACCENT, (int) (170f + 70f * hoverAmount)));
+        disc(centerX, centerY, avatar * .5f + .25f, surface);
         if (account.avatar() != null) {
             roundedTexture(account.avatar(), avatarX, avatarY, avatar, avatar, avatar * .5f);
         } else {
-            rounded(avatarX, avatarY, avatarX + avatar, avatarY + avatar, avatar * .5f,
-                    argb(255, 30, 36, 48));
+            disc(centerX, centerY, avatar * .5f, mixColor(surface, ACCENT, .18f));
             String initial = account.username() == null || account.username().isEmpty()
                     ? "?" : account.username().substring(0, 1).toUpperCase();
             drawCenteredV(initial, avatarX, avatarX + avatar, avatarY, avatarY + avatar,
-                    ACCENT, .86f, true);
+                    TEXT, .8f, true);
         }
+        // Signed in or local, readable without the second line: a cut-out dot on the avatar.
+        float dotX = avatarX + avatar - 2.5f, dotY = avatarY + avatar - 2.5f;
+        disc(dotX, dotY, 3.6f, surface);
+        disc(dotX, dotY, 2.4f, account.uid() != null ? ACCOUNT_ONLINE : DIM);
 
-        float chevronX = right - 13f;
-        float textX = avatarX + avatar + 8f;
-        float textW = Math.max(10f, chevronX - textX - 8f);
+        float textX = avatarX + avatar + 7f;
+        float chevronX = right - 9f;
+        float nameCenter = top + ACCOUNT_ROW_H * .5f - 5f;
+        float subCenter = top + ACCOUNT_ROW_H * .5f + 5.5f;
         String name = account.username() == null ? "guest" : account.username();
-        drawText(trim(name, textW, .68f, true), textX, top + 12f,
-                mixColor(TEXT, 0xFFFFFFFF, hoverAmount), .68f, true);
-
+        drawTextVCentered(trim(name, Math.max(10f, chevronX - 6f - textX), .74f, true),
+                textX, nameCenter - 6f, nameCenter + 6f,
+                mixColor(TEXT, 0xFFFFFFFF, hoverAmount), .74f, true);
         String secondary = account.uid() == null ? "Local session" : "UID " + account.uid();
-        drawText(trim(secondary, textW, .54f, false), textX, top + 25f, MUTED, .54f, false);
+        drawTextVCentered(trim(secondary, Math.max(10f, right - 8f - textX), .6f, false),
+                textX, subCenter - 5f, subCenter + 5f, MUTED, .6f, false);
 
-        chevron(chevronX, top + ACCOUNT_ROW_H * .5f, 3.4f, 1.3f, openAmount,
-                mixColor(DIM, TEXT, Math.max(hoverAmount, openAmount)));
+        chevron(chevronX, nameCenter, 2.8f, 1.2f, openAmount, mixColor(DIM, TEXT, lift));
 
         if (openAmount <= .01f) return;
         // Clipped to the part of the drawer that has actually opened, so the rows slide out from
         // under the row above instead of appearing all at once at the end of the animation.
         float revealed = ACCOUNT_DETAIL_H * openAmount;
         RenderUtils.scissorPushGui(left, rowBottom, right - left, revealed);
-        line(left + 9f, rowBottom, right - 9f, rowBottom, withAlpha(DIVIDER, 60));
+        line(left + 8f, rowBottom, right - 8f, rowBottom, withAlpha(DIVIDER, 55));
         accountDetail("Discord", account.discordUsername() == null ? "Not linked" : account.discordUsername(),
-                left, right, rowBottom + 6f);
+                left, right, rowBottom + 5f);
         boolean reveal = Gui.showDiscordId != null && Gui.showDiscordId.isToggled();
-        accountDetail("ID", account.discordId() == null ? "\u2014" : reveal ? account.discordId() : "Hidden",
-                left, right, rowBottom + 21f);
+        accountDetail("ID", account.discordId() == null ? "—" : reveal ? account.discordId() : "Hidden",
+                left, right, rowBottom + 19f);
         RenderUtils.scissorPop();
     }
 
+    /** A label on the left and its value right-aligned, so a narrow sidebar never overlaps them. */
     private void accountDetail(String label, String value, float left, float right, float y) {
-        drawText(label, left + 9f, y, DIM, .5f, false);
-        float valueX = left + 46f;
-        drawText(trim(value, Math.max(10f, right - valueX - 9f), .5f, false), valueX, y, MUTED, .5f, false);
+        drawTextVCentered(label, left + 9f, y, y + 12f, DIM, .56f, false);
+        float labelEnd = left + 9f + textWidth(label, .56f, false) + 8f;
+        String shown = trim(value, Math.max(10f, right - 9f - labelEnd), .58f, false);
+        drawTextVCentered(shown, right - 9f - textWidth(shown, .58f, false), y, y + 12f, TEXT, .58f, false);
+    }
+
+    private void disc(float cx, float cy, float radius, int color) {
+        rounded(cx - radius, cy - radius, cx + radius, cy + radius, radius, color);
     }
 
     /**

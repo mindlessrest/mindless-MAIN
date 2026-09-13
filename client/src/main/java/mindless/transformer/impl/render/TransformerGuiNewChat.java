@@ -109,7 +109,7 @@ public abstract class TransformerGuiNewChat {
         for (int i = 0; i + scrollPos < totalLines && i < lineCount; i++) {
             ChatLine measured = drawnChatLines.get(i + scrollPos);
             if (measured == null) continue;
-            String measuredText = measured.getChatComponent().getFormattedText();
+            String measuredText = GuiNewChatState.formattedText(measured);
             float lineWidth = chatFont != null
                     ? chatFont.getStringWidth(measuredText)
                     : mc.fontRendererObj.getStringWidth(measuredText);
@@ -152,13 +152,13 @@ public abstract class TransformerGuiNewChat {
             float y = -i * rowHeight - 8.0f;
             if (i > 0) y += insertionOffset;
             else y += (float) ((1.0 - eased) * 2.5);
-            String text = chatLine.getChatComponent().getFormattedText();
+            String text = GuiNewChatState.formattedText(chatLine);
             int alpha = MathHelper.clamp_int((int) Math.round(255.0 * eased), 0, 255);
             int textColor = 0xFFFFFF | (alpha << 24);
 
             if (headSize > 0.0f) {
                 String sender = GuiNewChatState.senderOf(chatLine.getChatComponent());
-                GuiNewChatState.drawPlayerHead(sender, chatLine.getChatComponent().getFormattedText(),
+                GuiNewChatState.drawPlayerHead(sender, GuiNewChatState.formattedText(chatLine),
                         x, y - 1.0f, headSize, alpha);
                 GlStateManager.enableBlend();
                 GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,

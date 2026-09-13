@@ -2,7 +2,6 @@ package mindless.effect.impl;
 
 import mindless.effect.Effect;
 import mindless.effect.EffectRenderer;
-import net.minecraft.client.renderer.WorldRenderer;
 
 import java.util.Random;
 
@@ -58,7 +57,7 @@ public final class BurstEffect extends Effect {
         float alpha = 1.0f - life * life;
 
         EffectRenderer.seeThrough(seeThrough);
-        WorldRenderer wr = EffectRenderer.beginSparks();
+        EffectRenderer.beginSparks();
         for (int i = 0; i < vx.length; i++) {
             double px = x + vx[i] * t;
             double pz = z + vz[i] * t;
@@ -66,7 +65,7 @@ public final class BurstEffect extends Effect {
             if (gravity && py < y) {
                 py = y;
             }
-            EffectRenderer.spark(wr, px, py, pz, size, rgb, alpha);
+            EffectRenderer.spark(px, py, pz, size, rgb, alpha);
         }
         EffectRenderer.endSparks();
         EffectRenderer.seeThrough(false);

@@ -307,7 +307,12 @@ public final class Diagnostics {
                         + " -> " + after.blendSrcRgb + "/" + after.blendDstRgb);
             }
             if (before.texture2d != after.texture2d) leaks.add("texture2D " + before.texture2d + " -> " + after.texture2d);
-            if (before.texEnvMode != after.texEnvMode) leaks.add("tex env " + before.texEnvMode + " -> " + after.texEnvMode);
+            // Back to MODULATE is the 2D contract audit() asks for, not a leak. The COMBINE it
+            // replaces is left by the game's own hurt-flash tinting, which is why this fired only
+            // while a target was being hit.
+            if (before.texEnvMode != after.texEnvMode && after.texEnvMode != GL11.GL_MODULATE) {
+                leaks.add("tex env " + before.texEnvMode + " -> " + after.texEnvMode);
+            }
             if (before.lighting != after.lighting) leaks.add("lighting " + before.lighting + " -> " + after.lighting);
             if (before.fog != after.fog) leaks.add("fog " + before.fog + " -> " + after.fog);
             if (before.depthTest != after.depthTest) leaks.add("depth test " + before.depthTest + " -> " + after.depthTest);

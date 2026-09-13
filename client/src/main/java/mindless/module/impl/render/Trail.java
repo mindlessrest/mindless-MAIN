@@ -264,13 +264,13 @@ public class Trail extends Module {
     }
 
     private void drawOrbs(List<double[]> points, int staticRgb, float alpha) {
-        WorldRenderer wr = EffectRenderer.beginSparks();
+        EffectRenderer.beginSparks();
         double size = orbSize.getInput();
         double lift = height.getInput() * 0.5;
         for (int i = 0; i < points.size(); i++) {
             double[] point = points.get(i);
             float fade = (float) i / points.size();
-            EffectRenderer.spark(wr, point[0], point[1] + lift, point[2],
+            EffectRenderer.spark(point[0], point[1] + lift, point[2],
                     size * (0.35 + fade * 0.65), colorAt(i, points.size(), staticRgb), fade * alpha);
         }
         EffectRenderer.endSparks();

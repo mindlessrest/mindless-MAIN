@@ -7,7 +7,10 @@ import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+
+import java.nio.FloatBuffer;
 
 /**
  * The three shapes every effect is built from, plus the state they need.
@@ -29,6 +32,31 @@ public final class EffectRenderer {
 
     private static float rightX, rightY, rightZ;
     private static float upX, upY, upZ;
+
+    private static final int SPARK_SEGMENTS = 8;
+    private static final int SPARK_VERTICES = SPARK_SEGMENTS * 3;
+    /** x, y, z, r, g, b, a. */
+    private static final int SPARK_FLOATS = 7;
+    private static final int SPARK_STRIDE = SPARK_FLOATS * 4;
+    /** Sparks held before the batch is drawn and started again. */
+    private static final int SPARK_BATCH = 512;
+    private static final FloatBuffer SPARKS =
+            BufferUtils.createFloatBuffer(SPARK_BATCH * SPARK_VERTICES * SPARK_FLOATS);
+    private static int sparkCount;
+
+    private static final float[] UNIT_SIN = new float[SPARK_SEGMENTS + 1];
+    private static final float[] UNIT_COS = new float[SPARK_SEGMENTS + 1];
+    private static final float[] RIM_X = new float[SPARK_SEGMENTS + 1];
+    private static final float[] RIM_Y = new float[SPARK_SEGMENTS + 1];
+    private static final float[] RIM_Z = new float[SPARK_SEGMENTS + 1];
+
+    static {
+        for (int i = 0; i <= SPARK_SEGMENTS; i++) {
+            double t = (i / (double) SPARK_SEGMENTS) * Math.PI * 2.0;
+            UNIT_SIN[i] = (float) Math.sin(t);
+            UNIT_COS[i] = (float) Math.cos(t);
+        }
+    }
 
     private EffectRenderer() {
     }
@@ -182,43 +210,68 @@ public final class EffectRenderer {
     /**
      * One camera-facing dot, bright in the middle and gone at the rim.
      *
-     * A fan rather than a quad, so the falloff is radial. Textured point sprites would be cheaper,
-     * but they would drag a texture bind into a pass that is otherwise pure geometry.
+     * A fan rather than a quad, so the falloff is radial. Written straight into a float buffer and
+     * drawn as client arrays rather than through WorldRenderer: every pos() and color() there walks
+     * the vertex format's element list, and at 24 vertices a spark, a hit burst of 160 sparks, the
+     * format lookups were most of the client's own render time in a JFR recording. The rim
+     * directions depend only on the camera, so they are worked out once per batch, not per spark.
      */
-    public static void spark(WorldRenderer wr, double px, double py, double pz,
+    public static void spark(double px, double py, double pz,
                              double radius, int rgb, float alpha) {
         if (radius <= 0.0 || alpha <= 0.0f) {
             return;
         }
-        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
-        int a = Math.round(Math.max(0.0f, Math.min(1.0f, alpha)) * 255.0f);
-        if (a <= 0) {
+        float a = Math.max(0.0f, Math.min(1.0f, alpha));
+        if (Math.round(a * 255.0f) <= 0) {
             return;
         }
-        int segments = 8;
-        for (int i = 0; i < segments; i++) {
-            double t0 = (i / (double) segments) * Math.PI * 2.0;
-            double t1 = ((i + 1) / (double) segments) * Math.PI * 2.0;
-            float s0 = (float) Math.sin(t0), c0 = (float) Math.cos(t0);
-            float s1 = (float) Math.sin(t1), c1 = (float) Math.cos(t1);
-            wr.pos(px, py, pz).color(r, g, b, a).endVertex();
-            wr.pos(px + (rightX * s0 + upX * c0) * radius,
-                    py + (rightY * s0 + upY * c0) * radius,
-                    pz + (rightZ * s0 + upZ * c0) * radius).color(r, g, b, 0).endVertex();
-            wr.pos(px + (rightX * s1 + upX * c1) * radius,
-                    py + (rightY * s1 + upY * c1) * radius,
-                    pz + (rightZ * s1 + upZ * c1) * radius).color(r, g, b, 0).endVertex();
+        if (sparkCount >= SPARK_BATCH) {
+            flushSparks();
         }
+        float r = ((rgb >> 16) & 0xFF) / 255.0f;
+        float g = ((rgb >> 8) & 0xFF) / 255.0f;
+        float b = (rgb & 0xFF) / 255.0f;
+        float cx = (float) px, cy = (float) py, cz = (float) pz;
+        for (int i = 0; i < SPARK_SEGMENTS; i++) {
+            SPARKS.put(cx).put(cy).put(cz).put(r).put(g).put(b).put(a);
+            SPARKS.put((float) (px + RIM_X[i] * radius)).put((float) (py + RIM_Y[i] * radius))
+                    .put((float) (pz + RIM_Z[i] * radius)).put(r).put(g).put(b).put(0.0f);
+            SPARKS.put((float) (px + RIM_X[i + 1] * radius)).put((float) (py + RIM_Y[i + 1] * radius))
+                    .put((float) (pz + RIM_Z[i + 1] * radius)).put(r).put(g).put(b).put(0.0f);
+        }
+        sparkCount++;
     }
 
-    /** Opens the shared batch sparks are written into; every spark in one effect shares it. */
-    public static WorldRenderer beginSparks() {
-        WorldRenderer wr = Tessellator.getInstance().getWorldRenderer();
-        wr.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_COLOR);
-        return wr;
+    /** Opens the batch sparks are written into; every spark until endSparks shares one draw. */
+    public static void beginSparks() {
+        SPARKS.clear();
+        sparkCount = 0;
+        for (int i = 0; i <= SPARK_SEGMENTS; i++) {
+            RIM_X[i] = rightX * UNIT_SIN[i] + upX * UNIT_COS[i];
+            RIM_Y[i] = rightY * UNIT_SIN[i] + upY * UNIT_COS[i];
+            RIM_Z[i] = rightZ * UNIT_SIN[i] + upZ * UNIT_COS[i];
+        }
     }
 
     public static void endSparks() {
-        Tessellator.getInstance().draw();
+        flushSparks();
+    }
+
+    private static void flushSparks() {
+        if (sparkCount == 0) {
+            SPARKS.clear();
+            return;
+        }
+        GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
+        GL11.glEnableClientState(GL11.GL_COLOR_ARRAY);
+        SPARKS.position(0);
+        GL11.glVertexPointer(3, SPARK_STRIDE, SPARKS);
+        SPARKS.position(3);
+        GL11.glColorPointer(4, SPARK_STRIDE, SPARKS);
+        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, sparkCount * SPARK_VERTICES);
+        GL11.glDisableClientState(GL11.GL_COLOR_ARRAY);
+        GL11.glDisableClientState(GL11.GL_VERTEX_ARRAY);
+        SPARKS.clear();
+        sparkCount = 0;
     }
 }

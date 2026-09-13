@@ -5,7 +5,6 @@ import mindless.effect.EffectRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.ModelPlayer;
 import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.renderer.WorldRenderer;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.opengl.GL11;
 
@@ -88,7 +87,7 @@ public final class ReassembleEffect extends Effect {
                 : Math.min(1.0f, (life - SCATTER_END) / (FIGURE_START - SCATTER_END));
         float ease = 1.0f - (1.0f - gather) * (1.0f - gather) * (1.0f - gather);
 
-        WorldRenderer wr = EffectRenderer.beginSparks();
+        EffectRenderer.beginSparks();
         for (int i = 0; i < vx.length; i++) {
             double px = x + vx[i] * t;
             double pz = z + vz[i] * t;
@@ -104,7 +103,7 @@ public final class ReassembleEffect extends Effect {
             // Orbs dim as the body they are becoming takes over, so the two never both read as
             // solid at the same moment.
             float alpha = life < SCATTER_END ? 1.0f : Math.max(0.0f, 1.0f - ease * 1.15f);
-            EffectRenderer.spark(wr, px, py, pz, orbSize, rgb, alpha);
+            EffectRenderer.spark(px, py, pz, orbSize, rgb, alpha);
         }
         EffectRenderer.endSparks();
 

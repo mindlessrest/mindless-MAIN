@@ -239,6 +239,37 @@ public static String senderOf(net.minecraft.util.IChatComponent component) {
     public static final float PANEL_BLUR_OPACITY = 0.85f;
 
     public static final Map<ChatLine, Long> messageBirths = new IdentityHashMap<ChatLine, Long>();
+    private static final Map<ChatLine, FormattedLine> formattedLines = new IdentityHashMap<ChatLine, FormattedLine>();
+
+    private static final class FormattedLine {
+        private int updatedCounter;
+        private String text;
+    }
+
+    /**
+     * A chat line's formatted text, built once per line instead of once per frame.
+     *
+     * getFormattedText deep-copies the whole component tree through Guava iterators on every call,
+     * and the chat renderer called it two or three times for every visible line on every frame.
+     * In a two-minute recording that was four fifths of everything the JVM allocated -- about
+     * 260 MB a second -- and the reason for thirteen old-generation collections. The updated
+     * counter is checked so a line re-stamped in place, as compact-chat style merging does, is
+     * rebuilt rather than served stale.
+     */
+    public static String formattedText(ChatLine line) {
+        FormattedLine cached = formattedLines.get(line);
+        int counter = line.getUpdatedCounter();
+        if (cached == null) {
+            cached = new FormattedLine();
+            cached.updatedCounter = counter;
+            cached.text = line.getChatComponent().getFormattedText();
+            formattedLines.put(line, cached);
+        } else if (cached.updatedCounter != counter) {
+            cached.updatedCounter = counter;
+            cached.text = line.getChatComponent().getFormattedText();
+        }
+        return cached.text;
+    }
     private static final Set<ChatLine> liveLines =
             java.util.Collections.newSetFromMap(new IdentityHashMap<ChatLine, Boolean>());
     public static long lastAnimationCleanup;
@@ -272,6 +303,7 @@ public static String senderOf(net.minecraft.util.IChatComponent component) {
             }
         }
         messageBirths.keySet().retainAll(liveLines);
+        formattedLines.keySet().retainAll(liveLines);
     }
 
     public static double getAnimationProgress(ChatLine line, long now) {
