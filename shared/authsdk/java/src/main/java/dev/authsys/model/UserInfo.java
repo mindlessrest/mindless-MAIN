@@ -6,6 +6,7 @@ package dev.authsys.model;
 public class UserInfo {
 
     private final String id;
+    private final long uid;
     private final String username;
     private final String email;
     private final boolean emailVerified;
@@ -16,7 +17,13 @@ public class UserInfo {
 
     public UserInfo(String id, String username, String email, boolean emailVerified,
                     boolean isAdmin, boolean banned, String createdAt, int sessionCount) {
+        this(id, -1L, username, email, emailVerified, isAdmin, banned, createdAt, sessionCount);
+    }
+
+    public UserInfo(String id, long uid, String username, String email, boolean emailVerified,
+                    boolean isAdmin, boolean banned, String createdAt, int sessionCount) {
         this.id = id;
+        this.uid = uid;
         this.username = username;
         this.email = email;
         this.emailVerified = emailVerified;
@@ -27,6 +34,7 @@ public class UserInfo {
     }
 
     public String getId() { return id; }
+    public long getUid() { return uid; }
     public String getUsername() { return username; }
     public String getEmail() { return email; }
     public boolean isEmailVerified() { return emailVerified; }

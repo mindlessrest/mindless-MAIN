@@ -414,6 +414,7 @@ UserInfo AuthClient::getCurrentUser() {
     auto data = impl_->authGet("/auth/me", true);
     return UserInfo{
         data["id"].get<std::string>(),
+        data.value("uid", int64_t{-1}),
         data["username"].get<std::string>(),
         data["email"].get<std::string>(),
         data["email_verified"].get<bool>(),
@@ -521,6 +522,7 @@ UserListResult AuthClient::listUsers(int page, int limit,
     for (auto& u : data["users"]) {
         result.users.push_back(AdminUserInfo{
             u["id"].get<std::string>(),
+            u.value("uid", int64_t{-1}),
             u["username"].get<std::string>(),
             u["email"].get<std::string>(),
             u.value("email_verified", false),
@@ -538,6 +540,7 @@ AdminUserDetail AuthClient::getUser(const std::string& user_id) {
     AdminUserDetail detail;
     detail.user = AdminUserInfo{
         u["id"].get<std::string>(),
+        u.value("uid", int64_t{-1}),
         u["username"].get<std::string>(),
         u.value("email", ""),
         u.value("email_verified", false),

@@ -928,6 +928,7 @@ public class AuthClient {
     private UserInfo parseUserInfoWithSessionCount(JsonObject obj, int sessionCount) {
         return new UserInfo(
                 obj.has("id") ? obj.get("id").getAsString() : null,
+                obj.has("uid") && !obj.get("uid").isJsonNull() ? obj.get("uid").getAsLong() : -1L,
                 obj.has("username") ? obj.get("username").getAsString() : null,
                 obj.has("email") ? obj.get("email").getAsString() : null,
                 obj.has("email_verified") && obj.get("email_verified").getAsBoolean(),

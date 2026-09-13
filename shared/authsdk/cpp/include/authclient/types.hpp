@@ -76,6 +76,7 @@ struct LastResponse {
 /// Returned by GET /auth/me.
 struct UserInfo {
     std::string id;
+    int64_t     uid;
     std::string username;
     std::string email;
     bool        email_verified;
@@ -120,6 +121,7 @@ struct FileListResult {
 /// Admin user record (slightly more detail than UserInfo).
 struct AdminUserInfo {
     std::string id;
+    int64_t     uid;
     std::string username;
     std::string email;
     bool        email_verified;
