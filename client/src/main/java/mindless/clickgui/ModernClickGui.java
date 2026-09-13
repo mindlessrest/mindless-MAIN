@@ -680,7 +680,9 @@ private float aboutOpenProgress = 0f;
         float avatarX = left + 6f;
         float avatarY = top + (ACCOUNT_ROW_H - avatar) * .5f;
         float centerX = avatarX + avatar * .5f, centerY = avatarY + avatar * .5f;
-        disc(centerX, centerY, avatar * .5f + 1f, withAlpha(ACCENT, (int) (150f + 90f * lift)));
+        // A thin dark edge, not a coloured ring: it separates the picture from the panel without
+        // competing with the name for attention, and it holds on light and dark avatars alike.
+        disc(centerX, centerY, avatar * .5f + .8f, argb(210, 0, 0, 0));
         if (account.avatar() != null) {
             roundedTexture(account.avatar(), avatarX, avatarY, avatar, avatar, avatar * .5f);
         } else {
