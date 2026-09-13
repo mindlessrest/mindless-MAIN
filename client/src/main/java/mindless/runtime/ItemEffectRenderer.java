@@ -77,7 +77,7 @@ public final class ItemEffectRenderer {
             } catch (RuntimeException unavailable) {
                 // No silhouette this frame rather than a crash every frame.
             }
-        });
+        }, true);
     }
 
     public static void renderInventory(GuiContainer gui, int guiLeft, int guiTop) {
@@ -117,6 +117,14 @@ public final class ItemEffectRenderer {
     }
 
     private static void capture(ItemEffects module, Runnable renderer) {
+        capture(module, renderer, false);
+    }
+
+    /**
+     * @param shaderless draw the item as it normally draws and tint the result afterwards, instead
+     *                   of drawing it through the silhouette shader. See renderHeld.
+     */
+    private static void capture(ItemEffects module, Runnable renderer, boolean shaderless) {
         if (capturing) return;
         silhouette = RenderUtils.createFrameBuffer(silhouette, false);
         if (silhouette == null) return;
@@ -126,12 +134,16 @@ public final class ItemEffectRenderer {
         // Mipmaps off for the pass. The silhouette is a texture-alpha test, and a mipmapped atlas
         // sampled at a fraction of native size hands back the average of a texel and its
         // transparent neighbours -- which is an item quietly failing the test rather than an item
-        // drawn slightly soft. Vanilla's own GUI item path does the same thing for the same
-        // reason. Restored through the texture manager's own stack below.
+        // drawn slightly soft.
+        //
+        // Set on the texture directly and put back directly, not through setBlurMipmap. That call
+        // remembers a single previous value, and RenderItem makes the same call around every held
+        // item it draws, so wrapping one inside the other overwrote the remembered value with
+        // "off": after the first glowing held item the terrain atlas never had mipmaps again.
         mc.getTextureManager().bindTexture(net.minecraft.client.renderer.texture.TextureMap.locationBlocksTexture);
-        net.minecraft.client.renderer.texture.ITextureObject atlas =
-                mc.getTextureManager().getTexture(net.minecraft.client.renderer.texture.TextureMap.locationBlocksTexture);
-        if (atlas != null) atlas.setBlurMipmap(false, false);
+        int atlasMinFilter = GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER);
+        int atlasTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
 
         int previousFramebuffer = GL11.glGetInteger(EXTFramebufferObject.GL_FRAMEBUFFER_BINDING_EXT);
         int previousMatrixMode = GL11.glGetInteger(GL11.GL_MATRIX_MODE);
@@ -153,17 +165,27 @@ public final class ItemEffectRenderer {
             GlStateManager.disableDepth();
             GlStateManager.depthMask(false);
             GlStateManager.disableCull();
-            GlStateManager.disableAlpha();
             GlStateManager.enableTexture2D();
             GlStateManager.enableBlend();
-            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
-                    GL11.GL_ONE, GL11.GL_ZERO);
             GlStateManager.colorMask(true, true, true, true);
             GlStateManager.color(1f, 1f, 1f, 1f);
-            silhouetteShader.use();
-            silhouetteShader.setColorFromARGB(module.color.getColor() | 0xFF000000);
-            renderer.run();
-            silhouetteShader.stop();
+            if (shaderless) {
+                // Coverage accumulates in alpha; the colours are thrown away by the tint below.
+                GlStateManager.enableAlpha();
+                GlStateManager.alphaFunc(GL11.GL_GREATER, 0.05f);
+                GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                        GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                renderer.run();
+                tintCoverage(module.color.getColor());
+            } else {
+                GlStateManager.disableAlpha();
+                GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                        GL11.GL_ONE, GL11.GL_ZERO);
+                silhouetteShader.use();
+                silhouetteShader.setColorFromARGB(module.color.getColor() | 0xFF000000);
+                renderer.run();
+                silhouetteShader.stop();
+            }
             capturing = false;
 
             mc.getFramebuffer().bindFramebuffer(true);
@@ -188,7 +210,8 @@ public final class ItemEffectRenderer {
         } finally {
             capturing = false;
             silhouetteShader.stop();
-            if (atlas != null) atlas.restoreLastBlurMipmap();
+            GlStateManager.bindTexture(atlasTexture);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, atlasMinFilter);
             EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, previousFramebuffer);
             GL11.glViewport(0, 0, mc.displayWidth, mc.displayHeight);
             // Popped through the helper so the state cache is re-read from the driver: the pass
@@ -205,6 +228,46 @@ public final class ItemEffectRenderer {
             GlStateManager.color(1f, 1f, 1f, 1f);
             RenderUtils.syncGlState();
         }
+    }
+
+    /**
+     * Paints the effect colour over everything already in the silhouette, leaving its alpha alone.
+     *
+     * Held items are drawn into the silhouette the way the game draws them rather than through the
+     * silhouette shader. Several draws on that path are not the game's: OptiFine's custom items and
+     * Lunar's own item transform sit between the hook and the model, and whatever they bind is
+     * what the fragments go through. An item that came out of them without the silhouette program
+     * still bound wrote its real colours, or nothing the shader would accept, which is why some
+     * held items glowed and others never did. Coverage is taken from alpha, which every one of
+     * those paths writes, and the colour is laid over it here.
+     */
+    private static void tintCoverage(int color) {
+        net.minecraft.client.renderer.OpenGlHelper.glUseProgram(0);
+        GlStateManager.colorMask(true, true, true, false);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableBlend();
+        GlStateManager.disableAlpha();
+        GlStateManager.color(((color >> 16) & 255) / 255f, ((color >> 8) & 255) / 255f,
+                (color & 255) / 255f, 1f);
+        GlStateManager.matrixMode(GL11.GL_PROJECTION);
+        GlStateManager.pushMatrix();
+        GlStateManager.loadIdentity();
+        GlStateManager.matrixMode(GL11.GL_MODELVIEW);
+        GlStateManager.pushMatrix();
+        GlStateManager.loadIdentity();
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glVertex2f(-1f, -1f);
+        GL11.glVertex2f(1f, -1f);
+        GL11.glVertex2f(1f, 1f);
+        GL11.glVertex2f(-1f, 1f);
+        GL11.glEnd();
+        GlStateManager.popMatrix();
+        GlStateManager.matrixMode(GL11.GL_PROJECTION);
+        GlStateManager.popMatrix();
+        GlStateManager.matrixMode(GL11.GL_MODELVIEW);
+        GlStateManager.colorMask(true, true, true, true);
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1f, 1f, 1f, 1f);
     }
 
     public static void release() {

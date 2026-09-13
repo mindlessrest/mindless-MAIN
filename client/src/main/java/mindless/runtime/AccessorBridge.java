@@ -48,6 +48,7 @@ public final class AccessorBridge {
     private static volatile Field entityArrowInGroundField;
     private static volatile Method entityRendererSetupCameraTransformMethod;
     private static volatile Field minecraftTimerField;
+    private static volatile Method renderItemModelTransformMethod;
 
     private static Field field(Class<?> owner, String... candidates) {
         ConcurrentHashMap<String, Field> byName = FIELDS.get(owner);
@@ -277,11 +278,16 @@ public final class AccessorBridge {
                                                            net.minecraft.client.resources.model.IBakedModel model,
                                                            net.minecraft.client.renderer.block.model.ItemCameraTransforms.TransformType transform) {
         try {
-            method(net.minecraft.client.renderer.entity.RenderItem.class,
-                    new String[]{"renderItemModelTransform", "func_175040_a"},
-                    ItemStack.class, net.minecraft.client.resources.model.IBakedModel.class,
-                    net.minecraft.client.renderer.block.model.ItemCameraTransforms.TransformType.class)
-                    .invoke(renderItem, stack, model, transform);
+            // Resolved once: this runs for every held item on every frame the effect is on.
+            Method resolved = renderItemModelTransformMethod;
+            if (resolved == null) {
+                resolved = method(net.minecraft.client.renderer.entity.RenderItem.class,
+                        new String[]{"renderItemModelTransform", "func_175040_a"},
+                        ItemStack.class, net.minecraft.client.resources.model.IBakedModel.class,
+                        net.minecraft.client.renderer.block.model.ItemCameraTransforms.TransformType.class);
+                renderItemModelTransformMethod = resolved;
+            }
+            resolved.invoke(renderItem, stack, model, transform);
         }
         catch (Exception t) { throw wrap("RenderItem_renderItemModelTransform", t); }
     }
