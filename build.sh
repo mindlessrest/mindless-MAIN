@@ -42,7 +42,7 @@ BUILD_CACHE="${MINDLESS_BUILD_CACHE:-$CACHE/build}"
 NATIVE_BUILD_DIR="$BUILD_CACHE/native"
 LOADER_BUILD_DIR="$BUILD_CACHE/loader"
 NATIVE_BUILT_DLL="$NATIVE_BUILD_DIR/dist/MindlessNative.dll"
-GRADLE_PROJECT_CACHE="${MINDLESS_GRADLE_PROJECT_CACHE:-$CACHE/gradle-project}"
+GRADLE_PROJECT_CACHE="${MINDLESS_GRADLE_PROJECT_CACHE:-$CLIENT_DIR/.gradle-ci}"
 XWIN_ROOT="${XWIN_ROOT:-$CACHE/xwin}"
 WIN_JDK="${MINDLESS_WIN_JDK:-$CACHE/jdk-win}"
 FETCHCONTENT_BASE_DIR="${MINDLESS_FETCHCONTENT_DIR:-$CACHE/sources}"
@@ -241,7 +241,7 @@ java_major="$("$JAVA_HOME/bin/javac" -version 2>&1 | sed -E 's/javac ([0-9]+).*/
 ok "JAVA_HOME = $JAVA_HOME"
 
 mkdir -p "$CACHE"
-mkdir -p "$BUILD_CACHE" "$GRADLE_PROJECT_CACHE/client"
+mkdir -p "$BUILD_CACHE" "$GRADLE_PROJECT_CACHE"
 
 # --- Windows SDK and MSVC CRT ------------------------------------------------
 # xwin moves extracted files into its output tree. Keep its cache and staged output beside
@@ -321,11 +321,15 @@ if [ "$LOADER_ONLY" -eq 0 ]; then
     section "Client - gradle build"
     chmod +x "$GRADLEW" 2>/dev/null || true
     ( cd "$CLIENT_DIR" && ./gradlew remapJar lunarPayloadJar \
-        --parallel --build-cache --warning-mode=none "--max-workers=$JOBS" \
-        --project-cache-dir "$GRADLE_PROJECT_CACHE/client" )
+        -PmindlessBuildType=injectable -PmindlessFullCompile=true \
+        --parallel --no-build-cache --warning-mode=none "--max-workers=$JOBS" \
+        --project-cache-dir "$GRADLE_PROJECT_CACHE" )
+    [ -d "$CLIENT_DIR/build/classes/java/main" ] || die "Gradle produced no main class directory"
+    compiled_main_classes="$(find "$CLIENT_DIR/build/classes/java/main" -type f -name '*.class' | wc -l)"
+    [ "$compiled_main_classes" -gt 0 ] || die "Gradle produced no compiled main classes"
     [ -s "$FORGE_JAR" ] || die "Forge jar missing after the build: $FORGE_JAR"
     [ -s "$LUNAR_JAR" ] || die "Lunar jar missing after the build: $LUNAR_JAR"
-    ok "client built"
+    ok "client built ($compiled_main_classes compiled main classes)"
 fi
 
 if [ "$CLIENT_ONLY" -eq 1 ]; then

@@ -16,6 +16,9 @@ val mindlessForgeVersion = providers.gradleProperty("mindlessForgeVersion")
     .get()
 val version: String by project
 val modid: String by project
+val mindlessFullCompile = providers.gradleProperty("mindlessFullCompile")
+    .map(String::toBoolean)
+    .orElse(false)
 val transformerFile = file("src/main/resources/accesstransformer.cfg")
 val mindlessBuildType: String = run {
     val explicit = project.findProperty("mindlessBuildType") as String?
@@ -297,7 +300,7 @@ tasks.assemble.get().dependsOn(msaJar)
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
-    options.isIncremental = true
+    options.isIncremental = !mindlessFullCompile.get()
     options.isFork = true
     options.forkOptions.jvmArgs = listOf("-Xmx2g", "-XX:+UseParallelGC")
     options.compilerArgs.addAll(listOf(
