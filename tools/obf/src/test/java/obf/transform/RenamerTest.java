@@ -59,6 +59,9 @@ class RenamerTest {
         assertTrue(context.isExcluded("mindless/transformer/impl/client/TransformerMinecraft"));
         assertTrue(context.isExcluded("mindless/script/ScriptDefaults"));
         assertFalse(context.isExcluded("mindless/module/ModuleManager"));
+        assertTrue(context.isIncluded("mindless/runtime/MindlessTransformerManager"));
+        assertTrue(context.isIncluded("mindless/module/ModuleManager"));
+        assertFalse(context.isIncluded("net/minecraft/client/Minecraft"));
     }
 
     @Test

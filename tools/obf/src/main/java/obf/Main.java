@@ -108,7 +108,7 @@ public class Main {
                 byte[] data = jis.readAllBytes();
                 if (entry.getName().endsWith(".class")) {
                     String internalName = entry.getName().substring(0, entry.getName().length() - 6);
-                    if (ctx.isExcluded(internalName)) {
+                    if (!ctx.isIncluded(internalName)) {
                         ctx.resources().put(entry.getName(), data);
                         continue;
                     }

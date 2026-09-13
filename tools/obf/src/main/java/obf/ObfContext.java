@@ -33,6 +33,14 @@ public class ObfContext {
     public Manifest manifest() { return manifest; }
     public void manifest(Manifest manifest) { this.manifest = manifest; }
 
+    public boolean isIncluded(String className) {
+        if (includes.isEmpty()) return true;
+        for (String prefix : includes) {
+            if (className.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
     public boolean isExcluded(String className) {
         if (reverseClassMappingSize != classMapping.size()) {
             reverseClassMapping.clear();
@@ -42,16 +50,7 @@ public class ObfContext {
             reverseClassMappingSize = classMapping.size();
         }
         String originalName = reverseClassMapping.getOrDefault(className, className);
-        boolean included = includes.isEmpty();
-        if (!included) {
-            for (String prefix : includes) {
-                if (originalName.startsWith(prefix)) {
-                    included = true;
-                    break;
-                }
-            }
-        }
-        if (!included) return true;
+        if (!isIncluded(originalName)) return true;
         for (String prefix : excludes) {
             if (originalName.startsWith(prefix)) return true;
         }
