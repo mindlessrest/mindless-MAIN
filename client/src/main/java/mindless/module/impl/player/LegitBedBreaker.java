@@ -13,6 +13,7 @@ import mindless.utility.RotationUtils;
 import mindless.utility.Utils;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockBed;
+import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
@@ -32,14 +33,19 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Legit mode. The digging is Silent's: START/STOP packets from the motion tick, damage counted
- * client-side, tool swapped in and put back. What differs is what gets dug and how it is aimed at.
+ * Legit mode. The digging is Silent's: START/STOP packets from the motion tick, tool swapped in and
+ * put back. What differs is what gets dug and how it is aimed at.
+ *
+ * Timing is exactly what a vanilla dig takes, because that is what anti-cheats hold it to: STOP
+ * goes out ceil(1 / best damage per tick) ticks after START (Grim's FastBreak prediction, which
+ * takes the best per-tick damage seen during the dig), once the 1.8 server would accept it, and
+ * the next START waits vanilla's hit delay after a STOP.
  *
  * Targets come from sight lines from the eye to the bed. Each line lists the blocks it passes
- * through in order, and the cheapest line by break time wins; its first block -- the outermost
- * layer, the one actually in view -- is the target. Once that block is gone the lines are traced
- * again from wherever the player now is, so the route keeps working inward and follows the
- * player when they move.
+ * through in order, and the cheapest line by break time wins. That line is then the path: its
+ * blocks are dug in order down to the bed, wherever the player moves meanwhile, so moving never
+ * switches to a different set of blocks halfway. A new line is only traced when the path's next
+ * block stays out of sight or reach for PATH_GIVE_UP_TICKS, or something unbreakable took its place.
  *
  * Aim is smoothed toward a point on the target that is visible from the eye, and a tick only
  * counts toward the break when the rotation actually sent that tick lands on the target.
@@ -51,9 +57,10 @@ final class LegitBedBreaker {
     /** A 1.8 server accepts STOP once relative hardness times ticks since START reaches this. */
     private static final float SERVER_BREAK_RATIO = 0.7F;
     private static final int MISALIGNED_ABORT_TICKS = 4;
-    private static final int LOST_SIGHT_TICKS = 5;
+    private static final int VANILLA_HIT_DELAY_TICKS = 5;
+    /** How long the path's next block may stay out of sight or reach before a new path is traced. */
+    private static final int PATH_GIVE_UP_TICKS = 20;
     private static final int FINISH_TIMEOUT_TICKS = 20;
-    private static final int REPLAN_INTERVAL_TICKS = 5;
     private static final int MAX_BLOCK_TICKS = 600;
     private static final long BED_COOLDOWN_MS = 500L;
     private static final double[] AIM_FRACTIONS = {0.2, 0.5, 0.8};
@@ -65,7 +72,6 @@ final class LegitBedBreaker {
 
     private final BedAura owner;
     private final SliderSetting range;
-    private final SliderSetting speed;
     private final SliderSetting breakDelay;
     private final SliderSetting fov;
     private final SliderSetting aimSpeed;
@@ -85,12 +91,11 @@ final class LegitBedBreaker {
     private EnumFacing face = EnumFacing.UP;
     private boolean digging;
     private int breakTicks;
-    private float damage;
+    private float maxRelative;
     private int misalignedTicks;
     private int lostSightTicks;
     private int finishTicks;
     private int delayTicks;
-    private int replanTicks;
     private long cooldownUntil;
     private int toolSlot = -1;
     private int intendedSlot = -1;
@@ -98,14 +103,19 @@ final class LegitBedBreaker {
     private BlockPos routeFoot;
     private int routeBroken;
     private int routeRemaining;
+    /** The committed sight line: blocks to dig in order, the bed last. */
+    private List<BlockPos> routePath;
+    /** The point on the bed the committed line runs to. */
+    private Vec3 routeEnd;
+    /** Last block the server sent back unchanged (network thread), read while waiting on a STOP. */
+    private volatile BlockPos serverRestored;
 
-    LegitBedBreaker(BedAura owner, SliderSetting range, SliderSetting speed, SliderSetting breakDelay,
+    LegitBedBreaker(BedAura owner, SliderSetting range, SliderSetting breakDelay,
                     SliderSetting fov, SliderSetting aimSpeed, SliderSetting moveFix,
                     ButtonSetting toolCheck, ButtonSetting whitelistOwnBed, ButtonSetting autoTool,
                     ButtonSetting switchBack, ButtonSetting overrideSwapBack, ButtonSetting spoofItem) {
         this.owner = owner;
         this.range = range;
-        this.speed = speed;
         this.breakDelay = breakDelay;
         this.fov = fov;
         this.aimSpeed = aimSpeed;
@@ -134,9 +144,12 @@ final class LegitBedBreaker {
                 onTargetRemoved();
                 if (state == State.COOLDOWN) return;
             }
-            else if (++finishTicks >= FINISH_TIMEOUT_TICKS) {
-                // The server kept the block: dig it again from a fresh plan.
+            else if (target.equals(serverRestored) || ++finishTicks >= FINISH_TIMEOUT_TICKS) {
+                // The server kept the block (sent it back, or never confirmed): dig it again right
+                // away, still after vanilla's hit delay from the STOP.
+                int sinceStop = finishTicks;
                 dropTarget();
+                delayTicks = Math.max(0, breakDelayTicks() - sinceStop);
             }
         }
         else if (target != null) {
@@ -150,24 +163,23 @@ final class LegitBedBreaker {
         }
 
         Vec3 eye = predictedEye();
-        if (target == null) {
-            if (!adopt(plan(eye))) {
-                endSession();
-                return;
-            }
-        }
-        else if (!digging && state == State.IDLE && ++replanTicks >= REPLAN_INTERVAL_TICKS) {
-            replanTicks = 0;
-            Route better = plan(eye);
-            if (better != null && !better.target.equals(target)) adopt(better);
-            else if (better != null) routeRemaining = better.blocks + 1;
+        if (target == null && !followPath() && !adopt(plan(eye))) {
+            endSession();
+            return;
         }
 
         Vec3 visible = visibleAimPoint(eye);
         if (visible == null) {
-            if (++lostSightTicks >= LOST_SIGHT_TICKS) {
+            if (++lostSightTicks >= PATH_GIVE_UP_TICKS) {
+                routePath = null;
+                routeEnd = null;
                 dropTarget();
                 return;
+            }
+            // Keep turning toward the path's block while it is hidden or out of reach.
+            AxisAlignedBB box = BlockUtils.getBlockSelectionBox(target);
+            if (aimPoint == null && box != null) {
+                aimPoint = new Vec3((box.minX + box.maxX) * 0.5, (box.minY + box.maxY) * 0.5, (box.minZ + box.maxZ) * 0.5);
             }
         }
         else {
@@ -219,7 +231,7 @@ final class LegitBedBreaker {
             send(C07PacketPlayerDigging.Action.START_DESTROY_BLOCK);
             mc().thePlayer.swingItem();
             breakTicks = 0;
-            damage = 0.0F;
+            maxRelative = relative;
             if (relative >= 1.0F) {
                 // Breaks on START alone, the way the vanilla client does it: no STOP follows.
                 finishTicks = 0;
@@ -238,14 +250,15 @@ final class LegitBedBreaker {
         }
         breakTicks++;
         float relative = currentRelativeHardness(block);
-        damage += relative;
+        maxRelative = Math.max(maxRelative, relative);
         mc().thePlayer.swingItem();
         if (mc().effectRenderer != null) mc().effectRenderer.addBlockHitEffects(target, face);
         mc().theWorld.sendBlockBreakProgress(mc().thePlayer.getEntityId(), target, (int) (progress() * 10.0F) - 1);
-        // Both counts have to agree. The client total alone runs ahead of the server whenever the
-        // player was on the ground for most of the dig but is in the air now, and the server
-        // judges the whole dig by the state at STOP.
-        if (damage >= threshold() && relative * (breakTicks + 1) >= SERVER_BREAK_RATIO) {
+        // Both have to agree. Grim predicts the dig from the best per-tick damage seen since START,
+        // and one tick short of that is already a FastBreak violation; the 1.8 server judges the
+        // whole dig by the state at STOP, so in the air it waits for the landing.
+        if (breakTicks >= requiredTicks() && relative * (breakTicks + 1) >= SERVER_BREAK_RATIO) {
+            serverRestored = null;
             send(C07PacketPlayerDigging.Action.STOP_DESTROY_BLOCK);
             mc().thePlayer.swingItem();
             digging = false;
@@ -275,7 +288,12 @@ final class LegitBedBreaker {
     float progress() {
         if (target == null) return 0.0F;
         if (state == State.FINISH) return 1.0F;
-        return Math.max(0.0F, Math.min(1.0F, damage / threshold()));
+        return Math.max(0.0F, Math.min(1.0F, breakTicks / (float) requiredTicks()));
+    }
+
+    /** Called with every single-block update from the server. */
+    void onServerBlockChange(BlockPos pos, IBlockState state) {
+        if (state.getBlock().getMaterial() != Material.air) serverRestored = pos;
     }
 
     float totalProgress() {
@@ -314,10 +332,35 @@ final class LegitBedBreaker {
         // right on an edge where a tick of movement puts the neighbour under the crosshair.
         aimPoint = null;
         routeAim = route.aim;
+        routePath = route.path;
+        routeEnd = route.end;
         routeRemaining = route.blocks + 1;
-        replanTicks = 0;
         lostSightTicks = 0;
         return true;
+    }
+
+    /** Targets the committed path's next standing block, wherever the player has moved since. */
+    private boolean followPath() {
+        if (routePath == null) return false;
+        for (int i = 0; i < routePath.size(); i++) {
+            BlockPos cell = routePath.get(i);
+            Block block = mc().theWorld.getBlockState(cell).getBlock();
+            if (block.getMaterial() == Material.air) continue;
+            boolean bed = i == routePath.size() - 1;
+            if (bed != (block instanceof BlockBed) || block.getBlockHardness(mc().theWorld, cell) < 0.0F
+                    || toolCheck.isToggled() && !SilentBedBreaker.hasRequiredTool(block)) {
+                break;
+            }
+            target = cell;
+            targetIsBed = bed;
+            aimPoint = null;
+            routeAim = null;
+            routeRemaining = routePath.size() - i;
+            lostSightTicks = 0;
+            return true;
+        }
+        routePath = null;
+        return false;
     }
 
     private void onTargetRemoved() {
@@ -339,10 +382,8 @@ final class LegitBedBreaker {
         Block block = mc().theWorld.getBlockState(target).getBlock();
         if (block.getBlockHardness(mc().theWorld, target) < 0.0F) return false;
         if (toolCheck.isToggled() && !SilentBedBreaker.hasRequiredTool(block)) return false;
-        AxisAlignedBB box = BlockUtils.getBlockSelectionBox(target);
-        if (box == null) return false;
-        Vec3 eye = mc().thePlayer.getPositionEyes(1.0F);
-        return eye.squareDistanceTo(RotationUtils.closestPointOnAabb(box, eye)) <= reach() * reach();
+        // Out of reach is not a reason to leave the path: that is the out-of-sight wait's job.
+        return BlockUtils.getBlockSelectionBox(target) != null;
     }
 
     private void abortDig() {
@@ -354,7 +395,7 @@ final class LegitBedBreaker {
         }
         digging = false;
         breakTicks = 0;
-        damage = 0.0F;
+        maxRelative = 0.0F;
         misalignedTicks = 0;
         miningItem = null;
         if (state == State.MINING) state = State.IDLE;
@@ -369,13 +410,14 @@ final class LegitBedBreaker {
         face = EnumFacing.UP;
         finishTicks = 0;
         lostSightTicks = 0;
-        replanTicks = 0;
         if (state == State.FINISH || state == State.MINING) state = State.IDLE;
     }
 
     private void endSession() {
         dropTarget();
         restoreSlot();
+        routePath = null;
+        routeEnd = null;
         routeFoot = null;
         routeBroken = 0;
         routeRemaining = 0;
@@ -446,6 +488,7 @@ final class LegitBedBreaker {
         double reachSq = reach * reach;
         BlockPos first = null;
         Vec3 firstHit = null;
+        List<BlockPos> path = new ArrayList<BlockPos>();
         int blocks = 0;
         int cost = 0;
         for (BlockPos cell : cells(eye, end)) {
@@ -465,9 +508,10 @@ final class LegitBedBreaker {
                 firstHit = hit.hitVec;
             }
             cost += ticks;
+            path.add(cell);
             if (bed) {
                 if (hit.sideHit == EnumFacing.DOWN) return null;
-                return new Route(pair[0], first, firstHit, blocks, cost, angleTo(firstHit));
+                return new Route(pair[0], first, firstHit, path, end, blocks, cost, angleTo(firstHit));
             }
             blocks++;
             cost += breakDelayTicks();
@@ -488,7 +532,7 @@ final class LegitBedBreaker {
             if (relative <= 0.0F) ticks = -1;
             else if (relative >= 1.0F) ticks = 1;
             else {
-                ticks = 1 + (int) Math.ceil(threshold() / relative);
+                ticks = 1 + (int) Math.ceil(1.0D / relative);
                 if (ticks > MAX_BLOCK_TICKS) ticks = -1;
             }
         }
@@ -561,9 +605,15 @@ final class LegitBedBreaker {
                 }
             }
         }
+        if (best != null) return best;
         // A target seen only through a narrow gap may show no inset point at all; the sight line
-        // that found it still reaches it.
-        return best != null || routeAim == null || !seesTarget(eye, routeAim, reachSq) ? best : routeAim;
+        // that found it still reaches it, and so does the path's line from where the eye is now,
+        // which runs through the hole already dug.
+        if (routeAim != null && seesTarget(eye, routeAim, reachSq)) return routeAim;
+        if (routeEnd == null) return null;
+        IBlockState state = mc().theWorld.getBlockState(target);
+        MovingObjectPosition hit = state.getBlock().collisionRayTrace(mc().theWorld, target, eye, routeEnd);
+        return hit != null && hit.hitVec != null && seesTarget(eye, hit.hitVec, reachSq) ? hit.hitVec : null;
     }
 
     private boolean seesTarget(Vec3 eye, Vec3 point, double reachSq) {
@@ -699,12 +749,14 @@ final class LegitBedBreaker {
         return Math.min(MAX_REACH, range.getInput());
     }
 
-    private float threshold() {
-        return 1.0F - 0.3F * (float) (speed.getInput() / 100.0D);
+    /** Vanilla's break time for the best per-tick damage seen this dig (Grim FastBreak's prediction). */
+    private int requiredTicks() {
+        return maxRelative > 0.0F ? (int) Math.ceil(1.0D / maxRelative) : Integer.MAX_VALUE;
     }
 
     private int breakDelayTicks() {
-        return Math.max(0, Math.min(5, (int) Math.round(breakDelay.getInput() / 50.0)));
+        // Never under vanilla's 5-tick blockHitDelay: Grim's FastBreak flags a START that follows a break sooner.
+        return Math.max(VANILLA_HIT_DELAY_TICKS, (int) Math.round(breakDelay.getInput() / 50.0));
     }
 
     private static Minecraft mc() {
@@ -715,14 +767,19 @@ final class LegitBedBreaker {
         final BlockPos foot;
         final BlockPos target;
         final Vec3 aim;
+        /** Blocks to dig in order, the bed last. */
+        final List<BlockPos> path;
+        final Vec3 end;
         final int blocks;
         final int cost;
         final float angle;
 
-        Route(BlockPos foot, BlockPos target, Vec3 aim, int blocks, int cost, float angle) {
+        Route(BlockPos foot, BlockPos target, Vec3 aim, List<BlockPos> path, Vec3 end, int blocks, int cost, float angle) {
             this.foot = foot;
             this.target = target;
             this.aim = aim;
+            this.path = path;
+            this.end = end;
             this.blocks = blocks;
             this.cost = cost;
             this.angle = angle;

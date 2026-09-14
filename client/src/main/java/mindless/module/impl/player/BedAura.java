@@ -5,6 +5,7 @@ import mindless.event.GameTickEvent;
 import mindless.event.PreAttackEvent;
 import mindless.event.PreMotionEvent;
 import mindless.event.PreSlotScrollEvent;
+import mindless.event.ReceivePacketEvent;
 import mindless.event.SlotUpdateEvent;
 import mindless.module.Module;
 import mindless.module.ModuleManager;
@@ -24,6 +25,7 @@ import net.minecraft.block.BlockBed;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.play.server.S23PacketBlockChange;
 import net.minecraft.util.BlockPos;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
@@ -42,7 +44,6 @@ public class BedAura extends Module {
     private final SliderSetting mode;
     private final SliderSetting progressDisplay;
     private final SliderSetting range;
-    private final SliderSetting speed;
     private final SliderSetting breakDelay;
     private final SliderSetting fov;
     private final SliderSetting aimSpeed;
@@ -59,7 +60,6 @@ public class BedAura extends Module {
     private final ColorSetting outlineColor;
     private final GroupSetting silentGroup;
     private final ProfiledSliderSetting silentRange;
-    private final ProfiledSliderSetting silentSpeed;
     private final ProfiledButtonSetting silentSurroundings;
     private final ProfiledButtonSetting silentToolCheck;
     private final ProfiledButtonSetting silentWhitelist;
@@ -81,7 +81,6 @@ public class BedAura extends Module {
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
         this.registerSetting(progressDisplay = new SliderSetting("Progress", 1, PROGRESS_MODES));
         this.registerSetting(range = new SliderSetting("Range", " block", 4.5, 2.0, 4.5, 0.1));
-        this.registerSetting(speed = new SliderSetting("Speed", "%", 0.0, 0.0, 100.0, 1.0));
         this.registerSetting(breakDelay = new SliderSetting("Break delay", "ms", 250.0, 0.0, 250.0, 50.0));
         this.registerSetting(fov = new SliderSetting("FOV", "", 180.0, 30.0, 360.0, 1.0));
         this.registerSetting(aimSpeed = new SliderSetting("Aim speed", 14, 1, 30, 1));
@@ -104,7 +103,6 @@ public class BedAura extends Module {
                 setValue(Double.isFinite(getInput()) ? getInput() : 4.5);
             }
         });
-        this.registerSetting(silentSpeed = new ProfiledSliderSetting(silentGroup, "Speed", "%", 33.0, 0.0, 100.0, 1.0, "Silent.Speed"));
         this.registerSetting(silentSurroundings = new ProfiledButtonSetting(silentGroup, "Surroundings", true, "Silent.Surroundings"));
         this.registerSetting(silentToolCheck = new ProfiledButtonSetting(silentGroup, "Tool check", true, "Silent.Tool check"));
         this.registerSetting(silentWhitelist = new ProfiledButtonSetting(silentGroup, "Whitelist", true, "Silent.Whitelist"));
@@ -112,10 +110,10 @@ public class BedAura extends Module {
         this.registerSetting(silentMoveFix = new ProfiledSliderSetting(silentGroup, "Move fix", 1, new String[]{"None", "Silent", "Strict"}, "Silent.Move fix"));
         this.registerSetting(silentShowTarget = new ProfiledSliderSetting(silentGroup, "Show target", 1, new String[]{"None", "Default", "HUD"}, "Silent.Show target"));
         this.registerSetting(silentShowProgress = new ProfiledSliderSetting(silentGroup, "Show progress", 1, new String[]{"None", "Default", "HUD"}, "Silent.Show progress"));
-        silent = new SilentBedBreaker(this, silentRange, silentSpeed,
+        silent = new SilentBedBreaker(this, silentRange,
                 silentSurroundings, silentToolCheck, silentWhitelist, silentSwing, silentMoveFix,
                 silentShowTarget, silentShowProgress);
-        legit = new LegitBedBreaker(this, range, speed, breakDelay, fov, aimSpeed, moveFix, toolCheck,
+        legit = new LegitBedBreaker(this, range, breakDelay, fov, aimSpeed, moveFix, toolCheck,
                 whitelistOwnBed, autoTool, switchBackWhenDone, overrideSwapBack, spoofItem);
     }
 
@@ -123,7 +121,6 @@ public class BedAura extends Module {
     public void guiUpdate() {
         boolean legit = isLegitMode();
         range.setVisible(legit, this);
-        speed.setVisible(legit, this);
         breakDelay.setVisible(legit, this);
         fov.setVisible(legit, this);
         aimSpeed.setVisible(legit, this);
@@ -139,7 +136,6 @@ public class BedAura extends Module {
         outlineColor.setVisible(legit && renderOutline.isToggled(), this);
         silentGroup.setVisible(!legit, this);
         silentRange.setVisible(!legit, this);
-        silentSpeed.setVisible(!legit, this);
         silentSurroundings.setVisible(!legit, this);
         silentToolCheck.setVisible(!legit, this);
         silentWhitelist.setVisible(!legit, this);
@@ -192,6 +188,14 @@ public class BedAura extends Module {
         }
         activeMode = selectedMode;
         if (!isLegitMode()) silent.prepareTick();
+    }
+
+    @SubscribeEvent
+    public void onReceivePacket(ReceivePacketEvent e) {
+        if (isEnabled() && e.getPacket() instanceof S23PacketBlockChange) {
+            S23PacketBlockChange change = (S23PacketBlockChange) e.getPacket();
+            legit.onServerBlockChange(change.getBlockPosition(), change.getBlockState());
+        }
     }
 
     @SubscribeEvent

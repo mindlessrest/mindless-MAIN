@@ -37,10 +37,13 @@ import java.util.Set;
 
 final class SilentBedBreaker {
     private enum State { IDLE, START, MINING, FINISH, RESTORE, COOLDOWN }
+    /** Vanilla sends the next START 6 ticks after a STOP (blockHitDelay); Grim's FastBreak flags sooner. */
+    private static final int TICKS_AFTER_STOP = 6;
+    /** A 1.8 server accepts STOP once relative hardness times ticks since START reaches this. */
+    private static final float SERVER_BREAK_RATIO = 0.7F;
 
     private final BedAura owner;
     private final ProfiledSliderSetting range;
-    private final ProfiledSliderSetting speed;
     private final ProfiledButtonSetting surroundings;
     private final ProfiledButtonSetting toolCheck;
     private final ProfiledButtonSetting whitelist;
@@ -62,21 +65,21 @@ final class SilentBedBreaker {
     private ItemStack miningItem;
     private int breakTicks;
     private int finishTicks;
+    private int lastStopTick = Integer.MIN_VALUE / 2;
     private long cooldownUntil;
-    private float accumulatedDamage;
+    private float maxRelative;
     private float requiredYaw;
     private float requiredPitch;
     private boolean rotationRequested;
 
     SilentBedBreaker(BedAura owner,
-                     ProfiledSliderSetting range, ProfiledSliderSetting speed,
+                     ProfiledSliderSetting range,
                      ProfiledButtonSetting surroundings, ProfiledButtonSetting toolCheck,
                      ProfiledButtonSetting whitelist, ProfiledButtonSetting swing,
                      ProfiledSliderSetting moveFix, ProfiledSliderSetting showTarget,
                      ProfiledSliderSetting showProgress) {
         this.owner = owner;
         this.range = range;
-        this.speed = speed;
         this.surroundings = surroundings;
         this.toolCheck = toolCheck;
         this.whitelist = whitelist;
@@ -196,11 +199,18 @@ final class SilentBedBreaker {
                     debug("action waiting item use target=" + describeTarget());
                     return;
                 }
+                int sinceStop = mc().thePlayer.ticksExisted - lastStopTick;
+                if (sinceStop >= 0 && sinceStop < TICKS_AFTER_STOP) {
+                    debug("action waiting break delay ticksSinceStop=" + sinceStop + " " + describeTarget());
+                    return;
+                }
                 if (mc().playerController != null) mc().playerController.resetBlockRemoving();
                 toolSlot = bestTool(targetBlock);
                 equipTool();
                 if (!synchronizeHeldItem()) return;
                 miningItem = ItemStack.copyItemStack(mc().thePlayer.getHeldItem());
+                maxRelative = relativeHardness(stateAtTarget, target, toolSlot, mc().thePlayer.onGround);
+                breakTicks = 0;
                 send(C07PacketPlayerDigging.Action.START_DESTROY_BLOCK);
                 animate();
                 startSent = true;
@@ -214,7 +224,7 @@ final class SilentBedBreaker {
                     toolSlot = mc().thePlayer.inventory.currentItem;
                     miningItem = ItemStack.copyItemStack(mc().thePlayer.getHeldItem());
                     intendedSlot = -1;
-                    accumulatedDamage = 0.0F;
+                    maxRelative = relativeHardness(stateAtTarget, target, toolSlot, mc().thePlayer.onGround);
                     breakTicks = 0;
                     send(C07PacketPlayerDigging.Action.START_DESTROY_BLOCK);
                     return;
@@ -222,11 +232,15 @@ final class SilentBedBreaker {
                 breakTicks++;
                 animate();
                 if (mc().effectRenderer != null) mc().effectRenderer.addBlockHitEffects(target, face);
-                accumulatedDamage += relativeHardness(stateAtTarget, target, toolSlot, mc().thePlayer.onGround);
-                debug("action mining tick=" + breakTicks + " progress=" + progress() + " damage=" + accumulatedDamage
-                        + " threshold=" + threshold() + " " + describeTarget());
-                if (accumulatedDamage >= threshold()) {
+                float relative = relativeHardness(stateAtTarget, target, toolSlot, mc().thePlayer.onGround);
+                maxRelative = Math.max(maxRelative, relative);
+                debug("action mining tick=" + breakTicks + " progress=" + progress() + " relative=" + relative
+                        + " requiredTicks=" + requiredTicks() + " " + describeTarget());
+                // Exactly vanilla's break time for the best per-tick damage seen (Grim FastBreak's
+                // prediction; a tick sooner is a violation), once the 1.8 server would accept it.
+                if (breakTicks >= requiredTicks() && relative * (breakTicks + 1) >= SERVER_BREAK_RATIO) {
                     send(C07PacketPlayerDigging.Action.STOP_DESTROY_BLOCK);
+                    lastStopTick = mc().thePlayer.ticksExisted;
                     animate();
                     digging = false;
                     stopSent = true;
@@ -320,7 +334,7 @@ final class SilentBedBreaker {
         stopSent = false;
         breakTicks = 0;
         finishTicks = 0;
-        accumulatedDamage = 0.0F;
+        maxRelative = 0.0F;
         miningItem = null;
         rotationRequested = false;
         transition(State.IDLE, "session cleared");
@@ -353,7 +367,7 @@ final class SilentBedBreaker {
 
     float progress() {
         if (target == null) return 0.0F;
-        return Math.max(0.0F, Math.min(1.0F, accumulatedDamage / threshold()));
+        return Math.max(0.0F, Math.min(1.0F, breakTicks / (float) requiredTicks()));
     }
 
     boolean showsProgress() {
@@ -581,8 +595,8 @@ final class SilentBedBreaker {
         return stack != null && stack.canHarvestBlock(block);
     }
 
-    private float threshold() {
-        return 1.0F - 0.3F * (float) (speed.getInput() / 100.0D);
+    private int requiredTicks() {
+        return maxRelative > 0.0F ? (int) Math.ceil(1.0D / maxRelative) : Integer.MAX_VALUE;
     }
 
     private EnumFacing breakFace(BlockPos position) {

@@ -80,9 +80,8 @@ public class SilentBedBreakerTest {
         ((ProfiledButtonSetting) field(BedAura.class, "silentWhitelist").get(owner)).setEnabled(false);
     }
 
-    @Test public void defaultsMatchRequestedRangeAndSpeed() throws Exception {
+    @Test public void defaultRangeMatchesRequestedLimit() throws Exception {
         assertEquals(4.5, ((ProfiledSliderSetting) field(BedAura.class, "silentRange").get(owner)).getInput(), 0);
-        assertEquals(33, ((ProfiledSliderSetting) field(BedAura.class, "silentSpeed").get(owner)).getInput(), 0);
     }
 
     @Test public void reachableHeadMustNotRequireReachableFoot() throws Exception {
