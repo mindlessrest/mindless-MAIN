@@ -18,8 +18,10 @@ import mindless.module.setting.impl.ProfiledButtonSetting;
 import mindless.module.setting.impl.ProfiledSliderSetting;
 import mindless.module.setting.impl.SliderSetting;
 import mindless.utility.BlockUtils;
+import mindless.utility.RenderUtils;
 import mindless.utility.Utils;
 import net.minecraft.block.BlockBed;
+import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.BlockPos;
@@ -33,9 +35,12 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 public class BedAura extends Module {
 
     private static final String[] MODES = {"Silent", "Legit"};
+    private static final String[] PROGRESS_MODES = {"Off", "Bar", "Circle"};
     private static final ItemStack BED_DISPLAY_STACK = new ItemStack(Items.bed);
+    private static final int PROGRESS_COLOR = 0xFF19C6E6;
 
     private final SliderSetting mode;
+    private final SliderSetting progressDisplay;
     private final SliderSetting range;
     private final SliderSetting speed;
     private final SliderSetting breakDelay;
@@ -66,10 +71,15 @@ public class BedAura extends Module {
     private final LegitBedBreaker legit;
 
     private int activeMode = -1;
+    private BlockPos progressTarget;
+    private float displayedProgress;
+    private float previousRawProgress;
+    private long progressFrameTime;
 
     public BedAura() {
         super("Bed Breaker", "Smoothly breaks nearby beds and their defenses.", category.player);
         this.registerSetting(mode = new SliderSetting("Mode", 0, MODES));
+        this.registerSetting(progressDisplay = new SliderSetting("Progress", 1, PROGRESS_MODES));
         this.registerSetting(range = new SliderSetting("Range", " block", 4.5, 2.0, 4.5, 0.1));
         this.registerSetting(speed = new SliderSetting("Speed", "%", 0.0, 0.0, 100.0, 1.0));
         this.registerSetting(breakDelay = new SliderSetting("Break delay", "ms", 250.0, 0.0, 250.0, 50.0));
@@ -153,12 +163,14 @@ public class BedAura extends Module {
         silent.cleanup();
         legit.cleanup();
         activeMode = -1;
+        resetProgressDisplay();
     }
 
     public void onWorldChange() {
         silent.cleanup();
         legit.cleanup();
         activeMode = -1;
+        resetProgressDisplay();
     }
 
     @SubscribeEvent
@@ -318,6 +330,82 @@ public class BedAura extends Module {
     public void afterMotionResolved(PreMotionEvent event) {
         if (isLegitMode()) legit.actionTick(event);
         else silent.actionTick(event);
+    }
+
+    @SubscribeEvent
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || !isEnabled() || !Utils.nullCheck()
+                || mc.currentScreen != null || (int) progressDisplay.getInput() == 0) {
+            resetProgressDisplay();
+            return;
+        }
+
+        BlockPos target = getAuraTargetPos();
+        if (target == null || !isActivelyMining()) {
+            resetProgressDisplay();
+            return;
+        }
+
+        float rawProgress = Math.max(0.0F, Math.min(1.0F, getAuraBreakProgress()));
+        long now = System.currentTimeMillis();
+        if (!target.equals(progressTarget) || rawProgress + 0.01F < previousRawProgress) {
+            progressTarget = target;
+            displayedProgress = 0.0F;
+            progressFrameTime = now;
+        }
+
+        long elapsed = progressFrameTime == 0L ? 16L : Math.min(100L, now - progressFrameTime);
+        float blend = 1.0F - (float) Math.exp(-elapsed / 45.0F);
+        displayedProgress += (rawProgress - displayedProgress) * blend;
+        if (rawProgress >= 1.0F) displayedProgress = 1.0F;
+        previousRawProgress = rawProgress;
+        progressFrameTime = now;
+
+        if ((int) progressDisplay.getInput() == 2) renderProgressCircle(displayedProgress);
+        else renderProgressBar(displayedProgress);
+    }
+
+    private void renderProgressBar(float progress) {
+        ScaledResolution resolution = new ScaledResolution(mc);
+        float centerX = resolution.getScaledWidth() / 2.0F;
+        float top = resolution.getScaledHeight() / 2.0F + 18.0F;
+        float width = 116.0F;
+        float height = 5.0F;
+        float left = centerX - width / 2.0F;
+
+        RenderUtils.drawRoundedRectangle(left - 1.5F, top - 1.5F,
+                left + width + 1.5F, top + height + 1.5F, 2.5F, 0xA0000000);
+        RenderUtils.drawRoundedRectangle(left, top, left + width, top + height,
+                2.0F, 0xD91B2024);
+        if (progress > 0.0F) {
+            RenderUtils.drawRoundedRectangle(left, top, left + width * progress, top + height,
+                    2.0F, PROGRESS_COLOR);
+        }
+    }
+
+    private void renderProgressCircle(float progress) {
+        ScaledResolution resolution = new ScaledResolution(mc);
+        float centerX = resolution.getScaledWidth() / 2.0F + 0.5F;
+        float centerY = resolution.getScaledHeight() / 2.0F + 0.5F;
+        float radius = 10.0F;
+        float thickness = 3.0F;
+
+        RenderUtils.draw2DCircle(centerX, centerY, radius, 100, thickness,
+                0.0F, 0.0F, 0.0F, 0.5F);
+        if (progress >= 0.999F) {
+            RenderUtils.draw2DCircle(centerX, centerY, radius, 100, thickness,
+                    0.098F, 0.776F, 0.902F, 1.0F);
+        } else if (progress > 0.0F) {
+            RenderUtils.draw2DCircleArc(centerX, centerY, radius, 90.0F,
+                    90.0F + progress * 360.0F + 0.5F, thickness, PROGRESS_COLOR);
+        }
+    }
+
+    private void resetProgressDisplay() {
+        progressTarget = null;
+        displayedProgress = 0.0F;
+        previousRawProgress = 0.0F;
+        progressFrameTime = 0L;
     }
 
     @SubscribeEvent
