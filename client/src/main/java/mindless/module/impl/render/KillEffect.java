@@ -41,7 +41,7 @@ import java.util.Random;
 public class KillEffect extends Module {
     // Appended, never reordered: a dropdown persists by index, so moving one of these silently
     // changes what every saved profile means.
-    private static final String[] MODES = new String[]{"Blood", "Lightning", "Soul", "XP burst", "Reassemble"};
+    private static final String[] MODES = new String[]{"Blood", "Lightning", "Soul", "XP burst", "Reconstruction"};
     private static final int MODE_BLOOD = 0;
     private static final int MODE_LIGHTNING = 1;
     private static final int MODE_SOUL = 2;
@@ -75,6 +75,8 @@ public class KillEffect extends Module {
     private final SliderSetting orbCount;
     private final SliderSetting orbSize;
     private final SliderSetting orbSpeed;
+    private final ColorSetting particleColor;
+    private final SliderSetting particleGlow;
 
     private final Random random = new Random();
     private final List<Effect> effects = new ArrayList<Effect>();
@@ -98,9 +100,11 @@ public class KillEffect extends Module {
         }));
         this.registerSetting(useCustomColor = new ButtonSetting("Custom color", false));
         this.registerSetting(customColor = new ColorSetting("Color", 220, 40, 40, 255));
-        this.registerSetting(orbCount = new SliderSetting("Orb count", 42, 6, 120, 1));
+        this.registerSetting(orbCount = new SliderSetting("Particle amount", 140, 16, 320, 1, "Orb count"));
         this.registerSetting(orbSize = new SliderSetting("Orb size", "blocks", 0.07, 0.02, 0.3, 0.01));
         this.registerSetting(orbSpeed = new SliderSetting("Orb speed", 0.09, 0.02, 0.3, 0.01));
+        this.registerSetting(particleColor = new ColorSetting("Particle color", 154, 72, 255));
+        this.registerSetting(particleGlow = new SliderSetting("Particle glow", 1.35, 0.0, 3.0, 0.05));
     }
 
     private boolean usesOrbs() {
@@ -122,10 +126,13 @@ public class KillEffect extends Module {
         if (killSoundVolume != null) {
             killSoundVolume.setVisible(killSound != null && (int) killSound.getInput() != KILL_SOUND_OFF, this);
         }
-        if (customColor != null) {
-            customColor.setVisible(useCustomColor != null && useCustomColor.isToggled(), this);
-        }
         boolean orbs = usesOrbs();
+        if (useCustomColor != null) {
+            useCustomColor.setVisible(!orbs, this);
+        }
+        if (customColor != null) {
+            customColor.setVisible(!orbs && useCustomColor != null && useCustomColor.isToggled(), this);
+        }
         if (orbCount != null) {
             orbCount.setVisible(orbs, this);
         }
@@ -134,6 +141,12 @@ public class KillEffect extends Module {
         }
         if (orbSpeed != null) {
             orbSpeed.setVisible(orbs, this);
+        }
+        if (particleColor != null) {
+            particleColor.setVisible(orbs, this);
+        }
+        if (particleGlow != null) {
+            particleGlow.setVisible(orbs, this);
         }
         if (size != null) {
             size.setVisible(!orbs, this);
@@ -259,14 +272,15 @@ public class KillEffect extends Module {
      */
     private void spawnOrbs(PlayerKillEvent event) {
         int ticks = Math.max(1, (int) Math.round(duration.getInput() * 20.0));
-        int rgb = useCustomColor.isToggled() ? (customColor.getRGB() & 0xFFFFFF) : 0x6FE04A;
+        int rgb = particleColor.getRGB() & 0xFFFFFF;
         int count = (int) orbCount.getInput();
         double speed = orbSpeed.getInput();
         double orb = orbSize.getInput();
+        float glow = (float) particleGlow.getInput();
 
         if ((int) mode.getInput() == MODE_XP) {
             EffectSystem.spawn(new BurstEffect(event.x, event.y + 0.6, event.z, ticks,
-                    count, speed, speed * 1.6, orb, rgb, true, false, random));
+                    count, speed, 1.6, orb, rgb, true, false, glow, random));
             return;
         }
 
@@ -288,7 +302,7 @@ public class KillEffect extends Module {
         // Reassemble is deliberately longer than the slider says: the scatter, the gather and the
         // hold each need room, and a one second version of it reads as a glitch.
         EffectSystem.spawn(new ReassembleEffect(event.x, event.y, event.z,
-                Math.max(ticks, 40), count, speed, orb, rgb, yaw, skin, slim, random));
+                Math.max(ticks, 70), count, speed, orb, rgb, glow, yaw, skin, slim, random));
     }
 
     private void spawn(double x, double y, double z) {

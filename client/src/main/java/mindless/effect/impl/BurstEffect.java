@@ -2,6 +2,8 @@ package mindless.effect.impl;
 
 import mindless.effect.Effect;
 import mindless.effect.EffectRenderer;
+import net.minecraft.client.renderer.GlStateManager;
+import org.lwjgl.opengl.GL11;
 
 import java.util.Random;
 
@@ -24,12 +26,19 @@ public final class BurstEffect extends Effect {
     private final int rgb;
     private final boolean gravity;
     private final boolean seeThrough;
+    private final float glow;
 
     public BurstEffect(double x, double y, double z, int durationTicks,
                        int count, double speed, double spread, double size,
                        int rgb, boolean gravity, boolean seeThrough, Random random) {
+        this(x, y, z, durationTicks, count, speed, spread, size, rgb, gravity, seeThrough, 0.0f, random);
+    }
+
+    public BurstEffect(double x, double y, double z, int durationTicks,
+                       int count, double speed, double spread, double size,
+                       int rgb, boolean gravity, boolean seeThrough, float glow, Random random) {
         super(x, y, z, durationTicks);
-        int n = Math.max(1, Math.min(160, count));
+        int n = Math.max(1, Math.min(360, count));
         this.vx = new float[n];
         this.vy = new float[n];
         this.vz = new float[n];
@@ -37,6 +46,7 @@ public final class BurstEffect extends Effect {
         this.rgb = rgb;
         this.gravity = gravity;
         this.seeThrough = seeThrough;
+        this.glow = Math.max(0.0f, Math.min(3.0f, glow));
 
         for (int i = 0; i < n; i++) {
             double angle = random.nextDouble() * Math.PI * 2.0;
@@ -57,6 +67,9 @@ public final class BurstEffect extends Effect {
         float alpha = 1.0f - life * life;
 
         EffectRenderer.seeThrough(seeThrough);
+        if (glow > 0.0f) {
+            GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+        }
         EffectRenderer.beginSparks();
         for (int i = 0; i < vx.length; i++) {
             double px = x + vx[i] * t;
@@ -65,9 +78,17 @@ public final class BurstEffect extends Effect {
             if (gravity && py < y) {
                 py = y;
             }
+            if (glow > 0.0f) {
+                EffectRenderer.spark(px, py, pz, size * (1.7 + glow * 0.65), rgb,
+                        alpha * Math.min(0.42f, glow * 0.14f));
+            }
             EffectRenderer.spark(px, py, pz, size, rgb, alpha);
         }
         EffectRenderer.endSparks();
+        if (glow > 0.0f) {
+            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                    GL11.GL_ONE, GL11.GL_ZERO);
+        }
         EffectRenderer.seeThrough(false);
     }
 }
